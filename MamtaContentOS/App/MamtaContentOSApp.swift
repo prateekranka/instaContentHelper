@@ -12,7 +12,10 @@ struct MamtaContentOSApp: App {
                 .environment(appState)
                 .environment(runtime.services)
                 .task {
-                    runtime.services.refreshFromRepositories()
+                    if runtime.services.loadTodayFromCache() {
+                        await runtime.services.scheduleTodayNotificationIfNeededImmediately()
+                    }
+                    await runtime.services.refreshFromRepositoriesImmediately()
                 }
         }
     }

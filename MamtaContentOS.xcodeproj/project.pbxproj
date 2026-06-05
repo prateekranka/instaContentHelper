@@ -21,6 +21,7 @@
 		5EEA46365601D4CF1A682DE6 /* ArchiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E10F60905762215750EF749 /* ArchiveView.swift */; };
 		5F9C716A6D923923458AB68D /* NotTodaySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D186205F0AA32C0864AC87F /* NotTodaySheet.swift */; };
 		6210C78D8AF8CE5D2929E2E0 /* WeeklyPublishingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19450127B95D1213128FA8F1 /* WeeklyPublishingModels.swift */; };
+		774734A48E44DAA69970613B /* TodayCacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910A4CD086DDAA0BD6AE5372 /* TodayCacheStore.swift */; };
 		794E29FCB303450D31C5CE2F /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3576E464C4473CF7FCEEDFE /* AppServices.swift */; };
 		7E1AA0438BF6FEBB25E632B0 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF602D1A9C372D526861142 /* AppState.swift */; };
 		7F8470E6CA856219806DA72D /* DevicePairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 770B5398234556EA30E41814 /* DevicePairingService.swift */; };
@@ -30,6 +31,7 @@
 		B165163EC0429B1E2F027884 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4CA536B337AB64C0D33ADB /* Models.swift */; };
 		C01436F62EB8397645D741F8 /* AdminShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96C9F4C2D0D8FAF32D8463F /* AdminShellView.swift */; };
 		C3649EC4C9F894ACC3911EBF /* IntelligenceHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC804EC50E4B92347FB47B01 /* IntelligenceHomeView.swift */; };
+		C62BA8C125D85DD70BD2492E /* TodayNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0307542B19B96945D2B526 /* TodayNotificationScheduler.swift */; };
 		CAF4C15ED7243D6DBD9BF7AF /* SupabaseRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F8BDAFC990C52C6A89AC1C /* SupabaseRepositories.swift */; };
 		D61AE090F50ACB98895CDC8F /* SupabaseClientFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC93D58389D734683886CB /* SupabaseClientFactory.swift */; };
 /* End PBXBuildFile section */
@@ -52,6 +54,7 @@
 		1C7F2B6585A65CC2E3972E38 /* LocalRuntime.sample.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = LocalRuntime.sample.xcconfig; sourceTree = "<group>"; };
 		24B81E5DE6B61E24EC12A88B /* WeeklyControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyControlView.swift; sourceTree = "<group>"; };
 		26818B7823EA3DEBE2DCE7B5 /* AppRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRepositories.swift; sourceTree = "<group>"; };
+		3C0307542B19B96945D2B526 /* TodayNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayNotificationScheduler.swift; sourceTree = "<group>"; };
 		3C4CA536B337AB64C0D33ADB /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		404FD0731610EF4ED612A957 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		414641F2F0AFE65BACFCF578 /* MamtaContentOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MamtaContentOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -63,6 +66,7 @@
 		8371AD34F414122A56E4953B /* FixtureRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureRepositories.swift; sourceTree = "<group>"; };
 		8B398DF08659174DC14F45FE /* MamtaContentOSTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MamtaContentOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F244068C45A28790DCF8584 /* Fixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fixtures.swift; sourceTree = "<group>"; };
+		910A4CD086DDAA0BD6AE5372 /* TodayCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayCacheStore.swift; sourceTree = "<group>"; };
 		94702367096BCED709F2FA08 /* PublishWeekFixtureAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishWeekFixtureAcceptanceTests.swift; sourceTree = "<group>"; };
 		A0BC93D58389D734683886CB /* SupabaseClientFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientFactory.swift; sourceTree = "<group>"; };
 		A96C9F4C2D0D8FAF32D8463F /* AdminShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminShellView.swift; sourceTree = "<group>"; };
@@ -236,6 +240,8 @@
 				A0BC93D58389D734683886CB /* SupabaseClientFactory.swift */,
 				FFDD30845CB77703DF4A818B /* SupabaseDTOs.swift */,
 				56F8BDAFC990C52C6A89AC1C /* SupabaseRepositories.swift */,
+				910A4CD086DDAA0BD6AE5372 /* TodayCacheStore.swift */,
+				3C0307542B19B96945D2B526 /* TodayNotificationScheduler.swift */,
 				19450127B95D1213128FA8F1 /* WeeklyPublishingModels.swift */,
 			);
 			path = Data;
@@ -348,6 +354,8 @@
 				D61AE090F50ACB98895CDC8F /* SupabaseClientFactory.swift in Sources */,
 				1353736AAAF26CF0E38EFF5E /* SupabaseDTOs.swift in Sources */,
 				CAF4C15ED7243D6DBD9BF7AF /* SupabaseRepositories.swift in Sources */,
+				774734A48E44DAA69970613B /* TodayCacheStore.swift in Sources */,
+				C62BA8C125D85DD70BD2492E /* TodayNotificationScheduler.swift in Sources */,
 				0897B34D4A37D495BA40CA86 /* TodayView.swift in Sources */,
 				8F472C50B1D9E5FD16D9EEDC /* WeeklyControlView.swift in Sources */,
 				6210C78D8AF8CE5D2929E2E0 /* WeeklyPublishingModels.swift in Sources */,

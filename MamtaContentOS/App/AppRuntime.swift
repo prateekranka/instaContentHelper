@@ -20,7 +20,9 @@ struct AppRuntime {
     let services: AppServices
 
     static func makeInitialRuntime(
-        store: RuntimeConfigurationStoring = RuntimeConfigurationStore()
+        store: RuntimeConfigurationStoring = RuntimeConfigurationStore(),
+        todayCache: any TodayCacheStoring = FileTodayCacheStore(),
+        notifications: any TodayNotificationScheduling = LocalTodayNotificationScheduler()
     ) -> AppRuntime {
         do {
             if let session = try store.loadPairedSession() {
@@ -30,13 +32,29 @@ struct AppRuntime {
                 )
                 return AppRuntime(
                     mode: .live(session),
-                    services: AppServices.fixtureBacked(repositories: repositories)
+                    services: AppServices.fixtureBacked(
+                        repositories: repositories,
+                        todayCache: todayCache,
+                        notifications: notifications
+                    )
                 )
             }
         } catch {
-            return AppRuntime(mode: .fixtures, services: AppServices.preview)
+            return AppRuntime(
+                mode: .fixtures,
+                services: AppServices.fixtureBacked(
+                    todayCache: todayCache,
+                    notifications: notifications
+                )
+            )
         }
 
-        return AppRuntime(mode: .fixtures, services: AppServices.preview)
+        return AppRuntime(
+            mode: .fixtures,
+            services: AppServices.fixtureBacked(
+                todayCache: todayCache,
+                notifications: notifications
+            )
+        )
     }
 }

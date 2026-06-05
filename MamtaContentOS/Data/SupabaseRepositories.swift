@@ -36,14 +36,14 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
 
     func completeToday(
         card: DailyCard,
-        decision: CompletionState,
+        decision: DailyDecision,
         context: WorkspaceContext
     ) async throws -> ArchiveEntry {
         try await client
             .from(SupabaseContentTable.dailyCards.rawValue)
             .update(
                 SupabaseDailyCardDecisionUpdate(
-                    status: decision.supabaseStatus,
+                    status: decision.completionState.supabaseStatus,
                     decisionAt: SupabaseDateFormatting.isoTimestampString(),
                     completedByMemberID: context.memberID
                 )
@@ -51,13 +51,15 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
             .eq("id", value: card.id.uuidString)
             .execute()
 
+        let archiveDate = card.scheduledDate ?? SupabaseDateFormatting.todayDateString()
         return ArchiveEntry(
-            day: SupabaseDateFormatting.weekdayAbbreviation(for: SupabaseDateFormatting.todayDateString()),
-            date: SupabaseDateFormatting.shortDate(for: SupabaseDateFormatting.todayDateString()),
+            dailyCardID: card.id,
+            day: SupabaseDateFormatting.weekdayAbbreviation(for: archiveDate),
+            date: SupabaseDateFormatting.shortDate(for: archiveDate),
             cardTitle: card.title,
-            decision: decision,
-            outputLine: decision.archiveLabel,
-            hasPostThumbnail: decision == .posted
+            decision: decision.completionState,
+            outputLine: decision.outputLine,
+            hasPostThumbnail: decision.hasPostThumbnail
         )
     }
 }
@@ -334,7 +336,7 @@ struct SupabaseArchiveRepository: ArchiveRepository {
     func entries(for context: WorkspaceContext) async throws -> [ArchiveEntry] {
         let rows: [SupabaseArchiveEntryRow] = try await client
             .from(SupabaseContentTable.archiveEntries.rawValue)
-            .select("id,archive_date,decision,output_line,has_post_thumbnail,daily_cards(title)")
+            .select("id,daily_card_id,archive_date,decision,output_line,has_post_thumbnail,daily_cards(title)")
             .eq("creator_id", value: context.creatorID.uuidString)
             .order("archive_date", ascending: false)
             .limit(50)

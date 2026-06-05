@@ -491,6 +491,7 @@ struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
     }
 
     var id: UUID
+    var dailyCardID: UUID?
     var archiveDate: String
     var decision: String
     var outputLine: String?
@@ -499,6 +500,7 @@ struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case dailyCardID = "daily_card_id"
         case archiveDate = "archive_date"
         case decision
         case outputLine = "output_line"
@@ -509,6 +511,7 @@ struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
     func domainEntry() -> ArchiveEntry {
         ArchiveEntry(
             id: id,
+            dailyCardID: dailyCardID,
             day: SupabaseDateFormatting.weekdayAbbreviation(for: archiveDate),
             date: SupabaseDateFormatting.shortDate(for: archiveDate),
             cardTitle: dailyCard?.title ?? "Daily card",
@@ -738,6 +741,8 @@ enum SupabaseDateFormatting {
 extension CompletionState {
     init?(supabaseStatus: String) {
         switch supabaseStatus {
+        case "shot":
+            self = .shot
         case "posted":
             self = .posted
         case "used_backup":
@@ -753,6 +758,8 @@ extension CompletionState {
 
     var supabaseStatus: String {
         switch self {
+        case .shot:
+            "shot"
         case .posted:
             "posted"
         case .usedBackup:

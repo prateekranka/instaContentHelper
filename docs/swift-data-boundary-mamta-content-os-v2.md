@@ -81,6 +81,7 @@ Current live repository coverage:
 - Intelligence reads `patterns`, `trends`, `audio_options`, and `ideas`.
 - Creator profile reads the active `creator_profiles` row.
 - Archive reads and upserts `archive_entries`.
+- Today decisions update `daily_cards`, then upsert one `archive_entries` row per `daily_card_id`.
 
 The direct decision/archive write path is useful for dev/admin verification. Production device-paired writes should still move through Edge Functions before this is exposed to Mamta's phone.
 
@@ -97,6 +98,19 @@ Still needed before relying on live device runtime:
 - Add Edge Functions for privileged creator daily decisions.
 - RLS grants or function read paths reviewed against the exact device-token access model.
 
-## Next Slice
+## Completed Slices
 
-Add offline Today cache from the synced daily card, still keeping Mamta's visible flow simple.
+- Offline Today cache from the synced daily card.
+- Mamta Today decisions write into Archive with optimistic local state and repository sync.
+- Gentle local notification scheduling from the synced Today card.
+
+## Core Data/Sync MVP Loop
+
+The six-section data/sync loop is now implemented:
+
+1. Supabase-ready schema.
+2. Swift repository/data boundary.
+3. Prateek publishes and soft-locks the week.
+4. Mamta Today reads the published card and works offline from cache.
+5. Mamta's decision writes to Archive.
+6. Mamta's phone schedules a local notification from the synced Today card.

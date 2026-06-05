@@ -51,7 +51,7 @@ protocol TodayCardRepository: Sendable {
     func weekCards(for context: WorkspaceContext) async throws -> [DailyCard]
     func completeToday(
         card: DailyCard,
-        decision: CompletionState,
+        decision: DailyDecision,
         context: WorkspaceContext
     ) async throws -> ArchiveEntry
 }

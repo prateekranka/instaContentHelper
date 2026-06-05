@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct ShootFolioView: View {
     @Environment(AppServices.self) private var services
@@ -25,7 +28,9 @@ struct ShootFolioView: View {
             }
         } bottomBar: {
             GlassCommandBar {
-                PrimaryActionButton(title: "I'm ready to shoot") {}
+                PrimaryActionButton(title: "Mark shot", systemImage: "checkmark.seal") {
+                    services.completeToday(with: DailyDecision.shot)
+                }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -92,6 +97,7 @@ struct SceneListView: View {
 struct CopyBlock: View {
     let title: String
     let bodyText: String
+    @State private var didCopy = false
 
     var body: some View {
         JournalBlock {
@@ -103,9 +109,21 @@ struct CopyBlock: View {
                     .font(MCOType.body)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .lineSpacing(5)
-                SecondaryActionButton(title: "Copy \(title.lowercased())") {}
+                SecondaryActionButton(title: didCopy ? "Copied" : "Copy \(title.lowercased())") {
+                    copyBodyText()
+                }
             }
         }
+        .onChange(of: bodyText) {
+            didCopy = false
+        }
+    }
+
+    private func copyBodyText() {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = bodyText
+        #endif
+        didCopy = true
     }
 }
 

@@ -63,7 +63,7 @@ struct ArchiveTimelineRow: View {
                     .foregroundStyle(MCOTheme.Color.ink)
                 Text(entry.outputLine)
                     .font(MCOType.bodySmall)
-                    .foregroundStyle(entry.decision == .posted ? MCOTheme.Color.sageDeep : MCOTheme.Color.brass)
+                    .foregroundStyle(entry.decision.isPositiveCompletion ? MCOTheme.Color.sageDeep : MCOTheme.Color.brass)
             }
 
             Spacer()
@@ -78,6 +78,12 @@ struct ArchiveTimelineRow: View {
             }
         }
         .padding(.vertical, MCOSpace.m)
+    }
+}
+
+private extension CompletionState {
+    var isPositiveCompletion: Bool {
+        self == .shot || self == .posted
     }
 }
 

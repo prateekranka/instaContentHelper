@@ -22,17 +22,34 @@ struct NotTodaySheet: View {
                 .padding(.top, MCOSpace.l)
 
                 VStack(spacing: MCOSpace.m) {
-                    BackupOptionRow(symbol: "10.circle", title: "10-second story", subtitle: "Keep the streak alive.")
-                    BackupOptionRow(symbol: "feather", title: "Caption-only post", subtitle: "Share the thought.")
-                    BackupOptionRow(symbol: "bookmark", title: "Save for tomorrow", subtitle: "Keep the card ready.")
+                    BackupOptionRow(
+                        symbol: "10.circle",
+                        title: "10-second story",
+                        subtitle: "Keep the streak alive."
+                    ) {
+                        complete(.backupStory)
+                    }
+                    BackupOptionRow(
+                        symbol: "feather",
+                        title: "Caption-only post",
+                        subtitle: "Share the thought."
+                    ) {
+                        complete(.captionOnly)
+                    }
+                    BackupOptionRow(
+                        symbol: "bookmark",
+                        title: "Save for tomorrow",
+                        subtitle: "Keep the card ready."
+                    ) {
+                        complete(.savedForTomorrow)
+                    }
                 }
 
                 Spacer()
 
                 GlassCommandBar {
-                    PrimaryActionButton(title: "Use backup") {
-                        services.completeToday(with: .usedBackup)
-                        dismiss()
+                    SecondaryActionButton(title: "Skip intentionally") {
+                        complete(.skippedIntentionally)
                     }
                 }
             }
@@ -41,34 +58,43 @@ struct NotTodaySheet: View {
             .padding(.bottom, MCOSpace.l)
         }
     }
+
+    private func complete(_ decision: DailyDecision) {
+        services.completeToday(with: decision)
+        dismiss()
+    }
 }
 
 struct BackupOptionRow: View {
     let symbol: String
     let title: String
     let subtitle: String
+    let action: () -> Void
 
     var body: some View {
-        JournalBlock {
-            HStack(spacing: MCOSpace.m) {
-                Image(systemName: symbol)
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundStyle(MCOTheme.Color.brass)
-                    .frame(width: 44)
-                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                    Text(title)
-                        .font(.system(size: 20, weight: .regular, design: .serif))
-                        .foregroundStyle(MCOTheme.Color.ink)
-                    Text(subtitle)
-                        .font(MCOType.bodySmall)
+        Button(action: action) {
+            JournalBlock {
+                HStack(spacing: MCOSpace.m) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundStyle(MCOTheme.Color.brass)
+                        .frame(width: 44)
+                    VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                        Text(title)
+                            .font(.system(size: 20, weight: .regular, design: .serif))
+                            .foregroundStyle(MCOTheme.Color.ink)
+                        Text(subtitle)
+                            .font(MCOType.bodySmall)
+                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(MCOType.caption)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
             }
         }
+        .buttonStyle(.plain)
     }
 }
 

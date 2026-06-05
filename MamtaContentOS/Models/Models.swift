@@ -1,6 +1,6 @@
 import Foundation
 
-struct DailyCard: Identifiable, Hashable, Sendable {
+struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     var title: String
     var context: String
@@ -34,15 +34,30 @@ struct DailyCard: Identifiable, Hashable, Sendable {
     }
 }
 
-struct ShotScene: Identifiable, Hashable, Sendable {
-    let id = UUID()
+struct ShotScene: Identifiable, Codable, Hashable, Sendable {
+    let id: UUID
     let number: Int
     let title: String
     let duration: String
     let symbol: String
+
+    init(
+        id: UUID = UUID(),
+        number: Int,
+        title: String,
+        duration: String,
+        symbol: String
+    ) {
+        self.id = id
+        self.number = number
+        self.title = title
+        self.duration = duration
+        self.symbol = symbol
+    }
 }
 
 enum CompletionState: String, CaseIterable, Codable, Hashable, Sendable {
+    case shot
     case posted
     case usedBackup
     case savedForTomorrow
@@ -50,6 +65,8 @@ enum CompletionState: String, CaseIterable, Codable, Hashable, Sendable {
 
     var archiveLabel: String {
         switch self {
+        case .shot:
+            "Shot"
         case .posted:
             "Posted"
         case .usedBackup:
@@ -62,8 +79,61 @@ enum CompletionState: String, CaseIterable, Codable, Hashable, Sendable {
     }
 }
 
+struct DailyDecision: Codable, Hashable, Sendable {
+    var completionState: CompletionState
+    var outputLine: String
+    var hasPostThumbnail: Bool
+
+    init(
+        completionState: CompletionState,
+        outputLine: String? = nil,
+        hasPostThumbnail: Bool? = nil
+    ) {
+        self.completionState = completionState
+        self.outputLine = outputLine ?? completionState.archiveLabel
+        self.hasPostThumbnail = hasPostThumbnail ?? (completionState == .shot || completionState == .posted)
+    }
+
+    static let shot = DailyDecision(
+        completionState: .shot,
+        outputLine: "Shot today, ready to post",
+        hasPostThumbnail: true
+    )
+
+    static let posted = DailyDecision(
+        completionState: .posted,
+        outputLine: "Posted",
+        hasPostThumbnail: true
+    )
+
+    static let backupStory = DailyDecision(
+        completionState: .usedBackup,
+        outputLine: "Used backup: 10-second story",
+        hasPostThumbnail: false
+    )
+
+    static let captionOnly = DailyDecision(
+        completionState: .usedBackup,
+        outputLine: "Used backup: caption-only post",
+        hasPostThumbnail: false
+    )
+
+    static let savedForTomorrow = DailyDecision(
+        completionState: .savedForTomorrow,
+        outputLine: "Saved this card for tomorrow",
+        hasPostThumbnail: false
+    )
+
+    static let skippedIntentionally = DailyDecision(
+        completionState: .skippedIntentionally,
+        outputLine: "Skipped after decision",
+        hasPostThumbnail: false
+    )
+}
+
 struct ArchiveEntry: Identifiable, Hashable, Sendable {
     let id: UUID
+    let dailyCardID: UUID?
     let day: String
     let date: String
     let cardTitle: String
@@ -73,6 +143,7 @@ struct ArchiveEntry: Identifiable, Hashable, Sendable {
 
     init(
         id: UUID = UUID(),
+        dailyCardID: UUID? = nil,
         day: String,
         date: String,
         cardTitle: String,
@@ -81,6 +152,7 @@ struct ArchiveEntry: Identifiable, Hashable, Sendable {
         hasPostThumbnail: Bool
     ) {
         self.id = id
+        self.dailyCardID = dailyCardID
         self.day = day
         self.date = date
         self.cardTitle = cardTitle
@@ -119,7 +191,7 @@ enum TodaySheet: Identifiable, Hashable, Sendable {
     var id: String { "not-today" }
 }
 
-struct WeeklyPlan: Identifiable, Hashable, Sendable {
+struct WeeklyPlan: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     var title: String
     var eyebrow: String
@@ -153,7 +225,7 @@ struct WeeklyPlan: Identifiable, Hashable, Sendable {
     }
 }
 
-struct WeeklyDay: Identifiable, Hashable, Sendable {
+struct WeeklyDay: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     var weekday: String
     var date: String
@@ -214,7 +286,7 @@ enum WeeklySourceReason: String, CaseIterable, Codable, Hashable, Sendable {
     case open = "Open"
 }
 
-struct WeeklySetupSection: Identifiable, Hashable, Sendable {
+struct WeeklySetupSection: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     var systemImage: String
     var title: String

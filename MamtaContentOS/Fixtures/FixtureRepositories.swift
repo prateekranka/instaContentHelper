@@ -11,16 +11,18 @@ struct FixtureTodayCardRepository: TodayCardRepository {
 
     func completeToday(
         card: DailyCard,
-        decision: CompletionState,
+        decision: DailyDecision,
         context: WorkspaceContext
     ) async throws -> ArchiveEntry {
-        ArchiveEntry(
-            day: "TUE",
-            date: "3 JUN",
+        let archiveDate = card.scheduledDate ?? SupabaseDateFormatting.todayDateString()
+        return ArchiveEntry(
+            dailyCardID: card.id,
+            day: SupabaseDateFormatting.weekdayAbbreviation(for: archiveDate),
+            date: SupabaseDateFormatting.shortDate(for: archiveDate),
             cardTitle: card.title,
-            decision: decision,
-            outputLine: decision.archiveLabel,
-            hasPostThumbnail: decision == .posted
+            decision: decision.completionState,
+            outputLine: decision.outputLine,
+            hasPostThumbnail: decision.hasPostThumbnail
         )
     }
 }
@@ -106,8 +108,10 @@ struct FixtureArchiveRepository: ArchiveRepository {
         context: WorkspaceContext
     ) async throws -> [ArchiveEntry] {
         var entries = ArchiveEntry.fixtures
-        if let index = entries.firstIndex(where: { $0.cardTitle == card.title }) {
-            entries[index].decision = entry.decision
+        if let index = entries.firstIndex(where: { archiveEntry in
+            archiveEntry.dailyCardID == card.id || archiveEntry.cardTitle == card.title
+        }) {
+            entries[index] = entry
         } else {
             entries.insert(entry, at: 0)
         }
