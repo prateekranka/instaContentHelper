@@ -1,0 +1,4 @@
+MCO_SUPABASE_URL =
+MCO_SUPABASE_PUBLISHABLE_KEY =
+
+#include? "LocalRuntime.xcconfig"

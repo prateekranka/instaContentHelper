@@ -1,0 +1,633 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0149845E49F82A0CBFC6D7F3 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02ACA70F13D6F794327B581A /* DesignSystem.swift */; };
+		0897B34D4A37D495BA40CA86 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 404FD0731610EF4ED612A957 /* TodayView.swift */; };
+		09BE9068052BD8152EA66946 /* MamtaContentOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD8F880AA64A84D1D5706471 /* MamtaContentOSApp.swift */; };
+		0B278833890DA1DF766DC5DE /* RuntimeConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD700FA609143524436D6709 /* RuntimeConfigurationStore.swift */; };
+		1353736AAAF26CF0E38EFF5E /* SupabaseDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFDD30845CB77703DF4A818B /* SupabaseDTOs.swift */; };
+		21EC4C9D17EAD09793C0EEA5 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 0DF8DD64AEA336D09792ED00 /* Supabase */; };
+		24F043ECAA08AB51A89DB600 /* MamtaShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70ACBDBFD0B2930C0547A3E9 /* MamtaShellView.swift */; };
+		283796245512610D0F6AD889 /* AppRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14695506B80EFA6826075CD /* AppRuntime.swift */; };
+		35430AA266E0562C508B80CE /* ShootFolioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B21D43E5D07307B9CF480F2 /* ShootFolioView.swift */; };
+		456E78CE2AB56A24F981FA0D /* Fixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F244068C45A28790DCF8584 /* Fixtures.swift */; };
+		4F4ED9CD4B4324BDD9FFC43A /* AppRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26818B7823EA3DEBE2DCE7B5 /* AppRepositories.swift */; };
+		5EEA46365601D4CF1A682DE6 /* ArchiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E10F60905762215750EF749 /* ArchiveView.swift */; };
+		5F9C716A6D923923458AB68D /* NotTodaySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D186205F0AA32C0864AC87F /* NotTodaySheet.swift */; };
+		6210C78D8AF8CE5D2929E2E0 /* WeeklyPublishingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19450127B95D1213128FA8F1 /* WeeklyPublishingModels.swift */; };
+		794E29FCB303450D31C5CE2F /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3576E464C4473CF7FCEEDFE /* AppServices.swift */; };
+		7E1AA0438BF6FEBB25E632B0 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF602D1A9C372D526861142 /* AppState.swift */; };
+		7F8470E6CA856219806DA72D /* DevicePairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 770B5398234556EA30E41814 /* DevicePairingService.swift */; };
+		8F472C50B1D9E5FD16D9EEDC /* WeeklyControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B81E5DE6B61E24EC12A88B /* WeeklyControlView.swift */; };
+		93EFCBE2204EFD615DA95D7E /* PublishWeekFixtureAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94702367096BCED709F2FA08 /* PublishWeekFixtureAcceptanceTests.swift */; };
+		A4A1687103FDBE418A2064DE /* FixtureRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8371AD34F414122A56E4953B /* FixtureRepositories.swift */; };
+		B165163EC0429B1E2F027884 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4CA536B337AB64C0D33ADB /* Models.swift */; };
+		C01436F62EB8397645D741F8 /* AdminShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96C9F4C2D0D8FAF32D8463F /* AdminShellView.swift */; };
+		C3649EC4C9F894ACC3911EBF /* IntelligenceHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC804EC50E4B92347FB47B01 /* IntelligenceHomeView.swift */; };
+		CAF4C15ED7243D6DBD9BF7AF /* SupabaseRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F8BDAFC990C52C6A89AC1C /* SupabaseRepositories.swift */; };
+		D61AE090F50ACB98895CDC8F /* SupabaseClientFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC93D58389D734683886CB /* SupabaseClientFactory.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		5DCCA7B0601060B7FF7357AD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CB462DFF9797173F201FDD78 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6F5DDA5B98CE9FBAA6C3E4D0;
+			remoteInfo = MamtaContentOS;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		02ACA70F13D6F794327B581A /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		178EE2A7CFD2D1AFDF61172A /* Runtime.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Runtime.xcconfig; sourceTree = "<group>"; };
+		19450127B95D1213128FA8F1 /* WeeklyPublishingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyPublishingModels.swift; sourceTree = "<group>"; };
+		1B21D43E5D07307B9CF480F2 /* ShootFolioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShootFolioView.swift; sourceTree = "<group>"; };
+		1C7F2B6585A65CC2E3972E38 /* LocalRuntime.sample.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = LocalRuntime.sample.xcconfig; sourceTree = "<group>"; };
+		24B81E5DE6B61E24EC12A88B /* WeeklyControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyControlView.swift; sourceTree = "<group>"; };
+		26818B7823EA3DEBE2DCE7B5 /* AppRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRepositories.swift; sourceTree = "<group>"; };
+		3C4CA536B337AB64C0D33ADB /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		404FD0731610EF4ED612A957 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
+		414641F2F0AFE65BACFCF578 /* MamtaContentOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MamtaContentOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		56F8BDAFC990C52C6A89AC1C /* SupabaseRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseRepositories.swift; sourceTree = "<group>"; };
+		6D186205F0AA32C0864AC87F /* NotTodaySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotTodaySheet.swift; sourceTree = "<group>"; };
+		6E10F60905762215750EF749 /* ArchiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveView.swift; sourceTree = "<group>"; };
+		70ACBDBFD0B2930C0547A3E9 /* MamtaShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MamtaShellView.swift; sourceTree = "<group>"; };
+		770B5398234556EA30E41814 /* DevicePairingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePairingService.swift; sourceTree = "<group>"; };
+		8371AD34F414122A56E4953B /* FixtureRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureRepositories.swift; sourceTree = "<group>"; };
+		8B398DF08659174DC14F45FE /* MamtaContentOSTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MamtaContentOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8F244068C45A28790DCF8584 /* Fixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fixtures.swift; sourceTree = "<group>"; };
+		94702367096BCED709F2FA08 /* PublishWeekFixtureAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishWeekFixtureAcceptanceTests.swift; sourceTree = "<group>"; };
+		A0BC93D58389D734683886CB /* SupabaseClientFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientFactory.swift; sourceTree = "<group>"; };
+		A96C9F4C2D0D8FAF32D8463F /* AdminShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminShellView.swift; sourceTree = "<group>"; };
+		BD700FA609143524436D6709 /* RuntimeConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfigurationStore.swift; sourceTree = "<group>"; };
+		C14695506B80EFA6826075CD /* AppRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRuntime.swift; sourceTree = "<group>"; };
+		CD8F880AA64A84D1D5706471 /* MamtaContentOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MamtaContentOSApp.swift; sourceTree = "<group>"; };
+		CFF602D1A9C372D526861142 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		E3576E464C4473CF7FCEEDFE /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
+		FC804EC50E4B92347FB47B01 /* IntelligenceHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceHomeView.swift; sourceTree = "<group>"; };
+		FFDD30845CB77703DF4A818B /* SupabaseDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseDTOs.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7CF93A4F10CE8D33D2EF609D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				21EC4C9D17EAD09793C0EEA5 /* Supabase in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		032033FC9A22D3244A00078B /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				414641F2F0AFE65BACFCF578 /* MamtaContentOS.app */,
+				8B398DF08659174DC14F45FE /* MamtaContentOSTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1AFB4C90DAE5BCCA416A9EE3 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				02ACA70F13D6F794327B581A /* DesignSystem.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		29C0BE1C8EBC333C18D9F331 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				3C4CA536B337AB64C0D33ADB /* Models.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		2C79FCABAF0CD18D487FF5B3 /* Archive */ = {
+			isa = PBXGroup;
+			children = (
+				6E10F60905762215750EF749 /* ArchiveView.swift */,
+			);
+			path = Archive;
+			sourceTree = "<group>";
+		};
+		3848CD42D9AA221179F3C7E2 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C14695506B80EFA6826075CD /* AppRuntime.swift */,
+				E3576E464C4473CF7FCEEDFE /* AppServices.swift */,
+				CFF602D1A9C372D526861142 /* AppState.swift */,
+				CD8F880AA64A84D1D5706471 /* MamtaContentOSApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		40B597C0CC289B60D7077904 /* Navigation */ = {
+			isa = PBXGroup;
+			children = (
+				A96C9F4C2D0D8FAF32D8463F /* AdminShellView.swift */,
+				70ACBDBFD0B2930C0547A3E9 /* MamtaShellView.swift */,
+			);
+			path = Navigation;
+			sourceTree = "<group>";
+		};
+		42D89BE60F5E9DEAE8AF32F4 /* MamtaContentOS */ = {
+			isa = PBXGroup;
+			children = (
+				3848CD42D9AA221179F3C7E2 /* App */,
+				68197384AE38C4FC9EB7273D /* Config */,
+				EC0CB1D913EDCC586D9D1ACF /* Data */,
+				1AFB4C90DAE5BCCA416A9EE3 /* DesignSystem */,
+				ADDDB13F9947736DC83A202B /* Features */,
+				C39DEEB7C748BC4C04BC53FA /* Fixtures */,
+				29C0BE1C8EBC333C18D9F331 /* Models */,
+				40B597C0CC289B60D7077904 /* Navigation */,
+			);
+			path = MamtaContentOS;
+			sourceTree = "<group>";
+		};
+		68197384AE38C4FC9EB7273D /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				1C7F2B6585A65CC2E3972E38 /* LocalRuntime.sample.xcconfig */,
+				178EE2A7CFD2D1AFDF61172A /* Runtime.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		7A5D3BFE4B3BC867DD668C65 /* Intelligence */ = {
+			isa = PBXGroup;
+			children = (
+				FC804EC50E4B92347FB47B01 /* IntelligenceHomeView.swift */,
+			);
+			path = Intelligence;
+			sourceTree = "<group>";
+		};
+		8ECC9BBB65FF0C49FE0BCD18 /* Weekly */ = {
+			isa = PBXGroup;
+			children = (
+				24B81E5DE6B61E24EC12A88B /* WeeklyControlView.swift */,
+			);
+			path = Weekly;
+			sourceTree = "<group>";
+		};
+		ADDDB13F9947736DC83A202B /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				2C79FCABAF0CD18D487FF5B3 /* Archive */,
+				7A5D3BFE4B3BC867DD668C65 /* Intelligence */,
+				D473682961B453DE55281FEF /* Today */,
+				8ECC9BBB65FF0C49FE0BCD18 /* Weekly */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		BA9BF4949480700BCC2CB212 = {
+			isa = PBXGroup;
+			children = (
+				42D89BE60F5E9DEAE8AF32F4 /* MamtaContentOS */,
+				E49BDB364DE8F9F7192BAA40 /* MamtaContentOSTests */,
+				032033FC9A22D3244A00078B /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C39DEEB7C748BC4C04BC53FA /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				8371AD34F414122A56E4953B /* FixtureRepositories.swift */,
+				8F244068C45A28790DCF8584 /* Fixtures.swift */,
+			);
+			path = Fixtures;
+			sourceTree = "<group>";
+		};
+		D473682961B453DE55281FEF /* Today */ = {
+			isa = PBXGroup;
+			children = (
+				6D186205F0AA32C0864AC87F /* NotTodaySheet.swift */,
+				1B21D43E5D07307B9CF480F2 /* ShootFolioView.swift */,
+				404FD0731610EF4ED612A957 /* TodayView.swift */,
+			);
+			path = Today;
+			sourceTree = "<group>";
+		};
+		E49BDB364DE8F9F7192BAA40 /* MamtaContentOSTests */ = {
+			isa = PBXGroup;
+			children = (
+				94702367096BCED709F2FA08 /* PublishWeekFixtureAcceptanceTests.swift */,
+			);
+			path = MamtaContentOSTests;
+			sourceTree = "<group>";
+		};
+		EC0CB1D913EDCC586D9D1ACF /* Data */ = {
+			isa = PBXGroup;
+			children = (
+				26818B7823EA3DEBE2DCE7B5 /* AppRepositories.swift */,
+				770B5398234556EA30E41814 /* DevicePairingService.swift */,
+				BD700FA609143524436D6709 /* RuntimeConfigurationStore.swift */,
+				A0BC93D58389D734683886CB /* SupabaseClientFactory.swift */,
+				FFDD30845CB77703DF4A818B /* SupabaseDTOs.swift */,
+				56F8BDAFC990C52C6A89AC1C /* SupabaseRepositories.swift */,
+				19450127B95D1213128FA8F1 /* WeeklyPublishingModels.swift */,
+			);
+			path = Data;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0FB558BEC15C21ED8B6927E0 /* MamtaContentOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C89CEA35EF3FB0F02BA7D3D1 /* Build configuration list for PBXNativeTarget "MamtaContentOSTests" */;
+			buildPhases = (
+				71460C075BB242AB6BB8714D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3ACFC65012D08C373768F1CC /* PBXTargetDependency */,
+			);
+			name = MamtaContentOSTests;
+			packageProductDependencies = (
+			);
+			productName = MamtaContentOSTests;
+			productReference = 8B398DF08659174DC14F45FE /* MamtaContentOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		6F5DDA5B98CE9FBAA6C3E4D0 /* MamtaContentOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0250D9986AD1CA18A5686ED7 /* Build configuration list for PBXNativeTarget "MamtaContentOS" */;
+			buildPhases = (
+				78114A1F3AB84C6B28D8EEE9 /* Sources */,
+				7CF93A4F10CE8D33D2EF609D /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MamtaContentOS;
+			packageProductDependencies = (
+				0DF8DD64AEA336D09792ED00 /* Supabase */,
+			);
+			productName = MamtaContentOS;
+			productReference = 414641F2F0AFE65BACFCF578 /* MamtaContentOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CB462DFF9797173F201FDD78 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 171D212582997FFE62F307F1 /* Build configuration list for PBXProject "MamtaContentOS" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = BA9BF4949480700BCC2CB212;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D801CC25CE2066EC16E952AC /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 032033FC9A22D3244A00078B /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6F5DDA5B98CE9FBAA6C3E4D0 /* MamtaContentOS */,
+				0FB558BEC15C21ED8B6927E0 /* MamtaContentOSTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		71460C075BB242AB6BB8714D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				93EFCBE2204EFD615DA95D7E /* PublishWeekFixtureAcceptanceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		78114A1F3AB84C6B28D8EEE9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C01436F62EB8397645D741F8 /* AdminShellView.swift in Sources */,
+				4F4ED9CD4B4324BDD9FFC43A /* AppRepositories.swift in Sources */,
+				283796245512610D0F6AD889 /* AppRuntime.swift in Sources */,
+				794E29FCB303450D31C5CE2F /* AppServices.swift in Sources */,
+				7E1AA0438BF6FEBB25E632B0 /* AppState.swift in Sources */,
+				5EEA46365601D4CF1A682DE6 /* ArchiveView.swift in Sources */,
+				0149845E49F82A0CBFC6D7F3 /* DesignSystem.swift in Sources */,
+				7F8470E6CA856219806DA72D /* DevicePairingService.swift in Sources */,
+				A4A1687103FDBE418A2064DE /* FixtureRepositories.swift in Sources */,
+				456E78CE2AB56A24F981FA0D /* Fixtures.swift in Sources */,
+				C3649EC4C9F894ACC3911EBF /* IntelligenceHomeView.swift in Sources */,
+				09BE9068052BD8152EA66946 /* MamtaContentOSApp.swift in Sources */,
+				24F043ECAA08AB51A89DB600 /* MamtaShellView.swift in Sources */,
+				B165163EC0429B1E2F027884 /* Models.swift in Sources */,
+				5F9C716A6D923923458AB68D /* NotTodaySheet.swift in Sources */,
+				0B278833890DA1DF766DC5DE /* RuntimeConfigurationStore.swift in Sources */,
+				35430AA266E0562C508B80CE /* ShootFolioView.swift in Sources */,
+				D61AE090F50ACB98895CDC8F /* SupabaseClientFactory.swift in Sources */,
+				1353736AAAF26CF0E38EFF5E /* SupabaseDTOs.swift in Sources */,
+				CAF4C15ED7243D6DBD9BF7AF /* SupabaseRepositories.swift in Sources */,
+				0897B34D4A37D495BA40CA86 /* TodayView.swift in Sources */,
+				8F472C50B1D9E5FD16D9EEDC /* WeeklyControlView.swift in Sources */,
+				6210C78D8AF8CE5D2929E2E0 /* WeeklyPublishingModels.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3ACFC65012D08C373768F1CC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6F5DDA5B98CE9FBAA6C3E4D0 /* MamtaContentOS */;
+			targetProxy = 5DCCA7B0601060B7FF7357AD /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		4E24E3DCFA70C4548F87014C /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 178EE2A7CFD2D1AFDF61172A /* Runtime.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Mamta Content OS";
+				INFOPLIST_KEY_MCO_SUPABASE_PUBLISHABLE_KEY = "$(MCO_SUPABASE_PUBLISHABLE_KEY)";
+				INFOPLIST_KEY_MCO_SUPABASE_URL = "$(MCO_SUPABASE_URL)";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.MamtaContentOS;
+				PRODUCT_NAME = MamtaContentOS;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		64BA45DCE24D43694069C969 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		9E2A0F0C4ECF2DE1B0B96AFB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		ACFB0542594CF7CE5C302FA4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.MamtaContentOSTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MamtaContentOS.app/MamtaContentOS";
+			};
+			name = Release;
+		};
+		BF4DBB5B24DDC89EE15DC3BE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 178EE2A7CFD2D1AFDF61172A /* Runtime.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Mamta Content OS";
+				INFOPLIST_KEY_MCO_SUPABASE_PUBLISHABLE_KEY = "$(MCO_SUPABASE_PUBLISHABLE_KEY)";
+				INFOPLIST_KEY_MCO_SUPABASE_URL = "$(MCO_SUPABASE_URL)";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.MamtaContentOS;
+				PRODUCT_NAME = MamtaContentOS;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		EFCB5BE00C19F88B8F59FDF9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.MamtaContentOSTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MamtaContentOS.app/MamtaContentOS";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0250D9986AD1CA18A5686ED7 /* Build configuration list for PBXNativeTarget "MamtaContentOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BF4DBB5B24DDC89EE15DC3BE /* Debug */,
+				4E24E3DCFA70C4548F87014C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		171D212582997FFE62F307F1 /* Build configuration list for PBXProject "MamtaContentOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9E2A0F0C4ECF2DE1B0B96AFB /* Debug */,
+				64BA45DCE24D43694069C969 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C89CEA35EF3FB0F02BA7D3D1 /* Build configuration list for PBXNativeTarget "MamtaContentOSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EFCB5BE00C19F88B8F59FDF9 /* Debug */,
+				ACFB0542594CF7CE5C302FA4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D801CC25CE2066EC16E952AC /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0DF8DD64AEA336D09792ED00 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D801CC25CE2066EC16E952AC /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = CB462DFF9797173F201FDD78 /* Project object */;
+}

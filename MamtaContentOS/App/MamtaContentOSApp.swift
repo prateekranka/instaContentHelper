@@ -1,0 +1,35 @@
+import SwiftUI
+
+@main
+@MainActor
+struct MamtaContentOSApp: App {
+    @State private var appState = AppState()
+    @State private var runtime = AppRuntime.makeInitialRuntime()
+
+    var body: some Scene {
+        WindowGroup {
+            MamtaContentOSAppView()
+                .environment(appState)
+                .environment(runtime.services)
+                .task {
+                    runtime.services.refreshFromRepositories()
+                }
+        }
+    }
+}
+
+struct MamtaContentOSAppView: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        Group {
+            switch appState.activeMode {
+            case .mamta:
+                MamtaShellView()
+            case .admin:
+                AdminShellView()
+            }
+        }
+        .tint(MCOTheme.Color.oxblood)
+    }
+}

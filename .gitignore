@@ -1,0 +1,9 @@
+.DS_Store
+DerivedData/
+.build/
+*.xcuserstate
+xcuserdata/
+
+MamtaContentOS/Config/LocalRuntime.xcconfig
+supabase/.env
+supabase/functions/.env

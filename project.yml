@@ -1,0 +1,65 @@
+name: MamtaContentOS
+options:
+  bundleIdPrefix: com.prateekranka
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    TARGETED_DEVICE_FAMILY: "1"
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift.git
+    from: "2.0.0"
+targets:
+  MamtaContentOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - MamtaContentOS
+    dependencies:
+      - package: Supabase
+        product: Supabase
+    configFiles:
+      Debug: MamtaContentOS/Config/Runtime.xcconfig
+      Release: MamtaContentOS/Config/Runtime.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.prateekranka.MamtaContentOS
+        PRODUCT_NAME: MamtaContentOS
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Mamta Content OS
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_MCO_SUPABASE_URL: $(MCO_SUPABASE_URL)
+        INFOPLIST_KEY_MCO_SUPABASE_PUBLISHABLE_KEY: $(MCO_SUPABASE_PUBLISHABLE_KEY)
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+  MamtaContentOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - MamtaContentOSTests
+    dependencies:
+      - target: MamtaContentOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.prateekranka.MamtaContentOSTests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  MamtaContentOS:
+    build:
+      targets:
+        MamtaContentOS: all
+        MamtaContentOSTests: [test]
+    test:
+      targets:
+        - MamtaContentOSTests
+    run:
+      config: Debug
