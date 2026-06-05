@@ -27,12 +27,16 @@ targets:
       Release: MamtaContentOS/Config/Runtime.xcconfig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.prateekranka.MamtaContentOS
-        PRODUCT_NAME: MamtaContentOS
+        PRODUCT_BUNDLE_IDENTIFIER: com.prateekranka.creatorcontenthelper
+        PRODUCT_NAME: ContentHelper
+        PRODUCT_MODULE_NAME: MamtaContentOS
+        DEVELOPMENT_TEAM: 4JRB53LG5C
+        CODE_SIGN_STYLE: Automatic
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Mamta Content OS
+        INFOPLIST_KEY_CFBundleDisplayName: ContentHelper
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
@@ -50,7 +54,11 @@ targets:
       - target: MamtaContentOS
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.prateekranka.MamtaContentOSTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.prateekranka.creatorcontenthelper.tests
+        DEVELOPMENT_TEAM: 4JRB53LG5C
+        CODE_SIGN_STYLE: Automatic
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ContentHelper.app/ContentHelper"
+        BUNDLE_LOADER: "$(TEST_HOST)"
         GENERATE_INFOPLIST_FILE: YES
 schemes:
   MamtaContentOS:

@@ -27,6 +27,7 @@
 		7F8470E6CA856219806DA72D /* DevicePairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 770B5398234556EA30E41814 /* DevicePairingService.swift */; };
 		8F472C50B1D9E5FD16D9EEDC /* WeeklyControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B81E5DE6B61E24EC12A88B /* WeeklyControlView.swift */; };
 		93EFCBE2204EFD615DA95D7E /* PublishWeekFixtureAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94702367096BCED709F2FA08 /* PublishWeekFixtureAcceptanceTests.swift */; };
+		9B28375AA88F4527DDDEE7D7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C223CB335ADD9D1AEE6DD9CF /* Assets.xcassets */; };
 		A4A1687103FDBE418A2064DE /* FixtureRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8371AD34F414122A56E4953B /* FixtureRepositories.swift */; };
 		B165163EC0429B1E2F027884 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4CA536B337AB64C0D33ADB /* Models.swift */; };
 		C01436F62EB8397645D741F8 /* AdminShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96C9F4C2D0D8FAF32D8463F /* AdminShellView.swift */; };
@@ -72,6 +73,7 @@
 		A96C9F4C2D0D8FAF32D8463F /* AdminShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminShellView.swift; sourceTree = "<group>"; };
 		BD700FA609143524436D6709 /* RuntimeConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfigurationStore.swift; sourceTree = "<group>"; };
 		C14695506B80EFA6826075CD /* AppRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRuntime.swift; sourceTree = "<group>"; };
+		C223CB335ADD9D1AEE6DD9CF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CD8F880AA64A84D1D5706471 /* MamtaContentOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MamtaContentOSApp.swift; sourceTree = "<group>"; };
 		CFF602D1A9C372D526861142 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		E3576E464C4473CF7FCEEDFE /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
@@ -155,6 +157,7 @@
 				C39DEEB7C748BC4C04BC53FA /* Fixtures */,
 				29C0BE1C8EBC333C18D9F331 /* Models */,
 				40B597C0CC289B60D7077904 /* Navigation */,
+				93445521FA457A08B12C3B65 /* Resources */,
 			);
 			path = MamtaContentOS;
 			sourceTree = "<group>";
@@ -182,6 +185,14 @@
 				24B81E5DE6B61E24EC12A88B /* WeeklyControlView.swift */,
 			);
 			path = Weekly;
+			sourceTree = "<group>";
+		};
+		93445521FA457A08B12C3B65 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C223CB335ADD9D1AEE6DD9CF /* Assets.xcassets */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		ADDDB13F9947736DC83A202B /* Features */ = {
@@ -273,6 +284,7 @@
 			buildConfigurationList = 0250D9986AD1CA18A5686ED7 /* Build configuration list for PBXNativeTarget "MamtaContentOS" */;
 			buildPhases = (
 				78114A1F3AB84C6B28D8EEE9 /* Sources */,
+				162B1C55E00E27F362DFE613 /* Resources */,
 				7CF93A4F10CE8D33D2EF609D /* Frameworks */,
 			);
 			buildRules = (
@@ -296,6 +308,14 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					0FB558BEC15C21ED8B6927E0 = {
+						DevelopmentTeam = 4JRB53LG5C;
+						ProvisioningStyle = Automatic;
+					};
+					6F5DDA5B98CE9FBAA6C3E4D0 = {
+						DevelopmentTeam = 4JRB53LG5C;
+						ProvisioningStyle = Automatic;
+					};
 				};
 			};
 			buildConfigurationList = 171D212582997FFE62F307F1 /* Build configuration list for PBXProject "MamtaContentOS" */;
@@ -320,6 +340,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		162B1C55E00E27F362DFE613 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B28375AA88F4527DDDEE7D7 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		71460C075BB242AB6BB8714D /* Sources */ = {
@@ -380,9 +411,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4JRB53LG5C;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Mamta Content OS";
+				INFOPLIST_KEY_CFBundleDisplayName = ContentHelper;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_MCO_SUPABASE_PUBLISHABLE_KEY = "$(MCO_SUPABASE_PUBLISHABLE_KEY)";
 				INFOPLIST_KEY_MCO_SUPABASE_URL = "$(MCO_SUPABASE_URL)";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -394,8 +428,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.MamtaContentOS;
-				PRODUCT_NAME = MamtaContentOS;
+				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.creatorcontenthelper;
+				PRODUCT_MODULE_NAME = MamtaContentOS;
+				PRODUCT_NAME = ContentHelper;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -526,6 +561,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4JRB53LG5C;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -533,10 +570,10 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.MamtaContentOSTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.creatorcontenthelper.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MamtaContentOS.app/MamtaContentOS";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ContentHelper.app/ContentHelper";
 			};
 			name = Release;
 		};
@@ -547,9 +584,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4JRB53LG5C;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Mamta Content OS";
+				INFOPLIST_KEY_CFBundleDisplayName = ContentHelper;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_MCO_SUPABASE_PUBLISHABLE_KEY = "$(MCO_SUPABASE_PUBLISHABLE_KEY)";
 				INFOPLIST_KEY_MCO_SUPABASE_URL = "$(MCO_SUPABASE_URL)";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -561,8 +601,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.MamtaContentOS;
-				PRODUCT_NAME = MamtaContentOS;
+				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.creatorcontenthelper;
+				PRODUCT_MODULE_NAME = MamtaContentOS;
+				PRODUCT_NAME = ContentHelper;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -572,6 +613,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4JRB53LG5C;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -579,10 +622,10 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.MamtaContentOSTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.prateekranka.creatorcontenthelper.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MamtaContentOS.app/MamtaContentOS";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ContentHelper.app/ContentHelper";
 			};
 			name = Debug;
 		};
