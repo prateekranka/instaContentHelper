@@ -39,6 +39,15 @@ const SOURCE_REFERENCE_SELECT =
   "id,source_type,source_url,storage_path,manual_notes,status,analysis_confidence,created_at";
 const BENCHMARK_CREATOR_SELECT =
   "id,handle,display_name,platform,region,relevance_notes,status,normalized_handle,created_at,updated_at";
+const PUBLISHED_DAILY_STATUSES = [
+  "published",
+  "in_decision",
+  "shot",
+  "posted",
+  "used_backup",
+  "saved_for_tomorrow",
+  "skipped_intentionally",
+];
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
@@ -148,6 +157,7 @@ async function readToday(
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
     .eq("scheduled_date", todayDate)
+    .in("status", PUBLISHED_DAILY_STATUSES)
     .order("updated_at", { ascending: false })
     .limit(1);
 
@@ -160,6 +170,7 @@ async function readToday(
     .select(DAILY_CARD_SELECT)
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
+    .in("status", PUBLISHED_DAILY_STATUSES)
     .order("scheduled_date", { ascending: true })
     .limit(14);
 
@@ -188,15 +199,15 @@ async function readWeekly(
     .select(WEEKLY_PLAN_SELECT)
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
-    .eq("status", "published")
-    .order("week_start_date", { ascending: false })
-    .limit(1);
+    .in("status", ["draft", "reviewed", "published"])
+    .order("updated_at", { ascending: false })
+    .limit(10);
 
   if (planError) {
     return jsonResponse({ error: "weekly_plan_lookup_failed" }, 500);
   }
 
-  const weeklyPlan = (planRows?.[0] ?? null) as WeeklyPlanRecord | null;
+  const weeklyPlan = chooseWeeklyPlan(planRows ?? []);
   if (!weeklyPlan) {
     return jsonResponse({
       weekly_plan: null,
@@ -241,6 +252,14 @@ async function readWeekly(
     weekly_setup: weeklySetup,
     idea_bank: ideaBank.rows,
   });
+}
+
+function chooseWeeklyPlan(rows: unknown[]): WeeklyPlanRecord | null {
+  const typedRows = rows as (WeeklyPlanRecord & { status?: string })[];
+  return typedRows.find((row) => row.status === "draft") ??
+    typedRows.find((row) => row.status === "reviewed") ??
+    typedRows.find((row) => row.status === "published") ??
+    null;
 }
 
 async function readArchive(

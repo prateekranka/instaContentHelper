@@ -201,6 +201,7 @@ private actor RecordingWeeklyPlanRepository: WeeklyPlanRepository {
     func publishWeek(
         _ plan: WeeklyPlan,
         ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
         context: WorkspaceContext
     ) async throws -> WeeklyPublishResult {
         let publishedPlan = plan.softLockedForPublish

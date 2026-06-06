@@ -6,6 +6,7 @@ import Observation
 final class AppServices {
     let context: WorkspaceContext
     let isLiveSupabaseRuntime: Bool
+    let memberRole: String
     private let repositories: AppRepositories
     private let todayCache: any TodayCacheStoring
     private let notifications: any TodayNotificationScheduling
@@ -22,6 +23,9 @@ final class AppServices {
     var lastNotificationError: String?
     var isPublishingWeek = false
     var lastPublishSummary: String?
+    var isGeneratingWeek = false
+    var generationError: String?
+    var latestGenerationSummary: GeneratedWeekDraft?
     var referenceImportPreview: ReferenceImportPreview?
     var referenceImportConfirmResult: ReferenceImportConfirmResult?
     var referenceReviewResult: ReferenceReviewResult?
@@ -34,6 +38,7 @@ final class AppServices {
     init(
         repositories: AppRepositories,
         isLiveSupabaseRuntime: Bool = false,
+        memberRole: String = "owner",
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
         notifications: any TodayNotificationScheduling = NoopTodayNotificationScheduler(),
         todayCard: DailyCard,
@@ -46,6 +51,7 @@ final class AppServices {
     ) {
         self.context = repositories.context
         self.isLiveSupabaseRuntime = isLiveSupabaseRuntime
+        self.memberRole = memberRole
         self.repositories = repositories
         self.todayCache = todayCache
         self.notifications = notifications
@@ -65,12 +71,14 @@ final class AppServices {
     static func fixtureBacked(
         repositories: AppRepositories = .fixture,
         isLiveSupabaseRuntime: Bool = false,
+        memberRole: String = "owner",
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
         notifications: any TodayNotificationScheduling = NoopTodayNotificationScheduler()
     ) -> AppServices {
         AppServices(
             repositories: repositories,
             isLiveSupabaseRuntime: isLiveSupabaseRuntime,
+            memberRole: memberRole,
             todayCache: todayCache,
             notifications: notifications,
             todayCard: .raceWeekToday,
@@ -125,6 +133,65 @@ final class AppServices {
         weeklyPlan.days.first { $0.state == .open }
     }
 
+    var canGenerateWeek: Bool {
+        (memberRole == "owner" || memberRole == "editor") &&
+            !weeklyPlan.isSoftLocked &&
+            !isGeneratingWeek
+    }
+
+    func generateCurrentWeek() {
+        Task {
+            await generateCurrentWeekImmediately()
+        }
+    }
+
+    @discardableResult
+    func generateCurrentWeekImmediately() async -> GeneratedWeekDraft? {
+        guard !isGeneratingWeek else {
+            return latestGenerationSummary
+        }
+
+        guard memberRole == "owner" || memberRole == "editor" else {
+            generationError = "role_not_allowed"
+            return nil
+        }
+
+        guard !weeklyPlan.isSoftLocked else {
+            generationError = "existing_published_week_locked"
+            return nil
+        }
+
+        isGeneratingWeek = true
+        defer { isGeneratingWeek = false }
+
+        do {
+            let weekStartDate = weeklyPlan.weekStartDate
+                ?? weeklyPlan.days.compactMap(\.scheduledDate).first
+                ?? SupabaseDateFormatting.todayDateString()
+            let mode: GenerateWeekMode = latestGenerationSummary == nil ? .generateDraft : .regenerateDraft
+            let draft = try await repositories.weeklyGeneration.generateWeek(
+                creatorID: context.creatorID,
+                weekStartDate: weekStartDate,
+                weeklySetupID: nil,
+                mode: mode,
+                context: context
+            )
+            applyGeneratedDraft(draft)
+            generationError = nil
+            lastRepositoryError = nil
+            return draft
+        } catch {
+            generationError = WeeklyGenerationErrorDisplay.message(for: error)
+            return nil
+        }
+    }
+
+    func applyGeneratedDraft(_ draft: GeneratedWeekDraft) {
+        latestGenerationSummary = draft
+        weeklyPlan = draft.weeklyPlan(setupSections: weeklyPlan.setupSections)
+        weeklyIdeas = draft.ideaBank.isEmpty ? weeklyIdeas : draft.ideaBank
+    }
+
     func selectIdeaForNextOpenDay(_ idea: WeeklyIdea) {
         Task {
             await selectIdeaForNextOpenDayImmediately(idea)
@@ -163,10 +230,14 @@ final class AppServices {
             let result = try await repositories.weeklyPlans.publishWeek(
                 weeklyPlan,
                 ideaBank: weeklyIdeas,
+                generatedDraft: latestGenerationSummary?.weeklyPlanID == weeklyPlan.id ? latestGenerationSummary : nil,
                 context: context
             )
             weeklyPlan = result.weeklyPlan
             weekCards = result.weekCards
+            if let draft = latestGenerationSummary, draft.weeklyPlanID == result.weeklyPlan.id {
+                latestGenerationSummary = draft.markedPublished
+            }
             if let todayCard = result.todayCard {
                 self.todayCard = todayCard
             }
@@ -458,5 +529,31 @@ final class AppServices {
     private func cancelTodayNotification() async {
         await notifications.cancelTodayReminder(for: context)
         lastNotificationSchedule = nil
+    }
+}
+
+private enum WeeklyGenerationErrorDisplay {
+    private static let stableCodes = [
+        "missing_device_token",
+        "invalid_device_token",
+        "role_not_allowed",
+        "creator_not_found",
+        "invalid_generation_payload",
+        "missing_openai_api_key",
+        "openai_request_failed",
+        "invalid_ai_json",
+        "invalid_generated_week",
+        "generation_persist_failed",
+        "weekly_setup_not_found",
+        "existing_published_week_locked"
+    ]
+
+    static func message(for error: Error) -> String {
+        let description = error.localizedDescription
+        if stableCodes.contains(description) {
+            return description
+        }
+
+        return stableCodes.first { description.contains($0) } ?? description
     }
 }

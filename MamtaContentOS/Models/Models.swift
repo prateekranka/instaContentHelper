@@ -10,6 +10,21 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     var scheduledDate: String?
     var scenes: [ShotScene]
     var completionState: CompletionState?
+    var script: String?
+    var noVoiceoverVersion: String?
+    var onScreenText: [String]?
+    var caption: String?
+    var cta: String?
+    var hashtags: [String]?
+    var coverText: String?
+    var postInstructions: String?
+    var brandEventNotes: String?
+    var backupStory: String?
+    var backupCaptionOnly: String?
+    var audioOptionNotes: String?
+    var mamtaFitScore: Double?
+    var riskNotes: [String]?
+    var assumptions: [String]?
 
     init(
         id: UUID = UUID(),
@@ -20,7 +35,22 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         sourceNote: String? = nil,
         scheduledDate: String? = nil,
         scenes: [ShotScene],
-        completionState: CompletionState? = nil
+        completionState: CompletionState? = nil,
+        script: String? = nil,
+        noVoiceoverVersion: String? = nil,
+        onScreenText: [String]? = nil,
+        caption: String? = nil,
+        cta: String? = nil,
+        hashtags: [String]? = nil,
+        coverText: String? = nil,
+        postInstructions: String? = nil,
+        brandEventNotes: String? = nil,
+        backupStory: String? = nil,
+        backupCaptionOnly: String? = nil,
+        audioOptionNotes: String? = nil,
+        mamtaFitScore: Double? = nil,
+        riskNotes: [String]? = nil,
+        assumptions: [String]? = nil
     ) {
         self.id = id
         self.title = title
@@ -31,6 +61,21 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.scheduledDate = scheduledDate
         self.scenes = scenes
         self.completionState = completionState
+        self.script = script
+        self.noVoiceoverVersion = noVoiceoverVersion
+        self.onScreenText = onScreenText
+        self.caption = caption
+        self.cta = cta
+        self.hashtags = hashtags
+        self.coverText = coverText
+        self.postInstructions = postInstructions
+        self.brandEventNotes = brandEventNotes
+        self.backupStory = backupStory
+        self.backupCaptionOnly = backupCaptionOnly
+        self.audioOptionNotes = audioOptionNotes
+        self.mamtaFitScore = mamtaFitScore
+        self.riskNotes = riskNotes
+        self.assumptions = assumptions
     }
 }
 
@@ -348,6 +393,158 @@ struct WeeklyIdea: Identifiable, Hashable, Sendable {
         self.source = source
         self.effortLabel = effortLabel
         self.selectedDay = selectedDay
+    }
+}
+
+enum GenerateWeekMode: String, Codable, Hashable, Sendable {
+    case generateDraft = "generate_draft"
+    case regenerateDraft = "regenerate_draft"
+}
+
+struct GeneratedWeekDraft: Identifiable, Hashable, Sendable {
+    let id: UUID
+    var weeklyPlanID: UUID
+    var status: String
+    var strategySummary: String
+    var warnings: [String]
+    var assumptions: [String]
+    var dailyCards: [GeneratedDailyCardDraft]
+    var ideaBank: [WeeklyIdea]
+    var sourceSummary: String
+    var generatedAt: String
+
+    init(
+        id: UUID,
+        weeklyPlanID: UUID,
+        status: String = "draft",
+        strategySummary: String,
+        warnings: [String],
+        assumptions: [String],
+        dailyCards: [GeneratedDailyCardDraft],
+        ideaBank: [WeeklyIdea],
+        sourceSummary: String,
+        generatedAt: String
+    ) {
+        self.id = id
+        self.weeklyPlanID = weeklyPlanID
+        self.status = status
+        self.strategySummary = strategySummary
+        self.warnings = warnings
+        self.assumptions = assumptions
+        self.dailyCards = dailyCards
+        self.ideaBank = ideaBank
+        self.sourceSummary = sourceSummary
+        self.generatedAt = generatedAt
+    }
+}
+
+extension GeneratedWeekDraft {
+    func weeklyPlan(setupSections: [WeeklySetupSection]) -> WeeklyPlan {
+        WeeklyPlan(
+            id: weeklyPlanID,
+            title: "Generated Weekly Draft",
+            eyebrow: "PRATEEK AI REVIEW",
+            weekRange: dailyCards.first.map { SupabaseDateFormatting.weekRange(starting: $0.scheduledDate) } ?? "Generated week",
+            weekStartDate: dailyCards.first?.scheduledDate,
+            readinessLine: "\(dailyCards.count) generated, review before publishing",
+            isSoftLocked: status == "published",
+            days: dailyCards.map(\.weeklyDay),
+            setupSections: setupSections
+        )
+    }
+
+    var publishedWeekCards: [DailyCard] {
+        dailyCards.map { $0.dailyCard(completionState: nil) }
+    }
+
+    var markedPublished: GeneratedWeekDraft {
+        var draft = self
+        draft.status = "published"
+        draft.dailyCards = draft.dailyCards.map { card in
+            var publishedCard = card
+            publishedCard.status = "published"
+            return publishedCard
+        }
+        return draft
+    }
+}
+
+struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
+    let id: UUID
+    var scheduledDate: String
+    var status: String
+    var title: String
+    var whyToday: String
+    var growthJob: String
+    var contentPillar: String
+    var shootability: String
+    var estimatedShootMinutes: Int
+    var energyRequired: String
+    var languageMode: String
+    var sceneList: [ShotScene]
+    var script: String
+    var noVoiceoverVersion: String
+    var onScreenText: [String]
+    var caption: String
+    var cta: String
+    var hashtags: [String]
+    var coverText: String
+    var postInstructions: String
+    var brandEventNotes: String
+    var backupStory: String
+    var backupCaptionOnly: String
+    var audioOptionNotes: String
+    var mamtaFitScore: Double
+    var riskNotes: [String]
+    var assumptions: [String]
+    var sourceNote: String
+}
+
+extension GeneratedDailyCardDraft {
+    var weeklyDay: WeeklyDay {
+        WeeklyDay(
+            id: id,
+            weekday: SupabaseDateFormatting.weekdayAbbreviation(for: scheduledDate),
+            date: SupabaseDateFormatting.dayNumber(for: scheduledDate),
+            scheduledDate: scheduledDate,
+            title: title,
+            reason: whyToday,
+            source: WeeklySourceReason(rawValue: contentPillar.displayTitle) ?? .pattern,
+            state: status == "published" ? .planned : .planned,
+            isSoftLocked: status == "published"
+        )
+    }
+
+    func dailyCard(completionState: CompletionState?) -> DailyCard {
+        DailyCard(
+            id: id,
+            title: title,
+            context: SupabaseDateFormatting.contextLine(for: scheduledDate),
+            effortLabel: SupabaseDateFormatting.effortLabel(
+                shootability: shootability,
+                minutes: estimatedShootMinutes
+            ),
+            whyToday: whyToday,
+            sourceNote: sourceNote.nilIfBlank ?? contentPillar,
+            scheduledDate: scheduledDate,
+            scenes: sceneList,
+            completionState: completionState,
+            script: script,
+            noVoiceoverVersion: noVoiceoverVersion,
+            onScreenText: onScreenText,
+            caption: caption,
+            cta: cta,
+            hashtags: hashtags,
+            coverText: coverText,
+            postInstructions: postInstructions,
+            brandEventNotes: brandEventNotes,
+            backupStory: backupStory,
+            backupCaptionOnly: backupCaptionOnly,
+            audioOptionNotes: audioOptionNotes,
+            mamtaFitScore: mamtaFitScore,
+            riskNotes: riskNotes,
+            assumptions: assumptions
+        )
     }
 }
 

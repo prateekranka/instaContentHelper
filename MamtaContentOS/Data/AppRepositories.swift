@@ -18,6 +18,7 @@ struct AppRepositories: Sendable {
     let weeklyPlans: any WeeklyPlanRepository
     let references: any ReferenceRepository
     let referenceImport: any ReferenceImportRepository
+    let weeklyGeneration: any WeeklyGenerationRepository
     let intelligence: any IntelligenceRepository
     let creatorProfile: any CreatorProfileRepository
     let archive: any ArchiveRepository
@@ -28,6 +29,7 @@ struct AppRepositories: Sendable {
         weeklyPlans: any WeeklyPlanRepository,
         references: any ReferenceRepository,
         referenceImport: any ReferenceImportRepository = FixtureReferenceImportRepository(),
+        weeklyGeneration: any WeeklyGenerationRepository = FixtureWeeklyGenerationRepository(),
         intelligence: any IntelligenceRepository,
         creatorProfile: any CreatorProfileRepository,
         archive: any ArchiveRepository
@@ -37,6 +39,7 @@ struct AppRepositories: Sendable {
         self.weeklyPlans = weeklyPlans
         self.references = references
         self.referenceImport = referenceImport
+        self.weeklyGeneration = weeklyGeneration
         self.intelligence = intelligence
         self.creatorProfile = creatorProfile
         self.archive = archive
@@ -48,6 +51,7 @@ struct AppRepositories: Sendable {
         weeklyPlans: FixtureWeeklyPlanRepository(),
         references: FixtureReferenceRepository(),
         referenceImport: FixtureReferenceImportRepository(),
+        weeklyGeneration: FixtureWeeklyGenerationRepository(),
         intelligence: FixtureIntelligenceRepository(),
         creatorProfile: FixtureCreatorProfileRepository(),
         archive: FixtureArchiveRepository()
@@ -56,11 +60,14 @@ struct AppRepositories: Sendable {
 
 enum RepositoryError: LocalizedError {
     case notConfigured(String)
+    case edgeFunction(String)
     case missingFixture(String)
 
     var errorDescription: String? {
         switch self {
         case .notConfigured(let message):
+            message
+        case .edgeFunction(let message):
             message
         case .missingFixture(let message):
             message
@@ -84,6 +91,7 @@ protocol WeeklyPlanRepository: Sendable {
     func publishWeek(
         _ plan: WeeklyPlan,
         ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
         context: WorkspaceContext
     ) async throws -> WeeklyPublishResult
     func selectIdeaForNextOpenDay(
@@ -92,6 +100,16 @@ protocol WeeklyPlanRepository: Sendable {
         ideaBank: [WeeklyIdea],
         context: WorkspaceContext
     ) async throws -> WeeklySelectionUpdate
+}
+
+protocol WeeklyGenerationRepository: Sendable {
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext
+    ) async throws -> GeneratedWeekDraft
 }
 
 protocol ReferenceRepository: Sendable {

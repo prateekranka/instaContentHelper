@@ -53,7 +53,7 @@ enum SupabaseJSONValue: Codable, Hashable, Sendable {
         case .bool(let value):
             value ? "Yes" : "No"
         case .object(let value):
-            ["title", "name", "summary", "note", "value"].compactMap { key in
+            ["title", "name", "summary", "note", "value", "line", "instructions", "audio_option_notes"].compactMap { key in
                 value[key]?.displayText
             }.first
         case .array(let value):
@@ -61,6 +61,14 @@ enum SupabaseJSONValue: Codable, Hashable, Sendable {
         case .null:
             nil
         }
+    }
+
+    var audioOptionNotes: String? {
+        if case .object(let value) = self {
+            return value["audio_option_notes"]?.displayText
+                ?? value["audio"]?.displayText
+        }
+        return nil
     }
 }
 
@@ -212,7 +220,22 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             scenes: sceneList.enumerated().map { index, scene in
                 scene.domainScene(fallbackNumber: index + 1)
             },
-            completionState: CompletionState(supabaseStatus: status)
+            completionState: CompletionState(supabaseStatus: status),
+            script: script,
+            noVoiceoverVersion: noVoiceoverVersion,
+            onScreenText: onScreenText?.compactMap(\.displayText),
+            caption: caption,
+            cta: cta,
+            hashtags: hashtags,
+            coverText: coverText,
+            postInstructions: postInstructions?.displayText,
+            brandEventNotes: brandEventNotes,
+            backupStory: backupStory?.displayText,
+            backupCaptionOnly: backupCaptionOnly?.displayText,
+            audioOptionNotes: postInstructions?.audioOptionNotes,
+            mamtaFitScore: mamtaFitScore,
+            riskNotes: riskNotes?.compactMap(\.displayText),
+            assumptions: assumptions?.compactMap(\.displayText)
         )
     }
 
@@ -626,7 +649,8 @@ struct SupabasePublishWeekRequest: Encodable, Sendable {
     var weeklyPlanID: UUID
     var weekStartDate: String
     var strategySummary: String
-    var days: [SupabasePublishWeekDayRequest]
+    var days: [SupabasePublishWeekDayRequest]?
+    var draftDailyCards: [SupabaseDraftDailyCardPublishRequest]?
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
@@ -635,17 +659,27 @@ struct SupabasePublishWeekRequest: Encodable, Sendable {
         case weekStartDate = "week_start_date"
         case strategySummary = "strategy_summary"
         case days
+        case draftDailyCards = "draft_daily_cards"
     }
 
-    init(plan: WeeklyPlan, context: WorkspaceContext) {
+    init(plan: WeeklyPlan, generatedDraft: GeneratedWeekDraft?, context: WorkspaceContext) {
         creatorID = context.creatorID
         memberID = context.memberID
         weeklyPlanID = plan.id
         weekStartDate = plan.weekStartDate
             ?? plan.days.compactMap(\.scheduledDate).first
             ?? SupabaseDateFormatting.todayDateString()
-        strategySummary = plan.readinessSummary
-        days = plan.days.map { SupabasePublishWeekDayRequest(day: $0) }
+        strategySummary = generatedDraft?.strategySummary ?? plan.readinessSummary
+
+        if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
+            days = nil
+            draftDailyCards = generatedDraft.dailyCards.map {
+                SupabaseDraftDailyCardPublishRequest(card: $0)
+            }
+        } else {
+            days = plan.days.map { SupabasePublishWeekDayRequest(day: $0) }
+            draftDailyCards = nil
+        }
     }
 }
 
@@ -763,6 +797,22 @@ enum SupabaseDateFormatting {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "d MMM"
         return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
+    }
+
+    static func weekDates(starting rawDate: String) -> [String] {
+        guard let start = parseDate(rawDate) else {
+            return []
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        return (0..<7).compactMap { offset in
+            Calendar(identifier: .gregorian)
+                .date(byAdding: .day, value: offset, to: start)
+                .map { formatter.string(from: $0) }
+        }
     }
 
     static func todayDateString() -> String {

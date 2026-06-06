@@ -12,6 +12,7 @@
 		09BE9068052BD8152EA66946 /* MamtaContentOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD8F880AA64A84D1D5706471 /* MamtaContentOSApp.swift */; };
 		0B278833890DA1DF766DC5DE /* RuntimeConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD700FA609143524436D6709 /* RuntimeConfigurationStore.swift */; };
 		1353736AAAF26CF0E38EFF5E /* SupabaseDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFDD30845CB77703DF4A818B /* SupabaseDTOs.swift */; };
+		179EEFC0B31976C059794F75 /* GenerateWeekTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C83D1061EA69C2CA394459B /* GenerateWeekTests.swift */; };
 		21EC4C9D17EAD09793C0EEA5 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 0DF8DD64AEA336D09792ED00 /* Supabase */; };
 		220E93E27E0044EE2BE8B6D5 /* DeviceReadDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4FF873EBEBCFD198FF9BD0 /* DeviceReadDTOs.swift */; };
 		24F043ECAA08AB51A89DB600 /* MamtaShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70ACBDBFD0B2930C0547A3E9 /* MamtaShellView.swift */; };
@@ -27,6 +28,7 @@
 		6E1A986395A3599A1B1F0084 /* ReferenceImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8444D7E26FAF3838C24C10 /* ReferenceImportTests.swift */; };
 		774734A48E44DAA69970613B /* TodayCacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910A4CD086DDAA0BD6AE5372 /* TodayCacheStore.swift */; };
 		794E29FCB303450D31C5CE2F /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3576E464C4473CF7FCEEDFE /* AppServices.swift */; };
+		7C4B1C53953F691A85098DF5 /* GenerateWeekDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77FCA41C7E18F5D593119274 /* GenerateWeekDTOs.swift */; };
 		7CF734A3911FD629A7991013 /* ReferenceImportDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = FADE891D0AB372D48886D534 /* ReferenceImportDTOs.swift */; };
 		7E1AA0438BF6FEBB25E632B0 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF602D1A9C372D526861142 /* AppState.swift */; };
 		7F8470E6CA856219806DA72D /* DevicePairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 770B5398234556EA30E41814 /* DevicePairingService.swift */; };
@@ -77,11 +79,13 @@
 		404FD0731610EF4ED612A957 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		414641F2F0AFE65BACFCF578 /* MamtaContentOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MamtaContentOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		56F8BDAFC990C52C6A89AC1C /* SupabaseRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseRepositories.swift; sourceTree = "<group>"; };
+		5C83D1061EA69C2CA394459B /* GenerateWeekTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerateWeekTests.swift; sourceTree = "<group>"; };
 		612CDAE589301709E2DB3DC6 /* WriteContentDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriteContentDTOs.swift; sourceTree = "<group>"; };
 		6D186205F0AA32C0864AC87F /* NotTodaySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotTodaySheet.swift; sourceTree = "<group>"; };
 		6E10F60905762215750EF749 /* ArchiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveView.swift; sourceTree = "<group>"; };
 		70ACBDBFD0B2930C0547A3E9 /* MamtaShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MamtaShellView.swift; sourceTree = "<group>"; };
 		770B5398234556EA30E41814 /* DevicePairingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePairingService.swift; sourceTree = "<group>"; };
+		77FCA41C7E18F5D593119274 /* GenerateWeekDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerateWeekDTOs.swift; sourceTree = "<group>"; };
 		8371AD34F414122A56E4953B /* FixtureRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureRepositories.swift; sourceTree = "<group>"; };
 		8B398DF08659174DC14F45FE /* MamtaContentOSTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = MamtaContentOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F244068C45A28790DCF8584 /* Fixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fixtures.swift; sourceTree = "<group>"; };
@@ -265,6 +269,7 @@
 			isa = PBXGroup;
 			children = (
 				BDE6244CF5DBCCD6687AE685 /* DevicePairingServiceTests.swift */,
+				5C83D1061EA69C2CA394459B /* GenerateWeekTests.swift */,
 				34C68CA0F625F293D0D3FA1E /* PrateekAdminUsageTests.swift */,
 				94702367096BCED709F2FA08 /* PublishWeekFixtureAcceptanceTests.swift */,
 				FA8444D7E26FAF3838C24C10 /* ReferenceImportTests.swift */,
@@ -279,6 +284,7 @@
 				26818B7823EA3DEBE2DCE7B5 /* AppRepositories.swift */,
 				770B5398234556EA30E41814 /* DevicePairingService.swift */,
 				3C4FF873EBEBCFD198FF9BD0 /* DeviceReadDTOs.swift */,
+				77FCA41C7E18F5D593119274 /* GenerateWeekDTOs.swift */,
 				FADE891D0AB372D48886D534 /* ReferenceImportDTOs.swift */,
 				08DA8C2DD5AE6DD8225115C3 /* ReferenceImportRepository.swift */,
 				BD700FA609143524436D6709 /* RuntimeConfigurationStore.swift */,
@@ -416,6 +422,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9E686408A4D235CD927069F6 /* DevicePairingServiceTests.swift in Sources */,
+				179EEFC0B31976C059794F75 /* GenerateWeekTests.swift in Sources */,
 				8D7ABC16A266086BB9D41468 /* PrateekAdminUsageTests.swift in Sources */,
 				93EFCBE2204EFD615DA95D7E /* PublishWeekFixtureAcceptanceTests.swift in Sources */,
 				6E1A986395A3599A1B1F0084 /* ReferenceImportTests.swift in Sources */,
@@ -438,6 +445,7 @@
 				220E93E27E0044EE2BE8B6D5 /* DeviceReadDTOs.swift in Sources */,
 				A4A1687103FDBE418A2064DE /* FixtureRepositories.swift in Sources */,
 				456E78CE2AB56A24F981FA0D /* Fixtures.swift in Sources */,
+				7C4B1C53953F691A85098DF5 /* GenerateWeekDTOs.swift in Sources */,
 				C3649EC4C9F894ACC3911EBF /* IntelligenceHomeView.swift in Sources */,
 				09BE9068052BD8152EA66946 /* MamtaContentOSApp.swift in Sources */,
 				24F043ECAA08AB51A89DB600 /* MamtaShellView.swift in Sources */,

@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
-FUNCTIONS="pair-device publish-week read-content write-content import-references review-reference"
+FUNCTIONS="pair-device publish-week read-content write-content import-references review-reference generate-week"
 
 require_env() {
   name="$1"
@@ -52,6 +52,10 @@ done
 
 if [ "${RUN_LIVE_SMOKE:-0}" = "1" ]; then
   deno run --allow-env --allow-net scripts/live-write-boundary-smoke.ts
+fi
+
+if [ "${RUN_LIVE_AI_SMOKE:-0}" = "1" ]; then
+  deno run --allow-env --allow-net scripts/ai-weekly-generation-smoke.ts
 fi
 
 echo "Live Supabase deploy script completed for project $SUPABASE_PROJECT_REF."

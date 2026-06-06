@@ -47,6 +47,7 @@ struct AppRuntime {
             services: AppServices.fixtureBacked(
                 repositories: repositories,
                 isLiveSupabaseRuntime: true,
+                memberRole: session.memberRole,
                 todayCache: todayCache,
                 notifications: notifications
             )
@@ -56,18 +57,21 @@ struct AppRuntime {
     static func makeInitialRuntime(
         store: RuntimeConfigurationStoring = RuntimeConfigurationStore(),
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
-        notifications: any TodayNotificationScheduling = LocalTodayNotificationScheduler()
+        notifications: any TodayNotificationScheduling = LocalTodayNotificationScheduler(),
+        debugEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) -> AppRuntime {
+        if let session = PairedDeviceSession.debugEnvironmentSession(
+            environment: debugEnvironment
+        ) {
+            return live(
+                session: session,
+                todayCache: todayCache,
+                notifications: notifications
+            )
+        }
+
         do {
             if let session = try store.loadPairedSession() {
-                return live(
-                    session: session,
-                    todayCache: todayCache,
-                    notifications: notifications
-                )
-            }
-
-            if let session = PairedDeviceSession.debugEnvironmentSession() {
                 return live(
                     session: session,
                     todayCache: todayCache,

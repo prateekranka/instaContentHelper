@@ -39,10 +39,19 @@ struct FixtureWeeklyPlanRepository: WeeklyPlanRepository {
     func publishWeek(
         _ plan: WeeklyPlan,
         ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
         context: WorkspaceContext
     ) async throws -> WeeklyPublishResult {
-        let publishedPlan = plan.softLockedForPublish
-        let cards = DailyCard.publishedCards(from: publishedPlan)
+        let publishedPlan = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
+            generatedDraft.markedPublished.weeklyPlan(setupSections: plan.setupSections).softLockedForPublish
+        } else {
+            plan.softLockedForPublish
+        }
+        let cards = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
+            generatedDraft.markedPublished.publishedWeekCards
+        } else {
+            DailyCard.publishedCards(from: publishedPlan)
+        }
 
         return WeeklyPublishResult(
             weeklyPlan: publishedPlan,
@@ -76,6 +85,80 @@ struct FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         updatedIdeaBank[ideaIndex].selectedDay = updatedPlan.days[dayIndex].weekday
 
         return WeeklySelectionUpdate(weeklyPlan: updatedPlan, ideaBank: updatedIdeaBank)
+    }
+}
+
+struct FixtureWeeklyGenerationRepository: WeeklyGenerationRepository {
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext
+    ) async throws -> GeneratedWeekDraft {
+        let cards = SupabaseDateFormatting.weekDates(starting: weekStartDate).enumerated().map { index, date in
+            GeneratedDailyCardDraft(
+                id: UUID(),
+                scheduledDate: date,
+                status: "draft",
+                title: [
+                    "Generated Monday reset",
+                    "Generated training detail",
+                    "Generated recovery check",
+                    "Generated kit note",
+                    "Generated calm reminder",
+                    "Generated family walk",
+                    "Generated caption backup"
+                ][index],
+                whyToday: "A fixture AI draft grounded in Mamta's weekly rhythm.",
+                growthJob: "Build consistency with practical fitness content.",
+                contentPillar: index == 5 ? "family" : "routine",
+                shootability: index == 6 ? "backup" : "easy",
+                estimatedShootMinutes: index == 6 ? 6 : 12,
+                energyRequired: index == 6 ? "low" : "medium",
+                languageMode: "English with light Hinglish if natural",
+                sceneList: [
+                    ShotScene(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
+                    ShotScene(number: 2, title: "One steady movement", duration: "5 sec", symbol: "figure.run"),
+                    ShotScene(number: 3, title: "Useful close", duration: "4 sec", symbol: "text.quote")
+                ],
+                script: "One useful detail is enough today. Keep it simple and steady.",
+                noVoiceoverVersion: "Three quiet clips with simple on-screen text.",
+                onScreenText: ["Simple today", "One useful detail", "Done"],
+                caption: "Keeping it simple today. One useful detail, done properly.",
+                cta: "Save this for a low-effort training day.",
+                hashtags: ["routine", "fitnessover60"],
+                coverText: "Simple today",
+                postInstructions: "Use calm audio only if it fits.",
+                brandEventNotes: "",
+                backupStory: "A 10-second story with one detail and one line.",
+                backupCaptionOnly: "Caption-only backup for a crowded day.",
+                audioOptionNotes: "Calm fallback audio, or no audio dependency.",
+                mamtaFitScore: 88,
+                riskNotes: [],
+                assumptions: ["Fixture generation used deterministic local context."],
+                sourceNote: "Fixture AI weekly generation."
+            )
+        }
+
+        return GeneratedWeekDraft(
+            id: UUID(),
+            weeklyPlanID: UUID(),
+            strategySummary: "Fixture AI draft: seven shootable Mamta-safe cards for review.",
+            warnings: [],
+            assumptions: ["Fixture mode does not call AI services."],
+            dailyCards: cards,
+            ideaBank: [
+                WeeklyIdea(
+                    title: "Fixture caption-only backup",
+                    reason: "Saved from fixture AI generation.",
+                    source: .pattern,
+                    effortLabel: "Easy"
+                )
+            ],
+            sourceSummary: "Fixture profile, setup, references, archive, and idea bank.",
+            generatedAt: ISO8601DateFormatter().string(from: Date())
+        )
     }
 }
 

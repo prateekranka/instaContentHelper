@@ -214,29 +214,53 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
     }
 
     func testInitialRuntimeFallsBackToFixturesWithoutPairedSession() {
-        let runtime = AppRuntime.makeInitialRuntime(store: EmptyRuntimeConfigurationStore())
+        let runtime = AppRuntime.makeInitialRuntime(
+            store: EmptyRuntimeConfigurationStore(),
+            debugEnvironment: [:]
+        )
 
         XCTAssertEqual(runtime.mode, .fixtures)
         XCTAssertEqual(runtime.services.todayCard.title, DailyCard.raceWeekToday.title)
+    }
+
+    func testInitialRuntimeUsesStoredLiveSessionWithoutDebugEnvironment() throws {
+        let session = try makeLiveSession(memberRole: "editor")
+
+        let runtime = AppRuntime.makeInitialRuntime(
+            store: FixedRuntimeConfigurationStore(session: session),
+            notifications: NoopTodayNotificationScheduler(),
+            debugEnvironment: [:]
+        )
+
+        XCTAssertEqual(runtime.mode, .live(session))
+        XCTAssertTrue(runtime.services.isLiveSupabaseRuntime)
+        XCTAssertEqual(runtime.services.memberRole, "editor")
+    }
+
+    func testDebugEnvironmentSessionOverridesStoredSessionFailure() throws {
+        let runtime = AppRuntime.makeInitialRuntime(
+            store: ThrowingRuntimeConfigurationStore(),
+            notifications: NoopTodayNotificationScheduler(),
+            debugEnvironment: debugPairedEnvironment(memberRole: "owner")
+        )
+
+        guard case .live(let session) = runtime.mode else {
+            XCTFail("Expected live runtime from debug environment.")
+            return
+        }
+
+        XCTAssertTrue(runtime.services.isLiveSupabaseRuntime)
+        XCTAssertEqual(session.workspaceName, "Debug Workspace")
+        XCTAssertEqual(session.creatorDisplayName, "Mamta")
+        XCTAssertEqual(session.memberRole, "owner")
+        XCTAssertEqual(runtime.services.context.workspaceID, session.workspaceID)
     }
 
     func testAppStateCanSwapToLiveRuntimeAfterPairing() throws {
         let state = AppState(
             runtime: .fixtures(notifications: NoopTodayNotificationScheduler())
         )
-        let session = PairedDeviceSession(
-            projectURL: try XCTUnwrap(URL(string: "https://example.supabase.co")),
-            publishableKey: "sb_publishable_test_key",
-            workspaceID: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!,
-            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
-            memberID: UUID(uuidString: "55555555-5555-4555-8555-555555555551")!,
-            deviceInstallationID: UUID(uuidString: "66666666-6666-4666-8666-666666666661")!,
-            deviceToken: "test-device-token",
-            workspaceName: "Live Workspace",
-            creatorDisplayName: "Mamta",
-            memberRole: "owner",
-            pairedAt: Date()
-        )
+        let session = try makeLiveSession(memberRole: "owner")
 
         state.replaceRuntime(
             .live(
@@ -256,11 +280,64 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         let cards = DailyCard.publishedCards(from: WeeklyPlan.raceWeek.softLockedForPublish)
         return try XCTUnwrap(DailyCard.bestTodayCard(from: cards))
     }
+
+    private func makeLiveSession(memberRole: String) throws -> PairedDeviceSession {
+        PairedDeviceSession(
+            projectURL: try XCTUnwrap(URL(string: "https://example.supabase.co")),
+            publishableKey: "sb_publishable_test_key",
+            workspaceID: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!,
+            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            memberID: UUID(uuidString: "55555555-5555-4555-8555-555555555551")!,
+            deviceInstallationID: UUID(uuidString: "66666666-6666-4666-8666-666666666661")!,
+            deviceToken: "test-device-token",
+            workspaceName: "Live Workspace",
+            creatorDisplayName: "Mamta",
+            memberRole: memberRole,
+            pairedAt: Date()
+        )
+    }
+
+    private func debugPairedEnvironment(memberRole: String) -> [String: String] {
+        [
+            "MCO_SUPABASE_URL": "http://127.0.0.1:54321",
+            "MCO_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test_key",
+            "MCO_DEBUG_PAIRED_WORKSPACE_ID": "11111111-1111-4111-8111-111111111111",
+            "MCO_DEBUG_PAIRED_CREATOR_ID": "33333333-3333-4333-8333-333333333333",
+            "MCO_DEBUG_PAIRED_MEMBER_ID": "55555555-5555-4555-8555-555555555551",
+            "MCO_DEBUG_PAIRED_DEVICE_INSTALLATION_ID": "66666666-6666-4666-8666-666666666661",
+            "MCO_DEBUG_PAIRED_DEVICE_TOKEN": "test-device-token",
+            "MCO_DEBUG_PAIRED_WORKSPACE_NAME": "Debug Workspace",
+            "MCO_DEBUG_PAIRED_CREATOR_DISPLAY_NAME": "Mamta",
+            "MCO_DEBUG_PAIRED_MEMBER_ROLE": memberRole
+        ]
+    }
 }
 
 private struct EmptyRuntimeConfigurationStore: RuntimeConfigurationStoring {
     func loadPairedSession() throws -> PairedDeviceSession? {
         nil
+    }
+
+    func savePairedSession(_ session: PairedDeviceSession) throws {}
+
+    func clearPairedSession() throws {}
+}
+
+private struct FixedRuntimeConfigurationStore: RuntimeConfigurationStoring {
+    let session: PairedDeviceSession
+
+    func loadPairedSession() throws -> PairedDeviceSession? {
+        session
+    }
+
+    func savePairedSession(_ session: PairedDeviceSession) throws {}
+
+    func clearPairedSession() throws {}
+}
+
+private struct ThrowingRuntimeConfigurationStore: RuntimeConfigurationStoring {
+    func loadPairedSession() throws -> PairedDeviceSession? {
+        throw RuntimeConfigurationError.decodingFailed
     }
 
     func savePairedSession(_ session: PairedDeviceSession) throws {}

@@ -17,13 +17,13 @@ struct ShootFolioView: View {
                 case .scenes:
                     SceneListView(scenes: services.todayCard.scenes)
                 case .script:
-                    CopyBlock(title: "Script", bodyText: "Race week isn't about doing more. It's about doing what matters. Simple plan. Steady steps. Let's go.")
+                    CopyBlock(title: "Script", bodyText: services.todayCard.script ?? "Race week isn't about doing more. It's about doing what matters. Simple plan. Steady steps. Let's go.")
                 case .caption:
-                    CopyBlock(title: "Caption", bodyText: "Race week has entered the house. Keeping it simple, steady, and real today.")
+                    CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "Race week has entered the house. Keeping it simple, steady, and real today.")
                 case .audio:
-                    CopyBlock(title: "Audio", bodyText: "Calm Drive • Instrumental • fallback ready")
+                    CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "Calm Drive - Instrumental - fallback ready")
                 case .post:
-                    CopyBlock(title: "Post", bodyText: "Open Instagram, use the saved audio if available, add cover text: Race week mindset.")
+                    CopyBlock(title: "Post", bodyText: services.todayCard.postInstructions ?? "Open Instagram, use the saved audio if available, add cover text: Race week mindset.")
                 }
             }
         } bottomBar: {

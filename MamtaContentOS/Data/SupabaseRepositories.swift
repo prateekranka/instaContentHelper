@@ -75,17 +75,30 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
     func publishWeek(
         _ plan: WeeklyPlan,
         ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
         context: WorkspaceContext
     ) async throws -> WeeklyPublishResult {
         let response: SupabasePublishWeekResponse = try await client.functions.invoke(
             "publish-week",
             options: FunctionInvokeOptions(
-                body: SupabasePublishWeekRequest(plan: plan, context: context)
+                body: SupabasePublishWeekRequest(
+                    plan: plan,
+                    generatedDraft: generatedDraft,
+                    context: context
+                )
             )
         )
 
-        let publishedPlan = plan.softLockedForPublish
-        let cards = DailyCard.publishedCards(from: publishedPlan)
+        let publishedPlan = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
+            generatedDraft.markedPublished.weeklyPlan(setupSections: plan.setupSections).softLockedForPublish
+        } else {
+            plan.softLockedForPublish
+        }
+        let cards = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
+            generatedDraft.markedPublished.publishedWeekCards
+        } else {
+            DailyCard.publishedCards(from: publishedPlan)
+        }
 
         return WeeklyPublishResult(
             weeklyPlan: publishedPlan,
@@ -147,6 +160,55 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
             setupSections: setupSections
         )
     }
+}
+
+struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
+    let client: SupabaseClient
+
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext
+    ) async throws -> GeneratedWeekDraft {
+        do {
+            let response: SupabaseGenerateWeekResponse = try await client.functions.invoke(
+                "generate-week",
+                options: FunctionInvokeOptions(
+                    body: SupabaseGenerateWeekRequest(
+                        creatorID: creatorID,
+                        weekStartDate: weekStartDate,
+                        weeklySetupID: weeklySetupID,
+                        mode: mode,
+                        preserveManualEdits: true,
+                        mock: nil
+                    )
+                )
+            )
+
+            return response.domainDraft()
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+}
+
+private enum SupabaseFunctionErrorMapper {
+    static func errorCode(from error: Error) -> String? {
+        guard case FunctionsError.httpError(_, let data) = error else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(SupabaseFunctionErrorPayload.self, from: data).error
+    }
+}
+
+private struct SupabaseFunctionErrorPayload: Decodable {
+    let error: String
 }
 
 struct SupabaseReferenceRepository: ReferenceRepository {
