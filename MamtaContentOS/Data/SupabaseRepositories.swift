@@ -5,16 +5,13 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
     let client: SupabaseClient
 
     func todayCard(for context: WorkspaceContext) async throws -> DailyCard {
-        let rows: [SupabaseDailyCardRow] = try await client
-            .from(SupabaseContentTable.dailyCards.rawValue)
-            .select(SupabaseSelect.dailyCard)
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .eq("scheduled_date", value: SupabaseDateFormatting.todayDateString())
-            .limit(1)
-            .execute()
-            .value
+        let response: SupabaseTodayReadResponse = try await client.readContent(
+            .today,
+            context: context,
+            todayDate: SupabaseDateFormatting.todayDateString()
+        )
 
-        guard let row = rows.first else {
+        guard let row = response.todayCard else {
             throw RepositoryError.missingFixture("No published daily card exists for today.")
         }
 
@@ -22,16 +19,13 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
     }
 
     func weekCards(for context: WorkspaceContext) async throws -> [DailyCard] {
-        let rows: [SupabaseDailyCardRow] = try await client
-            .from(SupabaseContentTable.dailyCards.rawValue)
-            .select(SupabaseSelect.dailyCard)
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .order("scheduled_date", ascending: true)
-            .limit(14)
-            .execute()
-            .value
+        let response: SupabaseTodayReadResponse = try await client.readContent(
+            .today,
+            context: context,
+            todayDate: SupabaseDateFormatting.todayDateString()
+        )
 
-        return rows.map { $0.domainCard() }
+        return response.weekCards.map { $0.domainCard() }
     }
 
     func completeToday(
@@ -39,17 +33,9 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
         decision: DailyDecision,
         context: WorkspaceContext
     ) async throws -> ArchiveEntry {
-        try await client
-            .from(SupabaseContentTable.dailyCards.rawValue)
-            .update(
-                SupabaseDailyCardDecisionUpdate(
-                    status: decision.completionState.supabaseStatus,
-                    decisionAt: SupabaseDateFormatting.isoTimestampString(),
-                    completedByMemberID: context.memberID
-                )
-            )
-            .eq("id", value: card.id.uuidString)
-            .execute()
+        try await client.writeContent(
+            .completeToday(card: card, decision: decision, context: context)
+        )
 
         let archiveDate = card.scheduledDate ?? SupabaseDateFormatting.todayDateString()
         return ArchiveEntry(
@@ -68,43 +54,22 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
     let client: SupabaseClient
 
     func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
-        let rows: [SupabaseWeeklyPlanRow] = try await client
-            .from(SupabaseContentTable.weeklyPlans.rawValue)
-            .select(SupabaseSelect.weeklyPlan)
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .eq("status", value: "published")
-            .order("week_start_date", ascending: false)
-            .limit(1)
-            .execute()
-            .value
+        let response: SupabaseWeeklyReadResponse = try await client.readContent(.weekly, context: context)
 
-        guard let planRow = rows.first else {
+        guard let planRow = response.weeklyPlan else {
             throw RepositoryError.missingFixture("No published weekly plan exists.")
         }
 
-        let cardRows: [SupabaseDailyCardRow] = try await client
-            .from(SupabaseContentTable.dailyCards.rawValue)
-            .select(SupabaseSelect.dailyCard)
-            .eq("weekly_plan_id", value: planRow.id.uuidString)
-            .order("scheduled_date", ascending: true)
-            .execute()
-            .value
-
-        let setupSections = try await setupSections(for: planRow.weeklySetupID)
-        return makeWeeklyPlan(row: planRow, cardRows: cardRows, setupSections: setupSections)
+        return makeWeeklyPlan(
+            row: planRow,
+            cardRows: response.dailyCards,
+            setupSections: response.weeklySetup?.setupSections ?? []
+        )
     }
 
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
-        let rows: [SupabaseIdeaRow] = try await client
-            .from(SupabaseContentTable.ideas.rawValue)
-            .select("id,title,summary,suggested_use,shootability,status")
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .order("updated_at", ascending: false)
-            .limit(25)
-            .execute()
-            .value
-
-        return rows.map { $0.domainIdea() }
+        let response: SupabaseWeeklyReadResponse = try await client.readContent(.weekly, context: context)
+        return response.ideaBank.map { $0.domainIdea() }
     }
 
     func publishWeek(
@@ -136,11 +101,9 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         ideaBank: [WeeklyIdea],
         context: WorkspaceContext
     ) async throws -> WeeklySelectionUpdate {
-        try await client
-            .from(SupabaseContentTable.ideas.rawValue)
-            .update(["status": "scheduled"])
-            .eq("id", value: idea.id.uuidString)
-            .execute()
+        try await client.writeContent(
+            .selectIdeaForNextOpenDay(idea: idea, plan: plan, context: context)
+        )
 
         var updatedPlan = plan
         var updatedIdeaBank = ideaBank
@@ -160,24 +123,6 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         updatedIdeaBank[ideaIndex].selectedDay = updatedPlan.days[dayIndex].weekday
 
         return WeeklySelectionUpdate(weeklyPlan: updatedPlan, ideaBank: updatedIdeaBank)
-    }
-
-    private func setupSections(for setupID: UUID?) async throws -> [WeeklySetupSection] {
-        guard let setupID else { return [] }
-
-        let rows: [SupabaseWeeklySetupRow] = try await client
-            .from(SupabaseContentTable.weeklySetups.rawValue)
-            .select(
-                """
-                id,location,workout_race_schedule,family_travel_moments,energy_constraints,shooting_constraints,no_go_topics,selected_sources,notes
-                """
-            )
-            .eq("id", value: setupID.uuidString)
-            .limit(1)
-            .execute()
-            .value
-
-        return rows.first?.setupSections ?? []
     }
 
     private func makeWeeklyPlan(
@@ -208,18 +153,12 @@ struct SupabaseReferenceRepository: ReferenceRepository {
     let client: SupabaseClient
 
     func sourcePulse(for context: WorkspaceContext) async throws -> SourcePulseSummary {
-        let rows: [SupabaseSourceReferenceRow] = try await client
-            .from(SupabaseContentTable.sourceReferences.rawValue)
-            .select("id,source_type,source_url,storage_path,manual_notes,status,analysis_confidence")
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .order("created_at", ascending: false)
-            .limit(8)
-            .execute()
-            .value
+        let response: SupabaseIntelligenceReadResponse = try await client.readContent(.intelligence, context: context)
+        let rows = response.confirmedSourceReferences
 
         return SourcePulseSummary(
             title: "Source Pulse",
-            subtitle: rows.isEmpty ? "No references yet." : "\(rows.count) recent references.",
+            subtitle: rows.isEmpty ? "No confirmed import references yet." : "\(rows.count) confirmed reel/audio references.",
             references: rows.map { $0.referenceSummary() }
         )
     }
@@ -230,85 +169,40 @@ struct SupabaseIntelligenceRepository: IntelligenceRepository {
     let references: SupabaseReferenceRepository
 
     func home(for context: WorkspaceContext) async throws -> IntelligenceHome {
-        async let sourcePulse = references.sourcePulse(for: context)
-        async let patterns = intelligencePatterns(for: context)
-        async let trends = intelligenceTrends(for: context)
-        async let audioOptions = intelligenceAudioOptions(for: context)
-        async let ideas = intelligenceIdeas(for: context)
-
-        let sourcePulseValue = try await sourcePulse
-        let patternItems = try await patterns
-        let trendItems = try await trends
-        let audioItems = try await audioOptions
-        let ideaItems = try await ideas
+        let response: SupabaseIntelligenceReadResponse = try await client.readContent(.intelligence, context: context)
+        let confirmedReferences = response.confirmedSourceReferences
+        let sourcePulseValue = SourcePulseSummary(
+            title: "Source Pulse",
+            subtitle: confirmedReferences.isEmpty ? "No confirmed import references yet." : "\(confirmedReferences.count) confirmed reel/audio references.",
+            references: confirmedReferences.map { $0.referenceSummary() }
+        )
+        let patternItems = response.patterns.map { $0.intelligenceItem() }
+        let trendItems = response.trends.map { $0.intelligenceItem() }
+        let audioItems = response.audioOptions.map { $0.intelligenceItem() }
+        let ideaItems = response.ideas.map { $0.intelligenceItem() }
+        let reviewItems = (response.reviewSourceReferences.map { $0.reviewItem() }
+            + response.candidateBenchmarkCreators.map { $0.reviewItem() })
+            .sorted { ($0.sortKey ?? "") > ($1.sortKey ?? "") }
+        let benchmarkCreatorCount = response.benchmarkCreatorCount
         let allSourceItems = patternItems + trendItems + audioItems
         let allItems = allSourceItems + ideaItems
+        let needsReviewItems = (reviewItems + allItems.filter { $0.state == .needsReview })
+            .sorted { ($0.sortKey ?? "") > ($1.sortKey ?? "") }
 
         return IntelligenceHome(
             sourcePulse: sourcePulseValue,
             readyForThisWeek: Array(allItems.filter { $0.state == .ready || $0.state == .approved }.prefix(4)),
-            needsReview: Array(allItems.filter { $0.state == .needsReview }.prefix(4)),
+            needsReview: Array(needsReviewItems.prefix(12)),
             ideaCandidates: Array(ideaItems.prefix(6)),
             recentlyUsed: Array(allItems.filter { $0.state == .usedThisWeek }.prefix(4)),
             librarySections: [
                 IntelligenceLibrarySection(title: "Patterns", subtitle: "Reusable Mamta-safe structures.", count: patternItems.count, symbol: "sun.max"),
                 IntelligenceLibrarySection(title: "Trends", subtitle: "Manual USA feed observations.", count: trendItems.count, symbol: "sparkle.magnifyingglass"),
                 IntelligenceLibrarySection(title: "Audio Options", subtitle: "Verified and fallback sounds.", count: audioItems.count, symbol: "music.note"),
-                IntelligenceLibrarySection(title: "Ideas", subtitle: "Prepared card candidates.", count: ideaItems.count, symbol: "lightbulb")
+                IntelligenceLibrarySection(title: "Ideas", subtitle: "Prepared card candidates.", count: ideaItems.count, symbol: "lightbulb"),
+                IntelligenceLibrarySection(title: "Inspiration", subtitle: "Reference creators in the watchlist.", count: benchmarkCreatorCount, symbol: "at")
             ]
         )
-    }
-
-    private func intelligencePatterns(for context: WorkspaceContext) async throws -> [IntelligenceItem] {
-        let rows: [SupabasePatternRow] = try await client
-            .from(SupabaseContentTable.patterns.rawValue)
-            .select("id,title,pattern_type,summary,status")
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .order("updated_at", ascending: false)
-            .limit(20)
-            .execute()
-            .value
-
-        return rows.map { $0.intelligenceItem() }
-    }
-
-    private func intelligenceTrends(for context: WorkspaceContext) async throws -> [IntelligenceItem] {
-        let rows: [SupabaseTrendRow] = try await client
-            .from(SupabaseContentTable.trends.rawValue)
-            .select("id,title,summary,status,timing_recommendation")
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .order("updated_at", ascending: false)
-            .limit(20)
-            .execute()
-            .value
-
-        return rows.map { $0.intelligenceItem() }
-    }
-
-    private func intelligenceAudioOptions(for context: WorkspaceContext) async throws -> [IntelligenceItem] {
-        let rows: [SupabaseAudioOptionRow] = try await client
-            .from(SupabaseContentTable.audioOptions.rawValue)
-            .select("id,title,artist_or_creator,availability_confidence,verification_note,status")
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .order("updated_at", ascending: false)
-            .limit(20)
-            .execute()
-            .value
-
-        return rows.map { $0.intelligenceItem() }
-    }
-
-    private func intelligenceIdeas(for context: WorkspaceContext) async throws -> [IntelligenceItem] {
-        let rows: [SupabaseIdeaRow] = try await client
-            .from(SupabaseContentTable.ideas.rawValue)
-            .select("id,title,summary,suggested_use,shootability,status")
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .order("updated_at", ascending: false)
-            .limit(20)
-            .execute()
-            .value
-
-        return rows.map { $0.intelligenceItem() }
     }
 }
 
@@ -316,17 +210,8 @@ struct SupabaseCreatorProfileRepository: CreatorProfileRepository {
     let client: SupabaseClient
 
     func activeProfileSummary(for context: WorkspaceContext) async throws -> CreatorProfileSummary {
-        let rows: [SupabaseCreatorProfileRow] = try await client
-            .from(SupabaseContentTable.creatorProfiles.rawValue)
-            .select("positioning,voice_rules,never_say")
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .eq("status", value: "active")
-            .order("version", ascending: false)
-            .limit(1)
-            .execute()
-            .value
-
-        return rows.first?.summary() ?? .mamtaFixture
+        let response: SupabaseCreatorProfileReadResponse = try await client.readContent(.creatorProfile, context: context)
+        return response.profile?.summary() ?? .mamtaFixture
     }
 }
 
@@ -334,16 +219,8 @@ struct SupabaseArchiveRepository: ArchiveRepository {
     let client: SupabaseClient
 
     func entries(for context: WorkspaceContext) async throws -> [ArchiveEntry] {
-        let rows: [SupabaseArchiveEntryRow] = try await client
-            .from(SupabaseContentTable.archiveEntries.rawValue)
-            .select("id,daily_card_id,archive_date,decision,output_line,has_post_thumbnail,daily_cards(title)")
-            .eq("creator_id", value: context.creatorID.uuidString)
-            .order("archive_date", ascending: false)
-            .limit(50)
-            .execute()
-            .value
-
-        return rows.map { $0.domainEntry() }
+        let response: SupabaseArchiveReadResponse = try await client.readContent(.archive, context: context)
+        return response.entries.map { $0.domainEntry() }
     }
 
     func upsertDecision(
@@ -351,21 +228,9 @@ struct SupabaseArchiveRepository: ArchiveRepository {
         for card: DailyCard,
         context: WorkspaceContext
     ) async throws -> [ArchiveEntry] {
-        try await client
-            .from(SupabaseContentTable.archiveEntries.rawValue)
-            .upsert(
-                SupabaseArchiveEntryUpsert(
-                    workspaceID: context.workspaceID,
-                    creatorID: context.creatorID,
-                    dailyCardID: card.id,
-                    archiveDate: SupabaseDateFormatting.todayDateString(),
-                    decision: entry.decision.supabaseStatus,
-                    outputLine: entry.outputLine,
-                    hasPostThumbnail: entry.hasPostThumbnail
-                ),
-                onConflict: "daily_card_id"
-            )
-            .execute()
+        try await client.writeContent(
+            .upsertArchiveDecision(entry, for: card, context: context)
+        )
 
         return try await entries(for: context)
     }
@@ -379,6 +244,32 @@ private enum SupabaseSelect {
     static let weeklyPlan = """
         id,workspace_id,creator_id,weekly_setup_id,creator_profile_id,week_start_date,status,strategy_summary,warnings,assumptions,is_soft_locked,published_at
         """
+}
+
+private extension SupabaseClient {
+    func readContent<Response: Decodable>(
+        _ action: SupabaseReadContentRequest.Action,
+        context: WorkspaceContext,
+        todayDate: String? = nil
+    ) async throws -> Response {
+        try await functions.invoke(
+            "read-content",
+            options: FunctionInvokeOptions(
+                body: SupabaseReadContentRequest(
+                    action: action,
+                    creatorID: context.creatorID,
+                    todayDate: todayDate
+                )
+            )
+        )
+    }
+
+    func writeContent(_ request: SupabaseWriteContentRequest) async throws {
+        let _: SupabaseWriteContentResponse = try await functions.invoke(
+            "write-content",
+            options: FunctionInvokeOptions(body: request)
+        )
+    }
 }
 
 private extension SupabaseIdeaRow {

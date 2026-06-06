@@ -17,8 +17,9 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         XCTAssertTrue(services.weeklyPlan.isSoftLocked)
         XCTAssertTrue(services.weeklyPlan.days.allSatisfy(\.isSoftLocked))
         XCTAssertEqual(services.weekCards.count, 7)
-        XCTAssertEqual(services.todayCard.title, "Race week has entered the house")
-        XCTAssertEqual(services.todayCard.scheduledDate, "2026-06-05")
+        let expectedTodayCard = try expectedPublishedFixtureTodayCard()
+        XCTAssertEqual(services.todayCard.title, expectedTodayCard.title)
+        XCTAssertEqual(services.todayCard.scheduledDate, expectedTodayCard.scheduledDate)
         XCTAssertEqual(services.lastPublishSummary, "Published 7 cards to Mamta Today.")
         XCTAssertNil(services.lastRepositoryError)
     }
@@ -30,8 +31,9 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         await services.publishCurrentWeekImmediately()
 
         let snapshot = try XCTUnwrap(cache.loadSnapshot(for: .mamtaFixture))
-        XCTAssertEqual(snapshot.todayCard.title, "Race week has entered the house")
-        XCTAssertEqual(snapshot.todayCard.scheduledDate, "2026-06-05")
+        let expectedTodayCard = try expectedPublishedFixtureTodayCard()
+        XCTAssertEqual(snapshot.todayCard.title, expectedTodayCard.title)
+        XCTAssertEqual(snapshot.todayCard.scheduledDate, expectedTodayCard.scheduledDate)
         XCTAssertEqual(snapshot.weekCards.count, 7)
         XCTAssertEqual(snapshot.source, "week-publish")
     }
@@ -216,6 +218,43 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
 
         XCTAssertEqual(runtime.mode, .fixtures)
         XCTAssertEqual(runtime.services.todayCard.title, DailyCard.raceWeekToday.title)
+    }
+
+    func testAppStateCanSwapToLiveRuntimeAfterPairing() throws {
+        let state = AppState(
+            runtime: .fixtures(notifications: NoopTodayNotificationScheduler())
+        )
+        let session = PairedDeviceSession(
+            projectURL: try XCTUnwrap(URL(string: "https://example.supabase.co")),
+            publishableKey: "sb_publishable_test_key",
+            workspaceID: UUID(uuidString: "11111111-1111-4111-8111-111111111111")!,
+            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            memberID: UUID(uuidString: "55555555-5555-4555-8555-555555555551")!,
+            deviceInstallationID: UUID(uuidString: "66666666-6666-4666-8666-666666666661")!,
+            deviceToken: "test-device-token",
+            workspaceName: "Live Workspace",
+            creatorDisplayName: "Mamta",
+            memberRole: "owner",
+            pairedAt: Date()
+        )
+
+        state.replaceRuntime(
+            .live(
+                session: session,
+                notifications: NoopTodayNotificationScheduler()
+            )
+        )
+
+        XCTAssertEqual(state.runtime.mode, .live(session))
+        XCTAssertTrue(state.runtime.services.isLiveSupabaseRuntime)
+        XCTAssertEqual(state.runtime.services.context.workspaceID, session.workspaceID)
+        XCTAssertEqual(state.runtime.services.context.creatorID, session.creatorID)
+        XCTAssertEqual(state.runtime.services.context.memberID, session.memberID)
+    }
+
+    private func expectedPublishedFixtureTodayCard() throws -> DailyCard {
+        let cards = DailyCard.publishedCards(from: WeeklyPlan.raceWeek.softLockedForPublish)
+        return try XCTUnwrap(DailyCard.bestTodayCard(from: cards))
     }
 }
 

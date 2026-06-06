@@ -22,6 +22,11 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+    preBuildScripts:
+      - name: Require Live Release Bootstrap
+        script: |
+          /bin/sh "$SRCROOT/scripts/require-live-release-bootstrap.sh"
+        basedOnDependencyAnalysis: false
     configFiles:
       Debug: MamtaContentOS/Config/Runtime.xcconfig
       Release: MamtaContentOS/Config/Runtime.xcconfig
@@ -32,16 +37,10 @@ targets:
         PRODUCT_MODULE_NAME: MamtaContentOS
         DEVELOPMENT_TEAM: 4JRB53LG5C
         CODE_SIGN_STYLE: Automatic
+        INFOPLIST_FILE: MamtaContentOS/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "1"
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: ContentHelper
-        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
-        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
-        INFOPLIST_KEY_MCO_SUPABASE_URL: $(MCO_SUPABASE_URL)
-        INFOPLIST_KEY_MCO_SUPABASE_PUBLISHABLE_KEY: $(MCO_SUPABASE_PUBLISHABLE_KEY)
+        CURRENT_PROJECT_VERSION: "3"
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
   MamtaContentOSTests:

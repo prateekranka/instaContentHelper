@@ -1,0 +1,598 @@
+-- Live bootstrap seed for the first ContentHelper TestFlight workspace.
+-- Invite plaintext codes are intentionally not stored here; only SHA-256 hashes
+-- of the normalized codes are persisted.
+
+insert into public.workspaces (id, name, status)
+values (
+  '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+  'Mamta Content OS',
+  'active'
+)
+on conflict (id) do update
+set name = excluded.name,
+    status = excluded.status,
+    updated_at = now();
+
+insert into public.creators (
+  id,
+  workspace_id,
+  display_name,
+  handle,
+  default_timezone,
+  status
+)
+values (
+  'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+  '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+  'Mamta',
+  'mamta',
+  'Asia/Kolkata',
+  'active'
+)
+on conflict (id) do update
+set display_name = excluded.display_name,
+    handle = excluded.handle,
+    default_timezone = excluded.default_timezone,
+    status = excluded.status,
+    updated_at = now();
+
+insert into public.creator_profiles (
+  id,
+  workspace_id,
+  creator_id,
+  status,
+  version,
+  positioning,
+  voice_rules,
+  content_pillars,
+  preferred_hooks,
+  caption_style,
+  never_say,
+  weekly_routine,
+  family_race_travel_context,
+  brand_tone,
+  language_preferences,
+  recurring_formats,
+  trend_filter_rules,
+  influencer_adaptation_rules
+)
+values (
+  '6951e533-53a0-443f-91ee-8a73afaba4cf',
+  '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+  'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+  'active',
+  1,
+  'Mamta is a grounded fitness and family creator who makes practical, low-drama content for women who want consistency without overproduction.',
+  '["warm", "direct", "no hype", "no guilt", "keep captions simple"]'::jsonb,
+  '["routine", "fitness", "family", "race prep", "useful habits"]'::jsonb,
+  '["Today is a simple one", "Here is what I am actually doing", "No overthinking today"]'::jsonb,
+  'Short, clear, and human. One practical point per post.',
+  '["weight talk", "politics", "shaming", "medical claims"]'::jsonb,
+  '{"weekly_setup_day": "Sunday", "daily_check_time": "08:00"}'::jsonb,
+  '{"home_base": "Mumbai", "family_moments_allowed": true, "race_week_content_allowed": true}'::jsonb,
+  'Helpful, steady, brand-safe, never performative.',
+  '{"primary": "English", "allow_hinglish": true}'::jsonb,
+  '["shoe check", "morning routine", "family moment", "caption-only backup"]'::jsonb,
+  '{"avoid_fast_trends": true, "prefer_low_effort_audio": true}'::jsonb,
+  '{"adapt_to_mamta_age_energy_context": true, "avoid_copying_exact_formats": true}'::jsonb
+)
+on conflict (id) do update
+set status = excluded.status,
+    positioning = excluded.positioning,
+    voice_rules = excluded.voice_rules,
+    content_pillars = excluded.content_pillars,
+    preferred_hooks = excluded.preferred_hooks,
+    caption_style = excluded.caption_style,
+    never_say = excluded.never_say,
+    weekly_routine = excluded.weekly_routine,
+    family_race_travel_context = excluded.family_race_travel_context,
+    brand_tone = excluded.brand_tone,
+    language_preferences = excluded.language_preferences,
+    recurring_formats = excluded.recurring_formats,
+    trend_filter_rules = excluded.trend_filter_rules,
+    influencer_adaptation_rules = excluded.influencer_adaptation_rules,
+    updated_at = now();
+
+insert into public.device_invites (
+  id,
+  workspace_id,
+  code_hash,
+  role_granted,
+  expires_at,
+  use_limit,
+  used_count
+)
+values
+  (
+    '1826bc1f-1507-4982-a77a-af57a50b2943',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    '0916e99be15754fd465d4049bdbfc108b3cdb03e3aa6ed6fe0cb38fd52626baf',
+    'owner',
+    '2026-07-06T00:00:00Z',
+    5,
+    0
+  ),
+  (
+    'b3447e86-8345-4317-a72a-bd11d7742f05',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    '105f2e66fefb18c914aaf37e54061037b26ab2893da4fbfe8445b4f7f7713d82',
+    'creator',
+    '2026-07-06T00:00:00Z',
+    3,
+    0
+  )
+on conflict (id) do update
+set role_granted = excluded.role_granted,
+    expires_at = excluded.expires_at,
+    use_limit = greatest(public.device_invites.use_limit, excluded.use_limit),
+    revoked_at = null,
+    updated_at = now();
+
+insert into public.watchlists (
+  id,
+  workspace_id,
+  creator_id,
+  name,
+  kind,
+  source_description,
+  provenance_notes,
+  status
+)
+values (
+  'e0cdf01d-2fa8-46ab-a37e-37f089b69d8d',
+  '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+  'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+  'Inspiration',
+  'instagram',
+  'Starter references for Mamta Content OS live smoke.',
+  'Bootstrapped before first TestFlight pairing.',
+  'active'
+)
+on conflict (id) do update
+set name = excluded.name,
+    kind = excluded.kind,
+    source_description = excluded.source_description,
+    provenance_notes = excluded.provenance_notes,
+    status = excluded.status,
+    updated_at = now();
+
+insert into public.benchmark_creators (
+  id,
+  workspace_id,
+  creator_id,
+  handle,
+  display_name,
+  platform,
+  region,
+  niche_tags,
+  audience_tags,
+  relevance_notes,
+  priority_score,
+  mamta_relevance_score,
+  status,
+  normalized_handle
+)
+values
+  (
+    '0db1e8d1-d0f3-49fd-bd68-d2a3156ea925',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    '@starterfit',
+    'Starter Fit Reference',
+    'instagram',
+    'IN',
+    array['fitness', 'routine'],
+    array['women', 'family'],
+    'Low-production routine format that fits Mamta.',
+    80,
+    85,
+    'active',
+    'starterfit'
+  ),
+  (
+    '064dd28a-5d76-46aa-a771-556fea8d3c2a',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    '@steadyrun',
+    'Steady Run Reference',
+    'instagram',
+    'IN',
+    array['running', 'race'],
+    array['fitness'],
+    'Race-week pacing and calm audio reference.',
+    76,
+    82,
+    'active',
+    'steadyrun'
+  )
+on conflict (id) do update
+set handle = excluded.handle,
+    display_name = excluded.display_name,
+    platform = excluded.platform,
+    region = excluded.region,
+    niche_tags = excluded.niche_tags,
+    audience_tags = excluded.audience_tags,
+    relevance_notes = excluded.relevance_notes,
+    priority_score = excluded.priority_score,
+    mamta_relevance_score = excluded.mamta_relevance_score,
+    status = excluded.status,
+    normalized_handle = excluded.normalized_handle,
+    updated_at = now();
+
+insert into public.source_references (
+  id,
+  workspace_id,
+  creator_id,
+  benchmark_creator_id,
+  watchlist_id,
+  source_type,
+  source_url,
+  manual_notes,
+  provenance,
+  analysis_confidence,
+  status,
+  canonical_source_key
+)
+values
+  (
+    'fe325a8c-87c4-4e09-b29c-d46a5eb528c3',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    '0db1e8d1-d0f3-49fd-bd68-d2a3156ea925',
+    'e0cdf01d-2fa8-46ab-a37e-37f089b69d8d',
+    'reel_link',
+    'https://www.instagram.com/reel/bootstrap-routine/',
+    'Simple morning detail reel; useful starter reference.',
+    '{"source": "live_bootstrap"}'::jsonb,
+    86,
+    'confirmed',
+    'reel:https://www.instagram.com/reel/bootstrap-routine'
+  ),
+  (
+    '4d6d5f5f-b38d-4539-a605-5d7af47ee5f2',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    '064dd28a-5d76-46aa-a771-556fea8d3c2a',
+    'e0cdf01d-2fa8-46ab-a37e-37f089b69d8d',
+    'audio_link',
+    'https://www.instagram.com/reels/audio/bootstrap-calm-drive/',
+    'Calm audio fallback for race-week content.',
+    '{"source": "live_bootstrap"}'::jsonb,
+    78,
+    'confirmed',
+    'audio:https://www.instagram.com/reels/audio/bootstrap-calm-drive'
+  ),
+  (
+    '368bd99e-b3ac-48c5-955d-563a05c4be40',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    null,
+    'e0cdf01d-2fa8-46ab-a37e-37f089b69d8d',
+    'manual_note',
+    null,
+    'Use a caption-only backup when the day gets crowded.',
+    '{"source": "live_bootstrap"}'::jsonb,
+    72,
+    'confirmed',
+    'manual:caption-only-backup'
+  )
+on conflict (id) do update
+set benchmark_creator_id = excluded.benchmark_creator_id,
+    watchlist_id = excluded.watchlist_id,
+    source_type = excluded.source_type,
+    source_url = excluded.source_url,
+    manual_notes = excluded.manual_notes,
+    provenance = excluded.provenance,
+    analysis_confidence = excluded.analysis_confidence,
+    status = excluded.status,
+    canonical_source_key = excluded.canonical_source_key,
+    updated_at = now();
+
+insert into public.ideas (
+  id,
+  workspace_id,
+  creator_id,
+  title,
+  summary,
+  tags,
+  suggested_use,
+  shootability,
+  fit_score,
+  notes,
+  status
+)
+values
+  (
+    'e1a672a6-aa5a-4511-826f-a22684d318d5',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    'Quiet Sunday family walk',
+    'A natural family moment that can be shot without setup.',
+    array['family', 'moment'],
+    'Use for the next open day if Sunday stays relaxed.',
+    'easy',
+    88,
+    'Starter idea for Prateek Control idea selection smoke.',
+    'saved'
+  ),
+  (
+    '46c804d2-4fdb-4992-9bc8-af4b2d34096e',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    'What I pack before a 10K',
+    'A practical, brand-safe checklist reel.',
+    array['race', 'routine'],
+    'Use when a low-effort useful reel is needed.',
+    'easy',
+    84,
+    'Starter idea bank entry.',
+    'saved'
+  )
+on conflict (id) do update
+set title = excluded.title,
+    summary = excluded.summary,
+    tags = excluded.tags,
+    suggested_use = excluded.suggested_use,
+    shootability = excluded.shootability,
+    fit_score = excluded.fit_score,
+    notes = excluded.notes,
+    status = excluded.status,
+    updated_at = now();
+
+insert into public.weekly_plans (
+  id,
+  workspace_id,
+  creator_id,
+  creator_profile_id,
+  week_start_date,
+  status,
+  strategy_summary,
+  warnings,
+  assumptions,
+  is_soft_locked,
+  published_at
+)
+values (
+  'c22bff51-1514-41a6-b67b-d7184cbe4c32',
+  '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+  'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+  '6951e533-53a0-443f-91ee-8a73afaba4cf',
+  '2026-06-01',
+  'published',
+  'Live starter week for Mamta and Prateek. Keep it simple, current, and low effort.',
+  '[]'::jsonb,
+  '["Bootstrapped for first TestFlight use."]'::jsonb,
+  true,
+  now()
+)
+on conflict (id) do update
+set creator_profile_id = excluded.creator_profile_id,
+    status = excluded.status,
+    strategy_summary = excluded.strategy_summary,
+    warnings = excluded.warnings,
+    assumptions = excluded.assumptions,
+    is_soft_locked = excluded.is_soft_locked,
+    published_at = excluded.published_at,
+    updated_at = now();
+
+insert into public.daily_cards (
+  id,
+  workspace_id,
+  creator_id,
+  weekly_plan_id,
+  scheduled_date,
+  status,
+  title,
+  why_today,
+  content_pillar,
+  shootability,
+  estimated_shoot_minutes,
+  scene_list,
+  script,
+  caption,
+  hashtags,
+  cover_text,
+  post_instructions,
+  backup_story,
+  backup_caption_only,
+  mamta_fit_score,
+  risk_notes,
+  assumptions,
+  source_note
+)
+values
+  (
+    '7496d959-0816-4f35-97b2-a4a1035ebe78',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    'c22bff51-1514-41a6-b67b-d7184cbe4c32',
+    '2026-06-01',
+    'published',
+    'Reset Monday',
+    'Start the week clean with one simple routine detail.',
+    'routine',
+    'easy',
+    10,
+    '[{"number":1,"title":"Shoes by the door","duration":"3 sec","symbol":"shoeprints.fill"},{"number":2,"title":"Open the journal","duration":"4 sec","symbol":"book.closed"},{"number":3,"title":"One useful takeaway","duration":"3 sec","symbol":"text.quote"}]'::jsonb,
+    'Show one reset detail. Keep it calm.',
+    'Resetting the week with one small thing done properly.',
+    array['routine', 'fitness'],
+    'Reset Monday',
+    '{"audio": "Use calm fallback if no trending audio fits."}'::jsonb,
+    '{"title": "10-second story", "line": "One reset detail from today."}'::jsonb,
+    '{"title": "Caption-only", "line": "Resetting with one small thing today."}'::jsonb,
+    82,
+    '[]'::jsonb,
+    '[]'::jsonb,
+    'Routine source'
+  ),
+  (
+    '44283fe3-b84b-450d-8a23-f794ec6beb7e',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    'c22bff51-1514-41a6-b67b-d7184cbe4c32',
+    '2026-06-02',
+    'published',
+    'Sharpen, do not chase',
+    'A low-pressure training thought fits today.',
+    'routine',
+    'easy',
+    10,
+    '[{"number":1,"title":"Training shoes","duration":"3 sec","symbol":"shoeprints.fill"},{"number":2,"title":"One steady movement","duration":"5 sec","symbol":"figure.run"},{"number":3,"title":"Close with the point","duration":"3 sec","symbol":"checkmark"}]'::jsonb,
+    'One steady training thought.',
+    'Sharpening, not chasing.',
+    array['training', 'routine'],
+    'Sharpen',
+    '{}'::jsonb,
+    '{"title": "Story backup", "line": "One steady training thought."}'::jsonb,
+    '{"title": "Caption-only", "line": "Sharpening, not chasing."}'::jsonb,
+    80,
+    '[]'::jsonb,
+    '[]'::jsonb,
+    'Routine source'
+  ),
+  (
+    '1de4bb20-e2bf-47e5-a786-9193beb4d002',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    'c22bff51-1514-41a6-b67b-d7184cbe4c32',
+    '2026-06-03',
+    'published',
+    'Fuel the engine',
+    'Make recovery visible without explaining too much.',
+    'fitness',
+    'easy',
+    8,
+    '[{"number":1,"title":"Bottle or snack","duration":"3 sec","symbol":"waterbottle"},{"number":2,"title":"Quiet prep","duration":"4 sec","symbol":"leaf"},{"number":3,"title":"One line caption","duration":"3 sec","symbol":"text.quote"}]'::jsonb,
+    'Show fuel or recovery prep.',
+    'Keeping the engine steady.',
+    array['fitness', 'recovery'],
+    'Fuel',
+    '{}'::jsonb,
+    '{"title": "Story backup", "line": "Fuel and recovery today."}'::jsonb,
+    '{"title": "Caption-only", "line": "Keeping the engine steady."}'::jsonb,
+    81,
+    '[]'::jsonb,
+    '[]'::jsonb,
+    'Pattern source'
+  ),
+  (
+    '260171de-0632-4860-b458-aa05af44932d',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    'c22bff51-1514-41a6-b67b-d7184cbe4c32',
+    '2026-06-04',
+    'published',
+    'Shakeout and mindset',
+    'Low-effort prep before race day.',
+    'routine',
+    'easy',
+    9,
+    '[{"number":1,"title":"Laces or kit","duration":"3 sec","symbol":"shoeprints.fill"},{"number":2,"title":"Short walk","duration":"5 sec","symbol":"figure.walk"},{"number":3,"title":"Calm close","duration":"3 sec","symbol":"heart"}]'::jsonb,
+    'Show one shakeout detail.',
+    'A small shakeout before the big day.',
+    array['race', 'routine'],
+    'Shakeout',
+    '{}'::jsonb,
+    '{"title": "Story backup", "line": "One shakeout detail."}'::jsonb,
+    '{"title": "Caption-only", "line": "A small shakeout before the big day."}'::jsonb,
+    83,
+    '[]'::jsonb,
+    '[]'::jsonb,
+    'Routine source'
+  ),
+  (
+    'e4abc20d-0d71-4065-8c2a-fe684c6d1081',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    'c22bff51-1514-41a6-b67b-d7184cbe4c32',
+    '2026-06-05',
+    'published',
+    'Race week has entered the house',
+    'Stay visible without overthinking it.',
+    'pattern',
+    'easy',
+    12,
+    '[{"number":1,"title":"Shoes by the door","duration":"3 sec","symbol":"shoeprints.fill"},{"number":2,"title":"Open the journal","duration":"4 sec","symbol":"book.closed"},{"number":3,"title":"Bottle, timer, breath","duration":"3 sec","symbol":"waterbottle"},{"number":4,"title":"One steady stride","duration":"2 sec","symbol":"figure.run"}]'::jsonb,
+    'Keep it simple. Race week is already enough.',
+    'Race week has entered the house. Keeping it simple, steady, and real today.',
+    array['raceweek', 'routine'],
+    'Race Week',
+    '{"audio": "Use confirmed calm audio fallback if needed."}'::jsonb,
+    '{"title": "10-second story", "line": "Race week, keeping it steady."}'::jsonb,
+    '{"title": "Caption-only", "line": "Race week has entered the house."}'::jsonb,
+    90,
+    '[]'::jsonb,
+    '["Starter live card."]'::jsonb,
+    'Inspired by a race-week discipline pattern.'
+  ),
+  (
+    'a8cb120b-2b8b-4e31-9d14-a0836a4bc2fa',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    'c22bff51-1514-41a6-b67b-d7184cbe4c32',
+    '2026-06-06',
+    'published',
+    'Race day. Let us go.',
+    'Today should be useful and very easy to execute.',
+    'moment',
+    'backup',
+    8,
+    '[{"number":1,"title":"Kit detail","duration":"3 sec","symbol":"shoeprints.fill"},{"number":2,"title":"One race-day breath","duration":"4 sec","symbol":"figure.run"},{"number":3,"title":"Simple close","duration":"3 sec","symbol":"checkmark.seal"}]'::jsonb,
+    'Show one race-day detail. No big explanation.',
+    'Race day. One calm step at a time.',
+    array['raceday', 'fitness'],
+    'Race Day',
+    '{"audio": "Only use audio if it feels calm and brand-safe."}'::jsonb,
+    '{"title": "Race-day story", "line": "One calm race-day detail."}'::jsonb,
+    '{"title": "Caption-only", "line": "Race day. One calm step at a time."}'::jsonb,
+    88,
+    '[]'::jsonb,
+    '[]'::jsonb,
+    'Moment source'
+  ),
+  (
+    'e9a2efd8-852d-4fe3-a158-99ebaf2c0510',
+    '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
+    'dbc7452d-c2ff-4d52-976f-734fad55f86b',
+    'c22bff51-1514-41a6-b67b-d7184cbe4c32',
+    '2026-06-07',
+    'draft',
+    'Open family moment',
+    'Choose only if the day feels natural.',
+    'moment',
+    'open',
+    0,
+    '[]'::jsonb,
+    null,
+    null,
+    array['family'],
+    'Open',
+    '{}'::jsonb,
+    '{"title": "Story backup", "line": "A quiet family moment."}'::jsonb,
+    '{"title": "Caption-only", "line": "Keeping Sunday simple."}'::jsonb,
+    78,
+    '[]'::jsonb,
+    '[]'::jsonb,
+    'Moment source'
+  )
+on conflict (weekly_plan_id, scheduled_date) do update
+set status = excluded.status,
+    title = excluded.title,
+    why_today = excluded.why_today,
+    content_pillar = excluded.content_pillar,
+    shootability = excluded.shootability,
+    estimated_shoot_minutes = excluded.estimated_shoot_minutes,
+    scene_list = excluded.scene_list,
+    script = excluded.script,
+    caption = excluded.caption,
+    hashtags = excluded.hashtags,
+    cover_text = excluded.cover_text,
+    post_instructions = excluded.post_instructions,
+    backup_story = excluded.backup_story,
+    backup_caption_only = excluded.backup_caption_only,
+    mamta_fit_score = excluded.mamta_fit_score,
+    risk_notes = excluded.risk_notes,
+    assumptions = excluded.assumptions,
+    source_note = excluded.source_note,
+    updated_at = now();

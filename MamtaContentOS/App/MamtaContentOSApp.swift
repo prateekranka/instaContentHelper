@@ -4,18 +4,18 @@ import SwiftUI
 @MainActor
 struct MamtaContentOSApp: App {
     @State private var appState = AppState()
-    @State private var runtime = AppRuntime.makeInitialRuntime()
 
     var body: some Scene {
         WindowGroup {
             MamtaContentOSAppView()
                 .environment(appState)
-                .environment(runtime.services)
-                .task {
-                    if runtime.services.loadTodayFromCache() {
-                        await runtime.services.scheduleTodayNotificationIfNeededImmediately()
+                .environment(appState.runtime.services)
+                .task(id: appState.runtime.mode) {
+                    let services = appState.runtime.services
+                    if services.loadTodayFromCache() {
+                        await services.scheduleTodayNotificationIfNeededImmediately()
                     }
-                    await runtime.services.refreshFromRepositoriesImmediately()
+                    await services.refreshFromRepositoriesImmediately()
                 }
         }
     }

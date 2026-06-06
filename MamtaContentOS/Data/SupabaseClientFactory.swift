@@ -36,6 +36,9 @@ enum SupabaseContentTable: String, CaseIterable, Sendable {
     case cardAlternatives = "card_alternatives"
     case sourceReferences = "source_references"
     case referenceExtractions = "reference_extractions"
+    case benchmarkCreators = "benchmark_creators"
+    case watchlists
+    case watchlistBenchmarkCreators = "watchlist_benchmark_creators"
     case patterns
     case trends
     case audioOptions = "audio_options"
@@ -63,6 +66,7 @@ struct SupabaseRepositoryBundleFactory {
             today: SupabaseTodayCardRepository(client: client),
             weeklyPlans: SupabaseWeeklyPlanRepository(client: client),
             references: sourcePulse,
+            referenceImport: SupabaseReferenceImportRepository(client: client),
             intelligence: SupabaseIntelligenceRepository(client: client, references: sourcePulse),
             creatorProfile: SupabaseCreatorProfileRepository(client: client),
             archive: SupabaseArchiveRepository(client: client)

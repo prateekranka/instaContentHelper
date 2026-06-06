@@ -345,6 +345,7 @@ struct SupabaseSourceReferenceRow: Codable, Hashable, Sendable {
     var manualNotes: String?
     var status: String
     var analysisConfidence: Double?
+    var createdAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -354,6 +355,7 @@ struct SupabaseSourceReferenceRow: Codable, Hashable, Sendable {
         case manualNotes = "manual_notes"
         case status
         case analysisConfidence = "analysis_confidence"
+        case createdAt = "created_at"
     }
 
     func referenceSummary() -> ReferenceSummary {
@@ -363,7 +365,71 @@ struct SupabaseSourceReferenceRow: Codable, Hashable, Sendable {
             sourceType: sourceType.displayTitle,
             note: status.displayTitle,
             state: IntelligenceReviewState(referenceStatus: status),
-            symbol: sourceType.referenceSymbol
+            symbol: sourceType.referenceSymbol,
+            sourceURL: sourceURL
+        )
+    }
+
+    func reviewItem() -> IntelligenceItem {
+        IntelligenceItem(
+            id: id,
+            title: manualNotes?.nilIfBlank ?? sourceURL?.nilIfBlank ?? "Imported reference",
+            subtitle: sourceURL?.nilIfBlank ?? "Imported row needs a decision.",
+            kind: .watchlist,
+            state: IntelligenceReviewState(referenceStatus: status),
+            trailingNote: ReferenceImportTypeChip(sourceType: sourceType).rawValue,
+            symbol: sourceType.referenceSymbol,
+            typeChip: ReferenceImportTypeChip(sourceType: sourceType),
+            sourceURL: sourceURL,
+            reviewItem: ReferenceReviewItem(kind: .sourceReference, id: id),
+            sortKey: createdAt
+        )
+    }
+}
+
+struct SupabaseBenchmarkCreatorRow: Codable, Hashable, Sendable {
+    var id: UUID
+    var handle: String?
+    var displayName: String?
+    var platform: String?
+    var region: String?
+    var relevanceNotes: String?
+    var status: String
+    var normalizedHandle: String?
+    var createdAt: String?
+    var updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case handle
+        case displayName = "display_name"
+        case platform
+        case region
+        case relevanceNotes = "relevance_notes"
+        case status
+        case normalizedHandle = "normalized_handle"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    func reviewItem() -> IntelligenceItem {
+        let displayHandle = handle?.nilIfBlank
+            ?? normalizedHandle.map { "@\($0)" }
+            ?? displayName?.nilIfBlank
+            ?? "Reference creator"
+
+        return IntelligenceItem(
+            id: id,
+            title: displayName?.nilIfBlank ?? displayHandle,
+            subtitle: relevanceNotes?.nilIfBlank ?? region?.nilIfBlank ?? "Candidate inspiration account.",
+            kind: .watchlist,
+            state: IntelligenceReviewState(benchmarkCreatorStatus: status),
+            trailingNote: "Account",
+            symbol: "at",
+            typeChip: .account,
+            sourceURL: normalizedHandle.map { "https://www.instagram.com/\($0)" },
+            reviewItem: ReferenceReviewItem(kind: .benchmarkCreator, id: id),
+            sortKey: updatedAt ?? createdAt
         )
     }
 }
@@ -827,7 +893,18 @@ extension IntelligenceReviewState {
         switch referenceStatus {
         case "confirmed":
             self = .approved
-        case "analyzed", "added", "analyzing":
+        case "needs_review", "analyzed", "added", "analyzing":
+            self = .needsReview
+        default:
+            self = .ready
+        }
+    }
+
+    init(benchmarkCreatorStatus: String) {
+        switch benchmarkCreatorStatus {
+        case "active":
+            self = .approved
+        case "candidate":
             self = .needsReview
         default:
             self = .ready

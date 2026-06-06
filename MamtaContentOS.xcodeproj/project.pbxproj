@@ -13,28 +13,39 @@
 		0B278833890DA1DF766DC5DE /* RuntimeConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD700FA609143524436D6709 /* RuntimeConfigurationStore.swift */; };
 		1353736AAAF26CF0E38EFF5E /* SupabaseDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFDD30845CB77703DF4A818B /* SupabaseDTOs.swift */; };
 		21EC4C9D17EAD09793C0EEA5 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 0DF8DD64AEA336D09792ED00 /* Supabase */; };
+		220E93E27E0044EE2BE8B6D5 /* DeviceReadDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4FF873EBEBCFD198FF9BD0 /* DeviceReadDTOs.swift */; };
 		24F043ECAA08AB51A89DB600 /* MamtaShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70ACBDBFD0B2930C0547A3E9 /* MamtaShellView.swift */; };
 		283796245512610D0F6AD889 /* AppRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14695506B80EFA6826075CD /* AppRuntime.swift */; };
+		2D700858CD34F1025DFD73E4 /* ReferenceImportPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DE48B0C25C6F196B31E9AF7 /* ReferenceImportPreviewView.swift */; };
 		35430AA266E0562C508B80CE /* ShootFolioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B21D43E5D07307B9CF480F2 /* ShootFolioView.swift */; };
+		42561F5ECBF8628DE0DA368E /* ReferenceReviewEditSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03884B0BFE9DCF761159721D /* ReferenceReviewEditSheet.swift */; };
 		456E78CE2AB56A24F981FA0D /* Fixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F244068C45A28790DCF8584 /* Fixtures.swift */; };
 		4F4ED9CD4B4324BDD9FFC43A /* AppRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26818B7823EA3DEBE2DCE7B5 /* AppRepositories.swift */; };
 		5EEA46365601D4CF1A682DE6 /* ArchiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E10F60905762215750EF749 /* ArchiveView.swift */; };
 		5F9C716A6D923923458AB68D /* NotTodaySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D186205F0AA32C0864AC87F /* NotTodaySheet.swift */; };
 		6210C78D8AF8CE5D2929E2E0 /* WeeklyPublishingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19450127B95D1213128FA8F1 /* WeeklyPublishingModels.swift */; };
+		6E1A986395A3599A1B1F0084 /* ReferenceImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA8444D7E26FAF3838C24C10 /* ReferenceImportTests.swift */; };
 		774734A48E44DAA69970613B /* TodayCacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910A4CD086DDAA0BD6AE5372 /* TodayCacheStore.swift */; };
 		794E29FCB303450D31C5CE2F /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3576E464C4473CF7FCEEDFE /* AppServices.swift */; };
+		7CF734A3911FD629A7991013 /* ReferenceImportDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = FADE891D0AB372D48886D534 /* ReferenceImportDTOs.swift */; };
 		7E1AA0438BF6FEBB25E632B0 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF602D1A9C372D526861142 /* AppState.swift */; };
 		7F8470E6CA856219806DA72D /* DevicePairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 770B5398234556EA30E41814 /* DevicePairingService.swift */; };
+		8D7ABC16A266086BB9D41468 /* PrateekAdminUsageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34C68CA0F625F293D0D3FA1E /* PrateekAdminUsageTests.swift */; };
 		8F472C50B1D9E5FD16D9EEDC /* WeeklyControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B81E5DE6B61E24EC12A88B /* WeeklyControlView.swift */; };
 		93EFCBE2204EFD615DA95D7E /* PublishWeekFixtureAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94702367096BCED709F2FA08 /* PublishWeekFixtureAcceptanceTests.swift */; };
 		9B28375AA88F4527DDDEE7D7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C223CB335ADD9D1AEE6DD9CF /* Assets.xcassets */; };
+		9E686408A4D235CD927069F6 /* DevicePairingServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE6244CF5DBCCD6687AE685 /* DevicePairingServiceTests.swift */; };
 		A4A1687103FDBE418A2064DE /* FixtureRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8371AD34F414122A56E4953B /* FixtureRepositories.swift */; };
 		B165163EC0429B1E2F027884 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4CA536B337AB64C0D33ADB /* Models.swift */; };
 		C01436F62EB8397645D741F8 /* AdminShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A96C9F4C2D0D8FAF32D8463F /* AdminShellView.swift */; };
 		C3649EC4C9F894ACC3911EBF /* IntelligenceHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC804EC50E4B92347FB47B01 /* IntelligenceHomeView.swift */; };
 		C62BA8C125D85DD70BD2492E /* TodayNotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0307542B19B96945D2B526 /* TodayNotificationScheduler.swift */; };
 		CAF4C15ED7243D6DBD9BF7AF /* SupabaseRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F8BDAFC990C52C6A89AC1C /* SupabaseRepositories.swift */; };
+		CC47CA66A7EF32805F41E636 /* WriteContentDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 612CDAE589301709E2DB3DC6 /* WriteContentDTOs.swift */; };
+		CE5024377833EB39396D1B39 /* ReferenceImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FA6CB8CF8E16FE25B978B7 /* ReferenceImportView.swift */; };
+		D2DF81ABBE03D1CEE72A1C92 /* ReferenceImportRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08DA8C2DD5AE6DD8225115C3 /* ReferenceImportRepository.swift */; };
 		D61AE090F50ACB98895CDC8F /* SupabaseClientFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0BC93D58389D734683886CB /* SupabaseClientFactory.swift */; };
+		FACD3E34225D3FA22451128F /* SupabaseWriteContentDTOTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13AA2EC2A0E4BA4762D9FE1A /* SupabaseWriteContentDTOTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,17 +60,24 @@
 
 /* Begin PBXFileReference section */
 		02ACA70F13D6F794327B581A /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		03884B0BFE9DCF761159721D /* ReferenceReviewEditSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceReviewEditSheet.swift; sourceTree = "<group>"; };
+		08DA8C2DD5AE6DD8225115C3 /* ReferenceImportRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportRepository.swift; sourceTree = "<group>"; };
+		13AA2EC2A0E4BA4762D9FE1A /* SupabaseWriteContentDTOTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseWriteContentDTOTests.swift; sourceTree = "<group>"; };
 		178EE2A7CFD2D1AFDF61172A /* Runtime.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Runtime.xcconfig; sourceTree = "<group>"; };
 		19450127B95D1213128FA8F1 /* WeeklyPublishingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyPublishingModels.swift; sourceTree = "<group>"; };
 		1B21D43E5D07307B9CF480F2 /* ShootFolioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShootFolioView.swift; sourceTree = "<group>"; };
 		1C7F2B6585A65CC2E3972E38 /* LocalRuntime.sample.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = LocalRuntime.sample.xcconfig; sourceTree = "<group>"; };
 		24B81E5DE6B61E24EC12A88B /* WeeklyControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyControlView.swift; sourceTree = "<group>"; };
 		26818B7823EA3DEBE2DCE7B5 /* AppRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRepositories.swift; sourceTree = "<group>"; };
+		28EEB5AC2E0958B242FC23B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		34C68CA0F625F293D0D3FA1E /* PrateekAdminUsageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrateekAdminUsageTests.swift; sourceTree = "<group>"; };
 		3C0307542B19B96945D2B526 /* TodayNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayNotificationScheduler.swift; sourceTree = "<group>"; };
 		3C4CA536B337AB64C0D33ADB /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		3C4FF873EBEBCFD198FF9BD0 /* DeviceReadDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceReadDTOs.swift; sourceTree = "<group>"; };
 		404FD0731610EF4ED612A957 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		414641F2F0AFE65BACFCF578 /* MamtaContentOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MamtaContentOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		56F8BDAFC990C52C6A89AC1C /* SupabaseRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseRepositories.swift; sourceTree = "<group>"; };
+		612CDAE589301709E2DB3DC6 /* WriteContentDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriteContentDTOs.swift; sourceTree = "<group>"; };
 		6D186205F0AA32C0864AC87F /* NotTodaySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotTodaySheet.swift; sourceTree = "<group>"; };
 		6E10F60905762215750EF749 /* ArchiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveView.swift; sourceTree = "<group>"; };
 		70ACBDBFD0B2930C0547A3E9 /* MamtaShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MamtaShellView.swift; sourceTree = "<group>"; };
@@ -69,14 +87,19 @@
 		8F244068C45A28790DCF8584 /* Fixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fixtures.swift; sourceTree = "<group>"; };
 		910A4CD086DDAA0BD6AE5372 /* TodayCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayCacheStore.swift; sourceTree = "<group>"; };
 		94702367096BCED709F2FA08 /* PublishWeekFixtureAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishWeekFixtureAcceptanceTests.swift; sourceTree = "<group>"; };
+		9DE48B0C25C6F196B31E9AF7 /* ReferenceImportPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportPreviewView.swift; sourceTree = "<group>"; };
 		A0BC93D58389D734683886CB /* SupabaseClientFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientFactory.swift; sourceTree = "<group>"; };
 		A96C9F4C2D0D8FAF32D8463F /* AdminShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminShellView.swift; sourceTree = "<group>"; };
 		BD700FA609143524436D6709 /* RuntimeConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfigurationStore.swift; sourceTree = "<group>"; };
+		BDE6244CF5DBCCD6687AE685 /* DevicePairingServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePairingServiceTests.swift; sourceTree = "<group>"; };
 		C14695506B80EFA6826075CD /* AppRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRuntime.swift; sourceTree = "<group>"; };
 		C223CB335ADD9D1AEE6DD9CF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CD8F880AA64A84D1D5706471 /* MamtaContentOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MamtaContentOSApp.swift; sourceTree = "<group>"; };
 		CFF602D1A9C372D526861142 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		E3576E464C4473CF7FCEEDFE /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
+		E7FA6CB8CF8E16FE25B978B7 /* ReferenceImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportView.swift; sourceTree = "<group>"; };
+		FA8444D7E26FAF3838C24C10 /* ReferenceImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportTests.swift; sourceTree = "<group>"; };
+		FADE891D0AB372D48886D534 /* ReferenceImportDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportDTOs.swift; sourceTree = "<group>"; };
 		FC804EC50E4B92347FB47B01 /* IntelligenceHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceHomeView.swift; sourceTree = "<group>"; };
 		FFDD30845CB77703DF4A818B /* SupabaseDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseDTOs.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -149,6 +172,7 @@
 		42D89BE60F5E9DEAE8AF32F4 /* MamtaContentOS */ = {
 			isa = PBXGroup;
 			children = (
+				28EEB5AC2E0958B242FC23B3 /* Info.plist */,
 				3848CD42D9AA221179F3C7E2 /* App */,
 				68197384AE38C4FC9EB7273D /* Config */,
 				EC0CB1D913EDCC586D9D1ACF /* Data */,
@@ -175,6 +199,9 @@
 			isa = PBXGroup;
 			children = (
 				FC804EC50E4B92347FB47B01 /* IntelligenceHomeView.swift */,
+				9DE48B0C25C6F196B31E9AF7 /* ReferenceImportPreviewView.swift */,
+				E7FA6CB8CF8E16FE25B978B7 /* ReferenceImportView.swift */,
+				03884B0BFE9DCF761159721D /* ReferenceReviewEditSheet.swift */,
 			);
 			path = Intelligence;
 			sourceTree = "<group>";
@@ -237,7 +264,11 @@
 		E49BDB364DE8F9F7192BAA40 /* MamtaContentOSTests */ = {
 			isa = PBXGroup;
 			children = (
+				BDE6244CF5DBCCD6687AE685 /* DevicePairingServiceTests.swift */,
+				34C68CA0F625F293D0D3FA1E /* PrateekAdminUsageTests.swift */,
 				94702367096BCED709F2FA08 /* PublishWeekFixtureAcceptanceTests.swift */,
+				FA8444D7E26FAF3838C24C10 /* ReferenceImportTests.swift */,
+				13AA2EC2A0E4BA4762D9FE1A /* SupabaseWriteContentDTOTests.swift */,
 			);
 			path = MamtaContentOSTests;
 			sourceTree = "<group>";
@@ -247,6 +278,9 @@
 			children = (
 				26818B7823EA3DEBE2DCE7B5 /* AppRepositories.swift */,
 				770B5398234556EA30E41814 /* DevicePairingService.swift */,
+				3C4FF873EBEBCFD198FF9BD0 /* DeviceReadDTOs.swift */,
+				FADE891D0AB372D48886D534 /* ReferenceImportDTOs.swift */,
+				08DA8C2DD5AE6DD8225115C3 /* ReferenceImportRepository.swift */,
 				BD700FA609143524436D6709 /* RuntimeConfigurationStore.swift */,
 				A0BC93D58389D734683886CB /* SupabaseClientFactory.swift */,
 				FFDD30845CB77703DF4A818B /* SupabaseDTOs.swift */,
@@ -254,6 +288,7 @@
 				910A4CD086DDAA0BD6AE5372 /* TodayCacheStore.swift */,
 				3C0307542B19B96945D2B526 /* TodayNotificationScheduler.swift */,
 				19450127B95D1213128FA8F1 /* WeeklyPublishingModels.swift */,
+				612CDAE589301709E2DB3DC6 /* WriteContentDTOs.swift */,
 			);
 			path = Data;
 			sourceTree = "<group>";
@@ -283,6 +318,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0250D9986AD1CA18A5686ED7 /* Build configuration list for PBXNativeTarget "MamtaContentOS" */;
 			buildPhases = (
+				42A914FF2C875742E4A8108D /* Require Live Release Bootstrap */,
 				78114A1F3AB84C6B28D8EEE9 /* Sources */,
 				162B1C55E00E27F362DFE613 /* Resources */,
 				7CF93A4F10CE8D33D2EF609D /* Frameworks */,
@@ -352,12 +388,38 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		42A914FF2C875742E4A8108D /* Require Live Release Bootstrap */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Require Live Release Bootstrap";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh \"$SRCROOT/scripts/require-live-release-bootstrap.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		71460C075BB242AB6BB8714D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9E686408A4D235CD927069F6 /* DevicePairingServiceTests.swift in Sources */,
+				8D7ABC16A266086BB9D41468 /* PrateekAdminUsageTests.swift in Sources */,
 				93EFCBE2204EFD615DA95D7E /* PublishWeekFixtureAcceptanceTests.swift in Sources */,
+				6E1A986395A3599A1B1F0084 /* ReferenceImportTests.swift in Sources */,
+				FACD3E34225D3FA22451128F /* SupabaseWriteContentDTOTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -373,6 +435,7 @@
 				5EEA46365601D4CF1A682DE6 /* ArchiveView.swift in Sources */,
 				0149845E49F82A0CBFC6D7F3 /* DesignSystem.swift in Sources */,
 				7F8470E6CA856219806DA72D /* DevicePairingService.swift in Sources */,
+				220E93E27E0044EE2BE8B6D5 /* DeviceReadDTOs.swift in Sources */,
 				A4A1687103FDBE418A2064DE /* FixtureRepositories.swift in Sources */,
 				456E78CE2AB56A24F981FA0D /* Fixtures.swift in Sources */,
 				C3649EC4C9F894ACC3911EBF /* IntelligenceHomeView.swift in Sources */,
@@ -380,6 +443,11 @@
 				24F043ECAA08AB51A89DB600 /* MamtaShellView.swift in Sources */,
 				B165163EC0429B1E2F027884 /* Models.swift in Sources */,
 				5F9C716A6D923923458AB68D /* NotTodaySheet.swift in Sources */,
+				7CF734A3911FD629A7991013 /* ReferenceImportDTOs.swift in Sources */,
+				2D700858CD34F1025DFD73E4 /* ReferenceImportPreviewView.swift in Sources */,
+				D2DF81ABBE03D1CEE72A1C92 /* ReferenceImportRepository.swift in Sources */,
+				CE5024377833EB39396D1B39 /* ReferenceImportView.swift in Sources */,
+				42561F5ECBF8628DE0DA368E /* ReferenceReviewEditSheet.swift in Sources */,
 				0B278833890DA1DF766DC5DE /* RuntimeConfigurationStore.swift in Sources */,
 				35430AA266E0562C508B80CE /* ShootFolioView.swift in Sources */,
 				D61AE090F50ACB98895CDC8F /* SupabaseClientFactory.swift in Sources */,
@@ -390,6 +458,7 @@
 				0897B34D4A37D495BA40CA86 /* TodayView.swift in Sources */,
 				8F472C50B1D9E5FD16D9EEDC /* WeeklyControlView.swift in Sources */,
 				6210C78D8AF8CE5D2929E2E0 /* WeeklyPublishingModels.swift in Sources */,
+				CC47CA66A7EF32805F41E636 /* WriteContentDTOs.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -412,16 +481,10 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 4JRB53LG5C;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = ContentHelper;
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_MCO_SUPABASE_PUBLISHABLE_KEY = "$(MCO_SUPABASE_PUBLISHABLE_KEY)";
-				INFOPLIST_KEY_MCO_SUPABASE_URL = "$(MCO_SUPABASE_URL)";
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MamtaContentOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -585,16 +648,10 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 4JRB53LG5C;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = ContentHelper;
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_MCO_SUPABASE_PUBLISHABLE_KEY = "$(MCO_SUPABASE_PUBLISHABLE_KEY)";
-				INFOPLIST_KEY_MCO_SUPABASE_URL = "$(MCO_SUPABASE_URL)";
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = MamtaContentOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

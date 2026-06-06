@@ -225,6 +225,24 @@ struct WeeklyPlan: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+extension WeeklyPlan {
+    var plannedDayCount: Int {
+        days.filter { $0.state == .planned }.count
+    }
+
+    var backupDayCount: Int {
+        days.filter { $0.state == .backup }.count
+    }
+
+    var openDayCount: Int {
+        days.filter { $0.state == .open }.count
+    }
+
+    var computedReadinessLine: String {
+        "\(plannedDayCount) ready, \(backupDayCount) backup, \(openDayCount) open"
+    }
+}
+
 struct WeeklyDay: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     var weekday: String
@@ -374,6 +392,7 @@ struct ReferenceSummary: Identifiable, Hashable, Sendable {
     var note: String
     var state: IntelligenceReviewState
     var symbol: String
+    var sourceURL: String?
 
     init(
         id: UUID = UUID(),
@@ -381,7 +400,8 @@ struct ReferenceSummary: Identifiable, Hashable, Sendable {
         sourceType: String,
         note: String,
         state: IntelligenceReviewState,
-        symbol: String
+        symbol: String,
+        sourceURL: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -389,6 +409,7 @@ struct ReferenceSummary: Identifiable, Hashable, Sendable {
         self.note = note
         self.state = state
         self.symbol = symbol
+        self.sourceURL = sourceURL
     }
 }
 
@@ -400,6 +421,10 @@ struct IntelligenceItem: Identifiable, Hashable, Sendable {
     var state: IntelligenceReviewState
     var trailingNote: String
     var symbol: String
+    var typeChip: ReferenceImportTypeChip?
+    var sourceURL: String?
+    var reviewItem: ReferenceReviewItem?
+    var sortKey: String?
 
     init(
         id: UUID = UUID(),
@@ -408,7 +433,11 @@ struct IntelligenceItem: Identifiable, Hashable, Sendable {
         kind: IntelligenceKind,
         state: IntelligenceReviewState,
         trailingNote: String,
-        symbol: String
+        symbol: String,
+        typeChip: ReferenceImportTypeChip? = nil,
+        sourceURL: String? = nil,
+        reviewItem: ReferenceReviewItem? = nil,
+        sortKey: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -417,6 +446,10 @@ struct IntelligenceItem: Identifiable, Hashable, Sendable {
         self.state = state
         self.trailingNote = trailingNote
         self.symbol = symbol
+        self.typeChip = typeChip
+        self.sourceURL = sourceURL
+        self.reviewItem = reviewItem
+        self.sortKey = sortKey
     }
 }
 
@@ -468,4 +501,144 @@ struct IntelligenceLibrarySection: Identifiable, Hashable, Sendable {
         self.count = count
         self.symbol = symbol
     }
+}
+
+enum ReferenceImportInputType: String, Codable, Hashable, Sendable {
+    case paste
+    case csv
+}
+
+struct ReferenceImportPreview: Hashable, Sendable {
+    var parserVersion: String
+    var previewChecksum: String
+    var destination: ReferenceImportDestination
+    var counts: ReferenceImportCounts
+    var rows: [ReferenceImportRow]
+}
+
+struct ReferenceImportDestination: Hashable, Sendable {
+    var watchlistID: UUID?
+    var watchlistName: String
+}
+
+struct ReferenceImportCounts: Hashable, Sendable {
+    var totalRows: Int
+    var cleanAccounts: Int
+    var cleanReels: Int
+    var cleanAudio: Int
+    var needsReview: Int
+    var duplicates: Int
+    var invalid: Int
+    var importable: Int
+}
+
+struct ReferenceImportRow: Identifiable, Hashable, Sendable {
+    var clientRowID: String
+    var lineNumber: Int
+    var rawInput: String
+    var typeChip: ReferenceImportTypeChip
+    var classification: String
+    var title: String
+    var url: String?
+    var notes: String?
+    var previewState: ReferenceImportPreviewState
+    var duplicateReason: String?
+    var invalidReason: String?
+
+    var id: String { clientRowID }
+}
+
+enum ReferenceImportTypeChip: String, CaseIterable, Codable, Hashable, Sendable {
+    case account = "Account"
+    case reel = "Reel"
+    case audio = "Audio"
+    case unknown = "Unknown"
+
+    init(sourceType: String) {
+        switch sourceType {
+        case "reel_link", "benchmark_post":
+            self = .reel
+        case "audio_link":
+            self = .audio
+        case "benchmark_creator":
+            self = .account
+        default:
+            self = .unknown
+        }
+    }
+}
+
+enum ReferenceImportPreviewState: String, CaseIterable, Codable, Hashable, Sendable {
+    case clean
+    case needsReview = "needs_review"
+    case duplicate
+    case invalid
+}
+
+struct ReferenceImportConfirmResult: Hashable, Sendable {
+    var parserVersion: String
+    var destination: ReferenceImportDestination
+    var counts: ReferenceImportConfirmCounts
+    var toast: String
+}
+
+struct ReferenceImportConfirmCounts: Hashable, Sendable {
+    var imported: Int
+    var needsReview: Int
+    var duplicatesSkipped: Int
+    var invalid: Int
+}
+
+struct ReferenceReviewRequest: Hashable, Sendable {
+    var item: ReferenceReviewItem
+    var action: ReferenceReviewAction
+    var edit: ReferenceReviewEdit?
+
+    init(
+        item: ReferenceReviewItem,
+        action: ReferenceReviewAction,
+        edit: ReferenceReviewEdit? = nil
+    ) {
+        self.item = item
+        self.action = action
+        self.edit = edit
+    }
+}
+
+struct ReferenceReviewItem: Hashable, Codable, Sendable {
+    var kind: ReferenceReviewItemKind
+    var id: UUID
+}
+
+enum ReferenceReviewItemKind: String, Codable, Hashable, Sendable {
+    case benchmarkCreator = "benchmark_creator"
+    case sourceReference = "source_reference"
+}
+
+enum ReferenceReviewAction: String, Codable, Hashable, Sendable {
+    case approve
+    case dismiss
+    case edit
+}
+
+struct ReferenceReviewEdit: Hashable, Sendable {
+    var targetType: ReferenceReviewEditTarget
+    var handle: String?
+    var url: String?
+    var notes: String?
+}
+
+enum ReferenceReviewEditTarget: String, Codable, Hashable, Sendable {
+    case account
+    case reel
+    case audio
+    case unknown
+}
+
+struct ReferenceReviewResult: Hashable, Sendable {
+    var itemID: UUID
+    var kind: ReferenceReviewItemKind
+    var action: ReferenceReviewAction
+    var resultStatus: String
+    var toast: String
 }

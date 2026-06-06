@@ -22,7 +22,8 @@ type SupabaseAdminClient = {
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -68,7 +69,9 @@ Deno.serve(async (request) => {
   const codeHash = await sha256Hex(inviteCode);
   const { data: invite, error: inviteError } = await admin
     .from("device_invites")
-    .select("id, workspace_id, role_granted, expires_at, use_limit, used_count, revoked_at")
+    .select(
+      "id, workspace_id, role_granted, expires_at, use_limit, used_count, revoked_at",
+    )
     .eq("code_hash", codeHash)
     .maybeSingle();
 
@@ -218,11 +221,19 @@ async function sha256Hex(value: string): Promise<string> {
 function generateDeviceToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join(
+    "",
+  );
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(
+    /=+$/g,
+    "",
+  );
 }
 
-async function rollbackInvite(admin: SupabaseAdminClient, invite: DeviceInvite) {
+async function rollbackInvite(
+  admin: SupabaseAdminClient,
+  invite: DeviceInvite,
+) {
   await admin
     .from("device_invites")
     .update({ used_count: invite.used_count })

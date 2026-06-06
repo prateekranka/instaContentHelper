@@ -3,6 +3,7 @@ import SwiftUI
 struct WeeklyControlView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
+    @State private var isReviewingInputs = false
 
     var body: some View {
         EditorialScreen {
@@ -22,7 +23,9 @@ struct WeeklyControlView: View {
             }
         } bottomBar: {
             GlassCommandBar {
-                SecondaryActionButton(title: "Review inputs") {}
+                SecondaryActionButton(title: "Review inputs") {
+                    isReviewingInputs = true
+                }
                     .frame(maxWidth: 154)
                 PrimaryActionButton(
                     title: publishButtonTitle,
@@ -34,6 +37,12 @@ struct WeeklyControlView: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $isReviewingInputs) {
+            WeeklyInputsReviewSheet(
+                plan: services.weeklyPlan,
+                profile: services.creatorProfileSummary
+            )
+        }
     }
 
     private var publishButtonTitle: String {
@@ -103,14 +112,111 @@ struct WeeklyControlView: View {
     }
 }
 
+struct WeeklyInputsReviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let plan: WeeklyPlan
+    let profile: CreatorProfileSummary
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MCOTheme.Color.paper.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: MCOSpace.l) {
+                        header
+                        WeeklySectionTitle(title: "Weekly Brief", subtitle: plan.weekRange)
+                        WeeklySetupSummary(sections: plan.setupSections)
+                        WeeklySectionTitle(title: "Creator Boundaries", subtitle: profile.voiceLine)
+                        boundaryList
+                    }
+                    .padding(.horizontal, MCOSpace.l)
+                    .padding(.top, MCOSpace.l)
+                    .padding(.bottom, MCOSpace.xl)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.xs) {
+            Text("PRATEEK WEEKLY CONTROL")
+                .font(MCOType.tinyLabel)
+                .foregroundStyle(MCOTheme.Color.oxblood)
+            Text("Review inputs")
+                .font(MCOType.screenTitle)
+                .foregroundStyle(MCOTheme.Color.ink)
+            Text("Confirm the week is grounded before Mamta sees the daily cards.")
+                .font(MCOType.bodySmall)
+                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var boundaryList: some View {
+        VStack(spacing: 0) {
+            FolioRow(
+                title: profile.displayName,
+                subtitle: profile.positioning,
+                leading: {
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundStyle(MCOTheme.Color.brass)
+                },
+                trailing: {
+                    StatusChip(text: "Voice", tone: .ready)
+                }
+            )
+            Hairline()
+
+            ForEach(profile.noGoTopics, id: \.self) { topic in
+                FolioRow(
+                    title: topic,
+                    subtitle: "Do not use as a content angle.",
+                    leading: {
+                        Image(systemName: "nosign")
+                            .font(.system(size: 22, weight: .light))
+                            .foregroundStyle(MCOTheme.Color.clay)
+                    },
+                    trailing: {
+                        StatusChip(text: "No-go", tone: .warning)
+                    }
+                )
+                Hairline()
+            }
+        }
+    }
+}
+
 struct WeeklyReadinessStrip: View {
     let plan: WeeklyPlan
 
     var body: some View {
         HStack(spacing: MCOSpace.m) {
-            ReadinessItem(systemImage: "checkmark.circle.fill", text: "5 ready", color: MCOTheme.Color.sageDeep)
-            ReadinessItem(systemImage: "exclamationmark.triangle", text: "1 backup", color: MCOTheme.Color.brass)
-            ReadinessItem(systemImage: "circle.dashed", text: "1 open", color: MCOTheme.Color.inkMuted)
+            ReadinessItem(
+                systemImage: "checkmark.circle.fill",
+                text: "\(plan.plannedDayCount) ready",
+                color: MCOTheme.Color.sageDeep
+            )
+            ReadinessItem(
+                systemImage: "exclamationmark.triangle",
+                text: "\(plan.backupDayCount) backup",
+                color: MCOTheme.Color.brass
+            )
+            ReadinessItem(
+                systemImage: "circle.dashed",
+                text: "\(plan.openDayCount) open",
+                color: MCOTheme.Color.inkMuted
+            )
         }
         .padding(MCOSpace.s)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -120,7 +226,7 @@ struct WeeklyReadinessStrip: View {
             RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
                 .stroke(MCOTheme.Color.hairline, lineWidth: 1)
         }
-        .accessibilityLabel(plan.readinessLine)
+        .accessibilityLabel(plan.computedReadinessLine)
     }
 }
 

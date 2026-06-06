@@ -1,5 +1,9 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { corsHeaders, jsonResponse, verifyDeviceSession } from "../_shared/device-auth.ts";
+import {
+  corsHeaders,
+  jsonResponse,
+  verifyDeviceSession,
+} from "../_shared/device-auth.ts";
 
 type PublishWeekRequest = {
   creator_id?: string;
@@ -44,7 +48,10 @@ Deno.serve(async (request) => {
     auth: { persistSession: false },
   });
 
-  const authResult = await verifyDeviceSession(request, admin, ["owner", "editor"]);
+  const authResult = await verifyDeviceSession(request, admin, [
+    "owner",
+    "editor",
+  ]);
   if ("response" in authResult) {
     return authResult.response;
   }
@@ -69,7 +76,9 @@ Deno.serve(async (request) => {
   if (normalizedDays.some((day) => day === null)) {
     return jsonResponse({ error: "invalid_day_payload" }, 400);
   }
-  const publishDays = normalizedDays.filter((day): day is NormalizedPublishWeekDay => day !== null);
+  const publishDays = normalizedDays.filter((
+    day,
+  ): day is NormalizedPublishWeekDay => day !== null);
 
   const { session } = authResult;
   const { data: creator, error: creatorError } = await admin
@@ -123,7 +132,8 @@ Deno.serve(async (request) => {
     creator_id: creatorID,
     week_start_date: weekStartDate,
     status: "published",
-    strategy_summary: body.strategy_summary ?? "Published from Prateek Weekly Control.",
+    strategy_summary: body.strategy_summary ??
+      "Published from Prateek Weekly Control.",
     warnings: [],
     assumptions: [],
     is_soft_locked: true,
@@ -142,7 +152,8 @@ Deno.serve(async (request) => {
   }
 
   const planWrite = existingPlan
-    ? admin.from("weekly_plans").update(planValues).eq("id", weeklyPlanID).select("id").single()
+    ? admin.from("weekly_plans").update(planValues).eq("id", weeklyPlanID)
+      .select("id").single()
     : admin.from("weekly_plans").insert(planValues).select("id").single();
 
   const { data: writtenPlan, error: planWriteError } = await planWrite;
@@ -190,7 +201,8 @@ function normalizeDay(day: PublishWeekDay): NormalizedPublishWeekDay | null {
   }
 
   const state = day.state ?? "planned";
-  const shootability = day.shootability?.trim() || (state === "backup" ? "backup" : "easy");
+  const shootability = day.shootability?.trim() ||
+    (state === "backup" ? "backup" : "easy");
   const requestedMinutes = day.estimated_shoot_minutes;
 
   return {
@@ -201,9 +213,10 @@ function normalizeDay(day: PublishWeekDay): NormalizedPublishWeekDay | null {
     source: day.source?.trim() || "routine",
     state,
     shootability,
-    estimated_shoot_minutes: typeof requestedMinutes === "number" && Number.isFinite(requestedMinutes)
-      ? Math.max(0, requestedMinutes)
-      : state === "open"
+    estimated_shoot_minutes:
+      typeof requestedMinutes === "number" && Number.isFinite(requestedMinutes)
+        ? Math.max(0, requestedMinutes)
+        : state === "open"
         ? 0
         : 10,
     scene_list: Array.isArray(day.scene_list) ? day.scene_list : [],

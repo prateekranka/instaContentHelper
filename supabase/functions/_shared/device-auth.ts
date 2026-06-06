@@ -12,7 +12,7 @@ export type VerifiedDeviceSession = {
 export async function verifyDeviceSession(
   request: Request,
   admin: SupabaseAdminClient,
-  allowedRoles: string[]
+  allowedRoles: string[],
 ): Promise<{ session: VerifiedDeviceSession } | { response: Response }> {
   const deviceToken = request.headers.get("x-mco-device-token")?.trim();
 
@@ -75,7 +75,10 @@ export async function sha256Hex(value: string): Promise<string> {
     .join("");
 }
 
-export function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+export function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200,
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -87,6 +90,7 @@ export function jsonResponse(body: Record<string, unknown>, status = 200): Respo
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-mco-device-token",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-mco-device-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };

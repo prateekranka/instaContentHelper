@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class AppServices {
     let context: WorkspaceContext
+    let isLiveSupabaseRuntime: Bool
     private let repositories: AppRepositories
     private let todayCache: any TodayCacheStoring
     private let notifications: any TodayNotificationScheduling
@@ -21,9 +22,18 @@ final class AppServices {
     var lastNotificationError: String?
     var isPublishingWeek = false
     var lastPublishSummary: String?
+    var referenceImportPreview: ReferenceImportPreview?
+    var referenceImportConfirmResult: ReferenceImportConfirmResult?
+    var referenceReviewResult: ReferenceReviewResult?
+    var referenceImportToast: String?
+    var lastReferenceImportError: String?
+    var isPreviewingReferenceImport = false
+    var isConfirmingReferenceImport = false
+    var isReviewingReference = false
 
     init(
         repositories: AppRepositories,
+        isLiveSupabaseRuntime: Bool = false,
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
         notifications: any TodayNotificationScheduling = NoopTodayNotificationScheduler(),
         todayCard: DailyCard,
@@ -35,6 +45,7 @@ final class AppServices {
         weekCards: [DailyCard]
     ) {
         self.context = repositories.context
+        self.isLiveSupabaseRuntime = isLiveSupabaseRuntime
         self.repositories = repositories
         self.todayCache = todayCache
         self.notifications = notifications
@@ -53,11 +64,13 @@ final class AppServices {
 
     static func fixtureBacked(
         repositories: AppRepositories = .fixture,
+        isLiveSupabaseRuntime: Bool = false,
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
         notifications: any TodayNotificationScheduling = NoopTodayNotificationScheduler()
     ) -> AppServices {
         AppServices(
             repositories: repositories,
+            isLiveSupabaseRuntime: isLiveSupabaseRuntime,
             todayCache: todayCache,
             notifications: notifications,
             todayCard: .raceWeekToday,
@@ -114,19 +127,23 @@ final class AppServices {
 
     func selectIdeaForNextOpenDay(_ idea: WeeklyIdea) {
         Task {
-            do {
-                let update = try await repositories.weeklyPlans.selectIdeaForNextOpenDay(
-                    idea,
-                    in: weeklyPlan,
-                    ideaBank: weeklyIdeas,
-                    context: context
-                )
-                weeklyPlan = update.weeklyPlan
-                weeklyIdeas = update.ideaBank
-                lastRepositoryError = nil
-            } catch {
-                lastRepositoryError = error.localizedDescription
-            }
+            await selectIdeaForNextOpenDayImmediately(idea)
+        }
+    }
+
+    func selectIdeaForNextOpenDayImmediately(_ idea: WeeklyIdea) async {
+        do {
+            let update = try await repositories.weeklyPlans.selectIdeaForNextOpenDay(
+                idea,
+                in: weeklyPlan,
+                ideaBank: weeklyIdeas,
+                context: context
+            )
+            weeklyPlan = update.weeklyPlan
+            weeklyIdeas = update.ideaBank
+            lastRepositoryError = nil
+        } catch {
+            lastRepositoryError = error.localizedDescription
         }
     }
 
@@ -165,6 +182,134 @@ final class AppServices {
     func refreshFromRepositories() {
         Task {
             await refreshFromRepositoriesImmediately()
+        }
+    }
+
+    func previewReferenceImport(
+        rawText: String,
+        inputType: ReferenceImportInputType,
+        filename: String? = nil
+    ) {
+        Task {
+            await previewReferenceImportImmediately(
+                rawText: rawText,
+                inputType: inputType,
+                filename: filename
+            )
+        }
+    }
+
+    @discardableResult
+    func previewReferenceImportImmediately(
+        rawText: String,
+        inputType: ReferenceImportInputType,
+        filename: String? = nil
+    ) async -> ReferenceImportPreview? {
+        guard !isPreviewingReferenceImport else {
+            return referenceImportPreview
+        }
+
+        isPreviewingReferenceImport = true
+        defer { isPreviewingReferenceImport = false }
+
+        do {
+            let preview = try await repositories.referenceImport.previewImport(
+                rawText: rawText,
+                inputType: inputType,
+                filename: filename,
+                context: context
+            )
+            referenceImportPreview = preview
+            referenceImportConfirmResult = nil
+            referenceImportToast = nil
+            lastReferenceImportError = nil
+            return preview
+        } catch {
+            lastReferenceImportError = error.localizedDescription
+            referenceImportToast = nil
+            return nil
+        }
+    }
+
+    func confirmReferenceImport(
+        rawText: String,
+        inputType: ReferenceImportInputType,
+        filename: String? = nil,
+        previewChecksum: String
+    ) {
+        Task {
+            await confirmReferenceImportImmediately(
+                rawText: rawText,
+                inputType: inputType,
+                filename: filename,
+                previewChecksum: previewChecksum
+            )
+        }
+    }
+
+    @discardableResult
+    func confirmReferenceImportImmediately(
+        rawText: String,
+        inputType: ReferenceImportInputType,
+        filename: String? = nil,
+        previewChecksum: String
+    ) async -> ReferenceImportConfirmResult? {
+        guard !isConfirmingReferenceImport else {
+            return referenceImportConfirmResult
+        }
+
+        isConfirmingReferenceImport = true
+        defer { isConfirmingReferenceImport = false }
+
+        do {
+            let result = try await repositories.referenceImport.confirmImport(
+                rawText: rawText,
+                inputType: inputType,
+                filename: filename,
+                previewChecksum: previewChecksum,
+                context: context
+            )
+            referenceImportConfirmResult = result
+            referenceImportToast = result.toast
+            lastReferenceImportError = nil
+            await refreshIntelligenceHomeImmediately()
+            return result
+        } catch {
+            lastReferenceImportError = error.localizedDescription
+            referenceImportToast = nil
+            return nil
+        }
+    }
+
+    func reviewReferenceItem(_ request: ReferenceReviewRequest) {
+        Task {
+            await reviewReferenceItemImmediately(request)
+        }
+    }
+
+    @discardableResult
+    func reviewReferenceItemImmediately(_ request: ReferenceReviewRequest) async -> ReferenceReviewResult? {
+        guard !isReviewingReference else {
+            return referenceReviewResult
+        }
+
+        isReviewingReference = true
+        defer { isReviewingReference = false }
+
+        do {
+            let result = try await repositories.referenceImport.reviewItem(
+                request,
+                context: context
+            )
+            referenceReviewResult = result
+            referenceImportToast = result.toast
+            lastReferenceImportError = nil
+            await refreshIntelligenceHomeImmediately()
+            return result
+        } catch {
+            lastReferenceImportError = error.localizedDescription
+            referenceImportToast = nil
+            return nil
         }
     }
 
@@ -234,6 +379,15 @@ final class AppServices {
         }
 
         lastRepositoryError = refreshError?.localizedDescription
+    }
+
+    func refreshIntelligenceHomeImmediately() async {
+        do {
+            intelligenceHome = try await repositories.intelligence.home(for: context)
+            lastRepositoryError = nil
+        } catch {
+            lastRepositoryError = error.localizedDescription
+        }
     }
 
     func scheduleTodayNotificationIfNeeded() {

@@ -17,15 +17,37 @@ struct AppRepositories: Sendable {
     let today: any TodayCardRepository
     let weeklyPlans: any WeeklyPlanRepository
     let references: any ReferenceRepository
+    let referenceImport: any ReferenceImportRepository
     let intelligence: any IntelligenceRepository
     let creatorProfile: any CreatorProfileRepository
     let archive: any ArchiveRepository
+
+    init(
+        context: WorkspaceContext,
+        today: any TodayCardRepository,
+        weeklyPlans: any WeeklyPlanRepository,
+        references: any ReferenceRepository,
+        referenceImport: any ReferenceImportRepository = FixtureReferenceImportRepository(),
+        intelligence: any IntelligenceRepository,
+        creatorProfile: any CreatorProfileRepository,
+        archive: any ArchiveRepository
+    ) {
+        self.context = context
+        self.today = today
+        self.weeklyPlans = weeklyPlans
+        self.references = references
+        self.referenceImport = referenceImport
+        self.intelligence = intelligence
+        self.creatorProfile = creatorProfile
+        self.archive = archive
+    }
 
     static let fixture = AppRepositories(
         context: .mamtaFixture,
         today: FixtureTodayCardRepository(),
         weeklyPlans: FixtureWeeklyPlanRepository(),
         references: FixtureReferenceRepository(),
+        referenceImport: FixtureReferenceImportRepository(),
         intelligence: FixtureIntelligenceRepository(),
         creatorProfile: FixtureCreatorProfileRepository(),
         archive: FixtureArchiveRepository()

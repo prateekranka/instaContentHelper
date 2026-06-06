@@ -5,9 +5,15 @@ import Observation
 @Observable
 final class AppState {
     var activeMode: AppMode
+    var runtime: AppRuntime
 
-    init(activeMode: AppMode = .mamta) {
+    init(activeMode: AppMode = .mamta, runtime: AppRuntime? = nil) {
         self.activeMode = activeMode
+        self.runtime = runtime ?? AppRuntime.makeInitialRuntime()
+    }
+
+    func replaceRuntime(_ runtime: AppRuntime) {
+        self.runtime = runtime
     }
 }
 

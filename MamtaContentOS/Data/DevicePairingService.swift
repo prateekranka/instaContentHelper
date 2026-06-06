@@ -35,6 +35,87 @@ struct DevicePairingResponse: Decodable, Hashable, Sendable {
         case deviceToken = "device_token"
         case pairedAt = "paired_at"
     }
+
+    init(
+        workspaceID: UUID,
+        workspaceName: String?,
+        creatorID: UUID,
+        creatorDisplayName: String?,
+        memberID: UUID,
+        memberRole: String,
+        deviceInstallationID: UUID,
+        deviceToken: String,
+        pairedAt: Date?
+    ) {
+        self.workspaceID = workspaceID
+        self.workspaceName = workspaceName
+        self.creatorID = creatorID
+        self.creatorDisplayName = creatorDisplayName
+        self.memberID = memberID
+        self.memberRole = memberRole
+        self.deviceInstallationID = deviceInstallationID
+        self.deviceToken = deviceToken
+        self.pairedAt = pairedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        workspaceID = try container.decode(UUID.self, forKey: .workspaceID)
+        workspaceName = try container.decodeIfPresent(String.self, forKey: .workspaceName)
+        creatorID = try container.decode(UUID.self, forKey: .creatorID)
+        creatorDisplayName = try container.decodeIfPresent(String.self, forKey: .creatorDisplayName)
+        memberID = try container.decode(UUID.self, forKey: .memberID)
+        memberRole = try container.decode(String.self, forKey: .memberRole)
+        deviceInstallationID = try container.decode(UUID.self, forKey: .deviceInstallationID)
+        deviceToken = try container.decode(String.self, forKey: .deviceToken)
+
+        if let rawPairedAt = try container.decodeIfPresent(String.self, forKey: .pairedAt) {
+            pairedAt = SupabaseTimestampParser.date(from: rawPairedAt)
+        } else {
+            pairedAt = nil
+        }
+    }
+}
+
+enum SupabaseTimestampParser {
+    static func date(from rawValue: String) -> Date? {
+        let rawValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawValue.isEmpty else { return nil }
+
+        for formatter in makeISOFormatters() {
+            if let date = formatter.date(from: rawValue) {
+                return date
+            }
+        }
+
+        for dateFormat in dateFormats {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            formatter.dateFormat = dateFormat
+            if let date = formatter.date(from: rawValue) {
+                return date
+            }
+        }
+
+        return nil
+    }
+
+    private static func makeISOFormatters() -> [ISO8601DateFormatter] {
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        return [fractional, standard]
+    }
+
+    private static let dateFormats = [
+        "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX",
+        "yyyy-MM-dd'T'HH:mm:ssXXXXX"
+    ]
 }
 
 struct DevicePairingResult: Sendable {
