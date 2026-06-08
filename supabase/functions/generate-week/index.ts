@@ -56,7 +56,7 @@ type CreatorRecord = Record<string, unknown> & {
   display_name?: string;
 };
 
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const PROMPT_VERSION = "mamta-weekly-generation-v1";
 

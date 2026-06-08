@@ -251,6 +251,8 @@ export function buildDeepSeekChatRequest(
       },
     ],
     response_format: { type: "json_object" },
+    thinking: { type: "enabled" },
+    reasoning_effort: "max",
     max_tokens: 8192,
     temperature: 0.2,
   };

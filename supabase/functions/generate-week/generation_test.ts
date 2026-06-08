@@ -56,14 +56,17 @@ Deno.test("OpenAI Responses request uses strict structured JSON output schema", 
   );
 });
 
-Deno.test("DeepSeek Chat request uses JSON object mode with prompt context", () => {
-  const request = buildDeepSeekChatRequest(fixtureInput(), "deepseek-v4-flash");
+Deno.test("DeepSeek Chat request uses JSON object mode with max thinking effort", () => {
+  const request = buildDeepSeekChatRequest(fixtureInput(), "deepseek-v4-pro");
   const messages = request.messages as Record<string, string>[];
   const responseFormat = recordValue(request.response_format);
+  const thinking = recordValue(request.thinking);
 
-  assertEquals(request.model, "deepseek-v4-flash");
+  assertEquals(request.model, "deepseek-v4-pro");
   assertEquals(request.max_tokens, 8192);
   assertEquals(responseFormat.type, "json_object");
+  assertEquals(thinking.type, "enabled");
+  assertEquals(request.reasoning_effort, "max");
   assertEquals(messages[0].role, "system");
   assert(messages[0].content.includes("strict JSON"));
   assertEquals(messages[1].role, "user");
@@ -80,7 +83,7 @@ Deno.test("AI provider caller falls back from DeepSeek to OpenAI", async () => {
     [
       {
         provider: "deepseek",
-        model: "deepseek-v4-flash",
+        model: "deepseek-v4-pro",
         apiKey: "deepseek-key",
       },
       { provider: "openai", model: "gpt-4.1-mini", apiKey: "openai-key" },
