@@ -63,7 +63,7 @@ Deno.test("DeepSeek Chat request uses JSON object mode with max thinking effort"
   const thinking = recordValue(request.thinking);
 
   assertEquals(request.model, "deepseek-v4-pro");
-  assertEquals(request.max_tokens, 8192);
+  assertEquals(request.max_tokens, 12000);
   assertEquals(responseFormat.type, "json_object");
   assertEquals(thinking.type, "enabled");
   assertEquals(request.reasoning_effort, "max");
