@@ -7,18 +7,20 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
 
 1. Install ContentHelper from TestFlight.
 2. Open the app once after install.
-3. Confirm the app is paired to the live workspace. If the Profile screen says
-   `Fixtures`, open Profile, find Pair device, enter the invite code in Invite
-   code, then tap the link button. A first-time device can pair only when the
-   TestFlight build has the live Supabase URL and publishable key configured.
+3. Sign in with an approved tester email. Supabase sends a one-time email code;
+   enter that code in the app. A first-time tester must be approved by an owner
+   from Prateek Control before sign-in works.
 4. From Profile, switch to Prateek Control.
-5. Open Weekly.
-6. Confirm this week's plan:
+5. Open Testers when you need to add more testers. Owners can invite an email,
+   resend a code, or revoke a tester. Testers sign in with email OTP; do not
+   pass pairing codes around.
+6. Open Weekly.
+7. Confirm this week's plan:
    - Check that the week range is correct.
    - Confirm the seven day cards are useful for Mamta.
    - Soft-lock or publish the week.
    - Verify that Today has a current card after publish.
-7. Generate a weekly AI draft when the week is not published:
+8. Generate a weekly AI draft when the week is not published:
    - Confirm the weekly setup context looks current.
    - Tap Generate week.
    - Review the generated strategy, warnings, and assumptions.
@@ -27,27 +29,30 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
      instructions, audio notes, assumptions, and source.
    - Edit any card title, why-today note, shootability, shoot time, scene list,
      caption, backup story, or backup caption-only text that needs correction.
+   - Regenerate an individual day when only one card is weak. The app updates
+     that day only and keeps the rest of the reviewed draft intact.
    - Publish only after review.
    - Verify that Today shows the generated card after publish.
-8. Open Intelligence.
-9. Use Reference Import:
+9. Open Intelligence.
+10. Use Reference Import:
    - Paste Instagram account, reel, or audio URLs, or upload a CSV.
    - Preview the import.
    - Confirm the import.
    - Review any Needs your call items.
-10. Weekly Sunday setup: capture location, workout or race schedule, family,
+11. Weekly Sunday setup: capture location, workout or race schedule, family,
     travel or school moments, brand or collaboration obligations, trend and
     audio options worth considering, and no-go topics.
-11. Daily check: verify Mamta has a useful Today card, and intervene only if the
+12. Daily check: verify Mamta has a useful Today card, and intervene only if the
     card is wrong or no card appears.
 
 ### Prateek troubleshooting
 
-- App says `Fixtures`: the device is not paired to live runtime. Pair the device
-  or reinstall and use a fresh live invite code.
-- Pairing says Supabase bootstrap is missing: make a new TestFlight build with
-  `MCO_SUPABASE_URL` and `MCO_SUPABASE_PUBLISHABLE_KEY` populated, then pair
-  with a fresh invite code.
+- Sign-in says email is not approved: open Prateek Control, Testers, then invite
+  or reactivate that email.
+- No email code: resend from the app or from Prateek Control, Testers. Also
+  check spam and the email address spelling.
+- App says `Fixtures`: the build is missing live Supabase config or the live
+  session could not be restored.
 - Release archive fails with a Supabase bootstrap error: this is intentional.
   Populate `MamtaContentOS/Config/Runtime.xcconfig` or pass the live values to
   `xcodebuild` before uploading the next TestFlight build.
@@ -56,6 +61,8 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
 - Generate button disabled: confirm the device role is owner or editor,
   generation is not already running, and the week is not soft locked or
   published.
+- Regenerate day disabled: confirm a draft weekly plan exists, the week is not
+  published, and the device role is owner or editor.
 - Missing AI provider key: set `DEEPSEEK_API_KEY` as the primary Supabase Edge
   Function secret, with `OPENAI_API_KEY` optional as fallback. The app must not
   contain these keys.

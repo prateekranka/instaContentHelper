@@ -6,7 +6,9 @@ struct MamtaShellView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
-                TodayView()
+                TodayView {
+                    selectedTab = .profile
+                }
                     .navigationDestination(for: MamtaRoute.self) { route in
                         switch route {
                         case .shootFolio:
@@ -24,12 +26,6 @@ struct MamtaShellView: View {
             .tag(MamtaTab.shootFolio)
 
             NavigationStack {
-                ArchiveView()
-            }
-            .tabItem { Label("Archive", systemImage: "archivebox") }
-            .tag(MamtaTab.archive)
-
-            NavigationStack {
                 ProfileModeView()
             }
             .tabItem { Label("Profile", systemImage: "person.circle") }
@@ -41,20 +37,22 @@ struct MamtaShellView: View {
 
 struct ProfileModeView: View {
     @Environment(AppState.self) private var appState
-    @State private var inviteCode = ""
-    @State private var pairingMessage: String?
-    @State private var pairingError: String?
-    @State private var isPairing = false
+    @State private var isSigningOut = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: MCOSpace.m) {
                 header
                 runtimeStatus
-                pairingSection
-                SecondaryActionButton(title: "Switch to Prateek Control") {
-                    appState.activeMode = .admin
+                accountSection
+                if canAccessAdmin {
+                    SecondaryActionButton(title: "Switch to Admin control") {
+                        appState.activeMode = .admin
+                    }
                 }
+                Hairline()
+                    .padding(.vertical, MCOSpace.m)
+                ArchiveSection()
             }
             .padding(.horizontal, MCOSpace.l)
             .padding(.top, MCOSpace.l)
@@ -68,7 +66,7 @@ struct ProfileModeView: View {
             Text("Profile")
                 .font(MCOType.screenTitle)
                 .foregroundStyle(MCOTheme.Color.ink)
-            Text("Mamta mode is the daily product. Prateek controls stay tucked away.")
+            Text("This page has the creator's profile and archive details. Clicking them will show you more details.")
                 .font(MCOType.bodySmall)
                 .foregroundStyle(MCOTheme.Color.inkMuted)
         }
@@ -77,19 +75,29 @@ struct ProfileModeView: View {
     private var runtimeStatus: some View {
         VStack(alignment: .leading, spacing: MCOSpace.s) {
             HStack {
-                Text("Runtime")
+                Text("Data source")
                     .font(MCOType.tinyLabel)
                     .foregroundStyle(MCOTheme.Color.oxblood)
                 Spacer(minLength: MCOSpace.s)
                 StatusChip(
-                    text: liveSession == nil ? "Fixtures" : "Live",
+                    text: liveSession == nil ? "Sample" : "Live",
                     tone: liveSession == nil ? .warning : .ready
                 )
             }
 
-            Text(appState.runtime.mode.label)
+            Text(liveSession == nil ? "Sample app data" : "Supabase")
                 .font(MCOType.body)
                 .foregroundStyle(MCOTheme.Color.ink)
+
+            if let lastCheckedAt = appState.runtime.services.lastRepositoryRefreshAt {
+                Text("Last checked at \(lastCheckedAt.formatted(date: .omitted, time: .shortened))")
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            } else {
+                Text("Checking for updates...")
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
 
             if let liveSession {
                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
@@ -111,80 +119,28 @@ struct ProfileModeView: View {
         }
     }
 
-    @ViewBuilder
-    private var pairingSection: some View {
-        if let liveSession {
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
-                Text("Device is paired")
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.sageDeep)
-                Text(liveSession.creatorDisplayName ?? "Mamta")
-                    .font(MCOType.cardTitle)
-                    .foregroundStyle(MCOTheme.Color.ink)
-                SecondaryActionButton(title: "Clear pairing") {
-                    clearPairing()
-                }
-            }
-        } else {
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
-                Text("Pair device")
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
-
-                VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                    Text("Invite code")
-                        .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
-                    HStack(spacing: MCOSpace.s) {
-                        TextField("MCO-...", text: $inviteCode)
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled()
-                            .keyboardType(.asciiCapable)
-                            .textContentType(.oneTimeCode)
-                            .submitLabel(.go)
-                            .font(MCOType.body)
-                            .foregroundStyle(MCOTheme.Color.ink)
-                            .padding(MCOSpace.s)
-                            .frame(height: 54)
-                            .background(MCOTheme.Color.paperRaised.opacity(0.72))
-                            .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                                    .stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                            }
-                            .onSubmit {
-                                pairDevice()
-                            }
-
-                        Button {
-                            pairDevice()
-                        } label: {
-                            Image(systemName: isPairing ? "hourglass" : "link")
-                                .font(.system(size: 18, weight: .semibold))
-                                .frame(width: 54, height: 54)
-                                .foregroundStyle(MCOTheme.Color.paperRaised)
-                                .background(MCOTheme.Color.oxblood)
-                                .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isPairing || trimmedInviteCode.isEmpty)
-                        .opacity(isPairing || trimmedInviteCode.isEmpty ? 0.54 : 1)
-                        .accessibilityLabel(isPairing ? "Pairing" : "Pair device")
-                    }
-                }
-            }
-        }
-
-        if let pairingMessage {
-            Text(pairingMessage)
-                .font(MCOType.caption)
+    private var accountSection: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            Text("Signed in")
+                .font(MCOType.tinyLabel)
                 .foregroundStyle(MCOTheme.Color.sageDeep)
-        }
 
-        if let pairingError {
-            Text(pairingError)
-                .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.clay)
+            if let liveSession {
+                if let email = liveSession.authenticatedEmail {
+                    Text(email)
+                        .font(MCOType.body)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                }
+                Text(liveSession.creatorDisplayName ?? "Mamta")
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
+
+            SecondaryActionButton(title: isSigningOut ? "Signing out" : "Sign out") {
+                signOut()
+            }
+            .disabled(isSigningOut)
+            .opacity(isSigningOut ? 0.54 : 1)
         }
     }
 
@@ -196,49 +152,18 @@ struct ProfileModeView: View {
         }
     }
 
-    private var trimmedInviteCode: String {
-        inviteCode.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var canAccessAdmin: Bool {
+        guard let role = liveSession?.memberRole.lowercased() else { return false }
+        return role == "owner" || role == "editor"
     }
 
     @MainActor
-    private func pairDevice() {
-        let code = trimmedInviteCode
-        guard !isPairing, !code.isEmpty else { return }
-
-        isPairing = true
-        pairingMessage = nil
-        pairingError = nil
-
+    private func signOut() {
+        guard !isSigningOut else { return }
+        isSigningOut = true
         Task { @MainActor in
-            defer { isPairing = false }
-
-            do {
-                let result = try await DevicePairingService().pairDevice(inviteCode: code)
-                let runtime = AppRuntime.live(
-                    session: result.session,
-                    repositories: result.repositories
-                )
-                appState.replaceRuntime(runtime)
-                inviteCode = ""
-                pairingMessage = "Paired to \(result.session.workspaceName ?? "live workspace")."
-                await runtime.services.refreshFromRepositoriesImmediately()
-                await runtime.services.scheduleTodayNotificationIfNeededImmediately()
-            } catch {
-                pairingError = error.localizedDescription
-            }
-        }
-    }
-
-    @MainActor
-    private func clearPairing() {
-        do {
-            try DevicePairingService().clearPairing()
-            appState.replaceRuntime(.fixtures())
-            pairingMessage = "Pairing cleared."
-            pairingError = nil
-        } catch {
-            pairingMessage = nil
-            pairingError = error.localizedDescription
+            await appState.signOut()
+            isSigningOut = false
         }
     }
 }

@@ -291,7 +291,7 @@ async function readCreatorProfile(
 ): Promise<Response> {
   const { data: profile, error } = await admin
     .from("creator_profiles")
-    .select("display_name,positioning,voice_rules,never_say")
+    .select("positioning,voice_rules,never_say")
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
     .eq("status", "active")

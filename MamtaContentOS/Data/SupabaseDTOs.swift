@@ -786,6 +786,25 @@ enum SupabaseDateFormatting {
     }
 
     static func weekRange(starting rawDate: String) -> String {
+        dateRange(starting: rawDate, ending: weekEndDate(starting: rawDate))
+    }
+
+    static func dateRange(starting rawStartDate: String, ending rawEndDate: String) -> String {
+        guard
+            let start = parseDate(rawStartDate),
+            let end = parseDate(rawEndDate)
+        else {
+            return "\(rawStartDate) - \(rawEndDate)"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "d MMM"
+        return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
+    }
+
+    static func weekEndDate(starting rawDate: String) -> String {
         guard
             let start = parseDate(rawDate),
             let end = Calendar(identifier: .gregorian).date(byAdding: .day, value: 6, to: start)
@@ -793,10 +812,60 @@ enum SupabaseDateFormatting {
             return rawDate
         }
 
+        return dateString(from: end)
+    }
+
+    static func constrainedWeekEndDate(starting rawStartDate: String, requestedEndDate rawEndDate: String) -> String {
+        guard
+            let start = parseDate(rawStartDate),
+            let requestedEnd = parseDate(rawEndDate),
+            let maxEnd = Calendar(identifier: .gregorian).date(byAdding: .day, value: 6, to: start)
+        else {
+            return weekEndDate(starting: rawStartDate)
+        }
+
+        if requestedEnd < start {
+            return rawStartDate
+        }
+
+        if requestedEnd > maxEnd {
+            return dateString(from: maxEnd)
+        }
+
+        return dateString(from: requestedEnd)
+    }
+
+    static func dateOptions(around rawDate: String, daysBefore: Int, daysAfter: Int) -> [String] {
+        guard let date = parseDate(rawDate) else {
+            return [rawDate]
+        }
+
+        return (-daysBefore...daysAfter).compactMap { offset in
+            Calendar(identifier: .gregorian)
+                .date(byAdding: .day, value: offset, to: date)
+                .map { dateString(from: $0) }
+        }
+    }
+
+    static func dateOptions(starting rawDate: String, dayCount: Int) -> [String] {
+        guard let start = parseDate(rawDate), dayCount > 0 else {
+            return [rawDate]
+        }
+
+        return (0..<dayCount).compactMap { offset in
+            Calendar(identifier: .gregorian)
+                .date(byAdding: .day, value: offset, to: start)
+                .map { dateString(from: $0) }
+        }
+    }
+
+    static func displayDate(for rawDate: String) -> String {
+        guard let date = parseDate(rawDate) else { return rawDate }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "d MMM"
-        return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
+        return formatter.string(from: date)
     }
 
     static func weekDates(starting rawDate: String) -> [String] {
@@ -851,6 +920,14 @@ enum SupabaseDateFormatting {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: trimmedDate)
+    }
+
+    private static func dateString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 }
 

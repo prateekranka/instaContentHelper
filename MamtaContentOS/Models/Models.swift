@@ -220,7 +220,6 @@ enum PackageSection: String, CaseIterable, Identifiable, Hashable, Sendable {
 enum MamtaTab: String, CaseIterable, Identifiable, Hashable, Sendable {
     case today = "Today"
     case shootFolio = "Shoot Folio"
-    case archive = "Archive"
     case profile = "Profile"
 
     var id: String { rawValue }
@@ -242,6 +241,7 @@ struct WeeklyPlan: Identifiable, Codable, Hashable, Sendable {
     var eyebrow: String
     var weekRange: String
     var weekStartDate: String?
+    var weekEndDate: String?
     var readinessLine: String
     var isSoftLocked: Bool
     var days: [WeeklyDay]
@@ -253,6 +253,7 @@ struct WeeklyPlan: Identifiable, Codable, Hashable, Sendable {
         eyebrow: String,
         weekRange: String,
         weekStartDate: String? = nil,
+        weekEndDate: String? = nil,
         readinessLine: String,
         isSoftLocked: Bool,
         days: [WeeklyDay],
@@ -263,6 +264,7 @@ struct WeeklyPlan: Identifiable, Codable, Hashable, Sendable {
         self.eyebrow = eyebrow
         self.weekRange = weekRange
         self.weekStartDate = weekStartDate
+        self.weekEndDate = weekEndDate
         self.readinessLine = readinessLine
         self.isSoftLocked = isSoftLocked
         self.days = days
@@ -335,6 +337,30 @@ enum WeeklyDayState: String, CaseIterable, Codable, Hashable, Sendable {
             "Backup"
         case .open:
             "Open"
+        }
+    }
+}
+
+extension WeeklyDayState {
+    init(generatedDraftStatus status: String) {
+        switch status.lowercased() {
+        case "published", "planned", "ready":
+            self = .planned
+        case "backup":
+            self = .backup
+        default:
+            self = .open
+        }
+    }
+
+    var generatedDraftStatus: String {
+        switch self {
+        case .planned:
+            "ready"
+        case .backup:
+            "backup"
+        case .open:
+            "open"
         }
     }
 }
@@ -440,15 +466,18 @@ struct GeneratedWeekDraft: Identifiable, Hashable, Sendable {
 
 extension GeneratedWeekDraft {
     func weeklyPlan(setupSections: [WeeklySetupSection]) -> WeeklyPlan {
-        WeeklyPlan(
+        let generatedDays = dailyCards.map(\.weeklyDay)
+
+        return WeeklyPlan(
             id: weeklyPlanID,
-            title: "Generated Weekly Draft",
+            title: "Generate a Week",
             eyebrow: "PRATEEK AI REVIEW",
             weekRange: dailyCards.first.map { SupabaseDateFormatting.weekRange(starting: $0.scheduledDate) } ?? "Generated week",
             weekStartDate: dailyCards.first?.scheduledDate,
-            readinessLine: "\(dailyCards.count) generated, review before publishing",
+            weekEndDate: dailyCards.last?.scheduledDate,
+            readinessLine: "\(generatedDays.filter { $0.state == .open }.count) open, confirm before publishing",
             isSoftLocked: status == "published",
-            days: dailyCards.map(\.weeklyDay),
+            days: generatedDays,
             setupSections: setupSections
         )
     }
@@ -510,7 +539,7 @@ extension GeneratedDailyCardDraft {
             title: title,
             reason: whyToday,
             source: WeeklySourceReason(rawValue: contentPillar.displayTitle) ?? .pattern,
-            state: status == "published" ? .planned : .planned,
+            state: WeeklyDayState(generatedDraftStatus: status),
             isSoftLocked: status == "published"
         )
     }

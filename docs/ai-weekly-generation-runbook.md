@@ -9,6 +9,7 @@ Request:
 
 ```json
 {
+  "action": "generate_week",
   "creator_id": "uuid",
   "week_start_date": "YYYY-MM-DD",
   "weekly_setup_id": "uuid, optional",
@@ -18,6 +19,22 @@ Request:
   "input_overrides": {}
 }
 ```
+
+Per-day regeneration uses the same function and device-token boundary:
+
+```json
+{
+  "action": "regenerate_day",
+  "creator_id": "uuid",
+  "weekly_plan_id": "uuid",
+  "scheduled_date": "YYYY-MM-DD",
+  "preserve_manual_edits": true
+}
+```
+
+The response contains the replacement draft card for that date only. The
+function rejects published weeks, cross-workspace plan IDs, and dates outside
+the draft week.
 
 Response:
 
@@ -40,6 +57,8 @@ Auth rules:
 
 - Send only the Supabase publishable key from the app.
 - Send `x-mco-device-token` with the paired device token.
+- In the current app this token is issued after approved-email OTP sign-in by
+  `exchange-auth-session`; testers do not manually enter pairing codes.
 - Owner and editor roles may generate.
 - Creator role is rejected.
 - The Edge Function validates workspace ownership for creator, setup, and weekly
@@ -67,6 +86,9 @@ Set these only in Supabase Edge Function secrets or local function env files:
   `gpt-4.1-mini`.
 - `MCO_AI_PROVIDER_ORDER`: optional comma-separated provider order. Default:
   `deepseek,openai`.
+- `MCO_AI_REQUEST_TIMEOUT_MS`: optional provider request timeout. Default:
+  `90000`; values below `5000` are ignored and values above `180000` are
+  capped.
 - `MCO_AI_MOCK=1`: local deterministic mock mode.
 - `MCO_ALLOW_AI_MOCK_REQUEST=1`: allows request-level `mock: true` for local/dev
   tests only.

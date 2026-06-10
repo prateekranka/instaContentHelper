@@ -13,6 +13,7 @@ struct PairedDeviceSession: Codable, Hashable, Sendable {
     var creatorDisplayName: String?
     var memberRole: String
     var pairedAt: Date
+    var authenticatedEmail: String? = nil
 
     var context: WorkspaceContext {
         WorkspaceContext(
@@ -28,6 +29,12 @@ struct PairedDeviceSession: Codable, Hashable, Sendable {
             publishableKey: publishableKey,
             deviceToken: deviceToken
         )
+    }
+
+    func withAuthenticatedEmail(_ email: String?) -> PairedDeviceSession {
+        var copy = self
+        copy.authenticatedEmail = email?.nilIfBlank ?? authenticatedEmail
+        return copy
     }
 }
 

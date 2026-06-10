@@ -15,6 +15,7 @@ struct ShootFolioView: View {
 
                 switch selection {
                 case .scenes:
+                    sceneProgress
                     SceneListView(scenes: services.todayCard.scenes)
                 case .script:
                     CopyBlock(title: "Script", bodyText: services.todayCard.script ?? "Race week isn't about doing more. It's about doing what matters. Simple plan. Steady steps. Let's go.")
@@ -27,13 +28,31 @@ struct ShootFolioView: View {
                 }
             }
         } bottomBar: {
-            GlassCommandBar {
-                PrimaryActionButton(title: "Mark shot", systemImage: "checkmark.seal") {
-                    services.completeToday(with: DailyDecision.shot)
+            if selection == .scenes {
+                GlassCommandBar {
+                    PrimaryActionButton(
+                        title: services.areAllScenesShot ? "All scenes shot" : "Mark all as shot",
+                        systemImage: services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal"
+                    ) {
+                        services.markAllScenesShot()
+                    }
+                    .disabled(services.areAllScenesShot)
                 }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var sceneProgress: some View {
+        HStack(spacing: MCOSpace.s) {
+            Label("\(services.shotSceneCount) shot", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(MCOTheme.Color.sageDeep)
+            Text("\(services.unshotSceneCount) not shot")
+                .foregroundStyle(MCOTheme.Color.inkMuted)
+            Spacer()
+        }
+        .font(MCOType.caption)
+        .accessibilityElement(children: .combine)
     }
 
     private var header: some View {
@@ -68,29 +87,100 @@ struct ShootFolioView: View {
 }
 
 struct SceneListView: View {
+    @Environment(AppServices.self) private var services
     let scenes: [ShotScene]
 
     var body: some View {
         VStack(spacing: 0) {
             ForEach(scenes) { scene in
-                FolioRow(title: scene.title, subtitle: nil) {
-                    Text(String(format: "%02d", scene.number))
-                        .font(.system(size: 46, weight: .regular, design: .serif))
-                        .foregroundStyle(MCOTheme.Color.sageDeep)
-                } trailing: {
-                    HStack(spacing: MCOSpace.s) {
-                        StatusChip(text: scene.duration)
-                        Image(systemName: scene.symbol)
-                            .font(.system(size: 20, weight: .light))
-                            .foregroundStyle(MCOTheme.Color.brass)
-                            .frame(width: 54, height: 54)
-                            .background(MCOTheme.Color.paperRaised)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                NavigationLink {
+                    SceneDetailView(scene: scene)
+                } label: {
+                    FolioRow(title: scene.title, subtitle: services.isSceneShot(scene) ? "Shot" : "Not shot") {
+                        Text(String(format: "%02d", scene.number))
+                            .font(.system(size: 46, weight: .regular, design: .serif))
+                            .foregroundStyle(MCOTheme.Color.sageDeep)
+                    } trailing: {
+                        HStack(spacing: MCOSpace.s) {
+                            StatusChip(text: scene.duration)
+                            Image(systemName: services.isSceneShot(scene) ? "checkmark.circle.fill" : scene.symbol)
+                                .font(.system(size: 20, weight: .light))
+                                .foregroundStyle(services.isSceneShot(scene) ? MCOTheme.Color.sageDeep : MCOTheme.Color.brass)
+                                .frame(width: 54, height: 54)
+                                .background(MCOTheme.Color.paperRaised)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
                     }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Scene \(scene.number), \(scene.title), \(services.isSceneShot(scene) ? "shot" : "not shot")")
                 Hairline()
             }
         }
+    }
+}
+
+struct SceneDetailView: View {
+    @Environment(AppServices.self) private var services
+    let scene: ShotScene
+
+    var body: some View {
+        EditorialScreen {
+            VStack(alignment: .leading, spacing: MCOSpace.l) {
+                VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                    Text("SCENE \(String(format: "%02d", scene.number))")
+                        .font(MCOType.tinyLabel)
+                        .foregroundStyle(MCOTheme.Color.oxblood)
+                    Text(scene.title)
+                        .font(MCOType.screenTitle)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                    HStack(spacing: MCOSpace.s) {
+                        StatusChip(text: scene.duration)
+                        StatusChip(
+                            text: services.isSceneShot(scene) ? "Shot" : "Not shot",
+                            tone: services.isSceneShot(scene) ? .ready : .warning
+                        )
+                    }
+                }
+
+                detailBlock(title: "What to capture", text: captureGuidance)
+                detailBlock(title: "Supports", text: services.todayCard.title)
+
+                if let onScreenText = services.todayCard.onScreenText?.first?.nilIfBlank {
+                    detailBlock(title: "On-screen text", text: onScreenText)
+                }
+            }
+        } bottomBar: {
+            GlassCommandBar {
+                PrimaryActionButton(
+                    title: services.isSceneShot(scene) ? "Shot" : "Mark shot",
+                    systemImage: services.isSceneShot(scene) ? "checkmark.circle.fill" : "checkmark.seal"
+                ) {
+                    services.markSceneShot(scene)
+                }
+                .disabled(services.isSceneShot(scene))
+            }
+        }
+        .navigationTitle("Scene \(scene.number)")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func detailBlock(title: String, text: String) -> some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                Text(title.uppercased())
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                Text(text)
+                    .font(MCOType.body)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .lineSpacing(4)
+            }
+        }
+    }
+
+    private var captureGuidance: String {
+        "Capture \(scene.title.lowercased()) as a steady \(scene.duration) clip. Keep the main subject clear, leave room for on-screen text, and hold the final frame briefly for an easy edit."
     }
 }
 

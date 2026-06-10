@@ -10,7 +10,8 @@ final class GenerateWeekTests: XCTestCase {
             weeklySetupID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
             mode: .generateDraft,
             preserveManualEdits: true,
-            mock: true
+            mock: true,
+            responseMode: .async
         )
 
         let data = try JSONEncoder().encode(request)
@@ -22,6 +23,126 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(object["mode"] as? String, "generate_draft")
         XCTAssertEqual(object["preserve_manual_edits"] as? Bool, true)
         XCTAssertEqual(object["mock"] as? Bool, true)
+        XCTAssertEqual(object["response_mode"] as? String, "async")
+    }
+
+    func testGenerateWeekStatusRequestAndRunningResponseUseAsyncContract() throws {
+        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888881")!
+        let creatorID = UUID(uuidString: "33333333-3333-4333-8333-333333333333")!
+        let request = SupabaseGenerateWeekStatusRequest(
+            generationID: generationID,
+            creatorID: creatorID
+        )
+
+        let requestData = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: requestData) as? [String: Any])
+
+        XCTAssertEqual(object["action"] as? String, "status")
+        XCTAssertEqual(object["generation_id"] as? String, generationID.uuidString)
+        XCTAssertEqual(object["creator_id"] as? String, creatorID.uuidString)
+
+        let responseData = Data(
+            """
+            {
+              "generation_id": "\(generationID.uuidString)",
+              "weekly_plan_id": null,
+              "status": "running",
+              "message": "generation_started",
+              "poll_after_seconds": 5
+            }
+            """.utf8
+        )
+
+        let invocation = try SupabaseGenerateWeekInvocation.decode(responseData)
+        guard case .running(let status) = invocation else {
+            XCTFail("Expected running generation status")
+            return
+        }
+        XCTAssertEqual(status.generationID, generationID)
+        XCTAssertEqual(status.status, "running")
+        XCTAssertEqual(status.pollAfterSeconds, 5)
+    }
+
+    func testRegenerateDayRequestEncodesEdgeFunctionContract() throws {
+        let request = SupabaseRegenerateDayRequest(
+            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            weeklyPlanID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
+            scheduledDate: "2026-06-10",
+            preserveManualEdits: false,
+            mock: true
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(object["action"] as? String, "regenerate_day")
+        XCTAssertEqual(object["creator_id"] as? String, "33333333-3333-4333-8333-333333333333")
+        XCTAssertEqual(object["weekly_plan_id"] as? String, "77777777-7777-4777-8777-777777777771")
+        XCTAssertEqual(object["scheduled_date"] as? String, "2026-06-10")
+        XCTAssertEqual(object["preserve_manual_edits"] as? Bool, false)
+        XCTAssertEqual(object["response_mode"] as? String, "async")
+        XCTAssertEqual(object["mock"] as? Bool, true)
+    }
+
+    func testRegenerateDayResponseDecodesRichCard() throws {
+        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888881")!
+        let weeklyPlanID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
+        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+        let data = Data(
+            """
+            {
+              "generation_id": "\(generationID.uuidString)",
+              "weekly_plan_id": "\(weeklyPlanID.uuidString)",
+              "status": "draft",
+              "target_scheduled_date": "2026-06-10",
+              "warnings": ["Confirm the location"],
+              "assumptions": ["Low recovery energy"],
+              "source_summary": "Live weekly context.",
+              "generated_at": "2026-06-10T08:00:00Z",
+              "daily_card": {
+                "id": "\(cardID.uuidString)",
+                "scheduled_date": "2026-06-10",
+                "status": "draft",
+                "title": "Recovery walk reset",
+                "why_today": "Keep recovery visible.",
+                "growth_job": "Consistency.",
+                "content_pillar": "recovery",
+                "shootability": "easy",
+                "estimated_shoot_minutes": 8,
+                "energy_required": "low",
+                "language_mode": "English",
+                "scene_list": [{"number":1,"title":"Walking shoes","duration":"3 sec","symbol":"shoeprints.fill"}],
+                "script": "Recovery still counts.",
+                "no_voiceover_version": "Use three quiet clips.",
+                "on_screen_text": ["Recovery still counts"],
+                "caption": "A short recovery walk in New Jersey.",
+                "cta": "Save this reminder.",
+                "hashtags": ["recovery"],
+                "cover_text": "Recovery counts",
+                "post_instructions": "Use natural sound.",
+                "brand_event_notes": "",
+                "backup_story": "One walking clip.",
+                "backup_caption_only": "Recovery day note.",
+                "audio_option_notes": "No audio dependency.",
+                "mamta_fit_score": 94,
+                "risk_notes": [],
+                "assumptions": ["Low energy"],
+                "source_note": "Weekly setup."
+              }
+            }
+            """.utf8
+        )
+
+        let invocation = try SupabaseRegenerateDayInvocation.decode(data)
+        guard case .completed(let response) = invocation else {
+            XCTFail("Expected completed day generation")
+            return
+        }
+
+        XCTAssertEqual(response.domainResult.dailyCard.id, cardID)
+        XCTAssertEqual(response.domainResult.targetScheduledDate, "2026-06-10")
+        XCTAssertEqual(response.domainResult.dailyCard.caption, "A short recovery walk in New Jersey.")
+        XCTAssertEqual(response.domainResult.warnings, ["Confirm the location"])
     }
 
     func testGenerateWeekResponseDecodesIntoDomainDraft() throws {

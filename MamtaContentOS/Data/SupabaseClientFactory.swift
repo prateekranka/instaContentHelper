@@ -8,6 +8,10 @@ struct SupabaseRuntimeConfiguration: Hashable, Sendable {
 }
 
 struct SupabaseClientFactory {
+    func makeBootstrapClient(configuration: SupabaseBootstrapConfiguration) -> SupabaseClient {
+        makeClient(configuration: configuration.runtimeConfiguration)
+    }
+
     func makeClient(configuration: SupabaseRuntimeConfiguration) -> SupabaseClient {
         var headers = ["x-client": "MamtaContentOS-iOS"]
         if let deviceToken = configuration.deviceToken?.nilIfBlank {
@@ -70,7 +74,8 @@ struct SupabaseRepositoryBundleFactory {
             weeklyGeneration: SupabaseWeeklyGenerationRepository(client: client),
             intelligence: SupabaseIntelligenceRepository(client: client, references: sourcePulse),
             creatorProfile: SupabaseCreatorProfileRepository(client: client),
-            archive: SupabaseArchiveRepository(client: client)
+            archive: SupabaseArchiveRepository(client: client),
+            testerAccess: SupabaseTesterAccessRepository(client: client)
         )
     }
 }

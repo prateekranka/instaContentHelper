@@ -1,4 +1,16 @@
 export type GenerateWeekMode = "generate_draft" | "regenerate_draft";
+export type GenerateWeekResponseMode = "sync" | "async";
+
+export type RegenerateDayRequest = {
+  action: "regenerate_day";
+  creator_id: string;
+  weekly_plan_id: string;
+  scheduled_date: string;
+  preserve_manual_edits: boolean;
+  mock: boolean;
+  response_mode: GenerateWeekResponseMode;
+  input_overrides?: Record<string, unknown>;
+};
 
 export type GenerateWeekRequest = {
   creator_id: string;
@@ -7,6 +19,7 @@ export type GenerateWeekRequest = {
   mode: GenerateWeekMode;
   preserve_manual_edits: boolean;
   mock: boolean;
+  response_mode: GenerateWeekResponseMode;
   input_overrides?: Record<string, unknown>;
 };
 
@@ -24,7 +37,10 @@ export type GenerationInputSnapshot = {
   audio_options: Record<string, unknown>[];
   brand_briefs: Record<string, unknown>[];
   key_moments: Record<string, unknown>[];
+  existing_week_cards?: Record<string, unknown>[];
 };
+
+const DEFAULT_AI_REQUEST_TIMEOUT_MS = 90_000;
 
 export type GeneratedScene = {
   number: number;
@@ -80,6 +96,15 @@ export type GeneratedWeekOutput = {
   warnings: string[];
   assumptions: string[];
   daily_cards: GeneratedDailyCard[];
+  idea_bank: GeneratedIdea[];
+  source_summary: string;
+};
+
+export type GeneratedDayOutput = {
+  strategy_note: string;
+  warnings: string[];
+  assumptions: string[];
+  daily_card: GeneratedDailyCard;
   idea_bank: GeneratedIdea[];
   source_summary: string;
 };
@@ -146,6 +171,7 @@ export function normalizeGenerateWeekRequest(
   const weekStartDate = stringValue(body.week_start_date);
   const weeklySetupID = stringValue(body.weekly_setup_id);
   const requestedMode = stringValue(body.mode) ?? "generate_draft";
+  const responseMode = stringValue(body.response_mode) ?? "sync";
   const preserveManualEdits = body.preserve_manual_edits === true;
   const mock = body.mock === true;
   const inputOverrides = isRecord(body.input_overrides)
@@ -176,6 +202,13 @@ export function normalizeGenerateWeekRequest(
     );
   }
 
+  if (responseMode !== "sync" && responseMode !== "async") {
+    throw new GenerateWeekValidationError(
+      "invalid_generation_payload",
+      "response_mode must be sync or async.",
+    );
+  }
+
   return {
     creator_id: creatorID,
     week_start_date: weekStartDate,
@@ -183,7 +216,53 @@ export function normalizeGenerateWeekRequest(
     mode: requestedMode,
     preserve_manual_edits: preserveManualEdits,
     mock,
+    response_mode: responseMode,
     input_overrides: inputOverrides,
+  };
+}
+
+export function normalizeRegenerateDayRequest(
+  body: unknown,
+): RegenerateDayRequest {
+  if (!isRecord(body) || body.action !== "regenerate_day") {
+    throw new GenerateWeekValidationError(
+      "invalid_generation_payload",
+      "action must be regenerate_day.",
+    );
+  }
+
+  const creatorID = stringValue(body.creator_id);
+  const weeklyPlanID = stringValue(body.weekly_plan_id);
+  const scheduledDate = stringValue(body.scheduled_date);
+  const responseMode = stringValue(body.response_mode) ?? "sync";
+
+  if (
+    !isUUID(creatorID) || !isUUID(weeklyPlanID) ||
+    !isDateString(scheduledDate)
+  ) {
+    throw new GenerateWeekValidationError(
+      "invalid_generation_payload",
+      "creator_id, weekly_plan_id, and scheduled_date are required.",
+    );
+  }
+  if (responseMode !== "sync" && responseMode !== "async") {
+    throw new GenerateWeekValidationError(
+      "invalid_generation_payload",
+      "response_mode must be sync or async.",
+    );
+  }
+
+  return {
+    action: "regenerate_day",
+    creator_id: creatorID,
+    weekly_plan_id: weeklyPlanID,
+    scheduled_date: scheduledDate,
+    preserve_manual_edits: body.preserve_manual_edits !== false,
+    mock: body.mock === true,
+    response_mode: responseMode,
+    input_overrides: isRecord(body.input_overrides)
+      ? body.input_overrides
+      : undefined,
   };
 }
 
@@ -254,6 +333,85 @@ export function buildDeepSeekChatRequest(
     thinking: { type: "enabled" },
     reasoning_effort: "max",
     max_tokens: 12000,
+    temperature: 0.2,
+  };
+}
+
+function buildDayPromptMessages(
+  input: GenerationInputSnapshot,
+  scheduledDate: string,
+  dayIndex: number,
+): { system: string; user: string } {
+  return {
+    system: [
+      "You generate Mamta Content OS daily content as strict JSON.",
+      "Use only the provided creator profile, weekly setup, confirmed references and extractions, brand obligations, key moments, archive feedback, and idea bank.",
+      "Generate exactly one daily card for the requested scheduled_date.",
+      "Prioritize shootability, calm practical tone, and creator safety over trend chasing.",
+      "Avoid all no-go topics and surface assumptions or risks instead of inventing facts.",
+    ].join(" "),
+    user: JSON.stringify({
+      task:
+        "Generate one draft daily card that will be combined into a seven-day weekly plan.",
+      required_output:
+        "JSON only. Match the supplied contract exactly. Do not return markdown.",
+      target: {
+        scheduled_date: scheduledDate,
+        day_index: dayIndex + 1,
+        week_start_date: input.week_start_date,
+      },
+      required_contract: generatedDayOutputContract(scheduledDate),
+      input,
+    }),
+  };
+}
+
+function buildOpenAIDayResponsesRequest(
+  input: GenerationInputSnapshot,
+  model: string,
+  scheduledDate: string,
+  dayIndex: number,
+): Record<string, unknown> {
+  const messages = buildDayPromptMessages(input, scheduledDate, dayIndex);
+  return {
+    model,
+    input: [
+      { role: "system", content: messages.system },
+      { role: "user", content: messages.user },
+    ],
+    text: {
+      format: { type: "json_object" },
+    },
+    max_output_tokens: 5000,
+  };
+}
+
+function buildDeepSeekDayChatRequest(
+  input: GenerationInputSnapshot,
+  model: string,
+  scheduledDate: string,
+  dayIndex: number,
+): Record<string, unknown> {
+  const messages = buildDayPromptMessages(input, scheduledDate, dayIndex);
+  return {
+    model,
+    messages: [
+      { role: "system", content: messages.system },
+      {
+        role: "user",
+        content: [
+          messages.user,
+          "Return one valid JSON object only. Do not wrap the JSON in Markdown.",
+          "The top-level object must include strategy_note, warnings, assumptions, daily_card, idea_bank, and source_summary.",
+          "daily_card must include scheduled_date, title, why_today, growth_job, content_pillar, shootability, estimated_shoot_minutes, energy_required, language_mode, scene_list, script, no_voiceover_version, on_screen_text, caption, cta, hashtags, cover_text, post_instructions, brand_event_notes, backup_story, backup_caption_only, audio_option_notes, mamta_fit_score, risk_notes, assumptions, source_note, and source_reference_ids.",
+          "Never use day_of_week instead of scheduled_date.",
+        ].join("\n"),
+      },
+    ],
+    response_format: { type: "json_object" },
+    thinking: { type: "enabled" },
+    reasoning_effort: "max",
+    max_tokens: 5000,
     temperature: 0.2,
   };
 }
@@ -330,6 +488,64 @@ function generatedWeekOutputContract(
   };
 }
 
+function generatedDayOutputContract(
+  scheduledDate: string,
+): Record<string, unknown> {
+  return {
+    top_level_required: [
+      "strategy_note",
+      "warnings",
+      "assumptions",
+      "daily_card",
+      "idea_bank",
+      "source_summary",
+    ],
+    example_output: {
+      strategy_note: "Keep this day low-effort and recovery-first.",
+      warnings: [],
+      assumptions: ["Mamta is in New Jersey and keeping recovery gentle."],
+      daily_card: generatedDailyCardExample(scheduledDate),
+      idea_bank: [],
+      source_summary: "Used weekly setup and confirmed Inspiration context.",
+    },
+    daily_card: {
+      scheduled_date: scheduledDate,
+      example_daily_card: generatedDailyCardExample(scheduledDate),
+      required_fields: [
+        "scheduled_date",
+        "title",
+        "why_today",
+        "growth_job",
+        "content_pillar",
+        "shootability",
+        "estimated_shoot_minutes",
+        "energy_required",
+        "language_mode",
+        "scene_list",
+        "script",
+        "no_voiceover_version",
+        "on_screen_text",
+        "caption",
+        "cta",
+        "hashtags",
+        "cover_text",
+        "post_instructions",
+        "brand_event_notes",
+        "backup_story",
+        "backup_caption_only",
+        "audio_option_notes",
+        "mamta_fit_score",
+        "risk_notes",
+        "assumptions",
+        "source_note",
+        "source_reference_ids",
+      ],
+    },
+    idea_bank:
+      "Array of 0-2 saved or scheduled ideas using the same idea fields as weekly output.",
+  };
+}
+
 function generatedDailyCardExample(
   weekStartDate: string,
 ): Record<string, unknown> {
@@ -392,6 +608,82 @@ export async function callAIProviders(
   throw lastError;
 }
 
+export async function callAIProvidersForSplitWeek(
+  input: GenerationInputSnapshot,
+  providers: AIProviderConfig[],
+  invokeProvider: (
+    input: GenerationInputSnapshot,
+    provider: AIProviderConfig,
+    scheduledDate: string,
+    dayIndex: number,
+  ) => Promise<GeneratedDayOutput> = callAIProviderForDay,
+): Promise<GeneratedWeekOutput> {
+  const dates = weekDates(input.week_start_date);
+  const dayOutputs = await Promise.all(
+    dates.map((scheduledDate, dayIndex) =>
+      callAIProvidersForDay(
+        input,
+        providers,
+        scheduledDate,
+        dayIndex,
+        invokeProvider,
+      )
+    ),
+  );
+
+  return combineGeneratedDayOutputs(input, dayOutputs);
+}
+
+export function combineGeneratedDayOutputs(
+  input: GenerationInputSnapshot,
+  dayOutputs: GeneratedDayOutput[],
+): GeneratedWeekOutput {
+  return validateGeneratedWeek({
+    strategy_summary: combineText(
+      dayOutputs.map((output) => output.strategy_note),
+      "A calm, shootable recovery week with one practical daily content card.",
+    ),
+    warnings: uniqueStrings(dayOutputs.flatMap((output) => output.warnings)),
+    assumptions: uniqueStrings(
+      dayOutputs.flatMap((output) => output.assumptions),
+    ),
+    daily_cards: dayOutputs.map((output) => output.daily_card),
+    idea_bank: dayOutputs.flatMap((output) => output.idea_bank).slice(0, 14),
+    source_summary: combineText(
+      dayOutputs.map((output) => output.source_summary),
+      `Used ${input.confirmed_references.length} confirmed references, ${input.recent_archive.length} archive entries, and ${input.idea_bank.length} saved ideas.`,
+    ),
+  }, input.week_start_date);
+}
+
+export async function callAIProvidersForDay(
+  input: GenerationInputSnapshot,
+  providers: AIProviderConfig[],
+  scheduledDate: string,
+  dayIndex: number,
+  invokeProvider: (
+    input: GenerationInputSnapshot,
+    provider: AIProviderConfig,
+    scheduledDate: string,
+    dayIndex: number,
+  ) => Promise<GeneratedDayOutput> = callAIProviderForDay,
+): Promise<GeneratedDayOutput> {
+  let lastError: unknown = new Error("ai_provider_request_failed");
+  for (const provider of providers) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await invokeProvider(input, provider, scheduledDate, dayIndex);
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableGeneratedJSONError(error)) {
+          break;
+        }
+      }
+    }
+  }
+  throw lastError;
+}
+
 export async function callAIProvider(
   input: GenerationInputSnapshot,
   provider: AIProviderConfig,
@@ -407,13 +699,38 @@ export async function callAIProvider(
   return await callOpenAIResponses(input, provider.model, provider.apiKey);
 }
 
+export async function callAIProviderForDay(
+  input: GenerationInputSnapshot,
+  provider: AIProviderConfig,
+  scheduledDate: string,
+  dayIndex: number,
+): Promise<GeneratedDayOutput> {
+  if (provider.provider === "deepseek") {
+    return await callDeepSeekDayChatCompletions(
+      input,
+      provider.model,
+      provider.apiKey,
+      scheduledDate,
+      dayIndex,
+      provider.baseURL,
+    );
+  }
+  return await callOpenAIDayResponses(
+    input,
+    provider.model,
+    provider.apiKey,
+    scheduledDate,
+    dayIndex,
+  );
+}
+
 export async function callDeepSeekChatCompletions(
   input: GenerationInputSnapshot,
   model: string,
   apiKey: string,
   baseURL = "https://api.deepseek.com",
 ): Promise<GeneratedWeekOutput> {
-  const response = await fetch(
+  const response = await fetchWithAIRequestTimeout(
     `${baseURL.replace(/\/+$/, "")}/chat/completions`,
     {
       method: "POST",
@@ -441,19 +758,60 @@ export async function callDeepSeekChatCompletions(
   return parseGeneratedWeekJSON(rawJSON, input.week_start_date);
 }
 
+async function callDeepSeekDayChatCompletions(
+  input: GenerationInputSnapshot,
+  model: string,
+  apiKey: string,
+  scheduledDate: string,
+  dayIndex: number,
+  baseURL = "https://api.deepseek.com",
+): Promise<GeneratedDayOutput> {
+  const response = await fetchWithAIRequestTimeout(
+    `${baseURL.replace(/\/+$/, "")}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        buildDeepSeekDayChatRequest(input, model, scheduledDate, dayIndex),
+      ),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`deepseek_request_failed:${response.status}`);
+  }
+
+  const json = await response.json();
+  const rawJSON = extractChatCompletionOutputText(json);
+  if (!rawJSON) {
+    throw new GenerateWeekValidationError(
+      "invalid_ai_json",
+      "DeepSeek response did not include output JSON.",
+    );
+  }
+
+  return parseGeneratedDayJSON(rawJSON, scheduledDate, dayIndex);
+}
+
 export async function callOpenAIResponses(
   input: GenerationInputSnapshot,
   model: string,
   apiKey: string,
 ): Promise<GeneratedWeekOutput> {
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+  const response = await fetchWithAIRequestTimeout(
+    "https://api.openai.com/v1/responses",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildOpenAIResponsesRequest(input, model)),
     },
-    body: JSON.stringify(buildOpenAIResponsesRequest(input, model)),
-  });
+  );
 
   if (!response.ok) {
     throw new Error(`openai_request_failed:${response.status}`);
@@ -469,6 +827,78 @@ export async function callOpenAIResponses(
   }
 
   return parseGeneratedWeekJSON(rawJSON, input.week_start_date);
+}
+
+async function callOpenAIDayResponses(
+  input: GenerationInputSnapshot,
+  model: string,
+  apiKey: string,
+  scheduledDate: string,
+  dayIndex: number,
+): Promise<GeneratedDayOutput> {
+  const response = await fetchWithAIRequestTimeout(
+    "https://api.openai.com/v1/responses",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(
+        buildOpenAIDayResponsesRequest(input, model, scheduledDate, dayIndex),
+      ),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`openai_request_failed:${response.status}`);
+  }
+
+  const json = await response.json();
+  const rawJSON = extractOpenAIOutputText(json);
+  if (!rawJSON) {
+    throw new GenerateWeekValidationError(
+      "invalid_ai_json",
+      "OpenAI response did not include output JSON.",
+    );
+  }
+
+  return parseGeneratedDayJSON(rawJSON, scheduledDate, dayIndex);
+}
+
+async function fetchWithAIRequestTimeout(
+  input: string,
+  init: RequestInit,
+): Promise<Response> {
+  const timeoutMS = aiRequestTimeoutMS();
+  const controller = new AbortController();
+  const timeoutID = setTimeout(() => controller.abort(), timeoutMS);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`ai_provider_request_failed:timeout:${timeoutMS}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutID);
+  }
+}
+
+function aiRequestTimeoutMS(): number {
+  const configured = Deno.env.get("MCO_AI_REQUEST_TIMEOUT_MS")?.trim();
+  if (!configured) {
+    return DEFAULT_AI_REQUEST_TIMEOUT_MS;
+  }
+
+  const parsed = Number(configured);
+  if (!Number.isFinite(parsed) || parsed < 5_000) {
+    return DEFAULT_AI_REQUEST_TIMEOUT_MS;
+  }
+  return Math.min(parsed, 180_000);
 }
 
 export function extractChatCompletionOutputText(
@@ -528,17 +958,38 @@ export function parseGeneratedWeekJSON(
   rawJSON: string,
   weekStartDate: string,
 ): GeneratedWeekOutput {
-  let parsed: unknown;
+  const parsed = parseJSONResponse(rawJSON);
+  return validateGeneratedWeek(parsed, weekStartDate);
+}
+
+function parseGeneratedDayJSON(
+  rawJSON: string,
+  scheduledDate: string,
+  dayIndex: number,
+): GeneratedDayOutput {
+  const parsed = parseJSONResponse(rawJSON);
+  return validateGeneratedDayOutput(parsed, scheduledDate, dayIndex);
+}
+
+function parseJSONResponse(rawJSON: string): unknown {
+  const normalized = stripMarkdownFence(rawJSON.trim());
   try {
-    parsed = JSON.parse(rawJSON);
+    return JSON.parse(normalized);
   } catch {
-    throw new GenerateWeekValidationError(
-      "invalid_ai_json",
-      "Generated output was not valid JSON.",
-    );
+    const extracted = extractFirstJSONObject(normalized);
+    if (extracted) {
+      try {
+        return JSON.parse(extracted);
+      } catch {
+        // Fall through to the stable error below.
+      }
+    }
   }
 
-  return validateGeneratedWeek(parsed, weekStartDate);
+  throw new GenerateWeekValidationError(
+    "invalid_ai_json",
+    "Generated output was not valid JSON.",
+  );
 }
 
 export function validateGeneratedWeek(
@@ -587,6 +1038,42 @@ export function validateGeneratedWeek(
     daily_cards: dailyCards,
     idea_bank: ideaBank,
     source_summary: sourceSummary,
+  };
+}
+
+export function validateGeneratedDayOutput(
+  value: unknown,
+  scheduledDate: string,
+  dayIndex: number,
+): GeneratedDayOutput {
+  if (!isRecord(value)) {
+    throw invalidWeek("Generated day must be an object.");
+  }
+
+  const cardValue = value.daily_card ??
+    (Array.isArray(value.daily_cards) ? value.daily_cards[0] : undefined);
+  const dailyCard = validateGeneratedDailyCard(cardValue, dayIndex);
+  if (dailyCard.scheduled_date !== scheduledDate) {
+    throw invalidWeek("Generated card date is outside the requested day.");
+  }
+
+  const ideaBank = Array.isArray(value.idea_bank)
+    ? value.idea_bank.map(validateGeneratedIdea)
+    : [];
+
+  return {
+    strategy_note: stringValue(value.strategy_note) ??
+      `Day ${dayIndex + 1} is planned as a practical, shootable card.`,
+    warnings: Array.isArray(value.warnings)
+      ? requiredStringArray(value.warnings, "warnings")
+      : [],
+    assumptions: Array.isArray(value.assumptions)
+      ? requiredStringArray(value.assumptions, "assumptions")
+      : dailyCard.assumptions,
+    daily_card: dailyCard,
+    idea_bank: ideaBank,
+    source_summary: stringValue(value.source_summary) ??
+      dailyCard.source_note,
   };
 }
 
@@ -894,6 +1381,76 @@ function requiredStringArray(value: unknown, field: string): string[] {
     }
     return item.trim();
   }).filter((item) => item.length > 0);
+}
+
+function combineText(values: string[], fallback: string): string {
+  const combined = uniqueStrings(values)
+    .filter((value) => value.trim().length > 0)
+    .join(" ");
+  return combined.trim().length > 0 ? combined : fallback;
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.flatMap((value) => {
+    const normalized = value.trim();
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) {
+      return [];
+    }
+    seen.add(key);
+    return [normalized];
+  });
+}
+
+function stripMarkdownFence(value: string): string {
+  const match = value.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return match?.[1]?.trim() ?? value;
+}
+
+function extractFirstJSONObject(value: string): string | null {
+  const start = value.indexOf("{");
+  if (start < 0) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return value.slice(start, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function isRetryableGeneratedJSONError(error: unknown): boolean {
+  return error instanceof GenerateWeekValidationError &&
+    (error.code === "invalid_ai_json" ||
+      error.code === "invalid_generated_week");
 }
 
 function invalidWeek(message: string): GenerateWeekValidationError {

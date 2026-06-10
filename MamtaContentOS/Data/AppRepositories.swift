@@ -22,6 +22,7 @@ struct AppRepositories: Sendable {
     let intelligence: any IntelligenceRepository
     let creatorProfile: any CreatorProfileRepository
     let archive: any ArchiveRepository
+    let testerAccess: any TesterAccessRepository
 
     init(
         context: WorkspaceContext,
@@ -32,7 +33,8 @@ struct AppRepositories: Sendable {
         weeklyGeneration: any WeeklyGenerationRepository = FixtureWeeklyGenerationRepository(),
         intelligence: any IntelligenceRepository,
         creatorProfile: any CreatorProfileRepository,
-        archive: any ArchiveRepository
+        archive: any ArchiveRepository,
+        testerAccess: any TesterAccessRepository = FixtureTesterAccessRepository()
     ) {
         self.context = context
         self.today = today
@@ -43,6 +45,7 @@ struct AppRepositories: Sendable {
         self.intelligence = intelligence
         self.creatorProfile = creatorProfile
         self.archive = archive
+        self.testerAccess = testerAccess
     }
 
     static let fixture = AppRepositories(
@@ -54,7 +57,8 @@ struct AppRepositories: Sendable {
         weeklyGeneration: FixtureWeeklyGenerationRepository(),
         intelligence: FixtureIntelligenceRepository(),
         creatorProfile: FixtureCreatorProfileRepository(),
-        archive: FixtureArchiveRepository()
+        archive: FixtureArchiveRepository(),
+        testerAccess: FixtureTesterAccessRepository()
     )
 }
 
@@ -110,6 +114,26 @@ protocol WeeklyGenerationRepository: Sendable {
         mode: GenerateWeekMode,
         context: WorkspaceContext
     ) async throws -> GeneratedWeekDraft
+
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult
+}
+
+extension WeeklyGenerationRepository {
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult {
+        throw RepositoryError.notConfigured("regenerate_day_not_configured")
+    }
 }
 
 protocol ReferenceRepository: Sendable {
@@ -131,6 +155,13 @@ protocol ArchiveRepository: Sendable {
         for card: DailyCard,
         context: WorkspaceContext
     ) async throws -> [ArchiveEntry]
+}
+
+protocol TesterAccessRepository: Sendable {
+    func listTesters(context: WorkspaceContext) async throws -> [TesterAccessRecord]
+    func inviteTester(email: String, displayName: String?, context: WorkspaceContext) async throws -> TesterAccessRecord
+    func resendTesterOTP(email: String, context: WorkspaceContext) async throws -> TesterAccessRecord
+    func revokeTester(memberID: UUID, context: WorkspaceContext) async throws -> TesterAccessRecord
 }
 
 struct WeeklySelectionUpdate: Hashable, Sendable {

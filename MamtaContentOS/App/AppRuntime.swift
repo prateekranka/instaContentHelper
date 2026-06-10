@@ -44,12 +44,19 @@ struct AppRuntime {
         )
         return AppRuntime(
             mode: .live(session),
-            services: AppServices.fixtureBacked(
+            services: AppServices(
                 repositories: repositories,
                 isLiveSupabaseRuntime: true,
                 memberRole: session.memberRole,
                 todayCache: todayCache,
-                notifications: notifications
+                notifications: notifications,
+                todayCard: .liveLoadingPlaceholder,
+                archiveEntries: [],
+                weeklyPlan: .liveLoadingPlaceholder,
+                weeklyIdeas: [],
+                intelligenceHome: .liveLoadingPlaceholder,
+                creatorProfileSummary: .liveLoadingPlaceholder,
+                weekCards: []
             )
         )
     }
@@ -90,6 +97,73 @@ struct AppRuntime {
             notifications: notifications
         )
     }
+
+    static func makeAuthenticationShellRuntime(
+        todayCache: any TodayCacheStoring = FileTodayCacheStore(),
+        notifications: any TodayNotificationScheduling = LocalTodayNotificationScheduler(),
+        debugEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> AppRuntime {
+        guard let session = PairedDeviceSession.debugEnvironmentSession(
+            environment: debugEnvironment
+        ) else {
+            return fixtures(
+                todayCache: todayCache,
+                notifications: notifications
+            )
+        }
+
+        return live(
+            session: session,
+            todayCache: todayCache,
+            notifications: notifications
+        )
+    }
+}
+
+private extension DailyCard {
+    static let liveLoadingPlaceholder = DailyCard(
+        title: "Loading today's card",
+        context: "Live Supabase",
+        effortLabel: "Checking",
+        whyToday: "Fetching the latest published content.",
+        scenes: []
+    )
+}
+
+private extension WeeklyPlan {
+    static let liveLoadingPlaceholder = WeeklyPlan(
+        title: "Loading week",
+        eyebrow: "LIVE SUPABASE",
+        weekRange: "Checking for updates",
+        readinessLine: "Loading",
+        isSoftLocked: false,
+        days: [],
+        setupSections: []
+    )
+}
+
+private extension IntelligenceHome {
+    static let liveLoadingPlaceholder = IntelligenceHome(
+        sourcePulse: SourcePulseSummary(
+            title: "Loading sources",
+            subtitle: "Checking Supabase",
+            references: []
+        ),
+        readyForThisWeek: [],
+        needsReview: [],
+        ideaCandidates: [],
+        recentlyUsed: [],
+        librarySections: []
+    )
+}
+
+private extension CreatorProfileSummary {
+    static let liveLoadingPlaceholder = CreatorProfileSummary(
+        displayName: "Loading",
+        positioning: "Fetching the creator profile from Supabase.",
+        voiceLine: "",
+        noGoTopics: []
+    )
 }
 
 private extension PairedDeviceSession {

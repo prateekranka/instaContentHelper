@@ -12,6 +12,7 @@ final class AppServices {
     private let notifications: any TodayNotificationScheduling
 
     var todayCard: DailyCard
+    var shotSceneIDs: Set<UUID>
     var archiveEntries: [ArchiveEntry]
     var weeklyPlan: WeeklyPlan
     var weeklyIdeas: [WeeklyIdea]
@@ -19,11 +20,15 @@ final class AppServices {
     var creatorProfileSummary: CreatorProfileSummary
     var weekCards: [DailyCard]
     var lastRepositoryError: String?
+    var lastRepositoryRefreshAttemptAt: Date?
+    var lastRepositoryRefreshAt: Date?
     var lastNotificationSchedule: TodayNotificationSchedule?
     var lastNotificationError: String?
     var isPublishingWeek = false
     var lastPublishSummary: String?
     var isGeneratingWeek = false
+    var regeneratingDayDates: Set<String> = []
+    var regenerationDayErrors: [String: String] = [:]
     var generationError: String?
     var latestGenerationSummary: GeneratedWeekDraft?
     var referenceImportPreview: ReferenceImportPreview?
@@ -34,6 +39,10 @@ final class AppServices {
     var isPreviewingReferenceImport = false
     var isConfirmingReferenceImport = false
     var isReviewingReference = false
+    var testers: [TesterAccessRecord] = []
+    var isLoadingTesters = false
+    var testerAccessError: String?
+    var testerAccessMessage: String?
 
     init(
         repositories: AppRepositories,
@@ -56,12 +65,19 @@ final class AppServices {
         self.todayCache = todayCache
         self.notifications = notifications
         self.todayCard = todayCard
+        shotSceneIDs = todayCard.completionState == .shot || todayCard.completionState == .posted
+            ? Set(todayCard.scenes.map(\.id))
+            : []
         self.archiveEntries = archiveEntries
         self.weeklyPlan = weeklyPlan
         self.weeklyIdeas = weeklyIdeas
         self.intelligenceHome = intelligenceHome
         self.creatorProfileSummary = creatorProfileSummary
         self.weekCards = weekCards
+    }
+
+    var canManageTesterAccess: Bool {
+        isLiveSupabaseRuntime && memberRole == "owner"
     }
 
     static var preview: AppServices {
@@ -91,8 +107,90 @@ final class AppServices {
         )
     }
 
+    static func liveBacked(
+        repositories: AppRepositories,
+        memberRole: String,
+        todayCache: any TodayCacheStoring = FileTodayCacheStore(),
+        notifications: any TodayNotificationScheduling = NoopTodayNotificationScheduler()
+    ) -> AppServices {
+        AppServices(
+            repositories: repositories,
+            isLiveSupabaseRuntime: true,
+            memberRole: memberRole,
+            todayCache: todayCache,
+            notifications: notifications,
+            todayCard: DailyCard(
+                title: "Checking today's plan",
+                context: "Live Supabase",
+                effortLabel: "Loading",
+                whyToday: "Your latest published card will appear after the live refresh completes.",
+                scenes: []
+            ),
+            archiveEntries: [],
+            weeklyPlan: WeeklyPlan(
+                title: "Generate a Week",
+                eyebrow: "LIVE WORKSPACE",
+                weekRange: "Checking schedule",
+                readinessLine: "Loading live plan",
+                isSoftLocked: false,
+                days: [],
+                setupSections: []
+            ),
+            weeklyIdeas: [],
+            intelligenceHome: IntelligenceHome(
+                sourcePulse: SourcePulseSummary(
+                    title: "Checking sources",
+                    subtitle: "Loading live Supabase context",
+                    references: []
+                ),
+                readyForThisWeek: [],
+                needsReview: [],
+                ideaCandidates: [],
+                recentlyUsed: [],
+                librarySections: []
+            ),
+            creatorProfileSummary: CreatorProfileSummary(
+                displayName: "Creator",
+                positioning: "Loading live profile",
+                voiceLine: "",
+                noGoTopics: []
+            ),
+            weekCards: []
+        )
+    }
+
     func completeToday(with completionState: CompletionState) {
         completeToday(with: DailyDecision(completionState: completionState))
+    }
+
+    var shotSceneCount: Int {
+        todayCard.scenes.count { shotSceneIDs.contains($0.id) }
+    }
+
+    var unshotSceneCount: Int {
+        max(todayCard.scenes.count - shotSceneCount, 0)
+    }
+
+    var areAllScenesShot: Bool {
+        !todayCard.scenes.isEmpty && unshotSceneCount == 0
+    }
+
+    func isSceneShot(_ scene: ShotScene) -> Bool {
+        shotSceneIDs.contains(scene.id)
+    }
+
+    func markSceneShot(_ scene: ShotScene) {
+        shotSceneIDs.insert(scene.id)
+        if areAllScenesShot, todayCard.completionState == nil {
+            completeToday(with: DailyDecision.shot)
+        }
+    }
+
+    func markAllScenesShot() {
+        shotSceneIDs.formUnion(todayCard.scenes.map(\.id))
+        if todayCard.completionState == nil {
+            completeToday(with: DailyDecision.shot)
+        }
     }
 
     func completeToday(with decision: DailyDecision) {
@@ -137,6 +235,22 @@ final class AppServices {
         (memberRole == "owner" || memberRole == "editor") &&
             !weeklyPlan.isSoftLocked &&
             !isGeneratingWeek
+    }
+
+    func updateWeeklyDateWindow(startDate: String, endDate: String) {
+        guard !weeklyPlan.isSoftLocked else { return }
+
+        let constrainedEndDate = SupabaseDateFormatting.constrainedWeekEndDate(
+            starting: startDate,
+            requestedEndDate: endDate
+        )
+        weeklyPlan.weekStartDate = startDate
+        weeklyPlan.weekEndDate = constrainedEndDate
+        weeklyPlan.weekRange = SupabaseDateFormatting.dateRange(
+            starting: startDate,
+            ending: constrainedEndDate
+        )
+        generationError = nil
     }
 
     func generateCurrentWeek() {
@@ -190,6 +304,95 @@ final class AppServices {
         latestGenerationSummary = draft
         weeklyPlan = draft.weeklyPlan(setupSections: weeklyPlan.setupSections)
         weeklyIdeas = draft.ideaBank.isEmpty ? weeklyIdeas : draft.ideaBank
+    }
+
+    func generatedDailyCard(for dayID: UUID) -> GeneratedDailyCardDraft? {
+        latestGenerationSummary?.dailyCards.first { $0.id == dayID }
+    }
+
+    func regeneratedDailyCard(
+        scheduledDate: String,
+        preserveManualEdits: Bool
+    ) async throws -> GeneratedDailyCardDraft {
+        guard memberRole == "owner" || memberRole == "editor" else {
+            let error = "role_not_allowed"
+            regenerationDayErrors[scheduledDate] = error
+            throw RepositoryError.edgeFunction(error)
+        }
+
+        guard !weeklyPlan.isSoftLocked else {
+            let error = "published_week_locked"
+            regenerationDayErrors[scheduledDate] = error
+            throw RepositoryError.edgeFunction(error)
+        }
+
+        guard !regeneratingDayDates.contains(scheduledDate) else {
+            if let existing = latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate }) {
+                return existing
+            }
+            let error = "generation_already_running"
+            regenerationDayErrors[scheduledDate] = error
+            throw RepositoryError.edgeFunction(error)
+        }
+
+        regeneratingDayDates.insert(scheduledDate)
+        regenerationDayErrors[scheduledDate] = nil
+        defer { regeneratingDayDates.remove(scheduledDate) }
+
+        do {
+            let result = try await repositories.weeklyGeneration.regenerateDay(
+                creatorID: context.creatorID,
+                weeklyPlanID: weeklyPlan.id,
+                scheduledDate: scheduledDate,
+                preserveManualEdits: preserveManualEdits,
+                context: context
+            )
+            applyRegeneratedDay(result.dailyCard)
+            generationError = nil
+            lastRepositoryError = nil
+            return result.dailyCard
+        } catch {
+            let message = WeeklyGenerationErrorDisplay.message(for: error)
+            regenerationDayErrors[scheduledDate] = message
+            generationError = message
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
+    func applyRegeneratedDay(_ card: GeneratedDailyCardDraft) {
+        if var draft = latestGenerationSummary {
+            if draft.replaceDailyCard(card) {
+                latestGenerationSummary = draft
+            }
+        }
+
+        if let dayIndex = weeklyPlan.days.firstIndex(where: {
+            $0.id == card.id || $0.scheduledDate == card.scheduledDate
+        }) {
+            weeklyPlan.days[dayIndex] = card.weeklyDay
+            weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
+        }
+    }
+
+    func updateWeeklyDayState(dayID: UUID, state: WeeklyDayState) {
+        guard !weeklyPlan.isSoftLocked,
+              let dayIndex = weeklyPlan.days.firstIndex(where: { $0.id == dayID }),
+              !weeklyPlan.days[dayIndex].isSoftLocked
+        else {
+            return
+        }
+
+        weeklyPlan.days[dayIndex].state = state
+        weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
+
+        if var draft = latestGenerationSummary,
+           draft.weeklyPlanID == weeklyPlan.id,
+           let cardIndex = draft.dailyCards.firstIndex(where: { $0.id == dayID }) {
+            draft.dailyCards[cardIndex].status = state.generatedDraftStatus
+            latestGenerationSummary = draft
+        }
+
+        generationError = nil
     }
 
     func selectIdeaForNextOpenDay(_ idea: WeeklyIdea) {
@@ -400,6 +603,7 @@ final class AppServices {
     }
 
     func refreshFromRepositoriesImmediately() async {
+        lastRepositoryRefreshAttemptAt = Date()
         var refreshError: Error?
 
         do {
@@ -450,6 +654,9 @@ final class AppServices {
         }
 
         lastRepositoryError = refreshError?.localizedDescription
+        if refreshError == nil {
+            lastRepositoryRefreshAt = Date()
+        }
     }
 
     func refreshIntelligenceHomeImmediately() async {
@@ -477,6 +684,115 @@ final class AppServices {
         } catch {
             lastNotificationSchedule = nil
             lastNotificationError = error.localizedDescription
+        }
+    }
+
+    func loadTesterAccess() {
+        Task {
+            await loadTesterAccessImmediately()
+        }
+    }
+
+    func loadTesterAccessImmediately() async {
+        guard canManageTesterAccess else {
+            testers = []
+            testerAccessError = nil
+            return
+        }
+
+        isLoadingTesters = true
+        defer { isLoadingTesters = false }
+
+        do {
+            testers = try await repositories.testerAccess.listTesters(context: context)
+            testerAccessError = nil
+        } catch {
+            testerAccessError = error.localizedDescription
+        }
+    }
+
+    func inviteTester(email: String, displayName: String?) {
+        Task {
+            await inviteTesterImmediately(email: email, displayName: displayName)
+        }
+    }
+
+    func inviteTesterImmediately(email: String, displayName: String?) async {
+        guard canManageTesterAccess else {
+            testerAccessError = "owner_role_required"
+            return
+        }
+
+        isLoadingTesters = true
+        defer { isLoadingTesters = false }
+
+        do {
+            let tester = try await repositories.testerAccess.inviteTester(
+                email: email,
+                displayName: displayName,
+                context: context
+            )
+            testers.removeAll { $0.id == tester.id || $0.email == tester.email }
+            testers.append(tester)
+            testers.sort { $0.email < $1.email }
+            testerAccessMessage = "Invite sent to (tester.email)."
+            testerAccessError = nil
+        } catch {
+            testerAccessError = error.localizedDescription
+        }
+    }
+
+    func resendTesterOTP(email: String) {
+        Task {
+            await resendTesterOTPImmediately(email: email)
+        }
+    }
+
+    func resendTesterOTPImmediately(email: String) async {
+        guard canManageTesterAccess else {
+            testerAccessError = "owner_role_required"
+            return
+        }
+
+        isLoadingTesters = true
+        defer { isLoadingTesters = false }
+
+        do {
+            let tester = try await repositories.testerAccess.resendTesterOTP(email: email, context: context)
+            testerAccessMessage = "New code sent to \(tester.email)."
+            testerAccessError = nil
+        } catch {
+            testerAccessError = error.localizedDescription
+        }
+    }
+
+    func revokeTester(memberID: UUID) {
+        Task {
+            await revokeTesterImmediately(memberID: memberID)
+        }
+    }
+
+    func revokeTesterImmediately(memberID: UUID) async {
+        guard canManageTesterAccess else {
+            testerAccessError = "owner_role_required"
+            return
+        }
+
+        isLoadingTesters = true
+        defer { isLoadingTesters = false }
+
+        do {
+            let tester = try await repositories.testerAccess.revokeTester(
+                memberID: memberID,
+                context: context
+            )
+            testers.removeAll { $0.id == memberID }
+            testers.append(tester)
+            testers.sort { $0.email < $1.email }
+            testerAccessMessage = "Access revoked for (tester.email)."
+            testerAccessError = nil
+        } catch {
+            testerAccessError = error.localizedDescription
         }
     }
 

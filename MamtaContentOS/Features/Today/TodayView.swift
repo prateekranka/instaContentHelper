@@ -3,12 +3,21 @@ import SwiftUI
 struct TodayView: View {
     @Environment(AppServices.self) private var services
     @State private var sheet: TodaySheet?
+    let onOpenProfile: () -> Void
+
+    init(onOpenProfile: @escaping () -> Void = {}) {
+        self.onOpenProfile = onOpenProfile
+    }
 
     var body: some View {
         EditorialScreen {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
-                TodayHeroCard(card: services.todayCard)
+                NavigationLink(value: MamtaRoute.shootFolio) {
+                    TodayHeroCard(card: services.todayCard)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open today's Shoot Folio")
 
                 if let completion = services.todayCard.completionState {
                     JournalBlock {
@@ -28,21 +37,9 @@ struct TodayView: View {
             }
         } bottomBar: {
             GlassCommandBar {
-                NavigationLink(value: MamtaRoute.shootFolio) {
-                    Text("See what to shoot")
-                        .font(.system(size: 16, weight: .semibold, design: .serif))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .foregroundStyle(MCOTheme.Color.paperRaised)
-                        .background(MCOTheme.Color.oxblood)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .buttonStyle(.plain)
-
-                SecondaryActionButton(title: "Not today") {
+                SecondaryActionButton(title: "Give me other ideas") {
                     sheet = .notToday
                 }
-                .frame(maxWidth: 140)
             }
         }
         .sheet(item: $sheet) { item in
@@ -59,21 +56,47 @@ struct TodayView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                Text("MC")
-                    .font(.system(size: 25, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.oxblood)
                 Text("Today")
                     .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)
-                Text(services.todayCard.context)
+                Text(todayDateLine)
                     .font(.system(size: 17, weight: .regular, design: .serif))
                     .foregroundStyle(MCOTheme.Color.brass)
             }
             Spacer()
-            FloatingIconButton(systemImage: "gearshape", label: "Settings") {}
-                .padding(.top, MCOSpace.l)
+            FloatingIconButton(systemImage: "gearshape", label: "Open Profile") {
+                onOpenProfile()
+            }
         }
     }
+
+    private var todayDateLine: String {
+        guard let scheduledDate = services.todayCard.scheduledDate,
+              let date = Self.apiDateFormatter.date(from: scheduledDate)
+        else {
+            return services.todayCard.context
+        }
+
+        return Self.headingDateFormatter.string(from: date)
+    }
+
+    private static let apiDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private static let headingDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEEE, dd/MM/yy"
+        return formatter
+    }()
 }
 
 struct TodayHeroCard: View {
@@ -113,6 +136,12 @@ struct TodayHeroCard: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
                     .minimumScaleFactor(0.85)
+                Text(cardSubtitle)
+                    .font(.system(size: 17, weight: .regular, design: .serif))
+                    .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.82))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .padding(.horizontal, MCOSpace.m)
                 Text(card.effortLabel)
                     .font(MCOType.caption)
                     .foregroundStyle(MCOTheme.Color.paperRaised)
@@ -123,20 +152,16 @@ struct TodayHeroCard: View {
                         Capsule()
                             .stroke(MCOTheme.Color.paperRaised.opacity(0.28), lineWidth: 1)
                     }
-                Rectangle()
-                    .fill(MCOTheme.Color.brass)
-                    .frame(width: 44, height: 1)
-                Text(card.whyToday)
-                    .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.paperRaised)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, MCOSpace.xl)
                 Spacer()
             }
             .padding(MCOSpace.l)
         }
         .frame(minHeight: 360)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var cardSubtitle: String {
+        card.sourceNote?.nilIfBlank ?? card.context
     }
 }
 

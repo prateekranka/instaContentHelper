@@ -142,10 +142,11 @@ final class SupabaseWriteContentDTOTests: XCTestCase {
     private func fixturePlan() -> WeeklyPlan {
         WeeklyPlan(
             id: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
-            title: "Weekly Plan",
+            title: "Generate a Week",
             eyebrow: "PRATEEK WEEKLY CONTROL",
             weekRange: "1 Jun - 7 Jun",
             weekStartDate: "2026-06-01",
+            weekEndDate: "2026-06-07",
             readinessLine: "5 ready, 1 backup, 1 open",
             isSoftLocked: true,
             days: WeeklyPlan.raceWeek.days,

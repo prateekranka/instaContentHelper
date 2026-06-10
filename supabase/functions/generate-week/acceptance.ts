@@ -105,9 +105,14 @@ const draftCards = await rows(
   "draft daily cards",
 );
 assertEquals(draftCards.length, 7, "draft daily card count");
-assert(draftCards.every((card) => card.status === "draft"), "all draft");
 assert(
-  draftCards.every((card) => card.script && card.caption && card.backup_story),
+  draftCards.every((card: Record<string, unknown>) => card.status === "draft"),
+  "all draft",
+);
+assert(
+  draftCards.every((card: Record<string, unknown>) =>
+    card.script && card.caption && card.backup_story
+  ),
   "draft card rich fields persisted",
 );
 console.log("PASS persisted exactly one draft plan and seven rich draft cards");
@@ -125,7 +130,7 @@ assertEquals(
   "draft source reference link count",
 );
 assert(
-  draftCardReferences.every((reference) =>
+  draftCardReferences.every((reference: Record<string, unknown>) =>
     reference.source_reference_id === ids.reference &&
     typeof reference.reason === "string" &&
     reference.reason.includes("Confirmed towel transition")
@@ -253,7 +258,7 @@ assertEquals(
   "regenerated source reference link count",
 );
 assert(
-  regeneratedCardReferences.every((reference) =>
+  regeneratedCardReferences.every((reference: Record<string, unknown>) =>
     reference.source_reference_id === ids.replacementReference &&
     typeof reference.reason === "string" &&
     reference.reason.includes("Replacement confirmed shoe transition")
@@ -271,6 +276,24 @@ assertEquals(weeklyRead.status, 200, "read weekly status");
 assertEquals(weeklyRead.json.weekly_plan.id, weeklyPlanID, "weekly draft id");
 assertEquals(weeklyRead.json.daily_cards.length, 7, "weekly read card count");
 console.log("PASS read-content weekly returns draft review data");
+
+const profileRead = await callFunction(
+  "read-content",
+  ownerSession.device_token,
+  { action: "creator_profile", creator_id: ids.creator },
+);
+assertEquals(profileRead.status, 200, "read creator profile status");
+assertEquals(
+  profileRead.json.profile.positioning,
+  "Premium fitness after 60, warm and practical.",
+  "creator profile positioning",
+);
+assertEquals(
+  profileRead.json.profile.voice_rules.length,
+  3,
+  "creator profile voice rules",
+);
+console.log("PASS read-content creator profile returns live profile data");
 
 const publish = await callFunction(
   "publish-week",
@@ -291,11 +314,13 @@ const publishedCards = await rows(
   "published daily cards",
 );
 assert(
-  publishedCards.every((card) => card.status === "published"),
+  publishedCards.every((card: Record<string, unknown>) =>
+    card.status === "published"
+  ),
   "all published",
 );
 assert(
-  publishedCards.every((card) =>
+  publishedCards.every((card: Record<string, unknown>) =>
     card.script && card.caption && card.backup_story
   ),
   "published rich fields preserved",

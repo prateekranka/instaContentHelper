@@ -7,6 +7,7 @@ struct SupabaseGenerateWeekRequest: Encodable, Sendable {
     var mode: GenerateWeekMode
     var preserveManualEdits: Bool
     var mock: Bool?
+    var responseMode: GenerateWeekResponseMode? = nil
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
@@ -15,6 +16,96 @@ struct SupabaseGenerateWeekRequest: Encodable, Sendable {
         case mode
         case preserveManualEdits = "preserve_manual_edits"
         case mock
+        case responseMode = "response_mode"
+    }
+}
+
+enum GenerateWeekResponseMode: String, Encodable, Sendable {
+    case sync
+    case async
+}
+
+struct SupabaseRegenerateDayRequest: Encodable, Sendable {
+    var creatorID: UUID
+    var weeklyPlanID: UUID
+    var scheduledDate: String
+    var preserveManualEdits: Bool
+    var responseMode: GenerateWeekResponseMode = .async
+    var mock: Bool?
+    var action = "regenerate_day"
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case weeklyPlanID = "weekly_plan_id"
+        case scheduledDate = "scheduled_date"
+        case preserveManualEdits = "preserve_manual_edits"
+        case responseMode = "response_mode"
+        case mock
+        case action
+    }
+}
+
+struct SupabaseRegenerateDayResponse: Decodable, Hashable, Sendable {
+    var generationID: UUID
+    var weeklyPlanID: UUID
+    var status: String
+    var targetScheduledDate: String
+    var dailyCard: SupabaseGeneratedDailyCardDTO
+    var warnings: [String]
+    var assumptions: [String]
+    var sourceSummary: String
+    var generatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case generationID = "generation_id"
+        case weeklyPlanID = "weekly_plan_id"
+        case status
+        case targetScheduledDate = "target_scheduled_date"
+        case dailyCard = "daily_card"
+        case warnings
+        case assumptions
+        case sourceSummary = "source_summary"
+        case generatedAt = "generated_at"
+    }
+
+    var domainResult: RegeneratedDayResult {
+        RegeneratedDayResult(
+            generationID: generationID,
+            weeklyPlanID: weeklyPlanID,
+            status: status,
+            targetScheduledDate: targetScheduledDate,
+            dailyCard: dailyCard.domainCard,
+            warnings: warnings,
+            assumptions: assumptions,
+            sourceSummary: sourceSummary,
+            generatedAt: generatedAt
+        )
+    }
+}
+
+struct RegeneratedDayResult: Hashable, Sendable {
+    var generationID: UUID
+    var weeklyPlanID: UUID
+    var status: String
+    var targetScheduledDate: String
+    var dailyCard: GeneratedDailyCardDraft
+    var warnings: [String]
+    var assumptions: [String]
+    var sourceSummary: String
+    var generatedAt: String
+}
+
+extension GeneratedWeekDraft {
+    @discardableResult
+    mutating func replaceDailyCard(_ regeneratedCard: GeneratedDailyCardDraft) -> Bool {
+        guard let index = dailyCards.firstIndex(where: {
+            $0.id == regeneratedCard.id || $0.scheduledDate == regeneratedCard.scheduledDate
+        }) else {
+            return false
+        }
+
+        dailyCards[index] = regeneratedCard
+        return true
     }
 }
 
@@ -56,6 +147,72 @@ struct SupabaseGenerateWeekResponse: Decodable, Hashable, Sendable {
             sourceSummary: sourceSummary,
             generatedAt: generatedAt
         )
+    }
+}
+
+struct SupabaseGenerateWeekStatusRequest: Encodable, Sendable {
+    var generationID: UUID
+    var creatorID: UUID
+    var action = "status"
+
+    enum CodingKeys: String, CodingKey {
+        case generationID = "generation_id"
+        case creatorID = "creator_id"
+        case action
+    }
+}
+
+struct SupabaseGenerateWeekStatusResponse: Decodable, Hashable, Sendable {
+    var generationID: UUID
+    var status: String
+    var weeklyPlanID: UUID?
+    var message: String?
+    var pollAfterSeconds: Int?
+    var error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case generationID = "generation_id"
+        case status
+        case weeklyPlanID = "weekly_plan_id"
+        case message
+        case pollAfterSeconds = "poll_after_seconds"
+        case error
+    }
+}
+
+enum SupabaseGenerateWeekInvocation: Sendable {
+    case draft(SupabaseGenerateWeekResponse)
+    case running(SupabaseGenerateWeekStatusResponse)
+    case failed(SupabaseGenerateWeekStatusResponse)
+
+    static func decode(_ data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> SupabaseGenerateWeekInvocation {
+        if let response = try? decoder.decode(SupabaseGenerateWeekResponse.self, from: data) {
+            return .draft(response)
+        }
+
+        let status = try decoder.decode(SupabaseGenerateWeekStatusResponse.self, from: data)
+        if status.status == "failed" {
+            return .failed(status)
+        }
+        return .running(status)
+    }
+}
+
+enum SupabaseRegenerateDayInvocation: Sendable {
+    case completed(SupabaseRegenerateDayResponse)
+    case running(SupabaseGenerateWeekStatusResponse)
+    case failed(SupabaseGenerateWeekStatusResponse)
+
+    static func decode(_ data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> SupabaseRegenerateDayInvocation {
+        if let response = try? decoder.decode(SupabaseRegenerateDayResponse.self, from: data) {
+            return .completed(response)
+        }
+
+        let status = try decoder.decode(SupabaseGenerateWeekStatusResponse.self, from: data)
+        if status.status == "failed" {
+            return .failed(status)
+        }
+        return .running(status)
     }
 }
 

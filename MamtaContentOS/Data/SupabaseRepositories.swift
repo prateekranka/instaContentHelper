@@ -50,6 +50,59 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
     }
 }
 
+struct SupabaseTesterAccessRepository: TesterAccessRepository {
+    let client: SupabaseClient
+
+    func listTesters(context: WorkspaceContext) async throws -> [TesterAccessRecord] {
+        let response: ManageTesterListResponse = try await invoke(
+            ManageTesterRequest(action: "list", email: nil, memberID: nil, displayName: nil)
+        )
+        return response.testers
+    }
+
+    func inviteTester(email: String, displayName: String?, context: WorkspaceContext) async throws -> TesterAccessRecord {
+        let response: ManageTesterMutationResponse = try await invoke(
+            ManageTesterRequest(
+                action: "invite",
+                email: email,
+                memberID: nil,
+                displayName: displayName
+            )
+        )
+        return response.tester
+    }
+
+    func resendTesterOTP(email: String, context: WorkspaceContext) async throws -> TesterAccessRecord {
+        let response: ManageTesterMutationResponse = try await invoke(
+            ManageTesterRequest(action: "resend", email: email, memberID: nil, displayName: nil)
+        )
+        return response.tester
+    }
+
+    func revokeTester(memberID: UUID, context: WorkspaceContext) async throws -> TesterAccessRecord {
+        let response: ManageTesterMutationResponse = try await invoke(
+            ManageTesterRequest(action: "revoke", email: nil, memberID: memberID, displayName: nil)
+        )
+        return response.tester
+    }
+
+    private func invoke<Response: Decodable>(_ request: ManageTesterRequest) async throws -> Response {
+        do {
+            return try await client.functions.invoke(
+                "manage-testers",
+                options: FunctionInvokeOptions(body: request)
+            )
+        } catch {
+            if case FunctionsError.httpError(_, let data) = error,
+               let response = try? JSONDecoder().decode(AuthenticationFunctionErrorResponse.self, from: data),
+               let code = response.stableCode {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+}
+
 struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
     let client: SupabaseClient
 
@@ -150,10 +203,11 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
 
         return WeeklyPlan(
             id: row.id,
-            title: "Weekly Plan",
+            title: "Generate a Week",
             eyebrow: "PRATEEK WEEKLY CONTROL",
             weekRange: SupabaseDateFormatting.weekRange(starting: row.weekStartDate),
             weekStartDate: row.weekStartDate,
+            weekEndDate: SupabaseDateFormatting.weekEndDate(starting: row.weekStartDate),
             readinessLine: "\(plannedCount) ready, \(backupCount) backup, \(openCount) open",
             isSoftLocked: row.isSoftLocked || row.status == "published",
             days: days,
@@ -173,26 +227,150 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         context: WorkspaceContext
     ) async throws -> GeneratedWeekDraft {
         do {
-            let response: SupabaseGenerateWeekResponse = try await client.functions.invoke(
-                "generate-week",
-                options: FunctionInvokeOptions(
-                    body: SupabaseGenerateWeekRequest(
-                        creatorID: creatorID,
-                        weekStartDate: weekStartDate,
-                        weeklySetupID: weeklySetupID,
-                        mode: mode,
-                        preserveManualEdits: true,
-                        mock: nil
-                    )
+            let initial = try await invokeGenerateWeek(
+                SupabaseGenerateWeekRequest(
+                    creatorID: creatorID,
+                    weekStartDate: weekStartDate,
+                    weeklySetupID: weeklySetupID,
+                    mode: mode,
+                    preserveManualEdits: true,
+                    mock: nil,
+                    responseMode: .async
                 )
             )
 
-            return response.domainDraft()
+            switch initial {
+            case .draft(let response):
+                return response.domainDraft()
+            case .running(let status):
+                return try await pollGeneratedWeek(
+                    generationID: status.generationID,
+                    creatorID: creatorID
+                )
+            case .failed(let status):
+                throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_week")
+            }
         } catch {
             if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
                 throw RepositoryError.edgeFunction(code)
             }
             throw error
+        }
+    }
+
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult {
+        do {
+            let initial = try await invokeRegenerateDay(
+                SupabaseRegenerateDayRequest(
+                    creatorID: creatorID,
+                    weeklyPlanID: weeklyPlanID,
+                    scheduledDate: scheduledDate,
+                    preserveManualEdits: preserveManualEdits
+                )
+            )
+
+            switch initial {
+            case .completed(let response):
+                return response.domainResult
+            case .running(let status):
+                return try await pollRegeneratedDay(
+                    generationID: status.generationID,
+                    creatorID: creatorID
+                )
+            case .failed(let status):
+                throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_day")
+            }
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
+    private func pollGeneratedWeek(
+        generationID: UUID,
+        creatorID: UUID
+    ) async throws -> GeneratedWeekDraft {
+        let deadline = Date().addingTimeInterval(1_800)
+        var pollAfterSeconds = 5
+
+        while Date() < deadline {
+            try await Task.sleep(nanoseconds: UInt64(pollAfterSeconds) * 1_000_000_000)
+            let invocation = try await invokeGenerateWeek(
+                SupabaseGenerateWeekStatusRequest(
+                    generationID: generationID,
+                    creatorID: creatorID
+                )
+            )
+
+            switch invocation {
+            case .draft(let response):
+                return response.domainDraft()
+            case .running(let status):
+                pollAfterSeconds = max(2, min(status.pollAfterSeconds ?? 5, 15))
+            case .failed(let status):
+                throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_week")
+            }
+        }
+
+        throw RepositoryError.edgeFunction("generation_timeout")
+    }
+
+    private func invokeGenerateWeek<Body: Encodable>(
+        _ body: Body
+    ) async throws -> SupabaseGenerateWeekInvocation {
+        try await client.functions.invoke(
+            "generate-week",
+            options: FunctionInvokeOptions(body: body)
+        ) { data, _ in
+            try SupabaseGenerateWeekInvocation.decode(data)
+        }
+    }
+
+    private func pollRegeneratedDay(
+        generationID: UUID,
+        creatorID: UUID
+    ) async throws -> RegeneratedDayResult {
+        let deadline = Date().addingTimeInterval(600)
+        var pollAfterSeconds = 3
+
+        while Date() < deadline {
+            try await Task.sleep(nanoseconds: UInt64(pollAfterSeconds) * 1_000_000_000)
+            let invocation = try await invokeRegenerateDay(
+                SupabaseGenerateWeekStatusRequest(
+                    generationID: generationID,
+                    creatorID: creatorID
+                )
+            )
+
+            switch invocation {
+            case .completed(let response):
+                return response.domainResult
+            case .running(let status):
+                pollAfterSeconds = max(2, min(status.pollAfterSeconds ?? 3, 15))
+            case .failed(let status):
+                throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_day")
+            }
+        }
+
+        throw RepositoryError.edgeFunction("generation_timeout")
+    }
+
+    private func invokeRegenerateDay<Body: Encodable>(
+        _ body: Body
+    ) async throws -> SupabaseRegenerateDayInvocation {
+        try await client.functions.invoke(
+            "generate-week",
+            options: FunctionInvokeOptions(body: body)
+        ) { data, _ in
+            try SupabaseRegenerateDayInvocation.decode(data)
         }
     }
 }

@@ -3,6 +3,8 @@ import {
   buildOpenAIResponsesRequest,
   buildPromptMessages,
   callAIProviders,
+  callAIProvidersForDay,
+  callAIProvidersForSplitWeek,
   extractChatCompletionOutputText,
   extractOpenAIOutputText,
   GenerationInputSnapshot,
@@ -10,6 +12,7 @@ import {
   parseGeneratedWeekJSON,
   preserveManualDailyCardEdits,
   validateGeneratedWeek,
+  weekDates,
 } from "./generation.ts";
 
 Deno.test("prompt builder includes profile, setup, references, extractions, obligations, archive, and idea bank", () => {
@@ -99,6 +102,80 @@ Deno.test("AI provider caller falls back from DeepSeek to OpenAI", async () => {
 
   assertEquals(calls.join(","), "deepseek,openai");
   assertEquals(generated.daily_cards.length, 7);
+});
+
+Deno.test("daily AI provider caller preserves DeepSeek-primary OpenAI-fallback order", async () => {
+  const input = fixtureInput();
+  const calls: string[] = [];
+  const output = await callAIProvidersForDay(
+    input,
+    [
+      {
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKey: "deepseek-key",
+      },
+      { provider: "openai", model: "gpt-4.1-mini", apiKey: "openai-key" },
+    ],
+    "2026-06-10",
+    2,
+    async (_input, provider, scheduledDate, dayIndex) => {
+      calls.push(provider.provider);
+      if (provider.provider === "deepseek") {
+        throw new Error("deepseek_request_failed:502");
+      }
+      const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+      return {
+        strategy_note: "Fallback day",
+        warnings: [],
+        assumptions: [],
+        daily_card: { ...card, scheduled_date: scheduledDate },
+        idea_bank: [],
+        source_summary: "Fallback context",
+      };
+    },
+  );
+
+  assertEquals(calls.join(","), "deepseek,openai");
+  assertEquals(output.daily_card.scheduled_date, "2026-06-10");
+});
+
+Deno.test("split-week AI caller combines seven valid daily card outputs", async () => {
+  const input = fixtureInput();
+  const dates = weekDates("2026-06-08");
+  const calls: string[] = [];
+  const generated = await callAIProvidersForSplitWeek(
+    input,
+    [{
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      apiKey: "deepseek-key",
+    }],
+    async (_input, provider, scheduledDate, dayIndex) => {
+      calls.push(`${provider.provider}:${scheduledDate}`);
+      const mock = makeMockGeneratedWeek(input);
+      return {
+        strategy_note: `Strategy for ${scheduledDate}`,
+        warnings: [],
+        assumptions: [`Assumption ${dayIndex + 1}`],
+        daily_card: {
+          ...mock.daily_cards[dayIndex],
+          scheduled_date: scheduledDate,
+        },
+        idea_bank: [],
+        source_summary: `Source summary ${dayIndex + 1}`,
+      };
+    },
+  );
+
+  assertEquals(calls.length, 7);
+  assertEquals(calls[0], "deepseek:2026-06-08");
+  assertEquals(
+    generated.daily_cards.map((card) => card.scheduled_date).join(","),
+    dates.join(","),
+  );
+  assert(generated.strategy_summary.includes("Strategy for 2026-06-08"));
+  assert(generated.source_summary.includes("Source summary 7"));
 });
 
 Deno.test("Chat completion extractor handles DeepSeek response content", () => {

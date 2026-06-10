@@ -1,39 +1,41 @@
 import SwiftUI
 
 struct ArchiveView: View {
-    @Environment(AppServices.self) private var services
-
     var body: some View {
         ZStack {
             MCOTheme.Color.paper.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: MCOSpace.l) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                            Text("Archive")
-                                .font(MCOType.screenTitle)
-                                .foregroundStyle(MCOTheme.Color.ink)
-                            Text("Decisions and outputs.")
-                                .font(.system(size: 17, weight: .regular, design: .serif))
-                                .foregroundStyle(MCOTheme.Color.brass)
-                        }
-                        Spacer()
-                        FloatingIconButton(systemImage: "ellipsis", label: "Archive options") {}
-                    }
-
-                    Hairline()
-
-                    VStack(spacing: 0) {
-                        ForEach(services.archiveEntries) { entry in
-                            ArchiveTimelineRow(entry: entry)
-                            Hairline()
-                        }
-                    }
-                }
-                .padding(MCOSpace.l)
+                ArchiveSection()
+                    .padding(MCOSpace.l)
             }
         }
         .navigationBarHidden(true)
+    }
+}
+
+struct ArchiveSection: View {
+    @Environment(AppServices.self) private var services
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.l) {
+            VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                Text("Archive")
+                    .font(MCOType.screenTitle)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                Text("Decisions and outputs.")
+                    .font(.system(size: 17, weight: .regular, design: .serif))
+                    .foregroundStyle(MCOTheme.Color.brass)
+            }
+
+            Hairline()
+
+            VStack(spacing: 0) {
+                ForEach(services.archiveEntries) { entry in
+                    ArchiveTimelineRow(entry: entry)
+                    Hairline()
+                }
+            }
+        }
     }
 }
 

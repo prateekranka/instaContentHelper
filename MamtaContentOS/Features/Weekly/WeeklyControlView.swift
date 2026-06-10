@@ -5,6 +5,7 @@ struct WeeklyControlView: View {
     @Environment(AppServices.self) private var services
     @State private var isReviewingInputs = false
     @State private var isReviewingGeneratedDraft = false
+    @State private var dayDetailSelection: WeeklyDayDetailSelection?
 
     var body: some View {
         EditorialScreen {
@@ -13,7 +14,9 @@ struct WeeklyControlView: View {
                 WeeklyReadinessStrip(plan: services.weeklyPlan)
                 softLockStrip
                 generationStrip
-                WeeklyRhythmList(days: services.weeklyPlan.days)
+                WeeklyRhythmList(days: services.weeklyPlan.days) { day in
+                    dayDetailSelection = makeDayDetailSelection(for: day.id)
+                }
                 WeeklySectionTitle(title: "Weekly Brief", subtitle: "Inputs are shaped, not managed.")
                 WeeklySetupSummary(sections: services.weeklyPlan.setupSections)
                 WeeklySectionTitle(title: "Idea Bank", subtitle: "Prepared options underneath the week.")
@@ -50,19 +53,38 @@ struct WeeklyControlView: View {
             if let draft = services.latestGenerationSummary {
                 GeneratedWeekReviewSheet(
                     draft: draft,
+                    canRegenerateDay: canRegenerateDay,
                     onSave: services.applyGeneratedDraft,
                     onPublish: { draft in
                         services.applyGeneratedDraft(draft)
                         services.publishCurrentWeek()
-                    }
+                    },
+                    onRegenerateDay: services.regeneratedDailyCard
                 )
             }
+        }
+        .sheet(item: $dayDetailSelection) { selection in
+            WeeklyDayDetailSheet(
+                day: selection.day,
+                generatedCard: selection.generatedCard,
+                isLocked: services.weeklyPlan.isSoftLocked || selection.day.isSoftLocked,
+                canRegenerateDay: canRegenerateDay,
+                onSetState: { state in
+                    services.updateWeeklyDayState(dayID: selection.id, state: state)
+                },
+                onRegenerateDay: services.regeneratedDailyCard
+            )
         }
         .onChange(of: services.latestGenerationSummary?.id) { _, generationID in
             if generationID != nil {
                 isReviewingGeneratedDraft = true
             }
         }
+    }
+
+    private var canRegenerateDay: Bool {
+        (services.memberRole == "owner" || services.memberRole == "editor") &&
+            !services.weeklyPlan.isSoftLocked
     }
 
     private var publishButtonTitle: String {
@@ -86,16 +108,8 @@ struct WeeklyControlView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.m) {
-            HStack(alignment: .top) {
-                Text("MC")
-                    .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.brass)
-                    .frame(width: 42, height: 42)
-                    .background(MCOTheme.Color.paperRaised, in: Circle())
-                    .overlay {
-                        Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                    }
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            HStack {
                 Spacer()
                 FloatingIconButton(systemImage: "ellipsis", label: "Back to Mamta Mode") {
                     appState.activeMode = .mamta
@@ -103,19 +117,45 @@ struct WeeklyControlView: View {
             }
 
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                Text(services.weeklyPlan.eyebrow)
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
                 Text(services.weeklyPlan.title)
                     .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Text(services.weeklyPlan.weekRange)
-                    .font(.system(size: 16, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                WeekDateRangeSelector(
+                    startDate: selectedWeekStartDate,
+                    endDate: selectedWeekEndDate,
+                    isDisabled: services.weeklyPlan.isSoftLocked,
+                    onChange: services.updateWeeklyDateWindow
+                )
             }
         }
+    }
+
+    private var selectedWeekStartDate: String {
+        services.weeklyPlan.weekStartDate
+            ?? services.weeklyPlan.days.compactMap(\.scheduledDate).first
+            ?? SupabaseDateFormatting.todayDateString()
+    }
+
+    private var selectedWeekEndDate: String {
+        let fallbackEndDate = services.weeklyPlan.days.compactMap(\.scheduledDate).last
+            ?? SupabaseDateFormatting.weekEndDate(starting: selectedWeekStartDate)
+        return SupabaseDateFormatting.constrainedWeekEndDate(
+            starting: selectedWeekStartDate,
+            requestedEndDate: services.weeklyPlan.weekEndDate ?? fallbackEndDate
+        )
+    }
+
+    private func makeDayDetailSelection(for dayID: UUID) -> WeeklyDayDetailSelection? {
+        guard let day = services.weeklyPlan.days.first(where: { $0.id == dayID }) else {
+            return nil
+        }
+
+        return WeeklyDayDetailSelection(
+            day: day,
+            generatedCard: services.generatedDailyCard(for: dayID)
+        )
     }
 
     private var softLockStrip: some View {
@@ -228,6 +268,109 @@ struct WeeklyControlView: View {
     }
 }
 
+struct WeekDateRangeSelector: View {
+    let startDate: String
+    let endDate: String
+    let isDisabled: Bool
+    let onChange: (_ startDate: String, _ endDate: String) -> Void
+
+    private var startOptions: [String] {
+        SupabaseDateFormatting.dateOptions(
+            around: startDate,
+            daysBefore: 21,
+            daysAfter: 42
+        )
+    }
+
+    private var endOptions: [String] {
+        SupabaseDateFormatting.dateOptions(starting: startDate, dayCount: 7)
+    }
+
+    var body: some View {
+        HStack(spacing: MCOSpace.xs) {
+            Menu {
+                ForEach(startOptions, id: \.self) { date in
+                    Button {
+                        let nextEndDate = SupabaseDateFormatting.constrainedWeekEndDate(
+                            starting: date,
+                            requestedEndDate: endDate
+                        )
+                        onChange(date, nextEndDate)
+                    } label: {
+                        dateMenuLabel(
+                            date: date,
+                            isSelected: date == startDate
+                        )
+                    }
+                }
+            } label: {
+                dateChip(title: SupabaseDateFormatting.displayDate(for: startDate))
+            }
+            .disabled(isDisabled)
+
+            Text("-")
+                .font(.system(size: 16, weight: .regular, design: .serif))
+                .foregroundStyle(MCOTheme.Color.inkMuted)
+
+            Menu {
+                ForEach(endOptions, id: \.self) { date in
+                    Button {
+                        onChange(startDate, date)
+                    } label: {
+                        dateMenuLabel(
+                            date: date,
+                            isSelected: date == endDate
+                        )
+                    }
+                }
+            } label: {
+                dateChip(title: SupabaseDateFormatting.displayDate(for: endDate))
+            }
+            .disabled(isDisabled)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Week range \(SupabaseDateFormatting.dateRange(starting: startDate, ending: endDate))")
+    }
+
+    private func dateChip(title: String) -> some View {
+        HStack(spacing: MCOSpace.xxs) {
+            Text(title)
+                .font(.system(size: 16, weight: .regular, design: .serif))
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .semibold))
+        }
+        .foregroundStyle(isDisabled ? MCOTheme.Color.inkMuted : MCOTheme.Color.ink)
+        .padding(.horizontal, MCOSpace.xs)
+        .padding(.vertical, 6)
+        .background(MCOTheme.Color.paperRaised.opacity(0.54))
+        .clipShape(Capsule())
+        .overlay {
+            Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+        }
+    }
+
+    private func dateMenuLabel(date: String, isSelected: Bool) -> some View {
+        Label(
+            SupabaseDateFormatting.displayDate(for: date),
+            systemImage: isSelected ? "checkmark" : "calendar"
+        )
+    }
+}
+
+private struct WeeklyDayDetailSelection: Identifiable {
+    let id: UUID
+    let day: WeeklyDay
+    let generatedCard: GeneratedDailyCardDraft?
+
+    init(day: WeeklyDay, generatedCard: GeneratedDailyCardDraft?) {
+        id = day.id
+        self.day = day
+        self.generatedCard = generatedCard
+    }
+}
+
+typealias RegenerateDayAction = (_ scheduledDate: String, _ preserveManualEdits: Bool) async throws -> GeneratedDailyCardDraft
+
 struct WeeklyInputsReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     let plan: WeeklyPlan
@@ -316,17 +459,23 @@ struct WeeklyInputsReviewSheet: View {
 struct GeneratedWeekReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: GeneratedWeekDraft
+    let canRegenerateDay: Bool
     let onSave: (GeneratedWeekDraft) -> Void
     let onPublish: (GeneratedWeekDraft) -> Void
+    let onRegenerateDay: RegenerateDayAction?
 
     init(
         draft: GeneratedWeekDraft,
+        canRegenerateDay: Bool = false,
         onSave: @escaping (GeneratedWeekDraft) -> Void,
-        onPublish: @escaping (GeneratedWeekDraft) -> Void
+        onPublish: @escaping (GeneratedWeekDraft) -> Void,
+        onRegenerateDay: RegenerateDayAction? = nil
     ) {
         _draft = State(initialValue: draft)
+        self.canRegenerateDay = canRegenerateDay
         self.onSave = onSave
         self.onPublish = onPublish
+        self.onRegenerateDay = onRegenerateDay
     }
 
     var body: some View {
@@ -347,7 +496,11 @@ struct GeneratedWeekReviewSheet: View {
                             GenerationBulletBlock(title: "Assumptions", items: draft.assumptions)
                         }
                         ForEach($draft.dailyCards) { $card in
-                            GeneratedDailyCardEditor(card: $card)
+                            GeneratedDailyCardEditor(
+                                card: $card,
+                                canRegenerate: canRegenerateDay,
+                                onRegenerate: onRegenerateDay
+                            )
                         }
                     }
                     .padding(.horizontal, MCOSpace.l)
@@ -445,7 +598,12 @@ struct GenerationBulletBlock: View {
 
 struct GeneratedDailyCardEditor: View {
     @Binding var card: GeneratedDailyCardDraft
+    var canRegenerate = false
+    var onRegenerate: RegenerateDayAction?
     @State private var isInspectingGeneratedFields = false
+    @State private var preserveManualEdits = true
+    @State private var isRegenerating = false
+    @State private var regenerationError: String?
 
     var body: some View {
         JournalBlock {
@@ -476,10 +634,32 @@ struct GeneratedDailyCardEditor: View {
                 GeneratedTextEditor(title: "Caption", text: $card.caption, minHeight: 96)
                 GeneratedTextEditor(title: "Backup story", text: $card.backupStory, minHeight: 76)
                 GeneratedTextEditor(title: "Caption-only backup", text: $card.backupCaptionOnly, minHeight: 76)
+                DayRegenerationControls(
+                    preserveManualEdits: $preserveManualEdits,
+                    isRegenerating: isRegenerating,
+                    errorMessage: regenerationError,
+                    isDisabled: !canRegenerate || onRegenerate == nil,
+                    onRegenerate: regenerate
+                )
                 GeneratedCardInspectionBlock(
                     card: card,
                     isExpanded: $isInspectingGeneratedFields
                 )
+            }
+        }
+    }
+
+    private func regenerate() {
+        guard let onRegenerate, !isRegenerating else { return }
+        isRegenerating = true
+        regenerationError = nil
+
+        Task {
+            defer { isRegenerating = false }
+            do {
+                card = try await onRegenerate(card.scheduledDate, preserveManualEdits)
+            } catch {
+                regenerationError = error.localizedDescription
             }
         }
     }
@@ -573,6 +753,333 @@ struct GeneratedReadOnlyField: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+struct WeeklyDayDetailSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let day: WeeklyDay
+    @State private var generatedCard: GeneratedDailyCardDraft?
+    let isLocked: Bool
+    let canRegenerateDay: Bool
+    let onSetState: (WeeklyDayState) -> Void
+    let onRegenerateDay: RegenerateDayAction?
+    @State private var preserveManualEdits = true
+    @State private var isRegenerating = false
+    @State private var regenerationError: String?
+
+    init(
+        day: WeeklyDay,
+        generatedCard: GeneratedDailyCardDraft?,
+        isLocked: Bool,
+        canRegenerateDay: Bool = false,
+        onSetState: @escaping (WeeklyDayState) -> Void,
+        onRegenerateDay: RegenerateDayAction? = nil
+    ) {
+        self.day = day
+        _generatedCard = State(initialValue: generatedCard)
+        self.isLocked = isLocked
+        self.canRegenerateDay = canRegenerateDay
+        self.onSetState = onSetState
+        self.onRegenerateDay = onRegenerateDay
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MCOTheme.Color.paper.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: MCOSpace.l) {
+                        header
+                        stateActions
+                        if generatedCard != nil {
+                            DayRegenerationControls(
+                                preserveManualEdits: $preserveManualEdits,
+                                isRegenerating: isRegenerating,
+                                errorMessage: regenerationError,
+                                isDisabled: isLocked || !canRegenerateDay || onRegenerateDay == nil,
+                                onRegenerate: regenerate
+                            )
+                        }
+                        plannedContent
+                    }
+                    .padding(.horizontal, MCOSpace.l)
+                    .padding(.top, MCOSpace.l)
+                    .padding(.bottom, MCOSpace.xl)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func regenerate() {
+        guard
+            let scheduledDate = generatedCard?.scheduledDate ?? day.scheduledDate,
+            let onRegenerateDay,
+            !isRegenerating
+        else {
+            return
+        }
+
+        isRegenerating = true
+        regenerationError = nil
+        Task {
+            defer { isRegenerating = false }
+            do {
+                generatedCard = try await onRegenerateDay(scheduledDate, preserveManualEdits)
+            } catch {
+                regenerationError = error.localizedDescription
+            }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.xs) {
+            Text("\(day.weekday) \(day.date)")
+                .font(MCOType.tinyLabel)
+                .foregroundStyle(day.state.accent)
+            Text(day.title)
+                .font(MCOType.screenTitle)
+                .foregroundStyle(MCOTheme.Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(day.reason)
+                .font(MCOType.bodySmall)
+                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var stateActions: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.m) {
+                HStack {
+                    Text(isLocked ? "Published status" : "Confirm status")
+                        .font(MCOType.tinyLabel)
+                        .foregroundStyle(MCOTheme.Color.oxblood)
+                    Spacer()
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(MCOTheme.Color.brass)
+                    }
+                }
+
+                HStack(spacing: MCOSpace.s) {
+                    WeeklyDayStateActionButton(
+                        state: .planned,
+                        selectedState: day.state,
+                        isDisabled: isLocked
+                    ) {
+                        onSetState(.planned)
+                        dismiss()
+                    }
+                    WeeklyDayStateActionButton(
+                        state: .backup,
+                        selectedState: day.state,
+                        isDisabled: isLocked
+                    ) {
+                        onSetState(.backup)
+                        dismiss()
+                    }
+                    WeeklyDayStateActionButton(
+                        state: .open,
+                        selectedState: day.state,
+                        isDisabled: isLocked
+                    ) {
+                        onSetState(.open)
+                        dismiss()
+                    }
+                }
+
+                if isLocked {
+                    Text("Published weeks are locked.")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var plannedContent: some View {
+        if let generatedCard {
+            GeneratedDayPlannedContent(card: generatedCard)
+        } else {
+            GenerationSummaryBlock(title: "Planned content", bodyText: day.reason)
+            GenerationSummaryBlock(title: "Source", bodyText: day.source.rawValue)
+        }
+    }
+}
+
+struct DayRegenerationControls: View {
+    @Binding var preserveManualEdits: Bool
+    let isRegenerating: Bool
+    let errorMessage: String?
+    let isDisabled: Bool
+    let onRegenerate: () -> Void
+
+    var body: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.m) {
+                HStack(alignment: .center, spacing: MCOSpace.s) {
+                    VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                        Text("Regenerate this day")
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(MCOTheme.Color.oxblood)
+                        Text(preserveManualEdits ? "Keep edited fields where possible." : "Replace the entire generated card.")
+                            .font(MCOType.caption)
+                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                    }
+                    Spacer()
+                    Toggle("Keep my edits", isOn: $preserveManualEdits)
+                        .labelsHidden()
+                        .tint(MCOTheme.Color.oxblood)
+                        .disabled(isRegenerating || isDisabled)
+                        .accessibilityLabel("Keep my edits")
+                }
+
+                Button(action: onRegenerate) {
+                    HStack(spacing: MCOSpace.s) {
+                        if isRegenerating {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        Text(isRegenerating ? "Regenerating day" : "Regenerate day")
+                    }
+                    .font(MCOType.headline)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(MCOTheme.Color.paper)
+                .background(MCOTheme.Color.oxblood, in: RoundedRectangle(cornerRadius: MCOShape.controlRadius))
+                .disabled(isRegenerating || isDisabled)
+                .opacity(isRegenerating || isDisabled ? 0.5 : 1)
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.oxblood)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+}
+
+struct WeeklyDayStateActionButton: View {
+    let state: WeeklyDayState
+    let selectedState: WeeklyDayState
+    let isDisabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: MCOSpace.xs) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 17, weight: .semibold))
+                Text(state.label)
+                    .font(MCOType.caption)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isSelected ? state.accent : MCOTheme.Color.ink)
+            .frame(maxWidth: .infinity)
+            .frame(height: 58)
+            .background(isSelected ? state.accent.opacity(0.14) : MCOTheme.Color.paperRaised.opacity(0.58))
+            .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
+                    .stroke(isSelected ? state.accent.opacity(0.62) : MCOTheme.Color.hairline, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+    }
+
+    private var isSelected: Bool {
+        selectedState == state
+    }
+
+    private var systemImage: String {
+        switch state {
+        case .planned:
+            "checkmark.circle.fill"
+        case .backup:
+            "exclamationmark.triangle.fill"
+        case .open:
+            "circle.dashed"
+        }
+    }
+}
+
+struct GeneratedDayPlannedContent: View {
+    let card: GeneratedDailyCardDraft
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.m) {
+            GenerationSummaryBlock(title: "Why today", bodyText: card.whyToday)
+            GenerationSummaryBlock(title: "Shootability", bodyText: effortSummary)
+            if !sceneLines.isEmpty {
+                GenerationBulletBlock(title: "Scene list", items: sceneLines)
+            }
+            GenerationSummaryBlock(title: "Script", bodyText: card.script)
+            GenerationSummaryBlock(title: "Caption", bodyText: card.caption)
+            if !card.onScreenText.isEmpty {
+                GenerationBulletBlock(title: "On-screen text", items: card.onScreenText)
+            }
+            GenerationSummaryBlock(title: "Backup story", bodyText: card.backupStory)
+            GenerationSummaryBlock(title: "Caption-only backup", bodyText: card.backupCaptionOnly)
+            GeneratedDayMetadataGrid(card: card)
+        }
+    }
+
+    private var effortSummary: String {
+        "\(card.shootability) / \(card.estimatedShootMinutes) min / \(card.energyRequired) / \(card.languageMode)"
+    }
+
+    private var sceneLines: [String] {
+        card.sceneList.map { scene in
+            "\(scene.number). \(scene.title) (\(scene.duration))"
+        }
+    }
+}
+
+struct GeneratedDayMetadataGrid: View {
+    let card: GeneratedDailyCardDraft
+
+    var body: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                Text("Planning notes")
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                GeneratedReadOnlyField(title: "CTA", value: card.cta)
+                GeneratedReadOnlyField(title: "Hashtags", value: hashtagSummary)
+                GeneratedReadOnlyField(title: "Cover", value: card.coverText)
+                GeneratedReadOnlyField(title: "Post instructions", value: card.postInstructions)
+                GeneratedReadOnlyField(title: "Audio notes", value: card.audioOptionNotes)
+                GeneratedReadOnlyField(title: "Brand notes", value: card.brandEventNotes)
+                GeneratedReadOnlyField(title: "Risk notes", value: card.riskNotes.joined(separator: "\n"))
+                GeneratedReadOnlyField(title: "Assumptions", value: card.assumptions.joined(separator: "\n"))
+                GeneratedReadOnlyField(title: "Source", value: card.sourceNote)
+            }
+        }
+    }
+
+    private var hashtagSummary: String {
+        card.hashtags.map { "#\($0.trimmingCharacters(in: CharacterSet(charactersIn: "#")))" }
+            .joined(separator: " ")
     }
 }
 
@@ -673,11 +1180,19 @@ struct ReadinessItem: View {
 
 struct WeeklyRhythmList: View {
     let days: [WeeklyDay]
+    let onSelect: (WeeklyDay) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             ForEach(days) { day in
-                WeeklyDayRow(day: day)
+                Button {
+                    onSelect(day)
+                } label: {
+                    WeeklyDayRow(day: day)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(day.weekday) \(day.title). \(day.state.label). Open planned content.")
                 Hairline()
             }
         }

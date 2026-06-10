@@ -38,10 +38,11 @@ extension ArchiveEntry {
 
 extension WeeklyPlan {
     static let raceWeek = WeeklyPlan(
-        title: "Weekly Plan",
+        title: "Generate a Week",
         eyebrow: "PRATEEK WEEKLY CONTROL",
         weekRange: "1 Jun - 7 Jun",
         weekStartDate: "2026-06-01",
+        weekEndDate: "2026-06-07",
         readinessLine: "5 ready, 1 backup, 1 open",
         isSoftLocked: false,
         days: [

@@ -201,3 +201,55 @@ struct FixtureArchiveRepository: ArchiveRepository {
         return entries
     }
 }
+
+struct FixtureTesterAccessRepository: TesterAccessRepository {
+    func listTesters(context: WorkspaceContext) async throws -> [TesterAccessRecord] {
+        [
+            TesterAccessRecord(
+                id: UUID(uuidString: "4A6E72A4-4450-44B3-A83B-A5EFB87F6301")!,
+                email: "tester@example.com",
+                displayName: "Fixture Tester",
+                role: "editor",
+                status: "active",
+                createdAt: nil,
+                updatedAt: nil
+            )
+        ]
+    }
+
+    func inviteTester(email: String, displayName: String?, context: WorkspaceContext) async throws -> TesterAccessRecord {
+        TesterAccessRecord(
+            id: UUID(),
+            email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            displayName: displayName?.nilIfBlank,
+            role: "editor",
+            status: "active",
+            createdAt: nil,
+            updatedAt: nil
+        )
+    }
+
+    func resendTesterOTP(email: String, context: WorkspaceContext) async throws -> TesterAccessRecord {
+        TesterAccessRecord(
+            id: UUID(),
+            email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            displayName: nil,
+            role: "editor",
+            status: "active",
+            createdAt: nil,
+            updatedAt: nil
+        )
+    }
+
+    func revokeTester(memberID: UUID, context: WorkspaceContext) async throws -> TesterAccessRecord {
+        TesterAccessRecord(
+            id: memberID,
+            email: "revoked@example.com",
+            displayName: nil,
+            role: "editor",
+            status: "revoked",
+            createdAt: nil,
+            updatedAt: nil
+        )
+    }
+}

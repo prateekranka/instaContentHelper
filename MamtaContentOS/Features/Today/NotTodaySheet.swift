@@ -9,7 +9,7 @@ struct NotTodaySheet: View {
             MCOTheme.Color.paper.ignoresSafeArea()
             VStack(spacing: MCOSpace.l) {
                 VStack(spacing: MCOSpace.s) {
-                    Text("Not today")
+                    Text("Other ideas")
                         .font(MCOType.screenTitle)
                         .foregroundStyle(MCOTheme.Color.ink)
                     Rectangle()
