@@ -5,7 +5,7 @@ kept as a backend compatibility boundary, but testers should not need them.
 
 ## Flow
 
-1. Owner opens Prateek Control, Testers.
+1. Owner opens Manager Control, Testers.
 2. Owner invites an approved tester email.
 3. Supabase sends an email OTP.
 4. Tester enters the email and OTP in ContentHelper.
@@ -17,7 +17,7 @@ kept as a backend compatibility boundary, but testers should not need them.
 ## Roles
 
 - Owner: can invite, list, resend, and revoke editor testers.
-- Editor tester: can use Prateek Control and Mamta mode with the existing
+- Editor tester: can use Manager Control and Creator mode with the existing
   owner/editor backend boundaries.
 - Creator: cannot generate weeks or manage testers.
 

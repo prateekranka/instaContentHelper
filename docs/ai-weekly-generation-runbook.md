@@ -131,10 +131,10 @@ want OpenAI to be available as the fallback provider.
 5. Confirm one draft `weekly_plans` row and exactly seven draft `daily_cards`.
 6. Confirm rich fields such as `script`, `caption`, and `backup_story` are
    present.
-7. Confirm `read-content` weekly returns the draft for Prateek review.
+7. Confirm `read-content` weekly returns the draft for Manager review.
 8. Publish with `publish-week` using `weekly_plan_id`.
 9. Confirm `read-content` today returns the published generated card.
-10. Confirm a Mamta decision still writes through `write-content`.
+10. Confirm a Creator decision still writes through `write-content`.
 
 The local acceptance script covers this end to end, including
 regenerate-preserves-manual-edits:
@@ -166,9 +166,9 @@ fixtures.
    - `MCO_DEBUG_PAIRED_DEVICE_TOKEN=<owner-or-editor-device-token>`
    - `MCO_DEBUG_PAIRED_MEMBER_ROLE=owner`
 
-4. Open Profile and confirm it says `Live Supabase - Mamta` with owner/editor
+4. Open Profile and confirm it says `Live Supabase - Creator` with owner/editor
    access.
-5. Switch to Prateek Control, open Weekly, generate or review the draft, expand
+5. Switch to Manager Control, open Weekly, generate or review the draft, expand
    `Full generated card`, and publish only after review.
 
 The debug paired environment intentionally takes precedence over any stored
@@ -180,7 +180,7 @@ keychain pairing so local simulator proof is deterministic.
    secret.
 2. Optionally confirm `OPENAI_API_KEY` exists as fallback without printing it.
 3. Run one `generate-week` request without mock mode.
-4. Inspect the seven cards for Mamta-specific fit, no-go topic avoidance,
+4. Inspect the seven cards for Creator-specific fit, no-go topic avoidance,
    practical shootability, valid week dates, and useful
    captions/scripts/backups.
 5. If quality is weak, adjust the prompt/schema and rerun once.
@@ -218,7 +218,7 @@ publishes only when `MCO_LIVE_AI_PUBLISH_SMOKE=1` is also set.
 5. Smoke `generate-week` with an owner/editor token using
    `scripts/ai-weekly-generation-smoke.ts`, or set `RUN_LIVE_AI_SMOKE=1` when
    running the deploy script.
-6. Prefer a future week or test workspace. Do not publish Mamta's real current
+6. Prefer a future week or test workspace. Do not publish Creator's real current
    week without explicit approval.
 
 ## Rollback or disable

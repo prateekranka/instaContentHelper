@@ -1,6 +1,6 @@
 # instaContentHelper
 
-Native iPhone-only SwiftUI app for Mamta Content OS V2.
+Native iPhone-only SwiftUI app for Creator Content OS V2.
 
 The app is currently fixture-first, with Supabase-ready repository boundaries and local Edge Functions for device pairing and weekly publishing.
 
@@ -8,10 +8,10 @@ The app is currently fixture-first, with Supabase-ready repository boundaries an
 
 ```sh
 xcodegen generate
-open MamtaContentOS.xcodeproj
+open CreatorContentOS.xcodeproj
 ```
 
-The app target is `MamtaContentOS`, iOS 26.0+.
+The app target is `CreatorContentOS`, iOS 26.0+.
 
 ## Local Supabase
 
@@ -29,4 +29,4 @@ supabase stop --no-backup
 colima stop
 ```
 
-Runtime Supabase URL/key overrides should go in `MamtaContentOS/Config/LocalRuntime.xcconfig`, which is gitignored. Use `MamtaContentOS/Config/LocalRuntime.sample.xcconfig` as the template.
+Runtime Supabase URL/key overrides should go in `CreatorContentOS/Config/LocalRuntime.xcconfig`, which is gitignored. Use `CreatorContentOS/Config/LocalRuntime.sample.xcconfig` as the template.

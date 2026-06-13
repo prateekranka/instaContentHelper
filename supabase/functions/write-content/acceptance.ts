@@ -98,8 +98,8 @@ async function seedAcceptanceData() {
       {
         id: ids.creatorA,
         workspace_id: ids.workspaceA,
-        display_name: "Mamta",
-        handle: "mamta",
+        display_name: "Creator",
+        handle: "creator",
         status: "active",
       },
       {

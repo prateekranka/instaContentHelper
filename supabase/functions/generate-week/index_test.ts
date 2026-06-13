@@ -717,7 +717,7 @@ class FakeQuery {
           data: this.state.creatorExists
             ? {
               id: creatorID,
-              display_name: "Mamta",
+              display_name: "Creator",
               default_timezone: "Asia/Kolkata",
             }
             : null,

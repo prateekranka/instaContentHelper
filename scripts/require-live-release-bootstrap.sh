@@ -43,7 +43,7 @@ if [ "$invalid" -ne 0 ]; then
 error: Release/TestFlight builds require live Supabase bootstrap configuration.
 $message
 
-Set these in MamtaContentOS/Config/Runtime.xcconfig or pass them to xcodebuild:
+Set these in CreatorContentOS/Config/Runtime.xcconfig or pass them to xcodebuild:
   MCO_SUPABASE_URL=https://<project-ref>.supabase.co
   MCO_SUPABASE_PUBLISHABLE_KEY=<publishable-or-anon-key>
 EOF

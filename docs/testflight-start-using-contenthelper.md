@@ -3,21 +3,21 @@
 For live backend deploy, smoke, and the final live-configured TestFlight
 rebuild, use `docs/live-supabase-testflight-runbook.md`.
 
-## A. Prateek setup and use
+## A. Manager setup and use
 
 1. Install ContentHelper from TestFlight.
 2. Open the app once after install.
 3. Sign in with an approved tester email. Supabase sends a one-time email code;
    enter that code in the app. A first-time tester must be approved by an owner
-   from Prateek Control before sign-in works.
-4. From Profile, switch to Prateek Control.
+   from Manager Control before sign-in works.
+4. From Profile, switch to Manager Control.
 5. Open Testers when you need to add more testers. Owners can invite an email,
    resend a code, or revoke a tester. Testers sign in with email OTP; do not
    pass pairing codes around.
 6. Open Weekly.
 7. Confirm this week's plan:
    - Check that the week range is correct.
-   - Confirm the seven day cards are useful for Mamta.
+   - Confirm the seven day cards are useful for Creator.
    - Soft-lock or publish the week.
    - Verify that Today has a current card after publish.
 8. Generate a weekly AI draft when the week is not published:
@@ -42,19 +42,19 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
 11. Weekly Sunday setup: capture location, workout or race schedule, family,
     travel or school moments, brand or collaboration obligations, trend and
     audio options worth considering, and no-go topics.
-12. Daily check: verify Mamta has a useful Today card, and intervene only if the
+12. Daily check: verify Creator has a useful Today card, and intervene only if the
     card is wrong or no card appears.
 
-### Prateek troubleshooting
+### Manager troubleshooting
 
-- Sign-in says email is not approved: open Prateek Control, Testers, then invite
+- Sign-in says email is not approved: open Manager Control, Testers, then invite
   or reactivate that email.
-- No email code: resend from the app or from Prateek Control, Testers. Also
+- No email code: resend from the app or from Manager Control, Testers. Also
   check spam and the email address spelling.
 - App says `Fixtures`: the build is missing live Supabase config or the live
   session could not be restored.
 - Release archive fails with a Supabase bootstrap error: this is intentional.
-  Populate `MamtaContentOS/Config/Runtime.xcconfig` or pass the live values to
+  Populate `CreatorContentOS/Config/Runtime.xcconfig` or pass the live values to
   `xcodebuild` before uploading the next TestFlight build.
 - No Today card: publish the current week, then refresh the app. Confirm the
   daily card date matches today.
@@ -82,7 +82,7 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
   Notifications schedule from the synced Today card and may require iOS
   notification permission.
 
-## B. Mamta use
+## B. Creator use
 
 1. Install ContentHelper from TestFlight.
 2. Open the app once a day.
@@ -97,6 +97,6 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
    - Save the card for tomorrow.
 7. Completed day means you made a decision. It does not mean you had to post.
 8. You do not need to research trends, type prompts, or manage a calendar.
-9. If something feels wrong, tell Prateek in one short note. Edit only if you
+9. If something feels wrong, tell Manager in one short note. Edit only if you
    want to.
 10. Keep Instagram recording and editing outside the app.

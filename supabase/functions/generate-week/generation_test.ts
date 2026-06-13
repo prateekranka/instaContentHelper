@@ -41,7 +41,7 @@ Deno.test("OpenAI Responses request uses strict structured JSON output schema", 
 
   assertEquals(request.model, "gpt-4.1-mini");
   assertEquals(format.type, "json_schema");
-  assertEquals(format.name, "mamta_weekly_generation");
+  assertEquals(format.name, "creator_weekly_generation");
   assertEquals(format.strict, true);
   assertEquals(schema.additionalProperties, false);
   assertEquals(cardSchema.additionalProperties, false);
@@ -337,7 +337,7 @@ function fixtureInput(): GenerationInputSnapshot {
     creator_id: "33333333-3333-4333-8333-333333333333",
     week_start_date: "2026-06-08",
     creator_profile: {
-      display_name: "Mamta",
+      display_name: "Creator",
       positioning: "Premium fitness after 60",
       never_say: ["weight talk", "politics"],
     },

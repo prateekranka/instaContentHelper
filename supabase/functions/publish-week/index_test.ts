@@ -41,7 +41,7 @@ Deno.test("draft publish payload preserves rich generated daily card fields", ()
     brand_event_notes: "No brand.",
     backup_story: "One story frame.",
     backup_caption_only: "Caption-only backup.",
-    mamta_fit_score: 89,
+    creator_fit_score: 89,
     risk_notes: ["Avoid hype."],
     assumptions: ["Low energy day."],
     source_note: "Confirmed reference.",
@@ -63,7 +63,7 @@ Deno.test("draft publish payload preserves rich generated daily card fields", ()
     (normalized.post_instructions as Record<string, string>).line,
     "Use calm audio.",
   );
-  assertEquals(normalized.mamta_fit_score, 89);
+  assertEquals(normalized.creator_fit_score, 89);
 });
 
 Deno.test("draft publish payload rejects missing scheduled date or title", () => {

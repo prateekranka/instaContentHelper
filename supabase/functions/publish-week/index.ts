@@ -53,7 +53,7 @@ type DraftDailyCardPublishPayload = {
   backup_caption_only?: unknown;
   audio_option_id?: string;
   audio_fallback_id?: string;
-  mamta_fit_score?: number;
+  creator_fit_score?: number;
   risk_notes?: unknown[];
   assumptions?: unknown[];
   source_note?: string;
@@ -342,7 +342,7 @@ async function publishCallerSuppliedDays(
     week_start_date: weekStartDate,
     status: "published",
     strategy_summary: body.strategy_summary ??
-      "Published from Prateek Weekly Control.",
+      "Published from Manager Weekly Control.",
     warnings: [],
     assumptions: [],
     is_soft_locked: true,
@@ -490,7 +490,7 @@ export function normalizeDraftCard(
   }
 
   const minutes = card.estimated_shoot_minutes;
-  const score = card.mamta_fit_score;
+  const score = card.creator_fit_score;
   return {
     id: card.id,
     scheduled_date: card.scheduled_date,
@@ -523,7 +523,7 @@ export function normalizeDraftCard(
     audio_fallback_id: isUUID(card.audio_fallback_id)
       ? card.audio_fallback_id
       : null,
-    mamta_fit_score: typeof score === "number" && Number.isFinite(score)
+    creator_fit_score: typeof score === "number" && Number.isFinite(score)
       ? Math.max(0, Math.min(100, score))
       : null,
     risk_notes: Array.isArray(card.risk_notes) ? card.risk_notes : [],

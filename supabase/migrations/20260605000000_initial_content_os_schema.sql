@@ -1,5 +1,5 @@
--- Mamta Content OS V2 initial Supabase schema.
--- The app UI exposes only Mamta in V1, but every product table is scoped by
+-- Creator Content OS V2 initial Supabase schema.
+-- The app UI exposes only Creator in V1, but every product table is scoped by
 -- workspace_id and creator_id so more creators/workspaces can be added later.
 
 create extension if not exists pgcrypto;
@@ -205,7 +205,7 @@ create table public.benchmark_creators (
   audience_tags text[] not null default '{}',
   relevance_notes text,
   priority_score integer check (priority_score between 0 and 100),
-  mamta_relevance_score numeric(5, 2) check (mamta_relevance_score between 0 and 100),
+  creator_relevance_score numeric(5, 2) check (creator_relevance_score between 0 and 100),
   status text not null default 'candidate'
     check (status in ('candidate', 'active', 'poor_fit', 'archived')),
   created_at timestamptz not null default now(),
@@ -283,9 +283,9 @@ create table public.patterns (
   summary text,
   fit_notes text,
   avoid_notes text,
-  mamta_adaptation text,
+  creator_adaptation text,
   complexity_score integer check (complexity_score between 0 and 100),
-  mamta_fit_score numeric(5, 2) check (mamta_fit_score between 0 and 100),
+  creator_fit_score numeric(5, 2) check (creator_fit_score between 0 and 100),
   status text not null default 'candidate'
     check (status in ('candidate', 'approved', 'rejected', 'used', 'archived')),
   created_at timestamptz not null default now(),
@@ -323,8 +323,8 @@ create table public.trends (
   caption_pattern text,
   saturation_note text,
   timing_recommendation text,
-  mamta_adaptation text,
-  mamta_fit_score numeric(5, 2) check (mamta_fit_score between 0 and 100),
+  creator_adaptation text,
+  creator_fit_score numeric(5, 2) check (creator_fit_score between 0 and 100),
   status text not null default 'candidate'
     check (status in ('candidate', 'approved', 'rejected', 'used', 'stale', 'archived')),
   created_at timestamptz not null default now(),
@@ -546,7 +546,7 @@ create table public.daily_cards (
   backup_caption_only jsonb not null default '{}'::jsonb,
   audio_option_id uuid,
   audio_fallback_id uuid,
-  mamta_fit_score numeric(5, 2) check (mamta_fit_score between 0 and 100),
+  creator_fit_score numeric(5, 2) check (creator_fit_score between 0 and 100),
   risk_notes jsonb not null default '[]'::jsonb,
   assumptions jsonb not null default '[]'::jsonb,
   source_note text,
@@ -1140,9 +1140,9 @@ create policy archive_entries_update_for_daily_users
 comment on table public.source_references is
   'Product Reference. Named source_references to avoid using REFERENCES as a table identifier.';
 comment on table public.daily_cards is
-  'Published Daily Cards are the sync contract for Mamta Today and offline cache.';
+  'Published Daily Cards are the sync contract for Creator Today and offline cache.';
 comment on table public.archive_entries is
-  'Clean decision/output history. A completed day means Mamta made a decision, not necessarily posted.';
+  'Clean decision/output history. A completed day means Creator made a decision, not necessarily posted.';
 
 grant usage on schema public to anon, authenticated, service_role;
 grant all privileges on all tables in schema public to service_role;

@@ -210,10 +210,10 @@ class FakeExchangeQuery {
 
   private resolveSingle(): any {
     if (this.table === "workspaces") {
-      return { id: workspaceID, name: "Mamta Content OS" };
+      return { id: workspaceID, name: "Creator Content OS" };
     }
     if (this.table === "creators") {
-      return { id: creatorID, display_name: "Mamta" };
+      return { id: creatorID, display_name: "Creator" };
     }
     if (this.table === "device_installations") {
       if (this.operation === "update") {

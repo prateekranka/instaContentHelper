@@ -110,7 +110,7 @@ for (const [index, cardValue] of cards.entries()) {
     card.audio_option_notes,
     `daily_cards[${index}].audio_option_notes`,
   );
-  assertNumber(card.mamta_fit_score, `daily_cards[${index}].mamta_fit_score`);
+  assertNumber(card.creator_fit_score, `daily_cards[${index}].creator_fit_score`);
   assertArray(card.risk_notes, `daily_cards[${index}].risk_notes`);
   assertArray(card.assumptions, `daily_cards[${index}].assumptions`);
   requiredString(card.source_note, `daily_cards[${index}].source_note`);

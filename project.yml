@@ -1,6 +1,6 @@
-name: MamtaContentOS
+name: CreatorContentOS
 options:
-  bundleIdPrefix: com.prateekranka
+  bundleIdPrefix: com.creatorcontenthelper
   deploymentTarget:
     iOS: "26.0"
 settings:
@@ -13,12 +13,12 @@ packages:
     url: https://github.com/supabase/supabase-swift.git
     from: "2.0.0"
 targets:
-  MamtaContentOS:
+  CreatorContentOS:
     type: application
     platform: iOS
     deploymentTarget: "26.0"
     sources:
-      - MamtaContentOS
+      - CreatorContentOS
     dependencies:
       - package: Supabase
         product: Supabase
@@ -28,29 +28,29 @@ targets:
           /bin/sh "$SRCROOT/scripts/require-live-release-bootstrap.sh"
         basedOnDependencyAnalysis: false
     configFiles:
-      Debug: MamtaContentOS/Config/Runtime.xcconfig
-      Release: MamtaContentOS/Config/Runtime.xcconfig
+      Debug: CreatorContentOS/Config/Runtime.xcconfig
+      Release: CreatorContentOS/Config/Runtime.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.prateekranka.creatorcontenthelper
         PRODUCT_NAME: ContentHelper
-        PRODUCT_MODULE_NAME: MamtaContentOS
+        PRODUCT_MODULE_NAME: CreatorContentOS
         DEVELOPMENT_TEAM: 4JRB53LG5C
         CODE_SIGN_STYLE: Automatic
-        INFOPLIST_FILE: MamtaContentOS/Info.plist
+        INFOPLIST_FILE: CreatorContentOS/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "3"
+        CURRENT_PROJECT_VERSION: "6"
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
-  MamtaContentOSTests:
+  CreatorContentOSTests:
     type: bundle.unit-test
     platform: iOS
     deploymentTarget: "26.0"
     sources:
-      - MamtaContentOSTests
+      - CreatorContentOSTests
     dependencies:
-      - target: MamtaContentOS
+      - target: CreatorContentOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.prateekranka.creatorcontenthelper.tests
@@ -60,13 +60,13 @@ targets:
         BUNDLE_LOADER: "$(TEST_HOST)"
         GENERATE_INFOPLIST_FILE: YES
 schemes:
-  MamtaContentOS:
+  CreatorContentOS:
     build:
       targets:
-        MamtaContentOS: all
-        MamtaContentOSTests: [test]
+        CreatorContentOS: all
+        CreatorContentOSTests: [test]
     test:
       targets:
-        - MamtaContentOSTests
+        - CreatorContentOSTests
     run:
       config: Debug

@@ -73,7 +73,7 @@ export type GeneratedDailyCard = {
   backup_story: string;
   backup_caption_only: string;
   audio_option_notes: string;
-  mamta_fit_score: number;
+  creator_fit_score: number;
   risk_notes: string[];
   assumptions: string[];
   source_note: string;
@@ -272,7 +272,7 @@ export function buildPromptMessages(input: GenerationInputSnapshot): {
 } {
   return {
     system: [
-      "You generate Mamta Content OS weekly content as strict JSON.",
+      "You generate Creator Content OS weekly content as strict JSON.",
       "Use only the provided creator profile, weekly setup, confirmed references and extractions, brand obligations, key moments, archive feedback, and idea bank.",
       "Generate exactly seven daily cards for the requested week.",
       "Prioritize shootability, calm practical tone, and creator safety over trend chasing.",
@@ -302,7 +302,7 @@ export function buildOpenAIResponsesRequest(
     text: {
       format: {
         type: "json_schema",
-        name: "mamta_weekly_generation",
+        name: "creator_weekly_generation",
         strict: true,
         schema: generatedWeekJSONSchema,
       },
@@ -324,7 +324,7 @@ export function buildDeepSeekChatRequest(
         content: [
           messages.user,
           "Return one valid JSON object only. Do not wrap the JSON in Markdown.",
-          "Every daily_cards item must include scheduled_date, title, why_today, growth_job, content_pillar, shootability, estimated_shoot_minutes, energy_required, language_mode, scene_list, script, no_voiceover_version, on_screen_text, caption, cta, hashtags, cover_text, post_instructions, brand_event_notes, backup_story, backup_caption_only, audio_option_notes, mamta_fit_score, risk_notes, assumptions, source_note, and source_reference_ids.",
+          "Every daily_cards item must include scheduled_date, title, why_today, growth_job, content_pillar, shootability, estimated_shoot_minutes, energy_required, language_mode, scene_list, script, no_voiceover_version, on_screen_text, caption, cta, hashtags, cover_text, post_instructions, brand_event_notes, backup_story, backup_caption_only, audio_option_notes, creator_fit_score, risk_notes, assumptions, source_note, and source_reference_ids.",
           "Never use day_of_week instead of scheduled_date.",
         ].join("\n"),
       },
@@ -344,7 +344,7 @@ function buildDayPromptMessages(
 ): { system: string; user: string } {
   return {
     system: [
-      "You generate Mamta Content OS daily content as strict JSON.",
+      "You generate Creator Content OS daily content as strict JSON.",
       "Use only the provided creator profile, weekly setup, confirmed references and extractions, brand obligations, key moments, archive feedback, and idea bank.",
       "Generate exactly one daily card for the requested scheduled_date.",
       "Prioritize shootability, calm practical tone, and creator safety over trend chasing.",
@@ -403,7 +403,7 @@ function buildDeepSeekDayChatRequest(
           messages.user,
           "Return one valid JSON object only. Do not wrap the JSON in Markdown.",
           "The top-level object must include strategy_note, warnings, assumptions, daily_card, idea_bank, and source_summary.",
-          "daily_card must include scheduled_date, title, why_today, growth_job, content_pillar, shootability, estimated_shoot_minutes, energy_required, language_mode, scene_list, script, no_voiceover_version, on_screen_text, caption, cta, hashtags, cover_text, post_instructions, brand_event_notes, backup_story, backup_caption_only, audio_option_notes, mamta_fit_score, risk_notes, assumptions, source_note, and source_reference_ids.",
+          "daily_card must include scheduled_date, title, why_today, growth_job, content_pillar, shootability, estimated_shoot_minutes, energy_required, language_mode, scene_list, script, no_voiceover_version, on_screen_text, caption, cta, hashtags, cover_text, post_instructions, brand_event_notes, backup_story, backup_caption_only, audio_option_notes, creator_fit_score, risk_notes, assumptions, source_note, and source_reference_ids.",
           "Never use day_of_week instead of scheduled_date.",
         ].join("\n"),
       },
@@ -455,7 +455,7 @@ function generatedWeekOutputContract(
         "backup_story",
         "backup_caption_only",
         "audio_option_notes",
-        "mamta_fit_score",
+        "creator_fit_score",
         "risk_notes",
         "assumptions",
         "source_note",
@@ -468,7 +468,7 @@ function generatedWeekOutputContract(
           "non-empty array of objects with number, title, duration, symbol. duration should be a string such as '5 sec'.",
         on_screen_text: "non-empty string array",
         hashtags: "non-empty string array without # characters preferred",
-        mamta_fit_score: "number from 0 to 100",
+        creator_fit_score: "number from 0 to 100",
         risk_notes: "string array; empty array when no risks",
         assumptions: "string array; empty array when none",
         source_reference_ids:
@@ -503,7 +503,7 @@ function generatedDayOutputContract(
     example_output: {
       strategy_note: "Keep this day low-effort and recovery-first.",
       warnings: [],
-      assumptions: ["Mamta is in New Jersey and keeping recovery gentle."],
+      assumptions: ["Creator is in New Jersey and keeping recovery gentle."],
       daily_card: generatedDailyCardExample(scheduledDate),
       idea_bank: [],
       source_summary: "Used weekly setup and confirmed Inspiration context.",
@@ -534,7 +534,7 @@ function generatedDayOutputContract(
         "backup_story",
         "backup_caption_only",
         "audio_option_notes",
-        "mamta_fit_score",
+        "creator_fit_score",
         "risk_notes",
         "assumptions",
         "source_note",
@@ -581,7 +581,7 @@ function generatedDailyCardExample(
     backup_story: "A 10-second story: one clip, one line, done.",
     backup_caption_only: "Caption-only backup: keeping the routine steady.",
     audio_option_notes: "Use calm audio only if it fits.",
-    mamta_fit_score: 88,
+    creator_fit_score: 88,
     risk_notes: [],
     assumptions: ["No extra shoot support available."],
     source_note: "Adapted from confirmed Inspiration references.",
@@ -1082,7 +1082,7 @@ export function makeMockGeneratedWeek(
 ): GeneratedWeekOutput {
   const dates = weekDates(input.week_start_date);
   const profileName = stringValue(input.creator_profile?.display_name) ??
-    "Mamta";
+    "Creator";
   const setupLocation = stringValue(input.weekly_setup?.location) ?? "home";
   const firstIdea = stringValue(input.idea_bank[0]?.title) ??
     "One steady routine detail";
@@ -1224,7 +1224,7 @@ function mockCard(
       "Caption-only backup: keeping the routine steady today.",
     audio_option_notes:
       "Use a confirmed calm audio option if it fits; otherwise post without audio dependence.",
-    mamta_fit_score: 88,
+    creator_fit_score: 88,
     risk_notes: [],
     assumptions: ["Mock generation used deterministic local context."],
     source_note: referenceNote,
@@ -1262,9 +1262,9 @@ function validateGeneratedDailyCard(
     throw invalidWeek("Each daily card needs at least one scene.");
   }
 
-  const score = numberValue(value.mamta_fit_score);
+  const score = numberValue(value.creator_fit_score);
   if (!Number.isFinite(score) || score < 0 || score > 100) {
-    throw invalidWeek("mamta_fit_score must be between 0 and 100.");
+    throw invalidWeek("creator_fit_score must be between 0 and 100.");
   }
 
   const minutes = numberValue(value.estimated_shoot_minutes);
@@ -1307,7 +1307,7 @@ function validateGeneratedDailyCard(
       "backup_caption_only",
     ),
     audio_option_notes: stringValue(value.audio_option_notes) ?? "",
-    mamta_fit_score: score,
+    creator_fit_score: score,
     risk_notes: requiredStringArray(value.risk_notes, "risk_notes"),
     assumptions: requiredStringArray(value.assumptions, "assumptions"),
     source_note: requiredString(value.source_note, "source_note"),
@@ -1552,7 +1552,7 @@ const generatedCardJSONSchema = {
     "backup_story",
     "backup_caption_only",
     "audio_option_notes",
-    "mamta_fit_score",
+    "creator_fit_score",
     "risk_notes",
     "assumptions",
     "source_note",
@@ -1581,7 +1581,7 @@ const generatedCardJSONSchema = {
     backup_story: { type: "string" },
     backup_caption_only: { type: "string" },
     audio_option_notes: { type: "string" },
-    mamta_fit_score: { type: "number", minimum: 0, maximum: 100 },
+    creator_fit_score: { type: "number", minimum: 0, maximum: 100 },
     risk_notes: { type: "array", items: { type: "string" } },
     assumptions: { type: "array", items: { type: "string" } },
     source_note: { type: "string" },

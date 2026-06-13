@@ -53,7 +53,7 @@ Required for read-only smoke:
 ```sh
 export MCO_SUPABASE_URL=https://your-project-ref.supabase.co
 export MCO_SUPABASE_PUBLISHABLE_KEY=your-publishable-or-anon-key
-export MCO_LIVE_CREATOR_ID=live-mamta-creator-id
+export MCO_LIVE_CREATOR_ID=live-creator-creator-id
 export MCO_LIVE_DEVICE_TOKEN=owner-or-editor-device-token
 ```
 
@@ -88,8 +88,8 @@ Release builds now fail unless live Supabase bootstrap config is supplied.
 MCO_SUPABASE_URL=https://your-project-ref.supabase.co \
 MCO_SUPABASE_PUBLISHABLE_KEY=your-publishable-or-anon-key \
 xcodebuild archive \
-  -project MamtaContentOS.xcodeproj \
-  -scheme MamtaContentOS \
+  -project CreatorContentOS.xcodeproj \
+  -scheme CreatorContentOS \
   -configuration Release \
   -destination "generic/platform=iOS" \
   -archivePath build-logs/ContentHelper_Live.xcarchive \
@@ -109,4 +109,4 @@ xcodebuild -exportArchive \
   | tee build-logs/upload_testflight_live.log
 ```
 
-After upload succeeds, pair Prateek and Mamta with fresh live invite codes and follow `docs/testflight-start-using-contenthelper.md`.
+After upload succeeds, pair Manager and Creator with fresh live invite codes and follow `docs/testflight-start-using-contenthelper.md`.

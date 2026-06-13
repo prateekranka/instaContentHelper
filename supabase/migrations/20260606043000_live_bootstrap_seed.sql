@@ -5,7 +5,7 @@
 insert into public.workspaces (id, name, status)
 values (
   '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
-  'Mamta Content OS',
+  'Creator Content OS',
   'active'
 )
 on conflict (id) do update
@@ -24,8 +24,8 @@ insert into public.creators (
 values (
   'dbc7452d-c2ff-4d52-976f-734fad55f86b',
   '425ce0e2-cf50-43a1-92aa-087a91c59ef7',
-  'Mamta',
-  'mamta',
+  'Creator',
+  'creator',
   'Asia/Kolkata',
   'active'
 )
@@ -62,7 +62,7 @@ values (
   'dbc7452d-c2ff-4d52-976f-734fad55f86b',
   'active',
   1,
-  'Mamta is a grounded fitness and family creator who makes practical, low-drama content for women who want consistency without overproduction.',
+  'Creator is a grounded fitness and family creator who makes practical, low-drama content for women who want consistency without overproduction.',
   '["warm", "direct", "no hype", "no guilt", "keep captions simple"]'::jsonb,
   '["routine", "fitness", "family", "race prep", "useful habits"]'::jsonb,
   '["Today is a simple one", "Here is what I am actually doing", "No overthinking today"]'::jsonb,
@@ -74,7 +74,7 @@ values (
   '{"primary": "English", "allow_hinglish": true}'::jsonb,
   '["shoe check", "morning routine", "family moment", "caption-only backup"]'::jsonb,
   '{"avoid_fast_trends": true, "prefer_low_effort_audio": true}'::jsonb,
-  '{"adapt_to_mamta_age_energy_context": true, "avoid_copying_exact_formats": true}'::jsonb
+  '{"adapt_to_creator_age_energy_context": true, "avoid_copying_exact_formats": true}'::jsonb
 )
 on conflict (id) do update
 set status = excluded.status,
@@ -144,7 +144,7 @@ values (
   'dbc7452d-c2ff-4d52-976f-734fad55f86b',
   'Inspiration',
   'instagram',
-  'Starter references for Mamta Content OS live smoke.',
+  'Starter references for Creator Content OS live smoke.',
   'Bootstrapped before first TestFlight pairing.',
   'active'
 )
@@ -168,7 +168,7 @@ insert into public.benchmark_creators (
   audience_tags,
   relevance_notes,
   priority_score,
-  mamta_relevance_score,
+  creator_relevance_score,
   status,
   normalized_handle
 )
@@ -183,7 +183,7 @@ values
     'IN',
     array['fitness', 'routine'],
     array['women', 'family'],
-    'Low-production routine format that fits Mamta.',
+    'Low-production routine format that fits Creator.',
     80,
     85,
     'active',
@@ -214,7 +214,7 @@ set handle = excluded.handle,
     audience_tags = excluded.audience_tags,
     relevance_notes = excluded.relevance_notes,
     priority_score = excluded.priority_score,
-    mamta_relevance_score = excluded.mamta_relevance_score,
+    creator_relevance_score = excluded.creator_relevance_score,
     status = excluded.status,
     normalized_handle = excluded.normalized_handle,
     updated_at = now();
@@ -312,7 +312,7 @@ values
     'Use for the next open day if Sunday stays relaxed.',
     'easy',
     88,
-    'Starter idea for Prateek Control idea selection smoke.',
+    'Starter idea for Manager Control idea selection smoke.',
     'saved'
   ),
   (
@@ -359,7 +359,7 @@ values (
   '6951e533-53a0-443f-91ee-8a73afaba4cf',
   '2026-06-01',
   'published',
-  'Live starter week for Mamta and Prateek. Keep it simple, current, and low effort.',
+  'Live starter week for Creator and Manager. Keep it simple, current, and low effort.',
   '[]'::jsonb,
   '["Bootstrapped for first TestFlight use."]'::jsonb,
   true,
@@ -395,7 +395,7 @@ insert into public.daily_cards (
   post_instructions,
   backup_story,
   backup_caption_only,
-  mamta_fit_score,
+  creator_fit_score,
   risk_notes,
   assumptions,
   source_note
@@ -591,7 +591,7 @@ set status = excluded.status,
     post_instructions = excluded.post_instructions,
     backup_story = excluded.backup_story,
     backup_caption_only = excluded.backup_caption_only,
-    mamta_fit_score = excluded.mamta_fit_score,
+    creator_fit_score = excluded.creator_fit_score,
     risk_notes = excluded.risk_notes,
     assumptions = excluded.assumptions,
     source_note = excluded.source_note,

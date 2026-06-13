@@ -2,12 +2,12 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-PROJECT_PATH="${MCO_XCODE_PROJECT:-$ROOT_DIR/MamtaContentOS.xcodeproj}"
-SCHEME="${MCO_XCODE_SCHEME:-MamtaContentOS}"
+PROJECT_PATH="${MCO_XCODE_PROJECT:-$ROOT_DIR/CreatorContentOS.xcodeproj}"
+SCHEME="${MCO_XCODE_SCHEME:-CreatorContentOS}"
 CONFIGURATION="${MCO_XCODE_CONFIGURATION:-Debug}"
 DERIVED_DATA_PATH="${MCO_DERIVED_DATA_PATH:-$ROOT_DIR/DerivedData/FastSimRefresh}"
 APP_NAME="${MCO_APP_NAME:-ContentHelper}"
-BUNDLE_ID="${MCO_BUNDLE_ID:-com.prateekranka.creatorcontenthelper}"
+BUNDLE_ID="${MCO_BUNDLE_ID:-com.creatorcontenthelper.ios}"
 LOG_DIR="${MCO_BUILD_LOG_DIR:-$ROOT_DIR/build-logs}"
 SIMULATOR_UDID="${MCO_SIMULATOR_UDID:-${1:-}}"
 SKIP_ASSETS="${MCO_FAST_SKIP_ASSETS:-1}"

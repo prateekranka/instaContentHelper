@@ -5,6 +5,6 @@ build-logs/
 *.xcuserstate
 xcuserdata/
 
-MamtaContentOS/Config/LocalRuntime.xcconfig
+CreatorContentOS/Config/LocalRuntime.xcconfig
 supabase/.env
 supabase/functions/.env

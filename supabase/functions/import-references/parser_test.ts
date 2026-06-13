@@ -9,15 +9,15 @@ import { checksumFor, parseReferenceImport } from "./parser.ts";
 import { MAX_IMPORT_ROWS, RowLimitError } from "./types.ts";
 
 Deno.test("normalizes handles and profile URLs before comparison", () => {
-  assertEquals(normalizePlainHandle("@Mamta.Ranka/"), "mamta.ranka");
+  assertEquals(normalizePlainHandle("@Sample.Creator/"), "sample.creator");
   assertEquals(
     normalizeInstagramHandle(
-      "https://www.instagram.com/Mamta_Ranka/?utm_source=share",
+      "https://www.instagram.com/Sample_Creator/?utm_source=share",
     ),
-    "mamta_ranka",
+    "sample_creator",
   );
   assertEquals(
-    normalizeInstagramHandle("https://www.instagram.com/stories/mamta/123"),
+    normalizeInstagramHandle("https://www.instagram.com/stories/creator/123"),
     null,
   );
   assertEquals(normalizePlainHandle("123456"), null);
@@ -35,7 +35,7 @@ Deno.test("normalizes URLs by stripping tracking params and trailing path slashe
 
 Deno.test("classifies story URLs as hard invalid references", () => {
   const result = classifyURL(
-    "https://www.instagram.com/stories/mamta/123456789/",
+    "https://www.instagram.com/stories/creator/123456789/",
   );
   assertEquals(result.kind, "story");
   if (result.kind !== "story") {
@@ -48,9 +48,9 @@ Deno.test("parses paste imports into account, reel, audio, invalid story, and un
   const preview = await parseReferenceImport(
     [
       "@fit_over_sixty",
-      "https://www.instagram.com/mamta/reel/ABC123/?utm_source=x @MamtaRanka",
+      "https://www.instagram.com/creator/reel/ABC123/?utm_source=x @SampleCreator",
       "https://www.instagram.com/reels/audio/987654/",
-      "https://www.instagram.com/stories/mamta/123",
+      "https://www.instagram.com/stories/creator/123",
       "remember towel transition",
     ].join("\n"),
     "paste",
@@ -76,7 +76,7 @@ Deno.test("parses paste imports into account, reel, audio, invalid story, and un
   assertEquals(reel.source_type, "reel_link");
   assertEquals(reel.status_on_confirm, "confirmed");
   assertEquals(reel.canonical_source_key, "instagram:reel:ABC123");
-  assertEquals(reel.inferred_account?.normalized_handle, "mamtaranka");
+  assertEquals(reel.inferred_account?.normalized_handle, "samplecreator");
   assertEquals(reel.inferred_account?.conflict, true);
   assertEquals(reel.provenance.account_conflict, true);
 
@@ -145,17 +145,17 @@ Deno.test("CSV imports preserve known and unknown columns in provenance", async 
 
 Deno.test("checksum is stable across CRLF but changes when filename changes", async () => {
   const lf = await checksumFor(
-    "@mamta\nhttps://www.instagram.com/reel/A1/",
+    "@creator\nhttps://www.instagram.com/reel/A1/",
     "paste",
     null,
   );
   const crlf = await checksumFor(
-    "@mamta\r\nhttps://www.instagram.com/reel/A1/",
+    "@creator\r\nhttps://www.instagram.com/reel/A1/",
     "paste",
     null,
   );
   const renamed = await checksumFor(
-    "@mamta\nhttps://www.instagram.com/reel/A1/",
+    "@creator\nhttps://www.instagram.com/reel/A1/",
     "paste",
     "references.txt",
   );

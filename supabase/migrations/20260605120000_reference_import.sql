@@ -182,7 +182,7 @@ begin
           audience_tags,
           relevance_notes,
           priority_score,
-          mamta_relevance_score,
+          creator_relevance_score,
           status
         )
         values (
@@ -324,7 +324,7 @@ begin
             audience_tags,
             relevance_notes,
             priority_score,
-            mamta_relevance_score,
+            creator_relevance_score,
             status
           )
           values (

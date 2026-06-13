@@ -165,7 +165,7 @@ type CreatorRecord = Record<string, unknown> & {
 
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
-const PROMPT_VERSION = "mamta-weekly-generation-v1";
+const PROMPT_VERSION = "creator-weekly-generation-v1";
 
 export async function handleGenerateWeekRequest(
   request: Request,
@@ -573,7 +573,7 @@ function dayGenerationCardSelect(): string {
     "brand_event_notes",
     "backup_story",
     "backup_caption_only",
-    "mamta_fit_score",
+    "creator_fit_score",
     "risk_notes",
     "assumptions",
     "source_note",
@@ -1701,7 +1701,7 @@ async function buildGenerationInput(
     readRows(
       admin,
       "patterns",
-      "id,title,pattern_type,summary,fit_notes,avoid_notes,mamta_adaptation,mamta_fit_score,status",
+      "id,title,pattern_type,summary,fit_notes,avoid_notes,creator_adaptation,creator_fit_score,status",
       workspaceID,
       creatorID,
       (query) =>
@@ -1712,7 +1712,7 @@ async function buildGenerationInput(
     readRows(
       admin,
       "trends",
-      "id,title,summary,timing_recommendation,mamta_adaptation,mamta_fit_score,status",
+      "id,title,summary,timing_recommendation,creator_adaptation,creator_fit_score,status",
       workspaceID,
       creatorID,
       (query) =>
@@ -1787,11 +1787,11 @@ async function buildGenerationInput(
       creator_profile: profileRow
         ? {
           ...profileRow,
-          display_name: creator.display_name ?? "Mamta",
+          display_name: creator.display_name ?? "Creator",
           default_timezone: creator.default_timezone ?? "Asia/Kolkata",
         }
         : {
-          display_name: creator.display_name ?? "Mamta",
+          display_name: creator.display_name ?? "Creator",
           default_timezone: creator.default_timezone ?? "Asia/Kolkata",
         },
       weekly_setup: weeklySetup,
@@ -2139,7 +2139,7 @@ function generatedDailyCardValues(
     brand_event_notes: card.brand_event_notes || null,
     backup_story: { line: card.backup_story },
     backup_caption_only: { line: card.backup_caption_only },
-    mamta_fit_score: card.mamta_fit_score,
+    creator_fit_score: card.creator_fit_score,
     risk_notes: card.risk_notes,
     assumptions: card.assumptions,
     source_note: card.source_note,
@@ -2451,7 +2451,7 @@ async function upsertGeneratedDailyCards(
     brand_event_notes: card.brand_event_notes || null,
     backup_story: { line: card.backup_story },
     backup_caption_only: { line: card.backup_caption_only },
-    mamta_fit_score: card.mamta_fit_score,
+    creator_fit_score: card.creator_fit_score,
     risk_notes: card.risk_notes,
     assumptions: card.assumptions,
     source_note: card.source_note,

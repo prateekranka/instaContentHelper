@@ -29,7 +29,7 @@ const ALL_DEVICE_ROLES = ["owner", "editor", "creator", "scout"];
 const ADMIN_ACTIONS = new Set<ReadAction>(["weekly", "intelligence"]);
 
 const DAILY_CARD_SELECT =
-  "id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,mamta_fit_score,risk_notes,assumptions,source_note,decision_at";
+  "id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,creator_fit_score,risk_notes,assumptions,source_note,decision_at";
 const WEEKLY_PLAN_SELECT =
   "id,workspace_id,creator_id,weekly_setup_id,creator_profile_id,week_start_date,status,strategy_summary,warnings,assumptions,is_soft_locked,published_at";
 const WEEKLY_SETUP_SELECT =

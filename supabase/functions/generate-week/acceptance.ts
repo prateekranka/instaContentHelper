@@ -346,7 +346,7 @@ assertEquals(
 );
 assert(todayRead.json.today_card.script, "today rich script present");
 console.log(
-  "PASS Mamta creator read-content today returns generated published card",
+  "PASS Creator creator read-content today returns generated published card",
 );
 
 const todayCardID = todayRead.json.today_card.id as string;
@@ -366,7 +366,7 @@ const decision = await callFunction(
   },
 );
 assertEquals(decision.status, 200, "creator write decision status");
-console.log("PASS Mamta decision write still works through write-content");
+console.log("PASS Creator decision write still works through write-content");
 
 const creatorRejected = await callFunction(
   "generate-week",
@@ -446,8 +446,8 @@ async function seedData() {
       {
         id: ids.creator,
         workspace_id: ids.workspace,
-        display_name: "Mamta",
-        handle: "mamta",
+        display_name: "Creator",
+        handle: "creator",
         default_timezone: "Asia/Kolkata",
         status: "active",
       },
