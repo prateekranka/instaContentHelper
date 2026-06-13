@@ -129,18 +129,15 @@ final class AppState {
 
     private func activate(runtime: AppRuntime) async {
         await runtime.services.refreshFromRepositoriesImmediately()
-        guard runtime.services.lastRepositoryError == nil else {
-            authenticationError = runtime.services.lastRepositoryError
-            authenticationPhase = .failed
-            return
-        }
 
         self.runtime = runtime
         activeMode = .creator
         pendingEmail = nil
         authenticationError = nil
         authenticationPhase = .live
-        await runtime.services.scheduleTodayNotificationIfNeededImmediately()
+        if runtime.services.lastRepositoryError == nil {
+            await runtime.services.scheduleTodayNotificationIfNeededImmediately()
+        }
     }
 
     private func finishLocalSignOut() {

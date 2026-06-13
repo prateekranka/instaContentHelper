@@ -80,6 +80,29 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(authentication.verifiedToken, "123456")
     }
 
+    func testOTPVerificationStaysLiveWhenTodayCardIsMissing() async throws {
+        let session = makeSession(email: "tester@example.com")
+        let authentication = AuthenticationServiceStub(verifiedSession: session)
+        let state = AppState(
+            authenticationService: authentication,
+            liveRuntimeBuilder: { session in
+                Self.runtimeWithMissingTodayCard(session)
+            }
+        )
+        state.authenticationPhase = AuthenticationPhase.signedOut
+
+        await state.requestEmailOTP("tester@example.com")
+        await state.verifyEmailOTP("123456")
+
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
+        XCTAssertEqual(state.runtime.mode, AppRuntimeMode.live(session))
+        XCTAssertNil(state.authenticationError)
+        XCTAssertEqual(
+            state.runtime.services.lastRepositoryError,
+            "No published daily card exists for today."
+        )
+    }
+
     func testAuthenticationFailureSurfacesStableMessage() async {
         let authentication = AuthenticationServiceStub(
             requestError: AuthenticationServiceError.backend("tester_not_approved")
@@ -134,6 +157,26 @@ final class AuthenticationRuntimeTests: XCTestCase {
         AppRuntime.live(
             session: session,
             repositories: .fixture,
+            todayCache: MemoryAuthenticationTodayCache(),
+            notifications: NoopTodayNotificationScheduler()
+        )
+    }
+
+    private static func runtimeWithMissingTodayCard(_ session: PairedDeviceSession) -> AppRuntime {
+        AppRuntime.live(
+            session: session,
+            repositories: AppRepositories(
+                context: session.context,
+                today: MissingTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: FixtureWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository(),
+                testerAccess: FixtureTesterAccessRepository()
+            ),
             todayCache: MemoryAuthenticationTodayCache(),
             notifications: NoopTodayNotificationScheduler()
         )
@@ -224,5 +267,23 @@ private final class MemoryAuthenticationTodayCache: TodayCacheStoring {
 
     func clearSnapshot(for context: WorkspaceContext) throws {
         snapshots[context] = nil
+    }
+}
+
+private struct MissingTodayCardRepository: TodayCardRepository {
+    func todayCard(for context: WorkspaceContext) async throws -> DailyCard {
+        throw RepositoryError.missingFixture("No published daily card exists for today.")
+    }
+
+    func weekCards(for context: WorkspaceContext) async throws -> [DailyCard] {
+        []
+    }
+
+    func completeToday(
+        card: DailyCard,
+        decision: DailyDecision,
+        context: WorkspaceContext
+    ) async throws -> ArchiveEntry {
+        throw RepositoryError.missingFixture("No published daily card exists for today.")
     }
 }
