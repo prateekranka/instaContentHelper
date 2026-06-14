@@ -178,8 +178,12 @@ async function readToday(
     return jsonResponse({ error: "week_cards_lookup_failed" }, 500);
   }
 
+  const todayCard = todayRows?.[0] ?? null;
+
   return jsonResponse({
-    today_card: todayRows?.[0] ?? null,
+    today_card: todayCard,
+    today_date: todayDate,
+    today_status: todayCard ? "published" : "missing_published_card",
     week_cards: weekRows ?? [],
   });
 }

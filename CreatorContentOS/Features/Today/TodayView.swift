@@ -13,13 +13,21 @@ struct TodayView: View {
         EditorialScreen {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
-                NavigationLink(value: CreatorRoute.shootFolio) {
-                    TodayHeroCard(card: services.todayCard)
+                switch services.todayContentState {
+                case .ready:
+                    NavigationLink(value: CreatorRoute.shootFolio) {
+                        TodayHeroCard(card: services.todayCard)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open today's Shoot Folio")
+                case .loading:
+                    TodayLoadingCard()
+                case .missingPublishedCard(let date):
+                    MissingTodayCardView(date: date, onOpenProfile: onOpenProfile)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open today's Shoot Folio")
 
-                if let completion = services.todayCard.completionState {
+                if case .ready = services.todayContentState,
+                   let completion = services.todayCard.completionState {
                     JournalBlock {
                         HStack {
                             Image(systemName: "checkmark.seal")
@@ -36,9 +44,11 @@ struct TodayView: View {
                 }
             }
         } bottomBar: {
-            GlassCommandBar {
-                SecondaryActionButton(title: "Give me other ideas") {
-                    sheet = .notToday
+            if case .ready = services.todayContentState {
+                GlassCommandBar {
+                    SecondaryActionButton(title: "Give me other ideas") {
+                        sheet = .notToday
+                    }
                 }
             }
         }
@@ -71,6 +81,10 @@ struct TodayView: View {
     }
 
     private var todayDateLine: String {
+        if case .missingPublishedCard(let date) = services.todayContentState {
+            return Self.formattedHeadingDate(from: date) ?? date
+        }
+
         guard let scheduledDate = services.todayCard.scheduledDate,
               let date = Self.apiDateFormatter.date(from: scheduledDate)
         else {
@@ -78,6 +92,11 @@ struct TodayView: View {
         }
 
         return Self.headingDateFormatter.string(from: date)
+    }
+
+    private static func formattedHeadingDate(from apiDate: String) -> String? {
+        guard let date = apiDateFormatter.date(from: apiDate) else { return nil }
+        return headingDateFormatter.string(from: date)
     }
 
     private static let apiDateFormatter: DateFormatter = {
@@ -97,6 +116,51 @@ struct TodayView: View {
         formatter.dateFormat = "EEEE, dd/MM/yy"
         return formatter
     }()
+}
+
+private struct TodayLoadingCard: View {
+    var body: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                ProgressView()
+                Text("Checking live content")
+                    .font(MCOType.headline)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                Text("The app is loading the latest published card from Supabase.")
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct MissingTodayCardView: View {
+    let date: String
+    let onOpenProfile: () -> Void
+
+    var body: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.m) {
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .font(.system(size: 30, weight: .regular))
+                    .foregroundStyle(MCOTheme.Color.brass)
+                VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                    Text("No published card for this date")
+                        .font(MCOType.headline)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                    Text("You are signed in, but Supabase does not have a published daily card for \(date). Generate or publish a week from Admin control, then return here.")
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .lineSpacing(4)
+                }
+                SecondaryActionButton(title: "Open Profile") {
+                    onOpenProfile()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 }
 
 struct TodayHeroCard: View {

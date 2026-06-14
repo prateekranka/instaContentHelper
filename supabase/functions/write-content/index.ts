@@ -10,7 +10,8 @@ import {
 type WriteAction =
   | "complete_today"
   | "upsert_archive_decision"
-  | "select_idea_for_next_open_day";
+  | "select_idea_for_next_open_day"
+  | "update_weekly_setup";
 
 type WriteContentRequest = {
   action?: WriteAction;
@@ -18,6 +19,9 @@ type WriteContentRequest = {
   daily_card_id?: string;
   idea_id?: string;
   weekly_plan_id?: string | null;
+  weekly_setup_id?: string | null;
+  week_start_date?: string;
+  setup_sections?: unknown;
   archive_date?: string;
   decision?: string | {
     status?: string;
@@ -36,6 +40,45 @@ const DAILY_DECISION_STATUSES = new Set([
   "saved_for_tomorrow",
   "skipped_intentionally",
 ]);
+
+const WEEKLY_SETUP_SELECT =
+  "id,location,workout_race_schedule,family_travel_moments,energy_constraints,shooting_constraints,no_go_topics,selected_sources,notes";
+
+const WEEKLY_SETUP_TEXT_COLUMNS = new Set(["location", "notes"]);
+const WEEKLY_SETUP_ARRAY_COLUMNS = new Set([
+  "workout_race_schedule",
+  "family_travel_moments",
+  "energy_constraints",
+  "shooting_constraints",
+  "no_go_topics",
+  "selected_sources",
+]);
+
+const WEEKLY_SETUP_SECTION_ALIASES: Record<string, string> = {
+  location: "location",
+  place: "location",
+  notes: "notes",
+  note: "notes",
+  workout: "workout_race_schedule",
+  workouts: "workout_race_schedule",
+  body: "workout_race_schedule",
+  workout_race_schedule: "workout_race_schedule",
+  family: "family_travel_moments",
+  travel: "family_travel_moments",
+  family_travel_moments: "family_travel_moments",
+  energy: "energy_constraints",
+  energy_constraints: "energy_constraints",
+  shooting: "shooting_constraints",
+  shooting_constraints: "shooting_constraints",
+  boundaries: "no_go_topics",
+  boundary: "no_go_topics",
+  no_go: "no_go_topics",
+  no_go_topics: "no_go_topics",
+  source_pulse: "selected_sources",
+  sources: "selected_sources",
+  selected_sources: "selected_sources",
+  constraints: "__constraints__",
+};
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
@@ -63,8 +106,15 @@ Deno.serve(async (request) => {
   const action = body.action;
   const creatorID = body.creator_id?.trim();
 
-  if (!isWriteAction(action) || !isUUID(creatorID)) {
+  if (!isWriteAction(action)) {
     return jsonResponse({ error: "invalid_write_payload" }, 400);
+  }
+  if (!isUUID(creatorID)) {
+    return jsonResponse({
+      error: action === "update_weekly_setup"
+        ? "invalid_weekly_setup_payload"
+        : "invalid_write_payload",
+    }, 400);
   }
 
   const admin = createClient(supabaseURL, serviceRoleKey, {
@@ -84,6 +134,10 @@ Deno.serve(async (request) => {
   const creatorResult = await assertCreator(admin, session, creatorID);
   if (creatorResult) {
     return creatorResult;
+  }
+
+  if (action === "update_weekly_setup") {
+    return await updateWeeklySetup(admin, session, creatorID, body);
   }
 
   const payload = normalizedPayload(body, session, creatorID);
@@ -210,13 +264,254 @@ function normalizedPayload(
         weekly_plan_id: weeklyPlanID,
       };
     }
+
+    case "update_weekly_setup":
+      return null;
   }
 
   return null;
 }
 
+async function updateWeeklySetup(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  creatorID: string,
+  body: WriteContentRequest,
+): Promise<Response> {
+  const weeklySetupID = body.weekly_setup_id?.trim() || null;
+  const weeklyPlanID = body.weekly_plan_id?.trim() || null;
+  const weekStartDate = body.week_start_date?.trim();
+  const update = normalizedWeeklySetupUpdate(body.setup_sections);
+
+  if (
+    !update ||
+    (weeklySetupID !== null && !isUUID(weeklySetupID)) ||
+    (weeklyPlanID !== null && !isUUID(weeklyPlanID)) ||
+    (weeklySetupID === null && weeklyPlanID === null &&
+      !isDateString(weekStartDate))
+  ) {
+    return jsonResponse({ error: "invalid_weekly_setup_payload" }, 400);
+  }
+
+  let resolvedWeeklySetupID = weeklySetupID;
+  let resolvedWeekStartDate = weekStartDate;
+
+  if (!resolvedWeeklySetupID && weeklyPlanID) {
+    const { data: weeklyPlan, error: planLookupError } = await admin
+      .from("weekly_plans")
+      .select("id,workspace_id,creator_id,weekly_setup_id,week_start_date")
+      .eq("id", weeklyPlanID)
+      .maybeSingle();
+
+    if (planLookupError) {
+      return jsonResponse({ error: "weekly_setup_update_failed" }, 500);
+    }
+
+    if (!weeklyPlan) {
+      return jsonResponse({ error: "weekly_setup_not_found" }, 404);
+    }
+
+    if (
+      weeklyPlan.workspace_id !== session.workspaceID ||
+      weeklyPlan.creator_id !== creatorID
+    ) {
+      return jsonResponse({ error: "cross_workspace_forbidden" }, 403);
+    }
+
+    resolvedWeeklySetupID = weeklyPlan.weekly_setup_id ?? null;
+    resolvedWeekStartDate = weeklyPlan.week_start_date ?? resolvedWeekStartDate;
+  }
+
+  if (!resolvedWeeklySetupID && !isDateString(resolvedWeekStartDate)) {
+    return jsonResponse({ error: "invalid_weekly_setup_payload" }, 400);
+  }
+
+  let query = admin
+    .from("weekly_setups")
+    .update(update)
+    .eq("workspace_id", session.workspaceID)
+    .eq("creator_id", creatorID)
+    .select(WEEKLY_SETUP_SELECT);
+
+  if (resolvedWeeklySetupID) {
+    query = query.eq("id", resolvedWeeklySetupID);
+  } else {
+    query = query.eq("week_start_date", resolvedWeekStartDate);
+  }
+
+  const { data: weeklySetup, error } = await query.maybeSingle();
+
+  if (error) {
+    return jsonResponse({ error: "weekly_setup_update_failed" }, 500);
+  }
+
+  if (weeklySetup) {
+    return jsonResponse({
+      action: "update_weekly_setup",
+      weekly_setup: weeklySetup,
+    });
+  }
+
+  if (resolvedWeeklySetupID) {
+    const { data: existingSetup, error: lookupError } = await admin
+      .from("weekly_setups")
+      .select("id,workspace_id,creator_id")
+      .eq("id", resolvedWeeklySetupID)
+      .maybeSingle();
+
+    if (lookupError) {
+      return jsonResponse({ error: "weekly_setup_update_failed" }, 500);
+    }
+
+    if (existingSetup) {
+      return jsonResponse({ error: "cross_workspace_forbidden" }, 403);
+    }
+  }
+
+  return jsonResponse({ error: "weekly_setup_not_found" }, 404);
+}
+
+function normalizedWeeklySetupUpdate(
+  setupSections: unknown,
+): Record<string, unknown> | null {
+  if (!Array.isArray(setupSections) || setupSections.length === 0) {
+    return null;
+  }
+
+  const update: Record<string, unknown> = {};
+
+  for (const section of setupSections) {
+    if (!isRecord(section)) {
+      return null;
+    }
+
+    const sectionKey = weeklySetupSectionKey(section);
+    if (!sectionKey) {
+      return null;
+    }
+
+    const column = WEEKLY_SETUP_SECTION_ALIASES[sectionKey];
+    if (!column) {
+      return null;
+    }
+
+    const value = sectionValue(section);
+    if (column === "__constraints__") {
+      if (typeof value === "string") {
+        update.energy_constraints = jsonTextArray(value);
+        continue;
+      }
+      if (!isRecord(value)) {
+        return null;
+      }
+
+      const energy = value.energy_constraints ?? value.energyConstraints;
+      const shooting = value.shooting_constraints ?? value.shootingConstraints;
+      let applied = false;
+
+      if (energy !== undefined) {
+        if (!Array.isArray(energy)) {
+          return null;
+        }
+        update.energy_constraints = energy;
+        applied = true;
+      }
+
+      if (shooting !== undefined) {
+        if (!Array.isArray(shooting)) {
+          return null;
+        }
+        update.shooting_constraints = shooting;
+        applied = true;
+      }
+
+      if (!applied) {
+        return null;
+      }
+      continue;
+    }
+
+    if (WEEKLY_SETUP_TEXT_COLUMNS.has(column)) {
+      if (value === null) {
+        update[column] = null;
+        continue;
+      }
+      if (typeof value !== "string") {
+        return null;
+      }
+      update[column] = value.trim() || null;
+      continue;
+    }
+
+    if (WEEKLY_SETUP_ARRAY_COLUMNS.has(column)) {
+      if (typeof value === "string") {
+        update[column] = jsonTextArray(value);
+        continue;
+      }
+      if (!Array.isArray(value)) {
+        return null;
+      }
+      update[column] = value;
+      continue;
+    }
+
+    return null;
+  }
+
+  if (Object.keys(update).length === 0) {
+    return null;
+  }
+
+  update.updated_at = new Date().toISOString();
+  return update;
+}
+
+function weeklySetupSectionKey(
+  section: Record<string, unknown>,
+): string | null {
+  const rawValue = stringProperty(section, [
+    "key",
+    "field",
+    "column",
+    "name",
+    "id",
+    "section",
+    "title",
+  ]);
+
+  if (!rawValue) {
+    return null;
+  }
+
+  return rawValue.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function sectionValue(section: Record<string, unknown>): unknown {
+  if ("value" in section) {
+    return section.value;
+  }
+  if ("items" in section) {
+    return section.items;
+  }
+  if ("text" in section) {
+    return section.text;
+  }
+  if ("summary" in section) {
+    return section.summary;
+  }
+  return undefined;
+}
+
+function jsonTextArray(value: string): unknown[] {
+  const trimmedValue = value.trim();
+  return trimmedValue.length === 0 ? [] : [trimmedValue];
+}
+
 function allowedRoles(action: WriteAction): string[] {
-  if (action === "select_idea_for_next_open_day") {
+  if (
+    action === "select_idea_for_next_open_day" ||
+    action === "update_weekly_setup"
+  ) {
     return ["owner", "editor"];
   }
 
@@ -230,7 +525,11 @@ function stableWriteError(value: unknown, action: WriteAction): string {
     value === "idea_not_found" ||
     value === "archive_upsert_failed" ||
     value === "complete_today_failed" ||
-    value === "select_idea_failed"
+    value === "select_idea_failed" ||
+    value === "weekly_setup_not_found" ||
+    value === "invalid_weekly_setup_payload" ||
+    value === "weekly_setup_update_failed" ||
+    value === "cross_workspace_forbidden"
   ) {
     return value;
   }
@@ -246,13 +545,16 @@ function actionFailureError(action: WriteAction): string {
       return "archive_upsert_failed";
     case "select_idea_for_next_open_day":
       return "select_idea_failed";
+    case "update_weekly_setup":
+      return "weekly_setup_update_failed";
   }
 }
 
 function isWriteAction(value: string | undefined): value is WriteAction {
   return value === "complete_today" ||
     value === "upsert_archive_decision" ||
-    value === "select_idea_for_next_open_day";
+    value === "select_idea_for_next_open_day" ||
+    value === "update_weekly_setup";
 }
 
 function isDecisionStatus(value: string | undefined): value is string {
@@ -265,6 +567,24 @@ function isDateString(value: string | undefined): value is string {
 
 function isNonBlankString(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringProperty(
+  record: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+
+  return null;
 }
 
 function isUUID(value: string | undefined | null): value is string {

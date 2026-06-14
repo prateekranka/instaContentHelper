@@ -27,13 +27,24 @@ struct FixtureTodayCardRepository: TodayCardRepository {
     }
 }
 
-struct FixtureWeeklyPlanRepository: WeeklyPlanRepository {
+actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
+    private var plan: WeeklyPlan
+    private var ideas: [WeeklyIdea]
+
+    init(
+        plan: WeeklyPlan = .raceWeek,
+        ideas: [WeeklyIdea] = WeeklyIdea.raceWeekBank
+    ) {
+        self.plan = plan
+        self.ideas = ideas
+    }
+
     func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
-        WeeklyPlan.raceWeek
+        plan
     }
 
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
-        WeeklyIdea.raceWeekBank
+        ideas
     }
 
     func publishWeek(
@@ -52,6 +63,9 @@ struct FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         } else {
             DailyCard.publishedCards(from: publishedPlan)
         }
+
+        self.plan = publishedPlan
+        self.ideas = ideaBank
 
         return WeeklyPublishResult(
             weeklyPlan: publishedPlan,
@@ -83,8 +97,21 @@ struct FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         updatedPlan.days[dayIndex].state = .planned
         updatedPlan.days[dayIndex].isSoftLocked = false
         updatedIdeaBank[ideaIndex].selectedDay = updatedPlan.days[dayIndex].weekday
+        self.plan = updatedPlan
+        self.ideas = updatedIdeaBank
 
         return WeeklySelectionUpdate(weeklyPlan: updatedPlan, ideaBank: updatedIdeaBank)
+    }
+
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        var updatedPlan = plan
+        updatedPlan.setupSections = sections
+        self.plan = updatedPlan
+        return updatedPlan
     }
 }
 

@@ -56,6 +56,43 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertEqual(services.lastRepositoryError, "Selection failed.")
     }
 
+    func testManagerUpdatesWeeklySetupSections() async throws {
+        let weeklyRepository = RecordingWeeklyPlanRepository()
+        let services = makeServices(weeklyPlans: weeklyRepository)
+        var updatedSections = services.weeklyPlan.setupSections
+        updatedSections[0].summary = "Jersey City, early mornings."
+        updatedSections[0].state = "Ready"
+
+        let didSave = await services.updateWeeklySetupSectionsImmediately(updatedSections)
+
+        XCTAssertTrue(didSave)
+        XCTAssertEqual(services.weeklyPlan.setupSections, updatedSections)
+        XCTAssertFalse(services.isSavingWeeklyBrief)
+        XCTAssertNil(services.weeklyBriefEditError)
+        XCTAssertNil(services.lastRepositoryError)
+
+        let requests = await weeklyRepository.recordedSetupRequests()
+        XCTAssertEqual(requests, [updatedSections])
+    }
+
+    func testManagerKeepsWeeklySetupSectionsWhenSaveFails() async throws {
+        let weeklyRepository = RecordingWeeklyPlanRepository(
+            setupError: RepositoryError.edgeFunction("weekly_setup_update_failed")
+        )
+        let services = makeServices(weeklyPlans: weeklyRepository)
+        let originalSections = services.weeklyPlan.setupSections
+        var updatedSections = originalSections
+        updatedSections[0].summary = "Jersey City, early mornings."
+
+        let didSave = await services.updateWeeklySetupSectionsImmediately(updatedSections)
+
+        XCTAssertFalse(didSave)
+        XCTAssertEqual(services.weeklyPlan.setupSections, originalSections)
+        XCTAssertFalse(services.isSavingWeeklyBrief)
+        XCTAssertEqual(services.weeklyBriefEditError, "weekly_setup_update_failed")
+        XCTAssertEqual(services.lastRepositoryError, "weekly_setup_update_failed")
+    }
+
     func testManagerReferenceImportPreviewAndConfirmRefreshesIntelligence() async throws {
         let refreshedHome = IntelligenceHome.adminUsageReviewCleared
         let importRepository = RecordingReferenceImportRepository()
@@ -178,16 +215,20 @@ private actor RecordingWeeklyPlanRepository: WeeklyPlanRepository {
     private var plan: WeeklyPlan
     private var ideas: [WeeklyIdea]
     private var selectionRequests: [SelectionRequest] = []
+    private var setupRequests: [[WeeklySetupSection]] = []
     private let selectionError: Error?
+    private let setupError: Error?
 
     init(
         plan: WeeklyPlan = .raceWeek,
         ideas: [WeeklyIdea] = WeeklyIdea.raceWeekBank,
-        selectionError: Error? = nil
+        selectionError: Error? = nil,
+        setupError: Error? = nil
     ) {
         self.plan = plan
         self.ideas = ideas
         self.selectionError = selectionError
+        self.setupError = setupError
     }
 
     func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
@@ -239,6 +280,27 @@ private actor RecordingWeeklyPlanRepository: WeeklyPlanRepository {
 
     func recordedSelectionRequests() -> [SelectionRequest] {
         selectionRequests
+    }
+
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        setupRequests.append(sections)
+
+        if let setupError {
+            throw setupError
+        }
+
+        var updatedPlan = plan
+        updatedPlan.setupSections = sections
+        self.plan = updatedPlan
+        return updatedPlan
+    }
+
+    func recordedSetupRequests() -> [[WeeklySetupSection]] {
+        setupRequests
     }
 
     private static func applySelection(

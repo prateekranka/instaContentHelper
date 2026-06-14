@@ -30,7 +30,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
     var weeklyPlanID: UUID
     var scheduledDate: String
     var preserveManualEdits: Bool
-    var responseMode: GenerateWeekResponseMode = .async
+    var responseMode: GenerateWeekResponseMode = .sync
     var mock: Bool?
     var action = "regenerate_day"
 

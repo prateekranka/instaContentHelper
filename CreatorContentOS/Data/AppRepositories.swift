@@ -66,6 +66,7 @@ enum RepositoryError: LocalizedError {
     case notConfigured(String)
     case edgeFunction(String)
     case missingFixture(String)
+    case noPublishedTodayCard(date: String)
 
     var errorDescription: String? {
         switch self {
@@ -75,6 +76,8 @@ enum RepositoryError: LocalizedError {
             message
         case .missingFixture(let message):
             message
+        case .noPublishedTodayCard(let date):
+            "No published daily card exists for \(date)."
         }
     }
 }
@@ -104,6 +107,11 @@ protocol WeeklyPlanRepository: Sendable {
         ideaBank: [WeeklyIdea],
         context: WorkspaceContext
     ) async throws -> WeeklySelectionUpdate
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan
 }
 
 protocol WeeklyGenerationRepository: Sendable {

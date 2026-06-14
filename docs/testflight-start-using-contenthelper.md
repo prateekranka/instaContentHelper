@@ -11,12 +11,13 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
    enter that code in the app. A first-time tester must be approved by an owner
    from Manager Control before sign-in works.
 4. From Profile, switch to Manager Control.
-5. Open Testers when you need to add more testers. Owners can invite an email,
-   resend a code, or revoke a tester. Testers sign in with email OTP; do not
-   pass pairing codes around.
+5. Tester access uses approved-email OTP. Do not pass pairing codes around.
+   Until tester management is moved into a secondary admin screen, add or revoke
+   testers through the backend/admin runbook.
 6. Open Weekly.
 7. Confirm this week's plan:
    - Check that the week range is correct.
+   - Use Edit brief to update the Weekly Brief before generating or publishing.
    - Confirm the seven day cards are useful for Creator.
    - Soft-lock or publish the week.
    - Verify that Today has a current card after publish.
@@ -33,7 +34,7 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
      that day only and keeps the rest of the reviewed draft intact.
    - Publish only after review.
    - Verify that Today shows the generated card after publish.
-9. Open Intelligence.
+9. Open References.
 10. Use Reference Import:
    - Paste Instagram account, reel, or audio URLs, or upload a CSV.
    - Preview the import.
@@ -47,10 +48,10 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
 
 ### Manager troubleshooting
 
-- Sign-in says email is not approved: open Manager Control, Testers, then invite
-  or reactivate that email.
-- No email code: resend from the app or from Manager Control, Testers. Also
-  check spam and the email address spelling.
+- Sign-in says email is not approved: invite or reactivate that email through
+  the backend/admin tester runbook.
+- No email code: resend from the app or backend/admin tester flow. Also check
+  spam and the email address spelling.
 - App says `Fixtures`: the build is missing live Supabase config or the live
   session could not be restored.
 - Release archive fails with a Supabase bootstrap error: this is intentional.
@@ -61,6 +62,8 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
 - Generate button disabled: confirm the device role is owner or editor,
   generation is not already running, and the week is not soft locked or
   published.
+- Weekly Brief edit failed: confirm the device role is owner or editor and the
+  week has a matching weekly setup row in Supabase.
 - Regenerate day disabled: confirm a draft weekly plan exists, the week is not
   published, and the device role is owner or editor.
 - Missing AI provider key: set `DEEPSEEK_API_KEY` as the primary Supabase Edge

@@ -65,6 +65,46 @@ final class SupabaseWriteContentDTOTests: XCTestCase {
         XCTAssertEqual(try uuidValue(object, key: "weekly_plan_id"), plan.id)
     }
 
+    func testUpdateWeeklySetupRequestEncodesEdgeFunctionContract() throws {
+        let context = fixtureContext()
+        let plan = fixturePlan()
+        let sections = [
+            WeeklySetupSection(
+                id: UUID(uuidString: "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCC1")!,
+                systemImage: "mappin.and.ellipse",
+                title: "Place",
+                summary: "Jersey City, early mornings.",
+                state: "Ready"
+            ),
+            WeeklySetupSection(
+                id: UUID(uuidString: "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCC2")!,
+                systemImage: "bolt.heart",
+                title: "Constraints",
+                summary: "Low-energy Tuesday.",
+                state: "Needs detail"
+            )
+        ]
+
+        let object = try encodedObject(
+            .updateWeeklySetup(sections: sections, plan: plan, context: context)
+        )
+
+        XCTAssertEqual(object["action"] as? String, "update_weekly_setup")
+        XCTAssertEqual(try uuidValue(object, key: "creator_id"), context.creatorID)
+        XCTAssertEqual(try uuidValue(object, key: "weekly_plan_id"), plan.id)
+
+        let encodedSections = try XCTUnwrap(object["setup_sections"] as? [[String: Any]])
+        XCTAssertEqual(encodedSections.count, 2)
+        XCTAssertEqual(try uuidValue(encodedSections[0], key: "id"), sections[0].id)
+        XCTAssertEqual(encodedSections[0]["system_image"] as? String, "mappin.and.ellipse")
+        XCTAssertEqual(encodedSections[0]["title"] as? String, "Place")
+        XCTAssertEqual(encodedSections[0]["summary"] as? String, "Jersey City, early mornings.")
+        XCTAssertEqual(encodedSections[0]["state"] as? String, "Ready")
+        XCTAssertEqual(try uuidValue(encodedSections[1], key: "id"), sections[1].id)
+        XCTAssertEqual(encodedSections[1]["system_image"] as? String, "bolt.heart")
+        XCTAssertEqual(encodedSections[1]["summary"] as? String, "Low-energy Tuesday.")
+    }
+
     func testWriteContentResponseDecodesStructuredSelectResult() throws {
         let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
         let memberID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA3")!

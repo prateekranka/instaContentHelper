@@ -11,24 +11,30 @@ struct ShootFolioView: View {
         EditorialScreen {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
-                sectionTabs
 
-                switch selection {
-                case .scenes:
-                    sceneProgress
-                    SceneListView(scenes: services.todayCard.scenes)
-                case .script:
-                    CopyBlock(title: "Script", bodyText: services.todayCard.script ?? "Race week isn't about doing more. It's about doing what matters. Simple plan. Steady steps. Let's go.")
-                case .caption:
-                    CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "Race week has entered the house. Keeping it simple, steady, and real today.")
-                case .audio:
-                    CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "Calm Drive - Instrumental - fallback ready")
-                case .post:
-                    CopyBlock(title: "Post", bodyText: services.todayCard.postInstructions ?? "Open Instagram, use the saved audio if available, add cover text: Race week mindset.")
+                if case .ready = services.todayContentState {
+                    sectionTabs
+
+                    switch selection {
+                    case .scenes:
+                        sceneProgress
+                        SceneListView(scenes: services.todayCard.scenes)
+                    case .script:
+                        CopyBlock(title: "Script", bodyText: services.todayCard.script ?? "Race week isn't about doing more. It's about doing what matters. Simple plan. Steady steps. Let's go.")
+                    case .caption:
+                        CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "Race week has entered the house. Keeping it simple, steady, and real today.")
+                    case .audio:
+                        CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "Calm Drive - Instrumental - fallback ready")
+                    case .post:
+                        CopyBlock(title: "Post", bodyText: services.todayCard.postInstructions ?? "Open Instagram, use the saved audio if available, add cover text: Race week mindset.")
+                    }
+                } else {
+                    ShootFolioEmptyState(state: services.todayContentState)
                 }
             }
         } bottomBar: {
-            if selection == .scenes {
+            if selection == .scenes,
+               case .ready = services.todayContentState {
                 GlassCommandBar {
                     PrimaryActionButton(
                         title: services.areAllScenesShot ? "All scenes shot" : "Mark all as shot",
@@ -82,6 +88,39 @@ struct ShootFolioView: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+}
+
+private struct ShootFolioEmptyState: View {
+    let state: TodayContentState
+
+    var body: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                Image(systemName: "bookmark.slash")
+                    .font(.system(size: 30, weight: .regular))
+                    .foregroundStyle(MCOTheme.Color.brass)
+                Text("No Shoot Folio yet")
+                    .font(MCOType.headline)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                Text(message)
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .lineSpacing(4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var message: String {
+        switch state {
+        case .loading:
+            "The app is checking live Supabase content."
+        case .ready:
+            "Today's published card does not include shoot scenes."
+        case .missingPublishedCard(let date):
+            "There is no published daily card for \(date), so there are no scenes to shoot yet."
         }
     }
 }

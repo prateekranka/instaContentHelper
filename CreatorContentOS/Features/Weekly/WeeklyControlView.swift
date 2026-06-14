@@ -5,6 +5,7 @@ struct WeeklyControlView: View {
     @Environment(AppServices.self) private var services
     @State private var isReviewingInputs = false
     @State private var isReviewingGeneratedDraft = false
+    @State private var isEditingWeeklyBrief = false
     @State private var dayDetailSelection: WeeklyDayDetailSelection?
 
     var body: some View {
@@ -12,13 +13,18 @@ struct WeeklyControlView: View {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
                 WeeklyReadinessStrip(plan: services.weeklyPlan)
-                softLockStrip
                 generationStrip
+                WeeklySectionHeader(
+                    title: "Weekly Brief",
+                    subtitle: "Inputs are shaped, not managed.",
+                    actionTitle: "Edit brief"
+                ) {
+                    isEditingWeeklyBrief = true
+                }
+                WeeklySetupSummary(sections: services.weeklyPlan.setupSections)
                 WeeklyRhythmList(days: services.weeklyPlan.days) { day in
                     dayDetailSelection = makeDayDetailSelection(for: day.id)
                 }
-                WeeklySectionTitle(title: "Weekly Brief", subtitle: "Inputs are shaped, not managed.")
-                WeeklySetupSummary(sections: services.weeklyPlan.setupSections)
                 WeeklySectionTitle(title: "Idea Bank", subtitle: "Prepared options underneath the week.")
                 WeeklyIdeaBank(
                     ideas: services.weeklyIdeas,
@@ -62,6 +68,14 @@ struct WeeklyControlView: View {
                     onRegenerateDay: services.regeneratedDailyCard
                 )
             }
+        }
+        .sheet(isPresented: $isEditingWeeklyBrief) {
+            WeeklyBriefEditSheet(
+                sections: services.weeklyPlan.setupSections,
+                isSaving: services.isSavingWeeklyBrief,
+                errorMessage: services.weeklyBriefEditError,
+                onSave: services.updateWeeklySetupSectionsImmediately
+            )
         }
         .sheet(item: $dayDetailSelection) { selection in
             WeeklyDayDetailSheet(
@@ -228,29 +242,6 @@ struct WeeklyControlView: View {
                     .lineLimit(2)
                 Spacer()
                 Button("Inputs") {
-                    isReviewingInputs = true
-                }
-                .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.oxblood)
-            }
-            .padding(.horizontal, MCOSpace.m)
-            .padding(.vertical, MCOSpace.s)
-            .background(MCOTheme.Color.paperRaised.opacity(0.62))
-            .clipShape(RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
-                    .stroke(MCOTheme.Color.hairline, lineWidth: 1)
-            }
-        } else {
-            HStack(spacing: MCOSpace.s) {
-                Image(systemName: "list.bullet.clipboard")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(MCOTheme.Color.brass)
-                Text("Review weekly inputs")
-                    .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.ink)
-                Spacer()
-                Button("Open") {
                     isReviewingInputs = true
                 }
                 .font(MCOType.caption)
@@ -452,6 +443,132 @@ struct WeeklyInputsReviewSheet: View {
                 )
                 Hairline()
             }
+        }
+    }
+}
+
+struct WeeklyBriefEditSheet: View {
+    let sections: [WeeklySetupSection]
+    let isSaving: Bool
+    let errorMessage: String?
+    let onSave: ([WeeklySetupSection]) async -> Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var editableSections: [WeeklySetupSection]
+
+    init(
+        sections: [WeeklySetupSection],
+        isSaving: Bool,
+        errorMessage: String?,
+        onSave: @escaping ([WeeklySetupSection]) async -> Bool
+    ) {
+        self.sections = sections
+        self.isSaving = isSaving
+        self.errorMessage = errorMessage
+        self.onSave = onSave
+        _editableSections = State(initialValue: sections)
+    }
+
+    var body: some View {
+        EditorialScreen {
+            VStack(alignment: .leading, spacing: MCOSpace.l) {
+                header
+
+                if let errorMessage {
+                    AdminSignalBlock(
+                        title: "Brief not saved",
+                        value: errorMessage,
+                        systemImage: "exclamationmark.triangle",
+                        tone: .warning
+                    )
+                }
+
+                VStack(spacing: MCOSpace.m) {
+                    ForEach($editableSections) { $section in
+                        WeeklyBriefSectionEditor(section: $section)
+                    }
+                }
+                .padding(.bottom, 112)
+            }
+        } bottomBar: {
+            GlassCommandBar {
+                SecondaryActionButton(title: "Cancel") {
+                    dismiss()
+                }
+                .frame(maxWidth: 130)
+                .disabled(isSaving)
+
+                PrimaryActionButton(
+                    title: isSaving ? "Saving" : "Save brief",
+                    systemImage: isSaving ? "hourglass" : "checkmark"
+                ) {
+                    Task {
+                        if await onSave(editableSections) {
+                            dismiss()
+                        }
+                    }
+                }
+                .disabled(isSaving || editableSections == sections)
+            }
+        }
+        .navigationBarHidden(true)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            HStack {
+                Spacer()
+                FloatingIconButton(systemImage: "xmark", label: "Close") {
+                    dismiss()
+                }
+            }
+
+            VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                Text("Edit Weekly Brief")
+                    .font(MCOType.display)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                Text("Update the inputs used to shape this week.")
+                    .font(.system(size: 16, weight: .regular, design: .serif))
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
+        }
+    }
+}
+
+struct WeeklyBriefSectionEditor: View {
+    @Binding var section: WeeklySetupSection
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            HStack(spacing: MCOSpace.s) {
+                Image(systemName: section.systemImage)
+                    .font(.system(size: 20, weight: .light))
+                    .foregroundStyle(MCOTheme.Color.brass)
+                    .frame(width: 34)
+
+                Text(section.title)
+                    .font(.system(size: 18, weight: .regular, design: .serif))
+                    .foregroundStyle(MCOTheme.Color.ink)
+
+                Spacer(minLength: MCOSpace.s)
+
+                StatusChip(text: section.state, tone: section.state == "Needs detail" ? .warning : .ready)
+            }
+
+            TextField("Summary", text: $section.summary, axis: .vertical)
+                .font(MCOType.bodySmall)
+                .foregroundStyle(MCOTheme.Color.ink)
+                .lineLimit(2...5)
+                .textFieldStyle(.plain)
+        }
+        .padding(MCOSpace.m)
+        .background(MCOTheme.Color.paperRaised.opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
+                .stroke(MCOTheme.Color.hairline, lineWidth: 1)
         }
     }
 }
@@ -1292,6 +1409,34 @@ struct WeeklySectionTitle: View {
     }
 }
 
+struct WeeklySectionHeader: View {
+    let title: String
+    let subtitle: String
+    let actionTitle: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack(alignment: .lastTextBaseline, spacing: MCOSpace.m) {
+            VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                Text(title)
+                    .font(.system(size: 26, weight: .regular, design: .serif))
+                    .foregroundStyle(MCOTheme.Color.ink)
+                Text(subtitle)
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
+
+            Spacer(minLength: MCOSpace.s)
+
+            Button(actionTitle, action: action)
+                .font(MCOType.caption)
+                .foregroundStyle(MCOTheme.Color.oxblood)
+                .buttonStyle(.plain)
+        }
+        .padding(.top, MCOSpace.s)
+    }
+}
+
 struct WeeklySetupSummary: View {
     let sections: [WeeklySetupSection]
 
@@ -1339,7 +1484,7 @@ struct WeeklyIdeaBank: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(ideas) { idea in
+            ForEach(deduplicatedIdeas) { idea in
                 WeeklyIdeaRow(
                     idea: idea,
                     targetDayLabel: targetDayLabel,
@@ -1348,6 +1493,37 @@ struct WeeklyIdeaBank: View {
                 Hairline()
             }
         }
+    }
+
+    private var deduplicatedIdeas: [WeeklyIdea] {
+        var seen = Set<String>()
+        var result: [WeeklyIdea] = []
+
+        for idea in ideas {
+            let key = [
+                idea.title.normalizedIdeaBankKey,
+                idea.reason.normalizedIdeaBankKey,
+                idea.source.rawValue.normalizedIdeaBankKey,
+                idea.effortLabel.normalizedIdeaBankKey,
+                (idea.selectedDay ?? "").normalizedIdeaBankKey
+            ].joined(separator: "|")
+
+            guard seen.insert(key).inserted else {
+                continue
+            }
+
+            result.append(idea)
+        }
+
+        return result
+    }
+}
+
+private extension String {
+    var normalizedIdeaBankKey: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased()
     }
 }
 

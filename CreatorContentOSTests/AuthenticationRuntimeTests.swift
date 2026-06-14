@@ -31,6 +31,26 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(response.creatorDisplayName, "Creator")
     }
 
+    func testTodayReadResponseDecodesMissingPublishedStatus() throws {
+        let data = Data(
+            """
+            {
+              "today_card": null,
+              "today_date": "2026-06-14",
+              "today_status": "missing_published_card",
+              "week_cards": []
+            }
+            """.utf8
+        )
+
+        let response = try JSONDecoder().decode(SupabaseTodayReadResponse.self, from: data)
+
+        XCTAssertNil(response.todayCard)
+        XCTAssertEqual(response.todayDate, "2026-06-14")
+        XCTAssertEqual(response.todayStatus, "missing_published_card")
+        XCTAssertTrue(response.weekCards.isEmpty)
+    }
+
     func testMissingSessionRestoresSignedOutState() async {
         let authentication = AuthenticationServiceStub(restoredSession: nil)
         let state = AppState(
@@ -98,8 +118,12 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.live(session))
         XCTAssertNil(state.authenticationError)
         XCTAssertEqual(
+            state.runtime.services.todayContentState,
+            TodayContentState.missingPublishedCard(date: "2026-06-14")
+        )
+        XCTAssertEqual(
             state.runtime.services.lastRepositoryError,
-            "No published daily card exists for today."
+            "No published daily card exists for 2026-06-14."
         )
     }
 
@@ -272,7 +296,7 @@ private final class MemoryAuthenticationTodayCache: TodayCacheStoring {
 
 private struct MissingTodayCardRepository: TodayCardRepository {
     func todayCard(for context: WorkspaceContext) async throws -> DailyCard {
-        throw RepositoryError.missingFixture("No published daily card exists for today.")
+        throw RepositoryError.noPublishedTodayCard(date: "2026-06-14")
     }
 
     func weekCards(for context: WorkspaceContext) async throws -> [DailyCard] {
@@ -284,6 +308,6 @@ private struct MissingTodayCardRepository: TodayCardRepository {
         decision: DailyDecision,
         context: WorkspaceContext
     ) async throws -> ArchiveEntry {
-        throw RepositoryError.missingFixture("No published daily card exists for today.")
+        throw RepositoryError.noPublishedTodayCard(date: "2026-06-14")
     }
 }

@@ -4,6 +4,7 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
     case completeToday(card: DailyCard, decision: DailyDecision, context: WorkspaceContext)
     case upsertArchiveDecision(ArchiveEntry, for: DailyCard, context: WorkspaceContext)
     case selectIdeaForNextOpenDay(idea: WeeklyIdea, plan: WeeklyPlan, context: WorkspaceContext)
+    case updateWeeklySetup(sections: [WeeklySetupSection], plan: WeeklyPlan, context: WorkspaceContext)
 
     private enum CodingKeys: String, CodingKey {
         case action
@@ -16,6 +17,7 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
         case hasPostThumbnail = "has_post_thumbnail"
         case ideaID = "idea_id"
         case weeklyPlanID = "weekly_plan_id"
+        case setupSections = "setup_sections"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -43,7 +45,40 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
             try container.encode(context.creatorID, forKey: .creatorID)
             try container.encode(idea.id, forKey: .ideaID)
             try container.encode(plan.id, forKey: .weeklyPlanID)
+
+        case .updateWeeklySetup(let sections, let plan, let context):
+            try container.encode("update_weekly_setup", forKey: .action)
+            try container.encode(context.creatorID, forKey: .creatorID)
+            try container.encode(plan.id, forKey: .weeklyPlanID)
+            try container.encode(
+                sections.map(SupabaseWeeklySetupSectionRequest.init(section:)),
+                forKey: .setupSections
+            )
         }
+    }
+}
+
+struct SupabaseWeeklySetupSectionRequest: Encodable, Sendable {
+    var id: UUID
+    var systemImage: String
+    var title: String
+    var summary: String
+    var state: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case systemImage = "system_image"
+        case title
+        case summary
+        case state
+    }
+
+    init(section: WeeklySetupSection) {
+        id = section.id
+        systemImage = section.systemImage
+        title = section.title
+        summary = section.summary
+        state = section.state
     }
 }
 

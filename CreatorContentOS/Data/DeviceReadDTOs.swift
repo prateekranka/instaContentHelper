@@ -23,10 +23,14 @@ struct SupabaseReadContentRequest: Encodable, Sendable {
 struct SupabaseTodayReadResponse: Decodable, Hashable, Sendable {
     var todayCard: SupabaseDailyCardRow?
     var weekCards: [SupabaseDailyCardRow]
+    var todayStatus: String?
+    var todayDate: String?
 
     enum CodingKeys: String, CodingKey {
         case todayCard = "today_card"
         case weekCards = "week_cards"
+        case todayStatus = "today_status"
+        case todayDate = "today_date"
     }
 }
 

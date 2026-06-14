@@ -102,10 +102,10 @@ struct IntelligenceHomeView: View {
             }
 
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                Text("MANAGER INTELLIGENCE")
+                Text("MANAGER REFERENCES")
                     .font(MCOType.tinyLabel)
                     .foregroundStyle(MCOTheme.Color.oxblood)
-                Text("Intelligence")
+                Text("References")
                     .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .lineLimit(1)

@@ -5,14 +5,15 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
     let client: SupabaseClient
 
     func todayCard(for context: WorkspaceContext) async throws -> DailyCard {
+        let todayDate = SupabaseDateFormatting.todayDateString()
         let response: SupabaseTodayReadResponse = try await client.readContent(
             .today,
             context: context,
-            todayDate: SupabaseDateFormatting.todayDateString()
+            todayDate: todayDate
         )
 
         guard let row = response.todayCard else {
-            throw RepositoryError.missingFixture("No published daily card exists for today.")
+            throw RepositoryError.noPublishedTodayCard(date: response.todayDate ?? todayDate)
         }
 
         return row.domainCard()
@@ -191,6 +192,20 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         return WeeklySelectionUpdate(weeklyPlan: updatedPlan, ideaBank: updatedIdeaBank)
     }
 
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        try await client.writeContent(
+            .updateWeeklySetup(sections: sections, plan: plan, context: context)
+        )
+
+        var updatedPlan = plan
+        updatedPlan.setupSections = sections
+        return updatedPlan
+    }
+
     private func makeWeeklyPlan(
         row: SupabaseWeeklyPlanRow,
         cardRows: [SupabaseDailyCardRow],
@@ -235,7 +250,7 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
                     mode: mode,
                     preserveManualEdits: true,
                     mock: nil,
-                    responseMode: .async
+                    responseMode: .sync
                 )
             )
 

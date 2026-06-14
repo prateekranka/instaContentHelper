@@ -1,6 +1,12 @@
 import Foundation
 import Observation
 
+enum TodayContentState: Equatable, Hashable, Sendable {
+    case loading
+    case ready
+    case missingPublishedCard(date: String)
+}
+
 @MainActor
 @Observable
 final class AppServices {
@@ -22,9 +28,12 @@ final class AppServices {
     var lastRepositoryError: String?
     var lastRepositoryRefreshAttemptAt: Date?
     var lastRepositoryRefreshAt: Date?
+    var todayContentState: TodayContentState
     var lastNotificationSchedule: TodayNotificationSchedule?
     var lastNotificationError: String?
     var isPublishingWeek = false
+    var isSavingWeeklyBrief = false
+    var weeklyBriefEditError: String?
     var lastPublishSummary: String?
     var isGeneratingWeek = false
     var regeneratingDayDates: Set<String> = []
@@ -56,7 +65,8 @@ final class AppServices {
         weeklyIdeas: [WeeklyIdea],
         intelligenceHome: IntelligenceHome,
         creatorProfileSummary: CreatorProfileSummary,
-        weekCards: [DailyCard]
+        weekCards: [DailyCard],
+        todayContentState: TodayContentState = .ready
     ) {
         self.context = repositories.context
         self.isLiveSupabaseRuntime = isLiveSupabaseRuntime
@@ -74,6 +84,7 @@ final class AppServices {
         self.intelligenceHome = intelligenceHome
         self.creatorProfileSummary = creatorProfileSummary
         self.weekCards = weekCards
+        self.todayContentState = todayContentState
     }
 
     var canManageTesterAccess: Bool {
@@ -155,7 +166,8 @@ final class AppServices {
                 voiceLine: "",
                 noGoTopics: []
             ),
-            weekCards: []
+            weekCards: [],
+            todayContentState: .loading
         )
     }
 
@@ -417,6 +429,40 @@ final class AppServices {
         }
     }
 
+    func updateWeeklySetupSections(_ sections: [WeeklySetupSection]) {
+        Task {
+            await updateWeeklySetupSectionsImmediately(sections)
+        }
+    }
+
+    @discardableResult
+    func updateWeeklySetupSectionsImmediately(_ sections: [WeeklySetupSection]) async -> Bool {
+        guard !isSavingWeeklyBrief else { return false }
+
+        isSavingWeeklyBrief = true
+        defer { isSavingWeeklyBrief = false }
+
+        do {
+            weeklyPlan = try await repositories.weeklyPlans.updateWeeklySetupSections(
+                sections,
+                in: weeklyPlan,
+                context: context
+            )
+            weeklyBriefEditError = nil
+            lastRepositoryError = nil
+
+            if isLiveSupabaseRuntime {
+                await refreshWeeklyDataFromRepositories()
+            }
+
+            return true
+        } catch {
+            weeklyBriefEditError = error.localizedDescription
+            lastRepositoryError = error.localizedDescription
+            return false
+        }
+    }
+
     func publishCurrentWeek() {
         Task {
             await publishCurrentWeekImmediately()
@@ -607,20 +653,29 @@ final class AppServices {
         var refreshError: Error?
 
         do {
-            async let loadedTodayCard = repositories.today.todayCard(for: context)
-            async let loadedWeekCards = repositories.today.weekCards(for: context)
-
-            todayCard = try await loadedTodayCard
-            weekCards = try await loadedWeekCards
+            todayCard = try await repositories.today.todayCard(for: context)
+            todayContentState = .ready
             saveTodaySnapshot(source: "repository-refresh")
             await scheduleTodayNotificationIfNeededImmediately()
+        } catch RepositoryError.noPublishedTodayCard(let date) {
+            refreshError = RepositoryError.noPublishedTodayCard(date: date)
+            todayContentState = .missingPublishedCard(date: date)
+            lastNotificationSchedule = nil
+            lastNotificationError = nil
         } catch {
             refreshError = error
             if loadTodayFromCache() {
+                todayContentState = .ready
                 await scheduleTodayNotificationIfNeededImmediately()
             } else {
                 lastRepositoryError = error.localizedDescription
             }
+        }
+
+        do {
+            weekCards = try await repositories.today.weekCards(for: context)
+        } catch {
+            refreshError = refreshError ?? error
         }
 
         do {
@@ -656,6 +711,7 @@ final class AppServices {
         lastRepositoryError = refreshError?.localizedDescription
         if refreshError == nil {
             lastRepositoryRefreshAt = Date()
+            todayContentState = .ready
         }
     }
 
@@ -665,6 +721,28 @@ final class AppServices {
             lastRepositoryError = nil
         } catch {
             lastRepositoryError = error.localizedDescription
+        }
+    }
+
+    private func refreshWeeklyDataFromRepositories() async {
+        var refreshError: Error?
+
+        do {
+            weeklyPlan = try await repositories.weeklyPlans.currentPublishedPlan(for: context)
+        } catch {
+            refreshError = error
+        }
+
+        do {
+            weeklyIdeas = try await repositories.weeklyPlans.ideaBank(for: context)
+        } catch {
+            refreshError = refreshError ?? error
+        }
+
+        if let refreshError {
+            lastRepositoryError = refreshError.localizedDescription
+        } else {
+            lastRepositoryError = nil
         }
     }
 

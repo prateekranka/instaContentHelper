@@ -89,7 +89,8 @@ struct ProfileModeView: View {
                 .font(MCOType.body)
                 .foregroundStyle(MCOTheme.Color.ink)
 
-            if let lastCheckedAt = appState.runtime.services.lastRepositoryRefreshAt {
+            if let lastCheckedAt = appState.runtime.services.lastRepositoryRefreshAt
+                ?? appState.runtime.services.lastRepositoryRefreshAttemptAt {
                 Text("Last checked at \(lastCheckedAt.formatted(date: .omitted, time: .shortened))")
                     .font(MCOType.caption)
                     .foregroundStyle(MCOTheme.Color.inkMuted)

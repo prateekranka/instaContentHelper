@@ -9,24 +9,14 @@ struct AdminShellView: View {
             .tabItem { Label("Weekly", systemImage: "calendar") }
 
             NavigationStack {
-                AIRunwayView()
-            }
-            .tabItem { Label("AI Runway", systemImage: "sparkles") }
-
-            NavigationStack {
                 IntelligenceHomeView()
             }
-            .tabItem { Label("Intelligence", systemImage: "lightbulb") }
+            .tabItem { Label("References", systemImage: "bookmark") }
 
             NavigationStack {
                 LiveQAView()
             }
-            .tabItem { Label("Live QA", systemImage: "checklist") }
-
-            NavigationStack {
-                TesterAccessView()
-            }
-            .tabItem { Label("Testers", systemImage: "person.2.badge.key") }
+            .tabItem { Label("QA", systemImage: "checklist") }
         }
         .tint(MCOTheme.Color.oxblood)
     }
@@ -276,7 +266,7 @@ struct LiveQAView: View {
                 }
             }
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                Text("Live QA")
+                Text("QA")
                     .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .lineLimit(1)

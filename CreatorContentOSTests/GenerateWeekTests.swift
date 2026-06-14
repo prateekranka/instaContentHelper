@@ -11,7 +11,7 @@ final class GenerateWeekTests: XCTestCase {
             mode: .generateDraft,
             preserveManualEdits: true,
             mock: true,
-            responseMode: .async
+            responseMode: .sync
         )
 
         let data = try JSONEncoder().encode(request)
@@ -23,7 +23,7 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(object["mode"] as? String, "generate_draft")
         XCTAssertEqual(object["preserve_manual_edits"] as? Bool, true)
         XCTAssertEqual(object["mock"] as? Bool, true)
-        XCTAssertEqual(object["response_mode"] as? String, "async")
+        XCTAssertEqual(object["response_mode"] as? String, "sync")
     }
 
     func testGenerateWeekStatusRequestAndRunningResponseUseAsyncContract() throws {
@@ -80,7 +80,7 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(object["weekly_plan_id"] as? String, "77777777-7777-4777-8777-777777777771")
         XCTAssertEqual(object["scheduled_date"] as? String, "2026-06-10")
         XCTAssertEqual(object["preserve_manual_edits"] as? Bool, false)
-        XCTAssertEqual(object["response_mode"] as? String, "async")
+        XCTAssertEqual(object["response_mode"] as? String, "sync")
         XCTAssertEqual(object["mock"] as? Bool, true)
     }
 

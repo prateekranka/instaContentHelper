@@ -12,6 +12,8 @@ const ids = {
   ownerDevice: "66666666-6666-4666-8666-666666666661",
   editorDevice: "66666666-6666-4666-8666-666666666662",
   creatorDevice: "66666666-6666-4666-8666-666666666663",
+  weeklySetupA: "88888888-8888-4888-8888-888888888881",
+  weeklySetupB: "88888888-8888-4888-8888-888888888882",
   weeklyPlanA: "77777777-7777-4777-8777-777777777771",
   weeklyPlanB: "77777777-7777-4777-8777-777777777772",
   ownerCard: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
@@ -73,6 +75,7 @@ await assertOwnerCanWriteAllActions();
 await assertEditorCanWriteAllActions();
 await assertCreatorWriteBoundary();
 await assertCrossWorkspaceIdeaRejection();
+await assertWeeklySetupUpdateBoundary();
 
 console.log("PASS write-content acceptance");
 
@@ -171,11 +174,48 @@ async function seedAcceptanceData() {
   );
 
   await must(
+    admin.from("weekly_setups").insert([
+      {
+        id: ids.weeklySetupA,
+        workspace_id: ids.workspaceA,
+        creator_id: ids.creatorA,
+        week_start_date: "2026-06-01",
+        status: "ready_to_generate",
+        location: "Original local place",
+        workout_race_schedule: ["Original body note"],
+        family_travel_moments: ["Original family note"],
+        energy_constraints: ["Original energy constraint"],
+        shooting_constraints: ["Original shooting constraint"],
+        no_go_topics: ["Original boundary"],
+        selected_sources: ["Original source pulse"],
+        notes: "Original notes",
+        created_by_member_id: ids.ownerMember,
+      },
+      {
+        id: ids.weeklySetupB,
+        workspace_id: ids.workspaceB,
+        creator_id: ids.creatorB,
+        week_start_date: "2026-06-01",
+        status: "ready_to_generate",
+        location: "Other workspace place",
+        workout_race_schedule: [],
+        family_travel_moments: [],
+        energy_constraints: [],
+        shooting_constraints: [],
+        no_go_topics: [],
+        selected_sources: [],
+      },
+    ]),
+    "seed weekly setups",
+  );
+
+  await must(
     admin.from("weekly_plans").insert([
       {
         id: ids.weeklyPlanA,
         workspace_id: ids.workspaceA,
         creator_id: ids.creatorA,
+        weekly_setup_id: ids.weeklySetupA,
         week_start_date: "2026-06-01",
         status: "published",
         strategy_summary: "Acceptance weekly plan",
@@ -188,6 +228,7 @@ async function seedAcceptanceData() {
         id: ids.weeklyPlanB,
         workspace_id: ids.workspaceB,
         creator_id: ids.creatorB,
+        weekly_setup_id: ids.weeklySetupB,
         week_start_date: "2026-06-01",
         status: "published",
         strategy_summary: "Other weekly plan",
@@ -420,6 +461,112 @@ async function assertCrossWorkspaceIdeaRejection() {
   console.log("PASS rejects cross-workspace idea id");
 }
 
+async function assertWeeklySetupUpdateBoundary() {
+  const ownerUpdate = await callWriteContent(
+    tokens.owner,
+    weeklySetupBody("Owner edited New Jersey place", ids.weeklyPlanA),
+  );
+  assertEquals(ownerUpdate.status, 200, "owner weekly setup update status");
+  await assertWeeklySetupSummary("location", "Owner edited New Jersey place");
+
+  const editorUpdate = await callWriteContent(
+    tokens.editor,
+    {
+      action: "update_weekly_setup",
+      creator_id: ids.creatorA,
+      week_start_date: "2026-06-01",
+      setup_sections: [
+        {
+          title: "Body",
+          summary: "Editor edited recovery note",
+        },
+        {
+          title: "Family",
+          summary: "Editor edited family note",
+        },
+      ],
+    },
+  );
+  assertEquals(editorUpdate.status, 200, "editor weekly setup update status");
+  await assertWeeklySetupSummary(
+    "workout_race_schedule",
+    ["Editor edited recovery note"],
+  );
+  await assertWeeklySetupSummary(
+    "family_travel_moments",
+    ["Editor edited family note"],
+  );
+
+  const creatorUpdate = await callWriteContent(
+    tokens.creator,
+    weeklySetupBody("Creator should not edit", ids.weeklyPlanA),
+  );
+  assertEquals(creatorUpdate.status, 403, "creator weekly setup update status");
+  assertEquals(
+    creatorUpdate.json.error,
+    "role_not_allowed",
+    "creator weekly setup update error",
+  );
+
+  const crossWorkspacePlan = await callWriteContent(
+    tokens.owner,
+    weeklySetupBody("Cross workspace should fail", ids.weeklyPlanB),
+  );
+  assertEquals(
+    crossWorkspacePlan.status,
+    403,
+    "cross workspace weekly plan update status",
+  );
+  assertEquals(
+    crossWorkspacePlan.json.error,
+    "cross_workspace_forbidden",
+    "cross workspace weekly plan update error",
+  );
+
+  const crossWorkspaceSetup = await callWriteContent(
+    tokens.owner,
+    {
+      action: "update_weekly_setup",
+      creator_id: ids.creatorA,
+      weekly_setup_id: ids.weeklySetupB,
+      setup_sections: [
+        {
+          title: "Place",
+          summary: "Cross workspace setup should fail",
+        },
+      ],
+    },
+  );
+  assertEquals(
+    crossWorkspaceSetup.status,
+    403,
+    "cross workspace weekly setup update status",
+  );
+  assertEquals(
+    crossWorkspaceSetup.json.error,
+    "cross_workspace_forbidden",
+    "cross workspace weekly setup update error",
+  );
+
+  const malformed = await callWriteContent(
+    tokens.owner,
+    {
+      action: "update_weekly_setup",
+      creator_id: ids.creatorA,
+      weekly_plan_id: ids.weeklyPlanA,
+      setup_sections: [{ title: "Unknown", summary: "No matching column" }],
+    },
+  );
+  assertEquals(malformed.status, 400, "malformed weekly setup update status");
+  assertEquals(
+    malformed.json.error,
+    "invalid_weekly_setup_payload",
+    "malformed weekly setup update error",
+  );
+
+  console.log("PASS weekly setup update boundary");
+}
+
 async function upsertArchiveTwice(
   token: string,
   dailyCardID: string,
@@ -519,6 +666,44 @@ function selectIdeaBody(ideaID: string) {
     idea_id: ideaID,
     weekly_plan_id: ids.weeklyPlanA,
   };
+}
+
+function weeklySetupBody(summary: string, weeklyPlanID: string) {
+  return {
+    action: "update_weekly_setup",
+    creator_id: ids.creatorA,
+    weekly_plan_id: weeklyPlanID,
+    setup_sections: [
+      {
+        title: "Place",
+        summary,
+      },
+    ],
+  };
+}
+
+async function assertWeeklySetupSummary(
+  column: string,
+  expectedValue: unknown,
+) {
+  const row = await singleRow(
+    admin.from("weekly_setups")
+      .select(column)
+      .eq("id", ids.weeklySetupA)
+      .single(),
+    `weekly setup ${column}`,
+  );
+
+  const actualValue = row[column];
+  if (Array.isArray(expectedValue)) {
+    assertEquals(
+      JSON.stringify(actualValue),
+      JSON.stringify(expectedValue),
+      `weekly setup ${column}`,
+    );
+  } else {
+    assertEquals(actualValue, expectedValue, `weekly setup ${column}`);
+  }
 }
 
 function dailyCard(
