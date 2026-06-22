@@ -24,6 +24,22 @@
 	<string>$(MCO_SUPABASE_PUBLISHABLE_KEY)</string>
 	<key>MCO_SUPABASE_URL</key>
 	<string>$(MCO_SUPABASE_URL)</string>
+	<key>MCO_DEBUG_PAIRED_WORKSPACE_ID</key>
+	<string>$(MCO_DEBUG_PAIRED_WORKSPACE_ID)</string>
+	<key>MCO_DEBUG_PAIRED_CREATOR_ID</key>
+	<string>$(MCO_DEBUG_PAIRED_CREATOR_ID)</string>
+	<key>MCO_DEBUG_PAIRED_MEMBER_ID</key>
+	<string>$(MCO_DEBUG_PAIRED_MEMBER_ID)</string>
+	<key>MCO_DEBUG_PAIRED_DEVICE_INSTALLATION_ID</key>
+	<string>$(MCO_DEBUG_PAIRED_DEVICE_INSTALLATION_ID)</string>
+	<key>MCO_DEBUG_PAIRED_DEVICE_TOKEN</key>
+	<string>$(MCO_DEBUG_PAIRED_DEVICE_TOKEN)</string>
+	<key>MCO_DEBUG_PAIRED_WORKSPACE_NAME</key>
+	<string>$(MCO_DEBUG_PAIRED_WORKSPACE_NAME)</string>
+	<key>MCO_DEBUG_PAIRED_CREATOR_DISPLAY_NAME</key>
+	<string>$(MCO_DEBUG_PAIRED_CREATOR_DISPLAY_NAME)</string>
+	<key>MCO_DEBUG_PAIRED_MEMBER_ROLE</key>
+	<string>$(MCO_DEBUG_PAIRED_MEMBER_ROLE)</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

@@ -43,6 +43,10 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         plan
     }
 
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
+        nil
+    }
+
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
         ideas
     }
@@ -54,7 +58,10 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         context: WorkspaceContext
     ) async throws -> WeeklyPublishResult {
         let publishedPlan = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
-            generatedDraft.markedPublished.weeklyPlan(setupSections: plan.setupSections).softLockedForPublish
+            generatedDraft.markedPublished.weeklyPlan(
+                setupSections: plan.setupSections,
+                weeklyBriefText: plan.weeklyBriefText
+            ).softLockedForPublish
         } else {
             plan.softLockedForPublish
         }
@@ -113,6 +120,17 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         self.plan = updatedPlan
         return updatedPlan
     }
+
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        var updatedPlan = plan
+        updatedPlan.weeklyBriefText = text
+        self.plan = updatedPlan
+        return updatedPlan
+    }
 }
 
 struct FixtureWeeklyGenerationRepository: WeeklyGenerationRepository {
@@ -121,8 +139,23 @@ struct FixtureWeeklyGenerationRepository: WeeklyGenerationRepository {
         weekStartDate: String,
         weeklySetupID: UUID?,
         mode: GenerateWeekMode,
-        context: WorkspaceContext
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
     ) async throws -> GeneratedWeekDraft {
+        await progress?(
+            WeeklyGenerationProgress(
+                phase: .draftingDays,
+                generationID: nil,
+                weeklyPlanID: nil,
+                draftedDayCount: 7,
+                checkedDayCount: 7,
+                totalDayCount: 7,
+                currentDay: nil,
+                message: "Fixture draft generated",
+                error: nil
+            )
+        )
+
         let cards = SupabaseDateFormatting.weekDates(starting: weekStartDate).enumerated().map { index, date in
             GeneratedDailyCardDraft(
                 id: UUID(),
@@ -204,6 +237,19 @@ struct FixtureIntelligenceRepository: IntelligenceRepository {
 struct FixtureCreatorProfileRepository: CreatorProfileRepository {
     func activeProfileSummary(for context: WorkspaceContext) async throws -> CreatorProfileSummary {
         .creatorFixture
+    }
+
+    func updateProfile(_ update: CreatorProfileUpdate, context: WorkspaceContext) async throws -> CreatorProfileSummary {
+        CreatorProfileSummary(
+            displayName: CreatorProfileSummary.creatorFixture.displayName,
+            positioning: update.positioning,
+            voiceLine: update.voiceRules.joined(separator: ", "),
+            noGoTopics: update.noGoTopics,
+            voiceRules: update.voiceRules,
+            contentPillars: update.contentPillars,
+            captionStyle: update.captionStyle,
+            recurringFormats: update.recurringFormats
+        )
     }
 }
 

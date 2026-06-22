@@ -12,13 +12,7 @@ struct IntelligenceHomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: MCOSpace.l) {
                     header
-                    NavigationLink {
-                        referenceImportDestination
-                    } label: {
-                        ReferenceImportEntryBlock(isLiveRuntime: services.isLiveSupabaseRuntime)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!services.isLiveSupabaseRuntime)
+                    ActionFeedbackBanner(message: services.lastActionMessage, tone: .info)
                     if let referenceMessage {
                         ReferenceImportMessageBanner(message: referenceMessage)
                     }
@@ -38,15 +32,14 @@ struct IntelligenceHomeView: View {
                             open(item)
                         }
                     )
-                    IntelligenceShelf(
-                        title: "Ready for this week",
-                        items: services.intelligenceHome.readyForThisWeek
-                    )
+                    NavigationLink {
+                        referenceImportDestination
+                    } label: {
+                        ReferenceImportEntryBlock(isLiveRuntime: services.isLiveSupabaseRuntime)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!services.isLiveSupabaseRuntime)
                     SourcePulseShelf(sourcePulse: services.intelligenceHome.sourcePulse)
-                    IntelligenceShelf(
-                        title: "Idea candidates",
-                        items: services.intelligenceHome.ideaCandidates
-                    )
                     IntelligenceShelf(
                         title: "Recently used",
                         items: services.intelligenceHome.recentlyUsed
@@ -55,7 +48,7 @@ struct IntelligenceHomeView: View {
                 }
                 .padding(.horizontal, MCOSpace.l)
                 .padding(.top, MCOSpace.l)
-                .padding(.bottom, 116)
+                .padding(.bottom, 84)
             }
         }
         .navigationBarHidden(true)
@@ -72,15 +65,6 @@ struct IntelligenceHomeView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: MCOSpace.m) {
             HStack(alignment: .top, spacing: MCOSpace.s) {
-                Text("MC")
-                    .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.brass)
-                    .frame(width: 42, height: 42)
-                    .background(MCOTheme.Color.paperRaised, in: Circle())
-                    .overlay {
-                        Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                    }
-
                 Spacer()
 
                 NavigationLink {
@@ -102,17 +86,11 @@ struct IntelligenceHomeView: View {
             }
 
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                Text("MANAGER REFERENCES")
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
                 Text("References")
                     .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
-                Text("Prepared material for the week.")
-                    .font(.system(size: 16, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
             }
         }
     }
@@ -183,8 +161,11 @@ struct IntelligenceHomeView: View {
     private func open(_ item: IntelligenceItem) {
         guard
             let sourceURL = item.sourceURL,
-            let url = URL(string: sourceURL)
+            let url = URL(string: sourceURL),
+            url.scheme != nil,
+            url.host != nil
         else {
+            services.lastActionMessage = "No valid source link is available for this reference."
             return
         }
 
@@ -204,10 +185,10 @@ struct ReferenceImportEntryBlock: View {
                     .frame(width: 34)
 
                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                    Text("Reference Import")
+                    Text("Import inspiration")
                         .font(.system(size: 19, weight: .regular, design: .serif))
                         .foregroundStyle(MCOTheme.Color.ink)
-                    Text(isLiveRuntime ? "Paste or upload Inspiration sources." : "Connect live Supabase to import references.")
+                    Text(isLiveRuntime ? "Paste links, handles, notes, or upload CSV." : "Connect live Supabase to import references.")
                         .font(MCOType.caption)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -215,10 +196,9 @@ struct ReferenceImportEntryBlock: View {
 
                 Spacer(minLength: MCOSpace.s)
 
-                StatusChip(
-                    text: isLiveRuntime ? "Live" : "Fixtures",
-                    tone: isLiveRuntime ? .ready : .quiet
-                )
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
             }
         }
     }
@@ -282,26 +262,7 @@ struct NeedsYourCallShelf: View {
         VStack(alignment: .leading, spacing: MCOSpace.s) {
             ShelfHeader(title: "Needs your call", trailing: "\(items.count)")
 
-            if items.isEmpty {
-                HStack(alignment: .center, spacing: MCOSpace.m) {
-                    Image(systemName: "checkmark.seal")
-                        .font(.system(size: 20, weight: .light))
-                        .foregroundStyle(MCOTheme.Color.sageDeep)
-                        .frame(width: 34)
-
-                    VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                        Text("No import rows waiting")
-                            .font(.system(size: 17, weight: .regular, design: .serif))
-                            .foregroundStyle(MCOTheme.Color.ink)
-                        Text("New unknown rows and candidate accounts will land here.")
-                            .font(MCOType.caption)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
-                    }
-
-                    Spacer(minLength: MCOSpace.s)
-                }
-                .padding(.vertical, MCOSpace.s)
-            } else {
+            if !items.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(items) { item in
                         NeedsYourCallRow(
@@ -398,13 +359,21 @@ struct IntelligenceShelf: View {
     let items: [IntelligenceItem]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
-            ShelfHeader(title: title, trailing: nil)
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                ShelfHeader(title: title, trailing: nil)
 
-            VStack(spacing: 0) {
-                ForEach(items) { item in
-                    IntelligenceShelfRow(item: item)
-                    Hairline()
+                VStack(spacing: 0) {
+                    ForEach(items) { item in
+                        NavigationLink {
+                            ReferenceItemDetailView(item: item)
+                        } label: {
+                            IntelligenceShelfRow(item: item)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        Hairline()
+                    }
                 }
             }
         }
@@ -460,7 +429,13 @@ struct LibraryNavigationShelf: View {
 
             VStack(spacing: 0) {
                 ForEach(sections) { section in
-                    LibraryNavigationRow(section: section)
+                    NavigationLink {
+                        ReferenceLibrarySectionDetailView(section: section)
+                    } label: {
+                        LibraryNavigationRow(section: section)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                     Hairline()
                 }
             }
@@ -500,6 +475,222 @@ struct LibraryNavigationRow: View {
             }
         }
         .padding(.vertical, MCOSpace.s)
+    }
+}
+
+struct ReferenceItemDetailView: View {
+    @Environment(\.openURL) private var openURL
+    @Environment(AppServices.self) private var services
+    let item: IntelligenceItem
+
+    var body: some View {
+        EditorialScreen(bottomContentPadding: MCOSpace.xl, showsBottomBar: false) {
+            VStack(alignment: .leading, spacing: MCOSpace.l) {
+                header
+                ActionFeedbackBanner(message: services.lastActionMessage, tone: .info)
+                summaryBlock
+                detailBlock
+                sourceBlock
+            }
+        } bottomBar: {
+            EmptyView()
+        }
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            HStack(alignment: .center, spacing: MCOSpace.s) {
+                Image(systemName: item.symbol)
+                    .font(.system(size: 22, weight: .light))
+                    .foregroundStyle(item.state.accent)
+                    .frame(width: 38, height: 38)
+                    .background(MCOTheme.Color.paperRaised.opacity(0.72))
+                    .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
+                            .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                    }
+
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    Text(item.kind.rawValue)
+                        .font(MCOType.tinyLabel)
+                        .foregroundStyle(MCOTheme.Color.oxblood)
+                    Text(item.title)
+                        .font(MCOType.screenTitle)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private var summaryBlock: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.m) {
+                HStack(spacing: MCOSpace.s) {
+                    StatusChip(text: item.state.label, tone: item.state.tone)
+                    StatusChip(text: item.trailingNote, tone: item.state == .needsReview ? .warning : .quiet)
+                    if let typeChip = item.typeChip {
+                        ReferenceImportTypeChipView(typeChip: typeChip)
+                    }
+                }
+
+                Text(item.subtitle)
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var detailBlock: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                Text("How this should be used")
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                Text(usageGuidance)
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let sortKey = item.sortKey?.nilIfBlank {
+                    ReferenceDetailLine(title: "Priority signal", value: sortKey)
+                }
+            }
+        }
+    }
+
+    private var sourceBlock: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.m) {
+                Text("Source")
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+
+                if let sourceURL = item.sourceURL?.nilIfBlank {
+                    Text(sourceURL)
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("No source link attached.")
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                }
+
+                PrimaryActionButton(title: "Open source", systemImage: "arrow.up.right") {
+                    openSource()
+                }
+                .disabled(item.sourceURL?.nilIfBlank == nil)
+                .opacity(item.sourceURL?.nilIfBlank == nil ? 0.52 : 1)
+            }
+        }
+    }
+
+    private var usageGuidance: String {
+        switch item.kind {
+        case .pattern:
+            "Use this as a repeatable content structure when drafting weekly cards. It should shape framing, not override the weekly brief."
+        case .trend:
+            "Use this as context for a timely angle. Keep it grounded in the creator's current week before using it."
+        case .audio:
+            "Use this as an optional audio direction for Reels. If it does not fit the daily card, keep the card shootable without it."
+        case .idea:
+            "Use this as a candidate card idea. It still needs to fit the selected week, creator profile, and daily energy."
+        case .watchlist:
+            "Use this as a source to monitor. Pull from it when it gives a practical angle for the creator's week."
+        }
+    }
+
+    private func openSource() {
+        guard
+            let sourceURL = item.sourceURL,
+            let url = URL(string: sourceURL),
+            url.scheme != nil,
+            url.host != nil
+        else {
+            services.lastActionMessage = "No valid source link is available for this reference."
+            return
+        }
+
+        openURL(url)
+    }
+}
+
+struct ReferenceLibrarySectionDetailView: View {
+    let section: IntelligenceLibrarySection
+
+    var body: some View {
+        EditorialScreen(bottomContentPadding: MCOSpace.xl, showsBottomBar: false) {
+            VStack(alignment: .leading, spacing: MCOSpace.l) {
+                header
+                JournalBlock {
+                    VStack(alignment: .leading, spacing: MCOSpace.m) {
+                        ReferenceDetailLine(title: "Saved references", value: "\(section.count)")
+                        ReferenceDetailLine(title: "Scope", value: section.subtitle)
+                    }
+                }
+                JournalBlock {
+                    VStack(alignment: .leading, spacing: MCOSpace.s) {
+                        Text("What belongs here")
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(MCOTheme.Color.oxblood)
+                        Text("This section groups references that can inform weekly generation. The next useful layer is a filtered list of all saved references in this bucket.")
+                            .font(MCOType.bodySmall)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        } bottomBar: {
+            EmptyView()
+        }
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: MCOSpace.m) {
+            Image(systemName: section.symbol)
+                .font(.system(size: 24, weight: .light))
+                .foregroundStyle(MCOTheme.Color.brass)
+                .frame(width: 42, height: 42)
+                .background(MCOTheme.Color.paperRaised.opacity(0.72))
+                .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
+                        .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                }
+
+            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                Text("Reference Library")
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                Text(section.title)
+                    .font(MCOType.screenTitle)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+struct ReferenceDetailLine: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+            Text(title)
+                .font(MCOType.caption)
+                .foregroundStyle(MCOTheme.Color.inkMuted)
+            Text(value)
+                .font(MCOType.bodySmall)
+                .foregroundStyle(MCOTheme.Color.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

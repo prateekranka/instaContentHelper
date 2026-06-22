@@ -20,12 +20,6 @@ struct CreatorShellView: View {
             .tag(CreatorTab.today)
 
             NavigationStack {
-                ShootFolioView()
-            }
-            .tabItem { Label("Shoot Folio", systemImage: "bookmark") }
-            .tag(CreatorTab.shootFolio)
-
-            NavigationStack {
                 ProfileModeView()
             }
             .tabItem { Label("Profile", systemImage: "person.circle") }
@@ -37,22 +31,25 @@ struct CreatorShellView: View {
 
 struct ProfileModeView: View {
     @Environment(AppState.self) private var appState
+    @Environment(AppServices.self) private var services
     @State private var isSigningOut = false
+    @State private var isCreatorProfileExpanded = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: MCOSpace.m) {
                 header
-                runtimeStatus
                 accountSection
                 if canAccessAdmin {
-                    SecondaryActionButton(title: "Switch to Admin control") {
-                        appState.activeMode = .admin
-                    }
+                    managerAccessSection
                 }
+                creatorProfileSection
                 Hairline()
                     .padding(.vertical, MCOSpace.m)
                 ArchiveSection()
+                Hairline()
+                    .padding(.vertical, MCOSpace.m)
+                runtimeStatus
             }
             .padding(.horizontal, MCOSpace.l)
             .padding(.top, MCOSpace.l)
@@ -62,86 +59,162 @@ struct ProfileModeView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-            Text("Profile")
-                .font(MCOType.screenTitle)
-                .foregroundStyle(MCOTheme.Color.ink)
-            Text("This page has the creator's profile and archive details. Clicking them will show you more details.")
-                .font(MCOType.bodySmall)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-        }
+        Text("Profile")
+            .font(MCOType.screenTitle)
+            .foregroundStyle(MCOTheme.Color.ink)
     }
 
     private var runtimeStatus: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
-            HStack {
-                Text("Data source")
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
-                Spacer(minLength: MCOSpace.s)
-                StatusChip(
-                    text: liveSession == nil ? "Sample" : "Live",
-                    tone: liveSession == nil ? .warning : .ready
-                )
-            }
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                Text(liveSession == nil ? "Database" : "Supabase")
+                    .font(MCOType.headline)
+                    .foregroundStyle(MCOTheme.Color.ink)
 
-            Text(liveSession == nil ? "Sample app data" : "Supabase")
-                .font(MCOType.body)
-                .foregroundStyle(MCOTheme.Color.ink)
-
-            if let lastCheckedAt = appState.runtime.services.lastRepositoryRefreshAt
-                ?? appState.runtime.services.lastRepositoryRefreshAttemptAt {
-                Text("Last checked at \(lastCheckedAt.formatted(date: .omitted, time: .shortened))")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
-            } else {
-                Text("Checking for updates...")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
-            }
-
-            if let liveSession {
-                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                    if let workspaceName = liveSession.workspaceName {
-                        Text(workspaceName)
+                HStack(alignment: .center, spacing: MCOSpace.s) {
+                    Text(lastCheckedText)
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                    Spacer(minLength: MCOSpace.s)
+                    Button {
+                        services.refreshFromRepositories()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(width: 34, height: 34)
                     }
-                    Text("\(liveSession.memberRole.capitalized) access")
+                    .buttonStyle(.plain)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .background(MCOTheme.Color.paper.opacity(0.82), in: Circle())
+                    .overlay {
+                        Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                    }
+                    .accessibilityLabel("Refresh profile data")
                 }
-                .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
             }
-        }
-        .padding(MCOSpace.s)
-        .background(MCOTheme.Color.paperRaised.opacity(0.72))
-        .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                .stroke(MCOTheme.Color.hairline, lineWidth: 1)
         }
     }
 
     private var accountSection: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
-            Text("Signed in")
-                .font(MCOType.tinyLabel)
-                .foregroundStyle(MCOTheme.Color.sageDeep)
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                HStack {
+                    Text(liveSession == nil ? "Account" : "Signed in")
+                        .font(MCOType.tinyLabel)
+                        .foregroundStyle(MCOTheme.Color.sageDeep)
+                    Spacer()
+                    StatusChip(text: liveSession?.memberRole.capitalized ?? "Sample", tone: liveSession == nil ? .warning : .ready)
+                }
 
-            if let liveSession {
-                if let email = liveSession.authenticatedEmail {
-                    Text(email)
+                if let liveSession {
+                    if let email = liveSession.authenticatedEmail {
+                        Text(email)
+                            .font(MCOType.body)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                    }
+                } else {
+                    Text("Using sample data")
                         .font(MCOType.body)
                         .foregroundStyle(MCOTheme.Color.ink)
                 }
-                Text(liveSession.creatorDisplayName ?? "Creator")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
-            }
 
-            SecondaryActionButton(title: isSigningOut ? "Signing out" : "Sign out") {
-                signOut()
+                SecondaryActionButton(title: isSigningOut ? "Signing out" : "Sign out") {
+                    signOut()
+                }
+                .disabled(isSigningOut || liveSession == nil)
+                .opacity((isSigningOut || liveSession == nil) ? 0.54 : 1)
             }
-            .disabled(isSigningOut)
-            .opacity(isSigningOut ? 0.54 : 1)
+        }
+    }
+
+    private var creatorProfileSection: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(.snappy(duration: 0.22)) {
+                    isCreatorProfileExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: MCOSpace.m) {
+                    Image(systemName: "person.crop.rectangle")
+                        .font(.system(size: 22, weight: .light))
+                        .foregroundStyle(MCOTheme.Color.brass)
+                        .frame(width: 34)
+
+                    Text("Creator Profile")
+                        .font(.system(size: 24, weight: .regular, design: .serif))
+                        .foregroundStyle(MCOTheme.Color.ink)
+
+                    Spacer(minLength: MCOSpace.s)
+                    Image(systemName: isCreatorProfileExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                }
+                .padding(.vertical, MCOSpace.s)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isCreatorProfileExpanded ? "Close Creator Profile" : "Open Creator Profile")
+
+            if isCreatorProfileExpanded {
+                VStack(alignment: .leading, spacing: MCOSpace.s) {
+                    Text(services.creatorProfileSummary.positioning)
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !services.creatorProfileSummary.noGoTopics.isEmpty {
+                        HStack(spacing: MCOSpace.xs) {
+                            ForEach(services.creatorProfileSummary.noGoTopics.prefix(3), id: \.self) { topic in
+                                StatusChip(text: topic, tone: .warning)
+                            }
+                        }
+                    }
+                }
+                .padding(.bottom, MCOSpace.s)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private var lastCheckedText: String {
+        if let lastCheckedAt = appState.runtime.services.lastRepositoryRefreshAt
+            ?? appState.runtime.services.lastRepositoryRefreshAttemptAt {
+            return "Last checked at \(lastCheckedAt.formatted(date: .omitted, time: .shortened))"
+        }
+
+        return "Checking for updates..."
+    }
+
+    private var managerAccessSection: some View {
+        JournalBlock {
+            HStack(spacing: MCOSpace.m) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .frame(width: 34)
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    Text("Manager tools")
+                        .font(MCOType.headline)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                    Text("Plan the week, review references, and run QA.")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                }
+                Spacer()
+                Button {
+                    appState.activeMode = .admin
+                } label: {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 38, height: 38)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(MCOTheme.Color.paperRaised)
+                .background(MCOTheme.Color.oxblood, in: Circle())
+                .accessibilityLabel("Switch to manager control")
+            }
         }
     }
 

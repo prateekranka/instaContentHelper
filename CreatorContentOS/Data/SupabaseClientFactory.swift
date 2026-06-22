@@ -71,7 +71,10 @@ struct SupabaseRepositoryBundleFactory {
             weeklyPlans: SupabaseWeeklyPlanRepository(client: client),
             references: sourcePulse,
             referenceImport: SupabaseReferenceImportRepository(client: client),
-            weeklyGeneration: SupabaseWeeklyGenerationRepository(client: client),
+            weeklyGeneration: SupabaseWeeklyGenerationRepository(
+                client: client,
+                runtimeConfiguration: configuration
+            ),
             intelligence: SupabaseIntelligenceRepository(client: client, references: sourcePulse),
             creatorProfile: SupabaseCreatorProfileRepository(client: client),
             archive: SupabaseArchiveRepository(client: client),

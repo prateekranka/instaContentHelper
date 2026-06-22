@@ -101,6 +101,186 @@ struct ShotScene: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+struct ProductionTimelineItem: Identifiable, Codable, Hashable, Sendable {
+    var timestamp: String
+    var title: String
+    var detail: String
+    var shot: String?
+    var videoPortion: String?
+    var voiceover: String?
+    var onScreenText: String?
+    var placement: String?
+    var durationSeconds: Int?
+
+    var id: String {
+        [
+            timestamp.nilIfBlank,
+            title.nilIfBlank,
+            detail.nilIfBlank,
+            videoPortion?.nilIfBlank,
+            voiceover?.nilIfBlank,
+            onScreenText?.nilIfBlank,
+            placement?.nilIfBlank
+        ]
+            .compactMap { $0 }
+            .joined(separator: "|")
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case timestamp
+        case time
+        case title
+        case text
+        case detail
+        case body
+        case shot
+        case videoPortion = "video_portion"
+        case voiceover
+        case onScreenText = "on_screen_text"
+        case placement
+        case durationSeconds = "duration_seconds"
+    }
+
+    init(
+        timestamp: String,
+        title: String,
+        detail: String,
+        shot: String? = nil,
+        videoPortion: String? = nil,
+        voiceover: String? = nil,
+        onScreenText: String? = nil,
+        placement: String? = nil,
+        durationSeconds: Int? = nil
+    ) {
+        self.timestamp = timestamp
+        self.title = title
+        self.detail = detail
+        self.shot = shot
+        self.videoPortion = videoPortion
+        self.voiceover = voiceover
+        self.onScreenText = onScreenText
+        self.placement = placement
+        self.durationSeconds = durationSeconds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedTitle = try container.decodeIfPresent(String.self, forKey: .title)
+        let decodedText = try container.decodeIfPresent(String.self, forKey: .text)
+        let decodedVideoPortion = try container.decodeIfPresent(String.self, forKey: .videoPortion)
+        let decodedPlacement = try container.decodeIfPresent(String.self, forKey: .placement)
+        let decodedShot = try container.decodeIfPresent(String.self, forKey: .shot)
+        let decodedVoiceover = try container.decodeIfPresent(String.self, forKey: .voiceover)
+        let decodedOnScreenText = try container.decodeIfPresent(String.self, forKey: .onScreenText)
+        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
+            ?? container.decodeIfPresent(String.self, forKey: .time)
+            ?? ""
+        title = decodedTitle ?? decodedVideoPortion ?? decodedPlacement ?? decodedText ?? ""
+        detail = try container.decodeIfPresent(String.self, forKey: .detail)
+            ?? container.decodeIfPresent(String.self, forKey: .body)
+            ?? decodedVoiceover
+            ?? decodedOnScreenText
+            ?? decodedShot
+            ?? (decodedTitle == nil ? "" : decodedText ?? "")
+        shot = decodedShot
+        videoPortion = decodedVideoPortion
+        voiceover = decodedVoiceover
+        onScreenText = decodedOnScreenText
+        placement = decodedPlacement
+        durationSeconds = try container.decodeIfPresent(Int.self, forKey: .durationSeconds)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(title, forKey: .title)
+        try container.encode(detail, forKey: .detail)
+        try container.encodeIfPresent(shot, forKey: .shot)
+        try container.encodeIfPresent(videoPortion, forKey: .videoPortion)
+        try container.encodeIfPresent(voiceover, forKey: .voiceover)
+        try container.encodeIfPresent(onScreenText, forKey: .onScreenText)
+        try container.encodeIfPresent(placement, forKey: .placement)
+        try container.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+    }
+}
+
+struct ProductionPlanDetail: Codable, Hashable, Sendable {
+    var title: String?
+    var detail: String
+    var instructions: [String]
+    var onScreenText: [String]
+    var caption: String?
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case detail
+        case body
+        case text
+        case summary
+        case line
+        case instructions
+        case onScreenText = "on_screen_text"
+        case caption
+    }
+
+    init(
+        title: String? = nil,
+        detail: String,
+        instructions: [String] = [],
+        onScreenText: [String] = [],
+        caption: String? = nil
+    ) {
+        self.title = title
+        self.detail = detail
+        self.instructions = instructions
+        self.onScreenText = onScreenText
+        self.caption = caption
+    }
+
+    init(from decoder: Decoder) throws {
+        let singleValue = try decoder.singleValueContainer()
+        if let value = try? singleValue.decode(String.self) {
+            title = nil
+            detail = value
+            instructions = []
+            onScreenText = []
+            caption = nil
+            return
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        detail = try container.decodeIfPresent(String.self, forKey: .detail)
+            ?? container.decodeIfPresent(String.self, forKey: .body)
+            ?? container.decodeIfPresent(String.self, forKey: .text)
+            ?? container.decodeIfPresent(String.self, forKey: .summary)
+            ?? container.decodeIfPresent(String.self, forKey: .line)
+            ?? ""
+        instructions = (try? container.decode([String].self, forKey: .instructions))
+            ?? container.decodeOptionalStringArray(forKey: .instructions)
+        onScreenText = try container.decodeIfPresent([String].self, forKey: .onScreenText) ?? []
+        caption = try container.decodeIfPresent(String.self, forKey: .caption)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encode(detail, forKey: .detail)
+        try container.encode(instructions, forKey: .instructions)
+        try container.encode(onScreenText, forKey: .onScreenText)
+        try container.encodeIfPresent(caption, forKey: .caption)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeOptionalStringArray(forKey key: Key) -> [String] {
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return [value]
+        }
+        return []
+    }
+}
+
 enum CompletionState: String, CaseIterable, Codable, Hashable, Sendable {
     case shot
     case posted
@@ -219,7 +399,6 @@ enum PackageSection: String, CaseIterable, Identifiable, Hashable, Sendable {
 
 enum CreatorTab: String, CaseIterable, Identifiable, Hashable, Sendable {
     case today = "Today"
-    case shootFolio = "Shoot Folio"
     case profile = "Profile"
 
     var id: String { rawValue }
@@ -245,6 +424,7 @@ struct WeeklyPlan: Identifiable, Codable, Hashable, Sendable {
     var readinessLine: String
     var isSoftLocked: Bool
     var days: [WeeklyDay]
+    var weeklyBriefText: String
     var setupSections: [WeeklySetupSection]
 
     init(
@@ -257,6 +437,7 @@ struct WeeklyPlan: Identifiable, Codable, Hashable, Sendable {
         readinessLine: String,
         isSoftLocked: Bool,
         days: [WeeklyDay],
+        weeklyBriefText: String = "",
         setupSections: [WeeklySetupSection]
     ) {
         self.id = id
@@ -268,7 +449,37 @@ struct WeeklyPlan: Identifiable, Codable, Hashable, Sendable {
         self.readinessLine = readinessLine
         self.isSoftLocked = isSoftLocked
         self.days = days
+        self.weeklyBriefText = weeklyBriefText
         self.setupSections = setupSections
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case eyebrow
+        case weekRange
+        case weekStartDate
+        case weekEndDate
+        case readinessLine
+        case isSoftLocked
+        case days
+        case weeklyBriefText
+        case setupSections
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        eyebrow = try container.decode(String.self, forKey: .eyebrow)
+        weekRange = try container.decode(String.self, forKey: .weekRange)
+        weekStartDate = try container.decodeIfPresent(String.self, forKey: .weekStartDate)
+        weekEndDate = try container.decodeIfPresent(String.self, forKey: .weekEndDate)
+        readinessLine = try container.decode(String.self, forKey: .readinessLine)
+        isSoftLocked = try container.decode(Bool.self, forKey: .isSoftLocked)
+        days = try container.decode([WeeklyDay].self, forKey: .days)
+        weeklyBriefText = try container.decodeIfPresent(String.self, forKey: .weeklyBriefText) ?? ""
+        setupSections = try container.decode([WeeklySetupSection].self, forKey: .setupSections)
     }
 }
 
@@ -465,7 +676,15 @@ struct GeneratedWeekDraft: Identifiable, Hashable, Sendable {
 }
 
 extension GeneratedWeekDraft {
-    func weeklyPlan(setupSections: [WeeklySetupSection]) -> WeeklyPlan {
+    var isCompleteWeekDraft: Bool {
+        let scheduledDates = Set(dailyCards.map(\.scheduledDate))
+        return dailyCards.count == 7 && scheduledDates.count == 7
+    }
+
+    func weeklyPlan(
+        setupSections: [WeeklySetupSection],
+        weeklyBriefText: String = ""
+    ) -> WeeklyPlan {
         let generatedDays = dailyCards.map(\.weeklyDay)
 
         return WeeklyPlan(
@@ -478,6 +697,7 @@ extension GeneratedWeekDraft {
             readinessLine: "\(generatedDays.filter { $0.state == .open }.count) open, confirm before publishing",
             isSoftLocked: status == "published",
             days: generatedDays,
+            weeklyBriefText: weeklyBriefText,
             setupSections: setupSections
         )
     }
@@ -510,7 +730,16 @@ struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
     var estimatedShootMinutes: Int
     var energyRequired: String
     var languageMode: String
+    var format: String?
+    var primarySurface: String?
+    var durationSeconds: Int?
+    var hook: String?
+    var saveShareReason: String?
     var sceneList: [ShotScene]
+    var shotTimeline: [ProductionTimelineItem]
+    var voiceoverTimeline: [ProductionTimelineItem]
+    var onScreenTextTimeline: [ProductionTimelineItem]
+    var silentVersionTimeline: [ProductionTimelineItem]
     var script: String
     var noVoiceoverVersion: String
     var onScreenText: [String]
@@ -522,11 +751,95 @@ struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
     var brandEventNotes: String
     var backupStory: String
     var backupCaptionOnly: String
+    var backupStoryDetail: [ProductionTimelineItem]
+    var captionBackupDetail: String?
     var audioOptionNotes: String
     var creatorFitScore: Double
     var riskNotes: [String]
     var assumptions: [String]
     var sourceNote: String
+
+    init(
+        id: UUID,
+        scheduledDate: String,
+        status: String,
+        title: String,
+        whyToday: String,
+        growthJob: String,
+        contentPillar: String,
+        shootability: String,
+        estimatedShootMinutes: Int,
+        energyRequired: String,
+        languageMode: String,
+        format: String? = nil,
+        primarySurface: String? = nil,
+        durationSeconds: Int? = nil,
+        hook: String? = nil,
+        saveShareReason: String? = nil,
+        sceneList: [ShotScene],
+        shotTimeline: [ProductionTimelineItem] = [],
+        voiceoverTimeline: [ProductionTimelineItem] = [],
+        onScreenTextTimeline: [ProductionTimelineItem] = [],
+        silentVersionTimeline: [ProductionTimelineItem] = [],
+        script: String,
+        noVoiceoverVersion: String,
+        onScreenText: [String],
+        caption: String,
+        cta: String,
+        hashtags: [String],
+        coverText: String,
+        postInstructions: String,
+        brandEventNotes: String,
+        backupStory: String,
+        backupCaptionOnly: String,
+        backupStoryDetail: [ProductionTimelineItem] = [],
+        captionBackupDetail: String? = nil,
+        audioOptionNotes: String,
+        creatorFitScore: Double,
+        riskNotes: [String],
+        assumptions: [String],
+        sourceNote: String
+    ) {
+        self.id = id
+        self.scheduledDate = scheduledDate
+        self.status = status
+        self.title = title
+        self.whyToday = whyToday
+        self.growthJob = growthJob
+        self.contentPillar = contentPillar
+        self.shootability = shootability
+        self.estimatedShootMinutes = estimatedShootMinutes
+        self.energyRequired = energyRequired
+        self.languageMode = languageMode
+        self.format = format
+        self.primarySurface = primarySurface
+        self.durationSeconds = durationSeconds
+        self.hook = hook
+        self.saveShareReason = saveShareReason
+        self.sceneList = sceneList
+        self.shotTimeline = shotTimeline
+        self.voiceoverTimeline = voiceoverTimeline
+        self.onScreenTextTimeline = onScreenTextTimeline
+        self.silentVersionTimeline = silentVersionTimeline
+        self.script = script
+        self.noVoiceoverVersion = noVoiceoverVersion
+        self.onScreenText = onScreenText
+        self.caption = caption
+        self.cta = cta
+        self.hashtags = hashtags
+        self.coverText = coverText
+        self.postInstructions = postInstructions
+        self.brandEventNotes = brandEventNotes
+        self.backupStory = backupStory
+        self.backupCaptionOnly = backupCaptionOnly
+        self.backupStoryDetail = backupStoryDetail
+        self.captionBackupDetail = captionBackupDetail
+        self.audioOptionNotes = audioOptionNotes
+        self.creatorFitScore = creatorFitScore
+        self.riskNotes = riskNotes
+        self.assumptions = assumptions
+        self.sourceNote = sourceNote
+    }
 }
 
 extension GeneratedDailyCardDraft {

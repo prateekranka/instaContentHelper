@@ -21,6 +21,7 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         XCTAssertEqual(services.todayCard.title, expectedTodayCard.title)
         XCTAssertEqual(services.todayCard.scheduledDate, expectedTodayCard.scheduledDate)
         XCTAssertEqual(services.lastPublishSummary, "Published 7 cards to Creator Today.")
+        XCTAssertEqual(services.lastActionMessage, "Week published. Creator Today is updated.")
         XCTAssertNil(services.lastRepositoryError)
     }
 
@@ -110,6 +111,21 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         XCTAssertEqual(entry.outputLine, "Shot today, ready to post")
         XCTAssertTrue(entry.hasPostThumbnail)
         XCTAssertNil(services.lastRepositoryError)
+    }
+
+    func testCreatorSceneShotActionsExposeFeedback() async throws {
+        let services = AppServices.fixtureBacked(todayCache: MemoryTodayCacheStore())
+        let firstScene = try XCTUnwrap(services.todayCard.scenes.first)
+
+        services.markSceneShot(firstScene)
+
+        XCTAssertTrue(services.isSceneShot(firstScene))
+        XCTAssertEqual(services.lastActionMessage, "Scene \(firstScene.number) marked shot.")
+
+        services.markAllScenesShot()
+
+        XCTAssertTrue(services.areAllScenesShot)
+        XCTAssertEqual(services.lastActionMessage, "All scenes marked shot.")
     }
 
     func testCreatorDecisionStaysInLocalArchiveWhenRepositoryWriteFails() async throws {

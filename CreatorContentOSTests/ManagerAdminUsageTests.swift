@@ -28,6 +28,7 @@ final class ManagerAdminUsageTests: XCTestCase {
             services.weeklyIdeas.first { $0.id == idea.id }?.selectedDay,
             targetDay.weekday
         )
+        XCTAssertEqual(services.lastActionMessage, "Idea added to the next open day.")
         XCTAssertNil(services.lastRepositoryError)
     }
 
@@ -70,6 +71,7 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertFalse(services.isSavingWeeklyBrief)
         XCTAssertNil(services.weeklyBriefEditError)
         XCTAssertNil(services.lastRepositoryError)
+        XCTAssertEqual(services.lastActionMessage, "Weekly brief saved.")
 
         let requests = await weeklyRepository.recordedSetupRequests()
         XCTAssertEqual(requests, [updatedSections])
@@ -91,6 +93,119 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertFalse(services.isSavingWeeklyBrief)
         XCTAssertEqual(services.weeklyBriefEditError, "weekly_setup_update_failed")
         XCTAssertEqual(services.lastRepositoryError, "weekly_setup_update_failed")
+    }
+
+    func testWeeklyStartDateSetsSevenDayWindow() async throws {
+        let services = makeServices()
+
+        services.updateWeeklyStartDate("2026-07-13")
+
+        XCTAssertEqual(services.weeklyPlan.weekStartDate, "2026-07-13")
+        XCTAssertEqual(services.weeklyPlan.weekEndDate, "2026-07-19")
+        XCTAssertEqual(services.weeklyPlan.weekRange, "13 Jul - 19 Jul")
+    }
+
+    func testWorkflowStatusIsPublishedOnlyForSelectedPublishedWeek() async throws {
+        let status = WeeklyWorkflowWindowStatus(
+            plan: WeeklyPlan.raceWeek.softLockedForPublish,
+            startDate: "2026-06-01",
+            endDate: "2026-06-07"
+        )
+
+        XCTAssertEqual(status, .published)
+        XCTAssertEqual(status.tone, .ready)
+    }
+
+    func testWorkflowStatusIsPlannedWhenSelectedWeekHasPlannedContent() async throws {
+        let status = WeeklyWorkflowWindowStatus(
+            plan: WeeklyPlan.raceWeek,
+            startDate: "2026-06-01",
+            endDate: "2026-06-07"
+        )
+
+        XCTAssertEqual(status, .planned)
+        XCTAssertEqual(status.tone, .warning)
+    }
+
+    func testWorkflowStatusDoesNotPublishDifferentSelectedWeek() async throws {
+        let status = WeeklyWorkflowWindowStatus(
+            plan: WeeklyPlan.raceWeek.softLockedForPublish,
+            startDate: "2026-07-13",
+            endDate: "2026-07-19"
+        )
+
+        XCTAssertEqual(status, .draft)
+        XCTAssertEqual(status.tone, .info)
+    }
+
+    func testGenerateSavesDirtyWeeklyBriefBeforeGenerating() async throws {
+        let weeklyRepository = RecordingWeeklyPlanRepository()
+        let services = makeServices(weeklyPlans: weeklyRepository)
+        let brief = """
+        Weekly routine: Pilates Monday, strength Wednesday.
+        Brand/collab: Puma pickup on Saturday.
+        Family/travel: Sunday lunch.
+        """
+
+        services.weeklyBriefDraftText = brief
+        let draft = await services.generateCurrentWeekImmediately()
+
+        XCTAssertNotNil(draft)
+        XCTAssertEqual(services.weeklyPlan.weeklyBriefText, brief)
+        XCTAssertEqual(services.weeklyBriefDraftText, brief)
+        XCTAssertNil(services.weeklyBriefEditError)
+        XCTAssertNil(services.generationError)
+
+        let briefRequests = await weeklyRepository.recordedBriefRequests()
+        XCTAssertEqual(briefRequests, [brief])
+    }
+
+    func testGenerateStopsWhenDirtyWeeklyBriefSaveFails() async throws {
+        let weeklyRepository = RecordingWeeklyPlanRepository(
+            briefError: RepositoryError.edgeFunction("weekly_setup_update_failed")
+        )
+        let services = makeServices(weeklyPlans: weeklyRepository)
+        let originalPlan = services.weeklyPlan
+
+        services.weeklyBriefDraftText = "Weekly routine: save should fail."
+        let draft = await services.generateCurrentWeekImmediately()
+
+        XCTAssertNil(draft)
+        XCTAssertEqual(services.weeklyPlan, originalPlan)
+        XCTAssertEqual(services.weeklyBriefEditError, "weekly_setup_update_failed")
+        XCTAssertEqual(services.generationError, "weekly_setup_update_failed")
+        XCTAssertNil(services.latestGenerationSummary)
+
+        let briefRequests = await weeklyRepository.recordedBriefRequests()
+        XCTAssertEqual(briefRequests, ["Weekly routine: save should fail."])
+    }
+
+    func testManagerUpdatesCreatorProfileOutsideWeeklySetup() async throws {
+        let profileRepository = RecordingCreatorProfileRepository()
+        let services = makeServices(creatorProfile: profileRepository)
+        let update = CreatorProfileUpdate(
+            positioning: "Premium fitness-after-60 voice for busy weeks.",
+            voiceRules: ["Warm", "Direct", "Light Hinglish when natural"],
+            contentPillars: ["routine", "recovery", "family"],
+            captionStyle: "Short and useful.",
+            noGoTopics: ["Politics", "Weight talk"],
+            recurringFormats: ["one practical detail", "caption-only backup"]
+        )
+
+        let didSave = await services.updateCreatorProfileImmediately(update)
+
+        XCTAssertTrue(didSave)
+        XCTAssertEqual(services.creatorProfileSummary.positioning, update.positioning)
+        XCTAssertEqual(services.creatorProfileSummary.voiceRules, update.voiceRules)
+        XCTAssertEqual(services.creatorProfileSummary.contentPillars, update.contentPillars)
+        XCTAssertEqual(services.creatorProfileSummary.captionStyle, update.captionStyle)
+        XCTAssertEqual(services.creatorProfileSummary.noGoTopics, update.noGoTopics)
+        XCTAssertEqual(services.creatorProfileSummary.recurringFormats, update.recurringFormats)
+        XCTAssertEqual(services.lastActionMessage, "Creator profile saved.")
+        XCTAssertNil(services.creatorProfileEditError)
+
+        let updates = await profileRepository.recordedUpdates()
+        XCTAssertEqual(updates, [update])
     }
 
     func testManagerReferenceImportPreviewAndConfirmRefreshesIntelligence() async throws {
@@ -127,6 +242,7 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertEqual(result?.counts.needsReview, 1)
         XCTAssertEqual(services.referenceImportConfirmResult?.toast, "Imported 5. 1 needs review.")
         XCTAssertEqual(services.referenceImportToast, "Imported 5. 1 needs review.")
+        XCTAssertEqual(services.lastActionMessage, "Imported 5. 1 needs review.")
         XCTAssertEqual(services.intelligenceHome, refreshedHome)
         XCTAssertNil(services.lastReferenceImportError)
 
@@ -169,6 +285,7 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertEqual(result?.resultStatus, "confirmed")
         XCTAssertEqual(services.referenceReviewResult?.toast, "Reference confirmed.")
         XCTAssertEqual(services.referenceImportToast, "Reference confirmed.")
+        XCTAssertEqual(services.lastActionMessage, "Reference confirmed.")
         XCTAssertEqual(services.intelligenceHome.needsReview, [])
         XCTAssertNil(services.lastReferenceImportError)
 
@@ -184,6 +301,7 @@ final class ManagerAdminUsageTests: XCTestCase {
         weeklyPlans: any WeeklyPlanRepository = RecordingWeeklyPlanRepository(),
         referenceImport: any ReferenceImportRepository = RecordingReferenceImportRepository(),
         intelligence: any IntelligenceRepository = FixtureIntelligenceRepository(),
+        creatorProfile: any CreatorProfileRepository = FixtureCreatorProfileRepository(),
         isLiveSupabaseRuntime: Bool = false
     ) -> AppServices {
         let repositories = AppRepositories(
@@ -193,7 +311,7 @@ final class ManagerAdminUsageTests: XCTestCase {
             references: FixtureReferenceRepository(),
             referenceImport: referenceImport,
             intelligence: intelligence,
-            creatorProfile: FixtureCreatorProfileRepository(),
+            creatorProfile: creatorProfile,
             archive: FixtureArchiveRepository()
         )
 
@@ -216,23 +334,31 @@ private actor RecordingWeeklyPlanRepository: WeeklyPlanRepository {
     private var ideas: [WeeklyIdea]
     private var selectionRequests: [SelectionRequest] = []
     private var setupRequests: [[WeeklySetupSection]] = []
+    private var briefRequests: [String] = []
     private let selectionError: Error?
     private let setupError: Error?
+    private let briefError: Error?
 
     init(
         plan: WeeklyPlan = .raceWeek,
         ideas: [WeeklyIdea] = WeeklyIdea.raceWeekBank,
         selectionError: Error? = nil,
-        setupError: Error? = nil
+        setupError: Error? = nil,
+        briefError: Error? = nil
     ) {
         self.plan = plan
         self.ideas = ideas
         self.selectionError = selectionError
         self.setupError = setupError
+        self.briefError = briefError
     }
 
     func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
         plan
+    }
+
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
+        nil
     }
 
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
@@ -303,6 +429,27 @@ private actor RecordingWeeklyPlanRepository: WeeklyPlanRepository {
         setupRequests
     }
 
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        briefRequests.append(text)
+
+        if let briefError {
+            throw briefError
+        }
+
+        var updatedPlan = plan
+        updatedPlan.weeklyBriefText = text
+        self.plan = updatedPlan
+        return updatedPlan
+    }
+
+    func recordedBriefRequests() -> [String] {
+        briefRequests
+    }
+
     private static func applySelection(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,
@@ -326,6 +473,48 @@ private actor RecordingWeeklyPlanRepository: WeeklyPlanRepository {
         updatedIdeaBank[ideaIndex].selectedDay = updatedPlan.days[dayIndex].weekday
 
         return WeeklySelectionUpdate(weeklyPlan: updatedPlan, ideaBank: updatedIdeaBank)
+    }
+}
+
+private actor RecordingCreatorProfileRepository: CreatorProfileRepository {
+    private var summary: CreatorProfileSummary
+    private var updates: [CreatorProfileUpdate] = []
+    private let error: Error?
+
+    init(
+        summary: CreatorProfileSummary = .creatorFixture,
+        error: Error? = nil
+    ) {
+        self.summary = summary
+        self.error = error
+    }
+
+    func activeProfileSummary(for context: WorkspaceContext) async throws -> CreatorProfileSummary {
+        summary
+    }
+
+    func updateProfile(_ update: CreatorProfileUpdate, context: WorkspaceContext) async throws -> CreatorProfileSummary {
+        updates.append(update)
+
+        if let error {
+            throw error
+        }
+
+        summary = CreatorProfileSummary(
+            displayName: summary.displayName,
+            positioning: update.positioning,
+            voiceLine: update.voiceRules.joined(separator: ", "),
+            noGoTopics: update.noGoTopics,
+            voiceRules: update.voiceRules,
+            contentPillars: update.contentPillars,
+            captionStyle: update.captionStyle,
+            recurringFormats: update.recurringFormats
+        )
+        return summary
+    }
+
+    func recordedUpdates() -> [CreatorProfileUpdate] {
+        updates
     }
 }
 

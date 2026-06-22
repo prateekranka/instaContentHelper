@@ -21,6 +21,7 @@ final class AppServices {
     var shotSceneIDs: Set<UUID>
     var archiveEntries: [ArchiveEntry]
     var weeklyPlan: WeeklyPlan
+    var weeklyBriefDraftText: String
     var weeklyIdeas: [WeeklyIdea]
     var intelligenceHome: IntelligenceHome
     var creatorProfileSummary: CreatorProfileSummary
@@ -34,11 +35,14 @@ final class AppServices {
     var isPublishingWeek = false
     var isSavingWeeklyBrief = false
     var weeklyBriefEditError: String?
+    var isSavingCreatorProfile = false
+    var creatorProfileEditError: String?
     var lastPublishSummary: String?
     var isGeneratingWeek = false
     var regeneratingDayDates: Set<String> = []
     var regenerationDayErrors: [String: String] = [:]
     var generationError: String?
+    var weeklyGenerationProgress: WeeklyGenerationProgress?
     var latestGenerationSummary: GeneratedWeekDraft?
     var referenceImportPreview: ReferenceImportPreview?
     var referenceImportConfirmResult: ReferenceImportConfirmResult?
@@ -52,6 +56,7 @@ final class AppServices {
     var isLoadingTesters = false
     var testerAccessError: String?
     var testerAccessMessage: String?
+    var lastActionMessage: String?
 
     init(
         repositories: AppRepositories,
@@ -80,6 +85,7 @@ final class AppServices {
             : []
         self.archiveEntries = archiveEntries
         self.weeklyPlan = weeklyPlan
+        weeklyBriefDraftText = weeklyPlan.weeklyBriefText
         self.weeklyIdeas = weeklyIdeas
         self.intelligenceHome = intelligenceHome
         self.creatorProfileSummary = creatorProfileSummary
@@ -145,6 +151,7 @@ final class AppServices {
                 readinessLine: "Loading live plan",
                 isSoftLocked: false,
                 days: [],
+                weeklyBriefText: "",
                 setupSections: []
             ),
             weeklyIdeas: [],
@@ -193,6 +200,7 @@ final class AppServices {
 
     func markSceneShot(_ scene: ShotScene) {
         shotSceneIDs.insert(scene.id)
+        lastActionMessage = "Scene \(scene.number) marked shot."
         if areAllScenesShot, todayCard.completionState == nil {
             completeToday(with: DailyDecision.shot)
         }
@@ -200,6 +208,7 @@ final class AppServices {
 
     func markAllScenesShot() {
         shotSceneIDs.formUnion(todayCard.scenes.map(\.id))
+        lastActionMessage = "All scenes marked shot."
         if todayCard.completionState == nil {
             completeToday(with: DailyDecision.shot)
         }
@@ -246,16 +255,42 @@ final class AppServices {
     var canGenerateWeek: Bool {
         (memberRole == "owner" || memberRole == "editor") &&
             !weeklyPlan.isSoftLocked &&
+            !isSavingWeeklyBrief &&
             !isGeneratingWeek
     }
 
+    var canPublishCurrentWeek: Bool {
+        guard memberRole == "owner" || memberRole == "editor",
+              !isPublishingWeek,
+              !isGeneratingWeek,
+              !weeklyPlan.isSoftLocked,
+              weeklyPlan.days.count == 7,
+              weeklyPlan.openDayCount == 0,
+              let draft = latestGenerationSummary,
+              draft.weeklyPlanID == weeklyPlan.id,
+              draft.isCompleteWeekDraft
+        else {
+            return false
+        }
+
+        let planDates = Set(weeklyPlan.days.compactMap(\.scheduledDate))
+        let draftDates = Set(draft.dailyCards.map(\.scheduledDate))
+        return planDates.count == 7 && planDates == draftDates
+    }
+
+    var isWeeklyBriefDirty: Bool {
+        weeklyBriefDraftText.trimmingCharacters(in: .whitespacesAndNewlines) !=
+            weeklyPlan.weeklyBriefText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     func updateWeeklyDateWindow(startDate: String, endDate: String) {
+        updateWeeklyStartDate(startDate)
+    }
+
+    func updateWeeklyStartDate(_ startDate: String) {
         guard !weeklyPlan.isSoftLocked else { return }
 
-        let constrainedEndDate = SupabaseDateFormatting.constrainedWeekEndDate(
-            starting: startDate,
-            requestedEndDate: endDate
-        )
+        let constrainedEndDate = SupabaseDateFormatting.weekEndDate(starting: startDate)
         weeklyPlan.weekStartDate = startDate
         weeklyPlan.weekEndDate = constrainedEndDate
         weeklyPlan.weekRange = SupabaseDateFormatting.dateRange(
@@ -263,6 +298,7 @@ final class AppServices {
             ending: constrainedEndDate
         )
         generationError = nil
+        weeklyGenerationProgress = nil
     }
 
     func generateCurrentWeek() {
@@ -287,7 +323,19 @@ final class AppServices {
             return nil
         }
 
+        if isWeeklyBriefDirty {
+            weeklyGenerationProgress = .savingWeeklyBrief
+            let didSave = await updateWeeklyBriefImmediately(weeklyBriefDraftText)
+            guard didSave else {
+                generationError = weeklyBriefEditError ?? "weekly_setup_update_failed"
+                weeklyGenerationProgress = .failed(generationError ?? "weekly_setup_update_failed")
+                return nil
+            }
+        }
+
         isGeneratingWeek = true
+        generationError = nil
+        weeklyGenerationProgress = .loadingContext
         defer { isGeneratingWeek = false }
 
         do {
@@ -300,26 +348,62 @@ final class AppServices {
                 weekStartDate: weekStartDate,
                 weeklySetupID: nil,
                 mode: mode,
-                context: context
+                context: context,
+                progress: { [weak self] progress in
+                    self?.weeklyGenerationProgress = progress
+                }
             )
+            guard !draft.dailyCards.isEmpty else {
+                throw RepositoryError.edgeFunction("invalid_generated_week")
+            }
+
             applyGeneratedDraft(draft)
+            if !draft.isCompleteWeekDraft {
+                let message = WeeklyGenerationErrorDisplay.message(forCode: "invalid_generated_week")
+                generationError = message
+                weeklyGenerationProgress = WeeklyGenerationProgress.partialFailure(
+                    from: draft,
+                    message: message
+                )
+                lastRepositoryError = nil
+                return nil
+            }
+
+            weeklyGenerationProgress = .savingDraftWeek(from: draft)
+            weeklyGenerationProgress = .readyForReview(from: draft)
             generationError = nil
             lastRepositoryError = nil
             return draft
         } catch {
             generationError = WeeklyGenerationErrorDisplay.message(for: error)
+            let message = generationError ?? error.localizedDescription
+            weeklyGenerationProgress = weeklyGenerationProgress?.failed(message) ?? .failed(message)
             return nil
         }
     }
 
     func applyGeneratedDraft(_ draft: GeneratedWeekDraft) {
+        guard !draft.dailyCards.isEmpty else {
+            generationError = WeeklyGenerationErrorDisplay.message(forCode: "invalid_generated_week")
+            return
+        }
+
         latestGenerationSummary = draft
-        weeklyPlan = draft.weeklyPlan(setupSections: weeklyPlan.setupSections)
+        weeklyPlan = draft.weeklyPlan(
+            setupSections: weeklyPlan.setupSections,
+            weeklyBriefText: weeklyPlan.weeklyBriefText
+        )
         weeklyIdeas = draft.ideaBank.isEmpty ? weeklyIdeas : draft.ideaBank
     }
 
     func generatedDailyCard(for dayID: UUID) -> GeneratedDailyCardDraft? {
         latestGenerationSummary?.dailyCards.first { $0.id == dayID }
+    }
+
+    func generatedDailyCard(for day: WeeklyDay) -> GeneratedDailyCardDraft? {
+        latestGenerationSummary?.dailyCards.first {
+            $0.id == day.id || $0.scheduledDate == day.scheduledDate
+        }
     }
 
     func regeneratedDailyCard(
@@ -360,6 +444,7 @@ final class AppServices {
                 context: context
             )
             applyRegeneratedDay(result.dailyCard)
+            markRegeneratedDayCompleted(result.dailyCard)
             generationError = nil
             lastRepositoryError = nil
             return result.dailyCard
@@ -384,6 +469,27 @@ final class AppServices {
             weeklyPlan.days[dayIndex] = card.weeklyDay
             weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
         }
+    }
+
+    private func markRegeneratedDayCompleted(_ card: GeneratedDailyCardDraft) {
+        guard var progress = weeklyGenerationProgress,
+              let index = progress.dayStatuses.firstIndex(where: { $0.scheduledDate == card.scheduledDate })
+        else { return }
+
+        progress.dayStatuses[index].status = "completed"
+        progress.dayStatuses[index].dailyCardID = card.id
+        progress.dayStatuses[index].errorCode = nil
+        progress.dayStatuses[index].message = nil
+        let savedCount = progress.dayStatuses.filter(\.isCompleted).count
+        let failedCount = progress.dayStatuses.filter(\.isFailed).count
+        progress.savedDayCount = max(progress.savedDayCount ?? 0, savedCount)
+        progress.failedDayCount = failedCount
+        progress.checkedDayCount = progress.savedDayCount ?? progress.checkedDayCount
+        progress.draftedDayCount = min(progress.totalDayCount, savedCount + failedCount)
+        if failedCount == 0, let draft = latestGenerationSummary, draft.dailyCards.count >= progress.totalDayCount {
+            progress = .readyForReview(from: draft)
+        }
+        weeklyGenerationProgress = progress
     }
 
     func updateWeeklyDayState(dayID: UUID, state: WeeklyDayState) {
@@ -423,6 +529,7 @@ final class AppServices {
             )
             weeklyPlan = update.weeklyPlan
             weeklyIdeas = update.ideaBank
+            lastActionMessage = "Idea added to the next open day."
             lastRepositoryError = nil
         } catch {
             lastRepositoryError = error.localizedDescription
@@ -432,6 +539,12 @@ final class AppServices {
     func updateWeeklySetupSections(_ sections: [WeeklySetupSection]) {
         Task {
             await updateWeeklySetupSectionsImmediately(sections)
+        }
+    }
+
+    func updateWeeklyBrief(_ text: String) {
+        Task {
+            await updateWeeklyBriefImmediately(text)
         }
     }
 
@@ -450,6 +563,7 @@ final class AppServices {
             )
             weeklyBriefEditError = nil
             lastRepositoryError = nil
+            lastActionMessage = "Weekly brief saved."
 
             if isLiveSupabaseRuntime {
                 await refreshWeeklyDataFromRepositories()
@@ -463,6 +577,59 @@ final class AppServices {
         }
     }
 
+    @discardableResult
+    func updateWeeklyBriefImmediately(_ text: String) async -> Bool {
+        guard !isSavingWeeklyBrief else { return false }
+
+        isSavingWeeklyBrief = true
+        defer { isSavingWeeklyBrief = false }
+
+        do {
+            weeklyPlan = try await repositories.weeklyPlans.updateWeeklyBrief(
+                text,
+                in: weeklyPlan,
+                context: context
+            )
+            weeklyBriefDraftText = weeklyPlan.weeklyBriefText
+            weeklyBriefEditError = nil
+            lastRepositoryError = nil
+            lastActionMessage = "Weekly brief saved."
+
+            if isLiveSupabaseRuntime {
+                await refreshWeeklyDataFromRepositories()
+            }
+
+            return true
+        } catch {
+            weeklyBriefEditError = error.localizedDescription
+            lastRepositoryError = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func updateCreatorProfileImmediately(_ update: CreatorProfileUpdate) async -> Bool {
+        guard !isSavingCreatorProfile else { return false }
+
+        isSavingCreatorProfile = true
+        defer { isSavingCreatorProfile = false }
+
+        do {
+            creatorProfileSummary = try await repositories.creatorProfile.updateProfile(
+                update,
+                context: context
+            )
+            creatorProfileEditError = nil
+            lastRepositoryError = nil
+            lastActionMessage = "Creator profile saved."
+            return true
+        } catch {
+            creatorProfileEditError = error.localizedDescription
+            lastRepositoryError = error.localizedDescription
+            return false
+        }
+    }
+
     func publishCurrentWeek() {
         Task {
             await publishCurrentWeekImmediately()
@@ -471,6 +638,10 @@ final class AppServices {
 
     func publishCurrentWeekImmediately() async {
         guard !isPublishingWeek else { return }
+        guard canPublishCurrentWeek else {
+            lastRepositoryError = "Review all seven generated days before publishing."
+            return
+        }
 
         isPublishingWeek = true
         defer { isPublishingWeek = false }
@@ -493,6 +664,7 @@ final class AppServices {
             saveTodaySnapshot(source: "week-publish")
             await scheduleTodayNotificationIfNeededImmediately()
             lastPublishSummary = result.summary
+            lastActionMessage = "Week published. Creator Today is updated."
             lastRepositoryError = nil
         } catch {
             lastRepositoryError = error.localizedDescription
@@ -502,6 +674,12 @@ final class AppServices {
     func refreshFromRepositories() {
         Task {
             await refreshFromRepositoriesImmediately()
+        }
+    }
+
+    func refreshWeeklyData() {
+        Task {
+            await refreshWeeklyDataFromRepositories()
         }
     }
 
@@ -591,6 +769,7 @@ final class AppServices {
             )
             referenceImportConfirmResult = result
             referenceImportToast = result.toast
+            lastActionMessage = result.toast
             lastReferenceImportError = nil
             await refreshIntelligenceHomeImmediately()
             return result
@@ -623,6 +802,7 @@ final class AppServices {
             )
             referenceReviewResult = result
             referenceImportToast = result.toast
+            lastActionMessage = result.toast
             lastReferenceImportError = nil
             await refreshIntelligenceHomeImmediately()
             return result
@@ -686,6 +866,13 @@ final class AppServices {
 
         do {
             weeklyPlan = try await repositories.weeklyPlans.currentPublishedPlan(for: context)
+            weeklyBriefDraftText = weeklyPlan.weeklyBriefText
+        } catch {
+            refreshError = refreshError ?? error
+        }
+
+        do {
+            latestGenerationSummary = try await repositories.weeklyPlans.currentGeneratedDraft(for: context)
         } catch {
             refreshError = refreshError ?? error
         }
@@ -729,8 +916,15 @@ final class AppServices {
 
         do {
             weeklyPlan = try await repositories.weeklyPlans.currentPublishedPlan(for: context)
+            weeklyBriefDraftText = weeklyPlan.weeklyBriefText
         } catch {
             refreshError = error
+        }
+
+        do {
+            latestGenerationSummary = try await repositories.weeklyPlans.currentGeneratedDraft(for: context)
+        } catch {
+            refreshError = refreshError ?? error
         }
 
         do {
@@ -927,6 +1121,17 @@ final class AppServices {
 }
 
 private enum WeeklyGenerationErrorDisplay {
+    private static let userFacingMessages = [
+        "invalid_ai_json": "The AI returned an incomplete draft. Try Generate again.",
+        "invalid_generated_week": "The AI draft did not pass validation. Try Generate again.",
+        "openai_request_failed": "The AI service failed. Try Generate again.",
+        "missing_openai_api_key": "AI generation is not configured in Supabase.",
+        "invalid_generation_payload": "The generation request could not be accepted. Refresh and try again.",
+        "generation_persist_failed": "The draft could not be saved. Try Generate again.",
+        "weekly_setup_not_found": "The weekly brief could not be found. Save the brief and try again.",
+        "existing_published_week_locked": "This week is already published and locked."
+    ]
+
     private static let stableCodes = [
         "missing_device_token",
         "invalid_device_token",
@@ -944,10 +1149,21 @@ private enum WeeklyGenerationErrorDisplay {
 
     static func message(for error: Error) -> String {
         let description = error.localizedDescription
-        if stableCodes.contains(description) {
-            return description
+        if description.contains("generation_persist_failed:") {
+            return "The draft could not be saved (\(description))."
+        }
+        if let message = userFacingMessages[description] {
+            return message
         }
 
-        return stableCodes.first { description.contains($0) } ?? description
+        if let code = stableCodes.first(where: { description.contains($0) }) {
+            return userFacingMessages[code] ?? code
+        }
+
+        return description
+    }
+
+    static func message(forCode code: String) -> String {
+        userFacingMessages[code] ?? code
     }
 }

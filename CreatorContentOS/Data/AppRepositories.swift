@@ -94,6 +94,7 @@ protocol TodayCardRepository: Sendable {
 
 protocol WeeklyPlanRepository: Sendable {
     func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft?
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea]
     func publishWeek(
         _ plan: WeeklyPlan,
@@ -112,7 +113,14 @@ protocol WeeklyPlanRepository: Sendable {
         in plan: WeeklyPlan,
         context: WorkspaceContext
     ) async throws -> WeeklyPlan
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan
 }
+
+typealias WeeklyGenerationProgressHandler = @MainActor (WeeklyGenerationProgress) -> Void
 
 protocol WeeklyGenerationRepository: Sendable {
     func generateWeek(
@@ -120,7 +128,8 @@ protocol WeeklyGenerationRepository: Sendable {
         weekStartDate: String,
         weeklySetupID: UUID?,
         mode: GenerateWeekMode,
-        context: WorkspaceContext
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
     ) async throws -> GeneratedWeekDraft
 
     func regenerateDay(
@@ -133,6 +142,23 @@ protocol WeeklyGenerationRepository: Sendable {
 }
 
 extension WeeklyGenerationRepository {
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext
+    ) async throws -> GeneratedWeekDraft {
+        try await generateWeek(
+            creatorID: creatorID,
+            weekStartDate: weekStartDate,
+            weeklySetupID: weeklySetupID,
+            mode: mode,
+            context: context,
+            progress: nil
+        )
+    }
+
     func regenerateDay(
         creatorID: UUID,
         weeklyPlanID: UUID,
@@ -154,6 +180,7 @@ protocol IntelligenceRepository: Sendable {
 
 protocol CreatorProfileRepository: Sendable {
     func activeProfileSummary(for context: WorkspaceContext) async throws -> CreatorProfileSummary
+    func updateProfile(_ update: CreatorProfileUpdate, context: WorkspaceContext) async throws -> CreatorProfileSummary
 }
 
 protocol ArchiveRepository: Sendable {
@@ -189,11 +216,55 @@ struct CreatorProfileSummary: Hashable, Sendable {
     var positioning: String
     var voiceLine: String
     var noGoTopics: [String]
+    var voiceRules: [String] = []
+    var contentPillars: [String] = []
+    var captionStyle: String? = nil
+    var recurringFormats: [String] = []
 
     static let creatorFixture = CreatorProfileSummary(
         displayName: "Creator",
         positioning: "Premium fitness-after-60 editorial voice.",
         voiceLine: "Warm, steady, precise, lightly Hinglish when it feels natural.",
-        noGoTopics: ["Politics", "Weight talk", "Negativity"]
+        noGoTopics: ["Politics", "Weight talk", "Negativity"],
+        voiceRules: ["Warm", "Steady", "Precise", "Light Hinglish when natural"],
+        contentPillars: ["routine", "recovery", "family"],
+        captionStyle: "Short, useful, and human.",
+        recurringFormats: ["one practical detail", "caption-only backup"]
     )
+}
+
+struct CreatorProfileUpdate: Hashable, Sendable {
+    var positioning: String
+    var voiceRules: [String]
+    var contentPillars: [String]
+    var captionStyle: String
+    var noGoTopics: [String]
+    var recurringFormats: [String]
+
+    init(
+        positioning: String,
+        voiceRules: [String],
+        contentPillars: [String],
+        captionStyle: String,
+        noGoTopics: [String],
+        recurringFormats: [String]
+    ) {
+        self.positioning = positioning
+        self.voiceRules = voiceRules
+        self.contentPillars = contentPillars
+        self.captionStyle = captionStyle
+        self.noGoTopics = noGoTopics
+        self.recurringFormats = recurringFormats
+    }
+
+    init(summary: CreatorProfileSummary) {
+        positioning = summary.positioning
+        voiceRules = summary.voiceRules.isEmpty
+            ? [summary.voiceLine].compactMap(\.nilIfBlank)
+            : summary.voiceRules
+        contentPillars = summary.contentPillars
+        captionStyle = summary.captionStyle ?? ""
+        noGoTopics = summary.noGoTopics
+        recurringFormats = summary.recurringFormats
+    }
 }

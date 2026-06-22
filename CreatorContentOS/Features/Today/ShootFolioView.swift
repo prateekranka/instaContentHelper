@@ -4,6 +4,7 @@ import UIKit
 #endif
 
 struct ShootFolioView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
     @State private var selection: PackageSection = .scenes
 
@@ -13,6 +14,7 @@ struct ShootFolioView: View {
                 header
 
                 if case .ready = services.todayContentState {
+                    ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
                     sectionTabs
 
                     switch selection {
@@ -50,14 +52,29 @@ struct ShootFolioView: View {
     }
 
     private var sceneProgress: some View {
-        HStack(spacing: MCOSpace.s) {
-            Label("\(services.shotSceneCount) shot", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(MCOTheme.Color.sageDeep)
-            Text("\(services.unshotSceneCount) not shot")
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-            Spacer()
+        JournalBlock {
+            HStack(alignment: .center, spacing: MCOSpace.m) {
+                Image(systemName: services.areAllScenesShot ? "checkmark.seal.fill" : "target")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(services.areAllScenesShot ? MCOTheme.Color.success : MCOTheme.Color.liveBlue)
+                    .frame(width: 34)
+
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    Text(services.areAllScenesShot ? "All scenes shot" : "\(services.shotSceneCount) of \(services.todayCard.scenes.count) scenes shot")
+                        .font(MCOType.headline)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                    Text(services.areAllScenesShot ? "Ready for post assembly." : "\(services.unshotSceneCount) remaining before the shoot is complete.")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                }
+
+                Spacer(minLength: MCOSpace.s)
+                StatusChip(
+                    text: services.areAllScenesShot ? "Complete" : "\(services.unshotSceneCount) left",
+                    tone: services.areAllScenesShot ? .ready : .info
+                )
+            }
         }
-        .font(MCOType.caption)
         .accessibilityElement(children: .combine)
     }
 
@@ -67,26 +84,114 @@ struct ShootFolioView: View {
                 .font(MCOType.screenTitle)
                 .foregroundStyle(MCOTheme.Color.ink)
             Spacer()
-            FloatingIconButton(systemImage: "ellipsis", label: "More") {}
+            shootFolioMenu
         }
     }
 
+    private var shootFolioMenu: some View {
+        Menu {
+            Button {
+                services.refreshFromRepositories()
+                services.lastActionMessage = "Shoot Folio refreshed."
+            } label: {
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+
+            Button {
+                copyFolioPackage()
+            } label: {
+                Label("Copy package", systemImage: "doc.on.doc")
+            }
+            .disabled(!isReady)
+
+            Button {
+                dismiss()
+            } label: {
+                Label("Switch to Today", systemImage: "sun.max")
+            }
+
+            Button {
+                services.lastActionMessage = "Issue noted. Share the screen with the manager if this package looks wrong."
+            } label: {
+                Label("Report issue", systemImage: "exclamationmark.bubble")
+            }
+            .disabled(!isReady)
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 16, weight: .medium))
+                .frame(width: 42, height: 42)
+                .foregroundStyle(MCOTheme.Color.ink)
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Shoot Folio options")
+    }
+
+    private var isReady: Bool {
+        if case .ready = services.todayContentState {
+            return true
+        } else {
+            return false
+        }
+    }
+
+    private func copyFolioPackage() {
+        let card = services.todayCard
+        var sections = [
+            "Title: \(card.title)",
+            "Context: \(card.context)",
+            "Why today: \(card.whyToday)"
+        ]
+
+        if !card.scenes.isEmpty {
+            let sceneLines = card.scenes
+                .map { "\($0.number). \($0.title) (\($0.duration))" }
+                .joined(separator: "\n")
+            sections.append("Scenes:\n\(sceneLines)")
+        }
+
+        if let script = card.script?.nilIfBlank {
+            sections.append("Script:\n\(script)")
+        }
+        if let caption = card.caption?.nilIfBlank {
+            sections.append("Caption:\n\(caption)")
+        }
+        if let audio = card.audioOptionNotes?.nilIfBlank {
+            sections.append("Audio:\n\(audio)")
+        }
+        if let post = card.postInstructions?.nilIfBlank {
+            sections.append("Post instructions:\n\(post)")
+        }
+
+        #if canImport(UIKit)
+        UIPasteboard.general.string = sections.joined(separator: "\n\n")
+        services.lastActionMessage = "Shoot package copied."
+        #else
+        services.lastActionMessage = "Copy is not available on this device."
+        #endif
+    }
+
     private var sectionTabs: some View {
-        HStack(spacing: MCOSpace.m) {
-            ForEach(PackageSection.allCases) { section in
-                Button {
-                    selection = section
-                } label: {
-                    VStack(spacing: MCOSpace.xs) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: MCOSpace.s) {
+                ForEach(PackageSection.allCases) { section in
+                    Button {
+                        selection = section
+                    } label: {
                         Text(section.rawValue)
                             .font(MCOType.bodySmall)
-                            .foregroundStyle(selection == section ? MCOTheme.Color.oxblood : MCOTheme.Color.inkMuted)
-                        Rectangle()
-                            .fill(selection == section ? MCOTheme.Color.oxblood : .clear)
-                            .frame(height: 1)
+                            .foregroundStyle(selection == section ? MCOTheme.Color.paperRaised : MCOTheme.Color.ink)
+                            .padding(.horizontal, MCOSpace.s)
+                            .frame(height: 34)
+                            .background(selection == section ? MCOTheme.Color.oxblood : MCOTheme.Color.paperRaised.opacity(0.62))
+                            .clipShape(Capsule())
+                            .overlay {
+                                Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                            }
                     }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -136,18 +241,25 @@ struct SceneListView: View {
                     SceneDetailView(scene: scene)
                 } label: {
                     FolioRow(title: scene.title, subtitle: services.isSceneShot(scene) ? "Shot" : "Not shot") {
-                        Text(String(format: "%02d", scene.number))
-                            .font(.system(size: 46, weight: .regular, design: .serif))
-                            .foregroundStyle(MCOTheme.Color.sageDeep)
+                        VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                            Text(String(format: "%02d", scene.number))
+                                .font(.system(size: 28, weight: .regular, design: .serif))
+                                .foregroundStyle(MCOTheme.Color.sageDeep)
+                            Text(scene.duration)
+                                .font(MCOType.caption)
+                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                        }
                     } trailing: {
                         HStack(spacing: MCOSpace.s) {
-                            StatusChip(text: scene.duration)
                             Image(systemName: services.isSceneShot(scene) ? "checkmark.circle.fill" : scene.symbol)
                                 .font(.system(size: 20, weight: .light))
                                 .foregroundStyle(services.isSceneShot(scene) ? MCOTheme.Color.sageDeep : MCOTheme.Color.brass)
-                                .frame(width: 54, height: 54)
+                                .frame(width: 42, height: 42)
                                 .background(MCOTheme.Color.paperRaised)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(MCOTheme.Color.inkMuted)
                         }
                     }
                 }
@@ -188,11 +300,17 @@ struct SceneDetailView: View {
                 if let onScreenText = services.todayCard.onScreenText?.first?.nilIfBlank {
                     detailBlock(title: "On-screen text", text: onScreenText)
                 }
+                if let postInstructions = services.todayCard.postInstructions?.nilIfBlank {
+                    detailBlock(title: "Post guidance", text: postInstructions)
+                }
+                if let backupStory = services.todayCard.backupStory?.nilIfBlank {
+                    detailBlock(title: "Backup option", text: backupStory)
+                }
             }
         } bottomBar: {
             GlassCommandBar {
                 PrimaryActionButton(
-                    title: services.isSceneShot(scene) ? "Shot" : "Mark shot",
+                    title: services.isSceneShot(scene) ? "Scene shot" : "Mark shot",
                     systemImage: services.isSceneShot(scene) ? "checkmark.circle.fill" : "checkmark.seal"
                 ) {
                     services.markSceneShot(scene)

@@ -1,5 +1,7 @@
 import {
   buildDeepSeekChatRequest,
+  buildDeepSeekDayChatRequest,
+  buildOpenAIDayResponsesRequest,
   buildOpenAIResponsesRequest,
   buildPromptMessages,
   callAIProviders,
@@ -21,13 +23,29 @@ Deno.test("prompt builder includes profile, setup, references, extractions, obli
 
   assert(prompt.system.includes("strict JSON"));
   assert(prompt.user.includes("Premium fitness after 60"));
-  assert(prompt.user.includes("Mumbai"));
+  assert(prompt.user.includes("Bombay"));
   assert(prompt.user.includes("Confirmed towel transition"));
   assert(prompt.user.includes("hook-led sock transition"));
   assert(prompt.user.includes("Brand hydration reminder"));
   assert(prompt.user.includes("Sunday 10K"));
   assert(prompt.user.includes("Used backup story"));
   assert(prompt.user.includes("Quiet Sunday family walk"));
+});
+
+Deno.test("prompt builder gives weekly brief/setup notes precedence over stale stored context", () => {
+  const prompt = buildPromptMessages(fixtureInput());
+  const guidance = `${prompt.system}\n${prompt.user}`;
+
+  assertIncludesAll(guidance, ["Bombay", "back to gym", "podcast"]);
+  assertIncludesAll(guidance, ["New Jersey", "HYROX", "race recovery"]);
+  assert(
+    /weekly (brief|setup|notes?).{0,120}(win|override|precedence|supersede|higher priority)|(?:win|override|precedence|supersede|higher priority).{0,120}weekly (brief|setup|notes?)/i
+      .test(guidance),
+    "prompt should explicitly say weekly brief/setup notes win for week-specific facts",
+  );
+  assertHasAvoidanceFor(guidance, "New Jersey");
+  assertHasAvoidanceFor(guidance, "HYROX");
+  assertHasAvoidanceFor(guidance, "race recovery");
 });
 
 Deno.test("OpenAI Responses request uses strict structured JSON output schema", () => {
@@ -54,8 +72,58 @@ Deno.test("OpenAI Responses request uses strict structured JSON output schema", 
     Array.isArray(cardSchema.required) &&
       cardSchema.required.includes("script") &&
       cardSchema.required.includes("backup_story") &&
-      cardSchema.required.includes("audio_option_notes"),
+      cardSchema.required.includes("audio_option_notes") &&
+      cardSchema.required.includes("format") &&
+      cardSchema.required.includes("duration_seconds") &&
+      cardSchema.required.includes("weekly_brief_anchor") &&
+      cardSchema.required.includes("brief_alignment") &&
+      cardSchema.required.includes("brief_context_tags") &&
+      cardSchema.required.includes("shot_timeline") &&
+      cardSchema.required.includes("voiceover_timeline") &&
+      cardSchema.required.includes("on_screen_text_timeline") &&
+      cardSchema.required.includes("silent_version_timeline") &&
+      cardSchema.required.includes("backup_story_detail") &&
+      cardSchema.required.includes("caption_backup_detail"),
     "rich generated card fields must be required in structured output schema",
+  );
+  const formatEnum = recordValue(cardProperties.format).enum;
+  assert(
+    Array.isArray(formatEnum),
+    "format schema should declare the allowed content formats",
+  );
+  assertEquals(formatEnum.join(","), "Reel,Post,Story");
+  assertEquals(recordValue(cardProperties.shot_timeline).minItems, 1);
+  assertEquals(recordValue(cardProperties.voiceover_timeline).minItems, 1);
+  assertEquals(recordValue(cardProperties.brief_context_tags).minItems, 1);
+  assertEquals(recordValue(cardProperties.brief_context_tags).maxItems, 4);
+});
+
+Deno.test("OpenAI per-day request uses strict structured JSON output schema", () => {
+  const request = buildOpenAIDayResponsesRequest(
+    fixtureInput(),
+    "gpt-4.1-mini",
+    "2026-06-10",
+    2,
+  );
+  const format = recordValue(recordValue(request.text).format);
+  const schema = recordValue(format.schema);
+  const dailyCard = recordValue(recordValue(schema.properties).daily_card);
+
+  assertEquals(format.type, "json_schema");
+  assertEquals(format.name, "creator_daily_generation");
+  assertEquals(format.strict, true);
+  assertEquals(request.max_output_tokens, 12000);
+  assertEquals(schema.additionalProperties, false);
+  assertEquals(dailyCard.additionalProperties, false);
+  assert(
+    Array.isArray(dailyCard.required) &&
+      dailyCard.required.includes("shot_timeline") &&
+      dailyCard.required.includes("voiceover_timeline") &&
+      dailyCard.required.includes("backup_story_detail") &&
+      dailyCard.required.includes("weekly_brief_anchor") &&
+      dailyCard.required.includes("brief_alignment") &&
+      dailyCard.required.includes("brief_context_tags"),
+    "per-day schema should require Instagram production detail and weekly brief evidence fields",
   );
 });
 
@@ -74,9 +142,38 @@ Deno.test("DeepSeek Chat request uses JSON object mode with max thinking effort"
   assert(messages[0].content.includes("strict JSON"));
   assertEquals(messages[1].role, "user");
   assert(messages[1].content.includes("Confirmed towel transition"));
+  assert(messages[1].content.includes("Instagram Reels"));
+  assert(messages[1].content.includes("shot_timeline"));
+  assert(messages[1].content.includes("weekly_brief_anchor"));
+  assert(messages[1].content.includes("0:00-0:03"));
   assert(messages[1].content.includes("Return one valid JSON object only"));
+  assert(messages[1].content.includes("non-empty text"));
   assert(messages[1].content.includes("scheduled_dates_in_order"));
   assert(messages[1].content.includes("Never use day_of_week"));
+});
+
+Deno.test("day AI request includes target day intent and diversity guidance", () => {
+  const request = buildDeepSeekDayChatRequest(
+    fixtureInput(),
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const requestText = JSON.stringify(request);
+
+  assertEquals(request.max_tokens, 12000);
+  assert(requestText.includes("2026-06-10"));
+  assert(requestText.includes("non-empty text"));
+  assert(
+    /day.{0,80}(intent|role|purpose|job)|(?:intent|role|purpose|job).{0,80}day/i
+      .test(requestText),
+    "day request should include a target day intent, role, purpose, or job",
+  );
+  assert(
+    /divers|distinct|varied|avoid.{0,60}generic|not all generic|different/i
+      .test(requestText),
+    "day request should include diversity guidance so cards are not generic repeats",
+  );
 });
 
 Deno.test("AI provider caller falls back from DeepSeek to OpenAI", async () => {
@@ -232,6 +329,33 @@ Deno.test("mock generation returns seven valid draft day cards", () => {
   assert(validated.daily_cards.every((card) => card.script.length > 0));
   assert(validated.daily_cards.every((card) => card.caption.length > 0));
   assert(validated.daily_cards.every((card) => card.backup_story.length > 0));
+  assert(validated.daily_cards.every((card) => card.format === "Reel"));
+  assert(
+    validated.daily_cards.every((card) =>
+      card.primary_surface === "Instagram Reels" &&
+      card.duration_seconds > 0 &&
+      card.hook.length > 0 &&
+      card.save_share_reason.length > 0 &&
+      card.shot_timeline.length > 0 &&
+      card.voiceover_timeline.length > 0 &&
+      card.on_screen_text_timeline.length > 0 &&
+      card.silent_version_timeline.length > 0 &&
+      card.backup_story_detail.length > 0 &&
+      card.caption_backup_detail.length > 0 &&
+      card.weekly_brief_anchor.length > 0 &&
+      card.brief_alignment.length > 0 &&
+      card.brief_context_tags.length > 0
+    ),
+    "mock cards should include Instagram-specific production detail and brief evidence fields",
+  );
+  assert(
+    validated.daily_cards.every((card) =>
+      card.shot_timeline.every((item) =>
+        /^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(item.timestamp)
+      )
+    ),
+    "shot timelines should use timestamp ranges",
+  );
   assert(
     validated.daily_cards.every((card) =>
       card.source_reference_ids.includes(
@@ -239,6 +363,16 @@ Deno.test("mock generation returns seven valid draft day cards", () => {
       )
     ),
     "mock cards should preserve confirmed source reference ids",
+  );
+});
+
+Deno.test("mock generation output does not expose admin-facing implementation assumptions", () => {
+  const generated = makeMockGeneratedWeek(fixtureInput());
+  const outputText = JSON.stringify(generated);
+
+  assert(
+    !outputText.includes("Mock generation used deterministic local context"),
+    "mock output should not leak deterministic local-context implementation notes",
   );
 });
 
@@ -299,6 +433,49 @@ Deno.test("validator normalizes numeric scene durations from JSON-mode providers
   assertEquals(validated.daily_cards[0].scene_list[0].duration, "15 sec");
 });
 
+Deno.test("validator rejects missing timeline details and invalid timestamp strings", () => {
+  const generated = makeMockGeneratedWeek(fixtureInput());
+  generated.daily_cards[0] = {
+    ...generated.daily_cards[0],
+    shot_timeline: [{
+      timestamp: "first three seconds",
+      detail: "Show the gym bag.",
+    }],
+  };
+
+  assertThrowsGenerationCode(
+    () => validateGeneratedWeek(generated, "2026-06-08"),
+    "invalid_generated_week",
+  );
+});
+
+Deno.test("validator rejects placeholder production copy", () => {
+  const generated = makeMockGeneratedWeek(fixtureInput());
+  generated.daily_cards[0] = {
+    ...generated.daily_cards[0],
+    caption_backup_detail: "TBD",
+  };
+
+  assertThrowsGenerationCode(
+    () => validateGeneratedWeek(generated, "2026-06-08"),
+    "invalid_generated_week",
+  );
+});
+
+Deno.test("validator rejects missing weekly brief evidence", () => {
+  const generated = makeMockGeneratedWeek(fixtureInput());
+  generated.daily_cards[0] = {
+    ...generated.daily_cards[0],
+    weekly_brief_anchor: "",
+    brief_context_tags: [],
+  };
+
+  assertThrowsGenerationCode(
+    () => validateGeneratedWeek(generated, "2026-06-08"),
+    "invalid_generated_week",
+  );
+});
+
 Deno.test("preserve manual edits keeps review-editable draft fields on regeneration", () => {
   const generated = makeMockGeneratedWeek(fixtureInput()).daily_cards[0];
   const preserved = preserveManualDailyCardEdits(generated, {
@@ -343,8 +520,9 @@ function fixtureInput(): GenerationInputSnapshot {
     },
     weekly_setup: {
       id: "77777777-7777-4777-8777-777777777771",
-      location: "Mumbai",
-      notes: "Race week but low energy.",
+      location: "Bombay",
+      notes:
+        "Weekly brief: in Bombay this week, back to gym after travel, and recording a podcast. Use these week-specific facts ahead of older stored context.",
     },
     confirmed_references: [
       {
@@ -367,6 +545,11 @@ function fixtureInput(): GenerationInputSnapshot {
         decision: "used_backup",
         output_line: "Used backup story",
       },
+      {
+        archive_date: "2026-05-28",
+        decision: "published",
+        output_line: "Older New Jersey HYROX race recovery walking card.",
+      },
     ],
     idea_bank: [
       {
@@ -374,8 +557,19 @@ function fixtureInput(): GenerationInputSnapshot {
         summary: "Shootable family moment.",
       },
     ],
-    patterns: [],
-    trends: [],
+    patterns: [
+      {
+        label: "Stored context from earlier block",
+        notes:
+          "Creator is in New Jersey, training for HYROX, and needs race recovery content.",
+      },
+    ],
+    trends: [
+      {
+        title: "Race recovery walk format",
+        notes: "Use only when current weekly brief still supports HYROX.",
+      },
+    ],
     audio_options: [],
     brand_briefs: [
       {
@@ -418,6 +612,22 @@ function assert(
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function assertIncludesAll(text: string, expected: string[]): void {
+  for (const value of expected) {
+    assert(text.includes(value), `Expected prompt to include ${value}`);
+  }
+}
+
+function assertHasAvoidanceFor(text: string, phrase: string): void {
+  const escapedPhrase = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const avoidPattern =
+    `(?:avoid|exclude|do not use|do not lean on|stale|lower-priority|supersed|override).{0,120}${escapedPhrase}|${escapedPhrase}.{0,120}(?:avoid|exclude|do not use|do not lean on|stale|lower-priority|supersed|override)`;
+  assert(
+    new RegExp(avoidPattern, "i").test(text),
+    `Expected prompt to include avoidance/exclusion guidance for ${phrase}`,
+  );
 }
 
 function assertEquals<T>(actual: T, expected: T, message?: string): void {

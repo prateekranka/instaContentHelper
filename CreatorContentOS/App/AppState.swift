@@ -22,13 +22,16 @@ final class AppState {
             AppRuntime.live(session: $0)
         }
     ) {
+        let initialRuntime = runtime ?? AppRuntime.makeAuthenticationShellRuntime()
         self.activeMode = activeMode
-        self.runtime = runtime ?? AppRuntime.makeAuthenticationShellRuntime()
+        self.runtime = initialRuntime
         self.authenticationService = authenticationService
         self.liveRuntimeBuilder = liveRuntimeBuilder
         if let authenticationPhase {
             self.authenticationPhase = authenticationPhase
         } else if runtime != nil {
+            self.authenticationPhase = .live
+        } else if case .live = initialRuntime.mode {
             self.authenticationPhase = .live
         } else {
             self.authenticationPhase = .restoring

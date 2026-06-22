@@ -46,6 +46,25 @@ struct SupabaseWeeklyReadResponse: Decodable, Hashable, Sendable {
         case weeklySetup = "weekly_setup"
         case ideaBank = "idea_bank"
     }
+
+    func generatedDraft() -> GeneratedWeekDraft? {
+        guard let weeklyPlan else { return nil }
+
+        return GeneratedWeekDraft(
+            id: weeklyPlan.id,
+            weeklyPlanID: weeklyPlan.id,
+            status: weeklyPlan.status,
+            strategySummary: weeklyPlan.strategySummary ?? "Generated week loaded from live daily cards.",
+            warnings: weeklyPlan.warnings.compactMap(\.displayText),
+            assumptions: weeklyPlan.assumptions.compactMap(\.displayText),
+            dailyCards: dailyCards
+                .map { $0.generatedDailyCardDraft() }
+                .sorted { $0.scheduledDate < $1.scheduledDate },
+            ideaBank: ideaBank.map { $0.domainIdea() },
+            sourceSummary: "Live weekly daily cards.",
+            generatedAt: weeklyPlan.publishedAt ?? SupabaseDateFormatting.todayDateString()
+        )
+    }
 }
 
 struct SupabaseArchiveReadResponse: Decodable, Hashable, Sendable {

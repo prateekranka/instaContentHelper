@@ -1,4 +1,5 @@
 import XCTest
+import Supabase
 @testable import CreatorContentOS
 
 @MainActor
@@ -24,6 +25,7 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(object["preserve_manual_edits"] as? Bool, true)
         XCTAssertEqual(object["mock"] as? Bool, true)
         XCTAssertEqual(object["response_mode"] as? String, "sync")
+        XCTAssertEqual(object["feature_flags"] as? [String], ["parallel_week_generation"])
     }
 
     func testGenerateWeekStatusRequestAndRunningResponseUseAsyncContract() throws {
@@ -38,8 +40,8 @@ final class GenerateWeekTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: requestData) as? [String: Any])
 
         XCTAssertEqual(object["action"] as? String, "status")
-        XCTAssertEqual(object["generation_id"] as? String, generationID.uuidString)
-        XCTAssertEqual(object["creator_id"] as? String, creatorID.uuidString)
+        XCTAssertEqual(object["generation_id"] as? String, generationID.uuidString.lowercased())
+        XCTAssertEqual(object["creator_id"] as? String, creatorID.uuidString.lowercased())
 
         let responseData = Data(
             """
@@ -48,6 +50,9 @@ final class GenerateWeekTests: XCTestCase {
               "weekly_plan_id": null,
               "status": "running",
               "message": "generation_started",
+              "completed_day_count": 3,
+              "total_day_count": 7,
+              "current_day": "2026-06-03",
               "poll_after_seconds": 5
             }
             """.utf8
@@ -61,6 +66,97 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(status.generationID, generationID)
         XCTAssertEqual(status.status, "running")
         XCTAssertEqual(status.pollAfterSeconds, 5)
+        XCTAssertEqual(status.completedDayCount, 3)
+        XCTAssertEqual(status.totalDayCount, 7)
+        XCTAssertEqual(status.currentDay, "2026-06-03")
+        XCTAssertEqual(status.weekProgress.draftedDayCount, 3)
+        XCTAssertEqual(status.weekProgress.checkedDayCount, 3)
+    }
+
+    func testGenerateWeekPartialStatusDecodesIntoProgressModel() throws {
+        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888881")!
+        let weeklyPlanID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
+        let responseData = Data(
+            """
+            {
+              "generation_id": "\(generationID.uuidString)",
+              "weekly_plan_id": "\(weeklyPlanID.uuidString)",
+              "status": "partial",
+              "message": "six_days_saved_one_failed",
+              "completed_day_count": 6,
+              "saved_day_count": 6,
+              "failed_day_count": 1,
+              "total_day_count": 7,
+              "current_day": "2026-06-10",
+              "poll_after_seconds": 5,
+              "failed_days": [
+                {
+                  "scheduled_date": "2026-06-10",
+                  "day_index": 2,
+                  "status": "failed",
+                  "error_code": "openai_request_failed",
+                  "retry_action": "regenerate_day"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let invocation = try SupabaseGenerateWeekInvocation.decode(responseData)
+        guard case .running(let status) = invocation else {
+            XCTFail("Expected partial generation status to decode as a pollable status")
+            return
+        }
+
+        XCTAssertEqual(status.generationID, generationID)
+        XCTAssertEqual(status.weeklyPlanID, weeklyPlanID)
+        XCTAssertEqual(status.status, "partial")
+        XCTAssertEqual(status.completedDayCount, 6)
+        XCTAssertEqual(status.totalDayCount, 7)
+        XCTAssertEqual(status.currentDay, "2026-06-10")
+        XCTAssertEqual(status.pollAfterSeconds, 5)
+        XCTAssertEqual(status.weekProgress.phase, .draftingDays)
+        XCTAssertEqual(status.savedDayCount, 6)
+        XCTAssertEqual(status.failedDayCount, 1)
+        XCTAssertEqual(status.dayStatuses.count, 1)
+        XCTAssertEqual(status.weekProgress.draftedDayCount, 7)
+        XCTAssertEqual(status.weekProgress.checkedDayCount, 6)
+        XCTAssertEqual(status.weekProgress.totalDayCount, 7)
+        XCTAssertEqual(status.weekProgress.currentDay, "2026-06-10")
+        XCTAssertEqual(status.weekProgress.message, "six_days_saved_one_failed")
+        XCTAssertEqual(status.weekProgress.effectiveSavedDayCount, 6)
+        XCTAssertEqual(status.weekProgress.effectiveFailedDayCount, 1)
+        XCTAssertEqual(status.weekProgress.failedDayStatuses.first?.failureDetail, "openai_request_failed")
+    }
+
+    func testGenerateWeekStatusResponseAcceptsPerDayStatusesAlias() throws {
+        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888883")!
+        let responseData = Data(
+            """
+            {
+              "generation_id": "\(generationID.uuidString)",
+              "status": "running",
+              "saved_day_count": 1,
+              "total_day_count": 7,
+              "per_day_statuses": [
+                {
+                  "scheduled_date": "2026-06-08",
+                  "day_index": 0,
+                  "status": "saved"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let invocation = try SupabaseGenerateWeekInvocation.decode(responseData)
+        guard case .running(let status) = invocation else {
+            XCTFail("Expected running generation status")
+            return
+        }
+
+        XCTAssertEqual(status.dayStatuses.count, 1)
+        XCTAssertEqual(status.weekProgress.effectiveSavedDayCount, 1)
     }
 
     func testRegenerateDayRequestEncodesEdgeFunctionContract() throws {
@@ -174,7 +270,43 @@ final class GenerateWeekTests: XCTestCase {
                   "estimated_shoot_minutes": 12,
                   "energy_required": "medium",
                   "language_mode": "English",
+                  "format": "reel",
+                  "primary_surface": "instagram_reels",
+                  "duration_seconds": 21,
+                  "hook": "Start with the shoe detail.",
+                  "save_share_reason": "Useful low-energy routine reminder.",
                   "scene_list": [{"number":1,"title":"Shoes","duration":"3 sec","symbol":"shoeprints.fill"}],
+                  "shot_timeline": [
+                    {
+                      "timestamp": "0:00-0:03",
+                      "title": "Shoe close-up",
+                      "detail": "Film laces and first step.",
+                      "shot": "Close-up"
+                    }
+                  ],
+                  "voiceover_timeline": [
+                    {
+                      "timestamp": "0:00-0:05",
+                      "title": "Opening line",
+                      "detail": "One useful detail is enough today.",
+                      "voiceover": "One useful detail is enough today."
+                    }
+                  ],
+                  "on_screen_text_timeline": [
+                    {
+                      "timestamp": "0:00-0:03",
+                      "title": "Text beat",
+                      "detail": "Simple today",
+                      "on_screen_text": "Simple today"
+                    }
+                  ],
+                  "silent_version_timeline": [
+                    {
+                      "timestamp": "0:00-0:05",
+                      "title": "Silent opener",
+                      "detail": "Use shoe clip with text only."
+                    }
+                  ],
                   "script": "Simple script.",
                   "no_voiceover_version": "No VO.",
                   "on_screen_text": ["Simple"],
@@ -186,6 +318,14 @@ final class GenerateWeekTests: XCTestCase {
                   "brand_event_notes": "",
                   "backup_story": "Story backup.",
                   "backup_caption_only": "Caption backup.",
+                  "backup_story_detail": [
+                    {
+                      "timestamp": "0:00-0:05",
+                      "title": "Story fallback",
+                      "detail": "Post the shoe clip as a story."
+                    }
+                  ],
+                  "caption_backup_detail": "Caption-only version for a busy day. Simple caption backup.",
                   "audio_option_notes": "Calm audio.",
                   "creator_fit_score": 90,
                   "risk_notes": [],
@@ -213,6 +353,15 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(draft.id, generationID)
         XCTAssertEqual(draft.weeklyPlanID, weeklyPlanID)
         XCTAssertEqual(draft.dailyCards.first?.id, cardID)
+        XCTAssertEqual(draft.dailyCards.first?.format, "reel")
+        XCTAssertEqual(draft.dailyCards.first?.primarySurface, "instagram_reels")
+        XCTAssertEqual(draft.dailyCards.first?.durationSeconds, 21)
+        XCTAssertEqual(draft.dailyCards.first?.hook, "Start with the shoe detail.")
+        XCTAssertEqual(draft.dailyCards.first?.saveShareReason, "Useful low-energy routine reminder.")
+        XCTAssertEqual(draft.dailyCards.first?.shotTimeline.first?.title, "Shoe close-up")
+        XCTAssertEqual(draft.dailyCards.first?.voiceoverTimeline.first?.voiceover, "One useful detail is enough today.")
+        XCTAssertEqual(draft.dailyCards.first?.onScreenTextTimeline.first?.onScreenText, "Simple today")
+        XCTAssertEqual(draft.dailyCards.first?.silentVersionTimeline.first?.detail, "Use shoe clip with text only.")
         XCTAssertEqual(draft.dailyCards.first?.script, "Simple script.")
         XCTAssertEqual(draft.dailyCards.first?.noVoiceoverVersion, "No VO.")
         XCTAssertEqual(draft.dailyCards.first?.onScreenText, ["Simple"])
@@ -223,6 +372,8 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(draft.dailyCards.first?.postInstructions, "Use calm audio.")
         XCTAssertEqual(draft.dailyCards.first?.backupStory, "Story backup.")
         XCTAssertEqual(draft.dailyCards.first?.backupCaptionOnly, "Caption backup.")
+        XCTAssertEqual(draft.dailyCards.first?.backupStoryDetail.first?.detail, "Post the shoe clip as a story.")
+        XCTAssertEqual(draft.dailyCards.first?.captionBackupDetail, "Caption-only version for a busy day. Simple caption backup.")
         XCTAssertEqual(draft.dailyCards.first?.audioOptionNotes, "Calm audio.")
         XCTAssertEqual(draft.dailyCards.first?.creatorFitScore, 90)
         XCTAssertEqual(draft.dailyCards.first?.sourceNote, "Reference.")
@@ -243,8 +394,44 @@ final class GenerateWeekTests: XCTestCase {
                 estimatedShootMinutes: 12,
                 energyRequired: "medium",
                 languageMode: "English",
+                format: "reel",
+                primarySurface: "instagram_reels",
+                durationSeconds: 21,
+                hook: "Start with the shoe detail.",
+                saveShareReason: "Useful low-energy routine reminder.",
                 sceneList: [
                     ShotScene(number: 1, title: "Shoes", duration: "3 sec", symbol: "shoeprints.fill")
+                ],
+                shotTimeline: [
+                    ProductionTimelineItem(
+                        timestamp: "0:00-0:03",
+                        title: "Shoe close-up",
+                        detail: "Film laces and first step.",
+                        shot: "Close-up"
+                    )
+                ],
+                voiceoverTimeline: [
+                    ProductionTimelineItem(
+                        timestamp: "0:00-0:05",
+                        title: "Opening line",
+                        detail: "One useful detail is enough today.",
+                        voiceover: "One useful detail is enough today."
+                    )
+                ],
+                onScreenTextTimeline: [
+                    ProductionTimelineItem(
+                        timestamp: "0:00-0:03",
+                        title: "Text beat",
+                        detail: "Simple today",
+                        onScreenText: "Simple today"
+                    )
+                ],
+                silentVersionTimeline: [
+                    ProductionTimelineItem(
+                        timestamp: "0:00-0:05",
+                        title: "Silent opener",
+                        detail: "Use shoe clip with text only."
+                    )
                 ],
                 script: "Simple script.",
                 noVoiceoverVersion: "No VO.",
@@ -257,6 +444,14 @@ final class GenerateWeekTests: XCTestCase {
                 brandEventNotes: "Event note.",
                 backupStory: "Story backup.",
                 backupCaptionOnly: "Caption backup.",
+                backupStoryDetail: [
+                    ProductionTimelineItem(
+                        timestamp: "0:00-0:05",
+                        title: "Story fallback",
+                        detail: "Post the shoe clip as a story."
+                    )
+                ],
+                captionBackupDetail: "Caption-only version for a busy day. Simple caption backup.",
                 audioOptionNotes: "Calm audio.",
                 creatorFitScore: 90,
                 riskNotes: ["Avoid overpromising."],
@@ -270,7 +465,15 @@ final class GenerateWeekTests: XCTestCase {
         let postInstructions = try XCTUnwrap(object["post_instructions"] as? [String: Any])
         let backupStory = try XCTUnwrap(object["backup_story"] as? [String: Any])
         let backupCaptionOnly = try XCTUnwrap(object["backup_caption_only"] as? [String: Any])
+        let shotTimeline = try XCTUnwrap(object["shot_timeline"] as? [[String: Any]])
+        let backupStoryDetail = try XCTUnwrap(object["backup_story_detail"] as? [[String: Any]])
 
+        XCTAssertEqual(object["format"] as? String, "reel")
+        XCTAssertEqual(object["primary_surface"] as? String, "instagram_reels")
+        XCTAssertEqual(object["duration_seconds"] as? Int, 21)
+        XCTAssertEqual(object["hook"] as? String, "Start with the shoe detail.")
+        XCTAssertEqual(object["save_share_reason"] as? String, "Useful low-energy routine reminder.")
+        XCTAssertEqual(shotTimeline.first?["title"] as? String, "Shoe close-up")
         XCTAssertEqual(object["script"] as? String, "Simple script.")
         XCTAssertEqual(object["no_voiceover_version"] as? String, "No VO.")
         XCTAssertEqual(object["on_screen_text"] as? [String], ["Simple"])
@@ -280,9 +483,13 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(object["cover_text"] as? String, "Monday")
         XCTAssertEqual(postInstructions["line"] as? String, "Use calm audio.")
         XCTAssertEqual(postInstructions["audio_option_notes"] as? String, "Calm audio.")
+        XCTAssertEqual(postInstructions["format"] as? String, "reel")
+        XCTAssertEqual(postInstructions["caption_backup_detail"] as? String, "Caption-only version for a busy day. Simple caption backup.")
         XCTAssertEqual(object["brand_event_notes"] as? String, "Event note.")
         XCTAssertEqual(backupStory["line"] as? String, "Story backup.")
         XCTAssertEqual(backupCaptionOnly["line"] as? String, "Caption backup.")
+        XCTAssertEqual(backupStoryDetail.first?["detail"] as? String, "Post the shoe clip as a story.")
+        XCTAssertEqual(object["caption_backup_detail"] as? String, "Caption-only version for a busy day. Simple caption backup.")
         XCTAssertEqual(object["creator_fit_score"] as? Double, 90)
         XCTAssertEqual(object["risk_notes"] as? [String], ["Avoid overpromising."])
         XCTAssertEqual(object["assumptions"] as? [String], ["Low energy."])
@@ -321,11 +528,58 @@ final class GenerateWeekTests: XCTestCase {
               "cover_text": "Monday",
               "post_instructions": {
                 "instructions": "Use calm audio and large cover text.",
-                "audio_option_notes": "Calm audio if available."
+                "audio_option_notes": "Calm audio if available.",
+                "format": "reel",
+                "primary_surface": "instagram_reels",
+                "duration_seconds": 21,
+                "hook": "Start with the shoe detail.",
+                "save_share_reason": "Useful low-energy routine reminder.",
+                "shot_timeline": [
+                  {
+                    "timestamp": "0:00-0:03",
+                    "title": "Shoe close-up",
+                    "detail": "Film laces and first step.",
+                    "shot": "Close-up"
+                  }
+                ],
+                "voiceover_timeline": [
+                  {
+                    "timestamp": "0:00-0:05",
+                    "video_portion": "Shoe close-up",
+                    "voiceover": "One useful detail is enough today."
+                  }
+                ],
+                "on_screen_text_timeline": [
+                  {
+                    "timestamp": "0:00-0:03",
+                    "text": "Simple today",
+                    "placement": "Center"
+                  }
+                ],
+                "silent_version_timeline": [
+                  {
+                    "timestamp": "0:00-0:05",
+                    "title": "Silent opener",
+                    "detail": "Use shoe clip with text only."
+                  }
+                ],
+                "caption_backup_detail": "Caption-only version for a busy day. Simple caption backup."
               },
               "brand_event_notes": "Brand note.",
-              "backup_story": {"line": "Story backup."},
-              "backup_caption_only": {"line": "Caption backup."},
+              "backup_story": {
+                "line": "Story backup.",
+                "detail": [
+                  {
+                    "timestamp": "0:00-0:05",
+                    "title": "Story fallback",
+                    "detail": "Post the shoe clip as a story."
+                  }
+                ]
+              },
+              "backup_caption_only": {
+                "line": "Caption backup.",
+                "detail": "Caption-only version for a busy day. Simple caption backup."
+              },
               "creator_fit_score": 90,
               "risk_notes": ["Avoid overpromising."],
               "assumptions": ["Low energy."],
@@ -356,6 +610,19 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(card.riskNotes, ["Avoid overpromising."])
         XCTAssertEqual(card.assumptions, ["Low energy."])
         XCTAssertEqual(card.sourceNote, "Reference.")
+
+        let generatedDraft = row.generatedDailyCardDraft()
+        XCTAssertEqual(generatedDraft.format, "reel")
+        XCTAssertEqual(generatedDraft.primarySurface, "instagram_reels")
+        XCTAssertEqual(generatedDraft.durationSeconds, 21)
+        XCTAssertEqual(generatedDraft.hook, "Start with the shoe detail.")
+        XCTAssertEqual(generatedDraft.saveShareReason, "Useful low-energy routine reminder.")
+        XCTAssertEqual(generatedDraft.shotTimeline.first?.detail, "Film laces and first step.")
+        XCTAssertEqual(generatedDraft.voiceoverTimeline.first?.videoPortion, "Shoe close-up")
+        XCTAssertEqual(generatedDraft.onScreenTextTimeline.first?.placement, "Center")
+        XCTAssertEqual(generatedDraft.silentVersionTimeline.first?.detail, "Use shoe clip with text only.")
+        XCTAssertEqual(generatedDraft.backupStoryDetail.first?.detail, "Post the shoe clip as a story.")
+        XCTAssertEqual(generatedDraft.captionBackupDetail, "Caption-only version for a busy day. Simple caption backup.")
     }
 
     func testAppServicesGenerationSuccessWithFixtureRepository() async throws {
@@ -367,7 +634,46 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(services.latestGenerationSummary?.id, draft.id)
         XCTAssertEqual(services.weeklyPlan.id, draft.weeklyPlanID)
         XCTAssertEqual(services.weeklyPlan.days.count, 7)
+        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .readyForReview)
+        XCTAssertEqual(services.weeklyGenerationProgress?.draftedDayCount, 7)
         XCTAssertNil(services.generationError)
+    }
+
+    func testEmptyGeneratedDraftDoesNotReplaceExistingWeek() async throws {
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: EmptyDraftWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore()
+        )
+        let existingDraft = try await FixtureWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: "2026-06-22",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
+        services.applyGeneratedDraft(existingDraft)
+        let existingPlanID = services.weeklyPlan.id
+        let existingDayCount = services.weeklyPlan.days.count
+
+        let draft = await services.generateCurrentWeekImmediately()
+
+        XCTAssertNil(draft)
+        XCTAssertEqual(services.weeklyPlan.id, existingPlanID)
+        XCTAssertEqual(services.weeklyPlan.days.count, existingDayCount)
+        XCTAssertEqual(services.latestGenerationSummary?.id, existingDraft.id)
+        XCTAssertEqual(services.generationError, "The AI draft did not pass validation. Try Generate again.")
+        XCTAssertFalse(services.canPublishCurrentWeek)
     }
 
     func testAppServicesGenerationFailureSurfacesStableError() async throws {
@@ -389,7 +695,9 @@ final class GenerateWeekTests: XCTestCase {
         let draft = await services.generateCurrentWeekImmediately()
 
         XCTAssertNil(draft)
-        XCTAssertEqual(services.generationError, "missing_openai_api_key")
+        XCTAssertEqual(services.generationError, "AI generation is not configured in Supabase.")
+        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .failed)
+        XCTAssertEqual(services.weeklyGenerationProgress?.error, "AI generation is not configured in Supabase.")
     }
 
     func testAppServicesGenerationFailureExtractsStableErrorFromWrappedMessage() async throws {
@@ -411,7 +719,54 @@ final class GenerateWeekTests: XCTestCase {
         let draft = await services.generateCurrentWeekImmediately()
 
         XCTAssertNil(draft)
-        XCTAssertEqual(services.generationError, "existing_published_week_locked")
+        XCTAssertEqual(services.generationError, "This week is already published and locked.")
+        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .failed)
+        XCTAssertEqual(services.weeklyGenerationProgress?.error, "This week is already published and locked.")
+    }
+
+    func testAppServicesGenerationFailurePreservesLastProgressCount() async throws {
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: ProgressThenFailWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore()
+        )
+
+        let draft = await services.generateCurrentWeekImmediately()
+
+        XCTAssertNil(draft)
+        XCTAssertEqual(services.generationError, "The AI returned an incomplete draft. Try Generate again.")
+        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .failed)
+        XCTAssertEqual(services.weeklyGenerationProgress?.draftedDayCount, 4)
+        XCTAssertEqual(services.weeklyGenerationProgress?.checkedDayCount, 4)
+        XCTAssertEqual(services.weeklyGenerationProgress?.totalDayCount, 7)
+        XCTAssertEqual(services.weeklyGenerationProgress?.error, "The AI returned an incomplete draft. Try Generate again.")
+    }
+
+    func testGenerationRetryPolicyClassifiesNetworkConnectionLostAsTransient() {
+        let error = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorNetworkConnectionLost
+        )
+
+        XCTAssertTrue(SupabaseGenerationRetryPolicy.isTransientPollingError(error))
+    }
+
+    func testGenerationRetryPolicyClassifiesAcceptedRunStatus404AsRetryable() {
+        let error = FunctionsError.httpError(
+            code: 404,
+            data: Data(#"{"error":"invalid_generation_payload"}"#.utf8)
+        )
+
+        XCTAssertTrue(SupabaseGenerationRetryPolicy.isRetryableStatusPollingError(error))
     }
 
     func testPublishingGeneratedDraftPreservesRichFieldsInFixtureModel() async throws {
@@ -421,6 +776,9 @@ final class GenerateWeekTests: XCTestCase {
         draft.dailyCards[0].caption = "Edited generated caption."
         draft.dailyCards[0].backupStory = "Edited backup story."
         services.applyGeneratedDraft(draft)
+        for day in services.weeklyPlan.days {
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
 
         await services.publishCurrentWeekImmediately()
 
@@ -431,13 +789,78 @@ final class GenerateWeekTests: XCTestCase {
     }
 }
 
+private struct EmptyDraftWeeklyGenerationRepository: WeeklyGenerationRepository {
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        await progress?(
+            WeeklyGenerationProgress(
+                phase: .draftingDays,
+                generationID: UUID(uuidString: "77777777-7777-4777-8777-777777777771"),
+                weeklyPlanID: UUID(uuidString: "77777777-7777-4777-8777-777777777772"),
+                draftedDayCount: 0,
+                checkedDayCount: 0,
+                totalDayCount: 7,
+                currentDay: nil,
+                message: "generation_complete",
+                error: nil
+            )
+        )
+
+        return GeneratedWeekDraft(
+            id: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
+            weeklyPlanID: UUID(uuidString: "77777777-7777-4777-8777-777777777772")!,
+            status: "draft",
+            strategySummary: "Empty draft fixture.",
+            warnings: [],
+            assumptions: [],
+            dailyCards: [],
+            ideaBank: [],
+            sourceSummary: "Empty draft fixture.",
+            generatedAt: "2026-06-22T00:00:00Z"
+        )
+    }
+}
+
+private struct ProgressThenFailWeeklyGenerationRepository: WeeklyGenerationRepository {
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        await progress?(
+            WeeklyGenerationProgress(
+                phase: .draftingDays,
+                generationID: UUID(uuidString: "88888888-8888-4888-8888-888888888881"),
+                weeklyPlanID: nil,
+                draftedDayCount: 4,
+                checkedDayCount: 4,
+                totalDayCount: 7,
+                currentDay: "2026-06-12",
+                message: "generation_running",
+                error: nil
+            )
+        )
+        throw RepositoryError.edgeFunction("invalid_ai_json")
+    }
+}
+
 private struct FailingWeeklyGenerationRepository: WeeklyGenerationRepository {
     func generateWeek(
         creatorID: UUID,
         weekStartDate: String,
         weeklySetupID: UUID?,
         mode: GenerateWeekMode,
-        context: WorkspaceContext
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
     ) async throws -> GeneratedWeekDraft {
         throw RepositoryError.notConfigured("missing_openai_api_key")
     }
@@ -449,7 +872,8 @@ private struct WrappedErrorWeeklyGenerationRepository: WeeklyGenerationRepositor
         weekStartDate: String,
         weeklySetupID: UUID?,
         mode: GenerateWeekMode,
-        context: WorkspaceContext
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
     ) async throws -> GeneratedWeekDraft {
         throw NSError(
             domain: "Supabase",

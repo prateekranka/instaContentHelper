@@ -117,6 +117,7 @@ extension WeeklyPlan {
                 isSoftLocked: false
             )
         ],
+        weeklyBriefText: "Mumbai race week. Early mornings are best. Keep the week practical: 3 runs, 1 gym, 1 race, family on Sunday, Puma disclosure on Saturday, and no politics, weight talk, or negativity.",
         setupSections: [
             WeeklySetupSection(systemImage: "mappin.and.ellipse", title: "Place", summary: "Mumbai, race week, early mornings.", state: "Ready"),
             WeeklySetupSection(systemImage: "dumbbell", title: "Body", summary: "3 runs, 1 gym, 1 race.", state: "Ready"),

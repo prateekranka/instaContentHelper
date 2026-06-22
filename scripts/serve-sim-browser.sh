@@ -7,6 +7,7 @@ SERVE_SIM_URL="${MCO_SERVE_SIM_URL:-http://localhost:3200}"
 LOG_DIR="${MCO_BUILD_LOG_DIR:-$ROOT_DIR/build-logs}"
 SIMULATOR_UDID="${MCO_SIMULATOR_UDID:-${1:-}}"
 SERVE_SIM_JS="${MCO_SERVE_SIM_JS:-}"
+FORCE_RESTART="${MCO_FORCE_SERVE_SIM_RESTART:-0}"
 
 require_tool() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -58,7 +59,7 @@ fi
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/serve-sim-$(date +%Y%m%d-%H%M%S).log"
 
-if curl -sS -m 2 -o /dev/null -w '%{http_code}' "$SERVE_SIM_URL" | grep -q '^200$'; then
+if [ "$FORCE_RESTART" != "1" ] && curl -sS -m 2 -o /dev/null -w '%{http_code}' "$SERVE_SIM_URL" | grep -q '^200$'; then
   cat <<EOF
 serve-sim ready
 url=$SERVE_SIM_URL
@@ -70,6 +71,7 @@ EOF
 fi
 
 screen -S "$SESSION_NAME" -X quit >/dev/null 2>&1 || true
+pkill -f "serve-sim.*${SIMULATOR_UDID}" >/dev/null 2>&1 || true
 pkill -f "node .*/serve-sim/dist/serve-sim\\.js .*${SIMULATOR_UDID}" >/dev/null 2>&1 || true
 pkill -f "serve-sim-bin ${SIMULATOR_UDID}" >/dev/null 2>&1 || true
 sleep 1

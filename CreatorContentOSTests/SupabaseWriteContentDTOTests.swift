@@ -92,6 +92,7 @@ final class SupabaseWriteContentDTOTests: XCTestCase {
         XCTAssertEqual(object["action"] as? String, "update_weekly_setup")
         XCTAssertEqual(try uuidValue(object, key: "creator_id"), context.creatorID)
         XCTAssertEqual(try uuidValue(object, key: "weekly_plan_id"), plan.id)
+        XCTAssertEqual(object["week_start_date"] as? String, "2026-06-01")
 
         let encodedSections = try XCTUnwrap(object["setup_sections"] as? [[String: Any]])
         XCTAssertEqual(encodedSections.count, 2)
@@ -103,6 +104,57 @@ final class SupabaseWriteContentDTOTests: XCTestCase {
         XCTAssertEqual(try uuidValue(encodedSections[1], key: "id"), sections[1].id)
         XCTAssertEqual(encodedSections[1]["system_image"] as? String, "bolt.heart")
         XCTAssertEqual(encodedSections[1]["summary"] as? String, "Low-energy Tuesday.")
+    }
+
+    func testUpdateWeeklyBriefRequestEncodesSingleNotesSectionContract() throws {
+        let context = fixtureContext()
+        let plan = fixturePlan()
+        let brief = """
+        Weekly routine: Pilates Monday.
+        Coming up this week: Family lunch Sunday.
+        Brand/collab: Puma pickup Saturday.
+        """
+
+        let object = try encodedObject(
+            .updateWeeklyBrief(text: brief, plan: plan, context: context)
+        )
+
+        XCTAssertEqual(object["action"] as? String, "update_weekly_setup")
+        XCTAssertEqual(try uuidValue(object, key: "creator_id"), context.creatorID)
+        XCTAssertEqual(try uuidValue(object, key: "weekly_plan_id"), plan.id)
+        XCTAssertEqual(object["week_start_date"] as? String, "2026-06-01")
+        XCTAssertNil(object["weekly_brief"])
+
+        let encodedSections = try XCTUnwrap(object["setup_sections"] as? [[String: Any]])
+        XCTAssertEqual(encodedSections.count, 1)
+        XCTAssertEqual(encodedSections[0]["key"] as? String, "notes")
+        XCTAssertEqual(encodedSections[0]["title"] as? String, "weekly_brief")
+        XCTAssertEqual(encodedSections[0]["value"] as? String, brief)
+    }
+
+    func testUpdateCreatorProfileRequestEncodesEdgeFunctionContract() throws {
+        let context = fixtureContext()
+        let update = CreatorProfileUpdate(
+            positioning: "Premium fitness-after-60 voice.",
+            voiceRules: ["Warm", "Precise"],
+            contentPillars: ["routine", "recovery"],
+            captionStyle: "Short and practical.",
+            noGoTopics: ["Politics", "Weight talk"],
+            recurringFormats: ["one practical detail", "caption-only backup"]
+        )
+
+        let object = try encodedObject(
+            .updateCreatorProfile(update, context: context)
+        )
+
+        XCTAssertEqual(object["action"] as? String, "update_creator_profile")
+        XCTAssertEqual(try uuidValue(object, key: "creator_id"), context.creatorID)
+        XCTAssertEqual(object["positioning"] as? String, update.positioning)
+        XCTAssertEqual(object["voice_rules"] as? [String], update.voiceRules)
+        XCTAssertEqual(object["content_pillars"] as? [String], update.contentPillars)
+        XCTAssertEqual(object["caption_style"] as? String, update.captionStyle)
+        XCTAssertEqual(object["never_say"] as? [String], update.noGoTopics)
+        XCTAssertEqual(object["recurring_formats"] as? [String], update.recurringFormats)
     }
 
     func testWriteContentResponseDecodesStructuredSelectResult() throws {

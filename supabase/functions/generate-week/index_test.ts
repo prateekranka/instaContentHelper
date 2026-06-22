@@ -1,5 +1,10 @@
 import { handleGenerateWeekRequest } from "./index.ts";
-import { makeMockGeneratedWeek } from "./generation.ts";
+import {
+  AIProviderConfig,
+  GenerateWeekValidationError,
+  GenerationInputSnapshot,
+  makeMockGeneratedWeek,
+} from "./generation.ts";
 
 const workspaceID = "11111111-1111-4111-8111-111111111111";
 const memberID = "22222222-2222-4222-8222-222222222222";
@@ -131,7 +136,7 @@ Deno.test("generate-week passes enriched context into the AI client", async () =
   );
 });
 
-Deno.test("generate-week orders DeepSeek before OpenAI when both provider keys exist", async () => {
+Deno.test("generate-week orders OpenAI before DeepSeek when both provider keys exist", async () => {
   let providerOrder = "";
   const response = await handleGenerateWeekRequest(
     new Request("http://localhost/generate-week", {
@@ -155,7 +160,7 @@ Deno.test("generate-week orders DeepSeek before OpenAI when both provider keys e
   );
 
   assertEquals(response.status, 200);
-  assertEquals(providerOrder, "deepseek,openai");
+  assertEquals(providerOrder, "openai,deepseek");
 });
 
 Deno.test("generate-week async mode returns running and schedules background generation", async () => {
@@ -189,6 +194,454 @@ Deno.test("generate-week async mode returns running and schedules background gen
     throw new Error("Expected background generation to be scheduled.");
   }
   await scheduled;
+});
+
+Deno.test("generate-week async mode returns a run that is immediately pollable", async () => {
+  let scheduled: Promise<void> | undefined;
+  const admin = fakeAdmin({});
+  const dependencies = {
+    env: fakeEnv("test-key"),
+    createAdminClient: () => admin,
+    generateDayAI: async () => await new Promise<never>(() => {}),
+    runInBackground: (promise: Promise<void>) => {
+      scheduled = promise;
+    },
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+      response_mode: "async",
+    }),
+    dependencies,
+  );
+
+  assertEquals(response.status, 202);
+  const body = await response.json();
+  assertEquals(body.generation_id, generationRunID);
+  if (!scheduled) {
+    throw new Error("Expected background generation to be scheduled.");
+  }
+
+  const status = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    dependencies,
+  );
+  assertEquals(status.status, 200);
+  const statusBody = await status.json();
+  assertEquals(statusBody.generation_id, generationRunID);
+  assertEquals(statusBody.status, "running");
+  assertEquals(statusBody.completed_day_count, 0);
+  assertEquals(statusBody.total_day_count, 7);
+});
+
+Deno.test("generate-week async mode reports failed days when validation fails", async () => {
+  let scheduled: Promise<void> | undefined;
+  const admin = fakeAdmin({});
+  const dependencies = {
+    env: fakeEnv("test-key"),
+    createAdminClient: () => admin,
+    generateDayAI: async (
+      input: GenerationInputSnapshot,
+      _providers: AIProviderConfig[],
+      scheduledDate: string,
+      dayIndex: number,
+    ) => {
+      if (dayIndex === 2) {
+        throw new GenerateWeekValidationError(
+          "invalid_ai_json",
+          "Wednesday response was incomplete JSON.",
+        );
+      }
+      if (dayIndex === 6) {
+        throw new GenerateWeekValidationError(
+          "invalid_generated_week",
+          "Sunday output was missing required fields.",
+        );
+      }
+      const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+      return {
+        strategy_note: `Async day ${dayIndex + 1}`,
+        warnings: [],
+        assumptions: [],
+        daily_card: {
+          ...card,
+          scheduled_date: scheduledDate,
+          title: `Validated day ${dayIndex + 1}`,
+        },
+        idea_bank: [],
+        source_summary: `Async day source ${dayIndex + 1}`,
+      };
+    },
+    runInBackground: (promise: Promise<void>) => {
+      scheduled = promise;
+    },
+  };
+
+  const initial = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+      response_mode: "async",
+      feature_flags: ["parallel_week_generation"],
+    }),
+    dependencies,
+  );
+  assertEquals(initial.status, 202);
+  await scheduled;
+
+  let completedBody: Record<string, unknown> | undefined;
+  for (let poll = 0; poll < 8; poll += 1) {
+    scheduled = undefined;
+    const status = await handleGenerateWeekRequest(
+      requestFor({
+        action: "status",
+        generation_id: generationRunID,
+        creator_id: creatorID,
+      }),
+      dependencies,
+    );
+    assertEquals(status.status, 200);
+    const body = await status.json();
+    if (
+      body.status === "draft" || body.status === "partial" ||
+      body.status === "failed"
+    ) {
+      completedBody = body;
+      break;
+    }
+    if (scheduled) {
+      await scheduled;
+    }
+  }
+
+  if (!completedBody) {
+    throw new Error("Expected async generation to complete.");
+  }
+  assertEquals(completedBody.status, "partial");
+  assertEquals(completedBody.saved_day_count, 5);
+  assertEquals(completedBody.failed_day_count, 2);
+  const cards = completedBody.daily_cards as Record<string, unknown>[];
+  assertEquals(cards.length, 5);
+  assertEquals(
+    cards.some((card) => card.scheduled_date === "2026-06-10"),
+    false,
+  );
+  assertEquals(
+    cards.some((card) => card.scheduled_date === "2026-06-14"),
+    false,
+  );
+  const failedDays = completedBody.day_statuses as Record<string, unknown>[];
+  assertEquals(
+    failedDays.filter((day) => day.status === "failed").map((day) =>
+      day.scheduled_date
+    ).join(","),
+    "2026-06-10,2026-06-14",
+  );
+});
+
+Deno.test("generate-week sync falls back to split-day generation when full-week JSON is invalid", async () => {
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin({}),
+      generateAI: async () => {
+        throw new GenerateWeekValidationError(
+          "invalid_ai_json",
+          "full-week provider returned malformed JSON",
+        );
+      },
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `Split fallback ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+          },
+          idea_bank: [],
+          source_summary: `Split fallback source ${dayIndex + 1}`,
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.generation_id, generationRunID);
+  assertEquals(body.status, "draft");
+  assertEquals((body.daily_cards as unknown[]).length, 7);
+});
+
+Deno.test("generate-week sync uses split-day generation by default", async () => {
+  const calls: string[] = [];
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin({}),
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        calls.push(scheduledDate);
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `Default split ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+          },
+          idea_bank: [],
+          source_summary: `Default split source ${dayIndex + 1}`,
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    calls.join(","),
+    "2026-06-08,2026-06-09,2026-06-10,2026-06-11,2026-06-12,2026-06-13,2026-06-14",
+  );
+  const body = await response.json();
+  assertEquals((body.daily_cards as unknown[]).length, 7);
+});
+
+Deno.test("generate-week writes seven successful split-day drafts", async () => {
+  const state = dayGenerationState();
+  state.dailyCards = [];
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `Successful day ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+            title: `Saved ${scheduledDate}`,
+          },
+          idea_bank: [],
+          source_summary: `Successful source ${dayIndex + 1}`,
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals((body.daily_cards as unknown[]).length, 7);
+  assertEquals(state.dailyCards.length, 7);
+  assertEquals(
+    state.upsertedDailyCardDates.join(","),
+    "2026-06-08,2026-06-09,2026-06-10,2026-06-11,2026-06-12,2026-06-13,2026-06-14",
+  );
+  const storedInstructions = recordValue(state.dailyCards[0].post_instructions);
+  const storedBackupStory = recordValue(state.dailyCards[0].backup_story);
+  assertEquals(storedInstructions.format, "Reel");
+  assertEquals(storedInstructions.primary_surface, "Instagram Reels");
+  assertEquals(Array.isArray(storedInstructions.shot_timeline), true);
+  assertEquals(Array.isArray(storedInstructions.voiceover_timeline), true);
+  assertEquals(Array.isArray(storedInstructions.on_screen_text_timeline), true);
+  assertEquals(Array.isArray(storedBackupStory.detail), true);
+});
+
+Deno.test("generate-week updates existing daily cards instead of duplicating them", async () => {
+  const state = dayGenerationState();
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `Existing card ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+            title: `Updated ${scheduledDate}`,
+          },
+          idea_bank: [],
+          source_summary: `Existing card source ${dayIndex + 1}`,
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(state.dailyCards.length, 7);
+  assertEquals(state.upsertedDailyCardDates.length, 0);
+  assertEquals(state.updatedDailyCardIDs.join(","), dailyCardIDs.join(","));
+  assertEquals(state.dailyCards[0].title, "Updated 2026-06-08");
+  assertEquals(state.dailyCards[6].title, "Updated 2026-06-14");
+});
+
+Deno.test("parallel generate-week does not treat stale existing draft cards as fresh completion", async () => {
+  const state = dayGenerationState();
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+      feature_flags: ["parallel_week_generation"],
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async () => {
+        throw new Error("openai_request_failed:forced_stale_card_regression");
+      },
+    },
+  );
+
+  assertEquals(response.status, 400);
+  const body = await response.json();
+  assertEquals(body.error, "invalid_generated_week");
+  assertEquals(body.saved_day_count, 0);
+  assertEquals(body.failed_day_count, 7);
+  assertEquals(
+    Array.isArray(body.daily_cards) ? body.daily_cards.length : 0,
+    0,
+  );
+  assertEquals(state.updatedDailyCardIDs.length, 0);
+  assertEquals(state.upsertedDailyCardDates.length, 0);
+  assertEquals(state.dailyCards.length, 7);
+});
+
+Deno.test("parallel generate-week rejects stale lower-priority context before save", async () => {
+  const state = dayGenerationState();
+  state.dailyCards = [];
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+      feature_flags: ["parallel_week_generation"],
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: "Stale context should be rejected.",
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+            title: "New Jersey recovery walk",
+            why_today: "A New Jersey walk fits the old race recovery context.",
+            caption: "Post-race recovery walk in New Jersey after HYROX.",
+            source_note: "Older New Jersey HYROX context.",
+          },
+          idea_bank: [],
+          source_summary: "Stale context",
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 400);
+  const body = await response.json();
+  assertEquals(body.error, "invalid_generated_week");
+  assertEquals(body.saved_day_count, 0);
+  assertEquals(body.failed_day_count, 7);
+  assertEquals(state.dailyCards.length, 0);
+});
+
+Deno.test("generate-week falls back to upsert when an existing daily card update returns no row", async () => {
+  const state = dayGenerationState();
+  state.dailyCardUpdateMissDates = new Set(["2026-06-14"]);
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `Update fallback ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+          },
+          idea_bank: [],
+          source_summary: `Update fallback source ${dayIndex + 1}`,
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals((body.daily_cards as unknown[]).length, 7);
+  assertEquals(state.upsertedDailyCardDates.includes("2026-06-14"), true);
+});
+
+Deno.test("generate-week tolerates optional context lookup failures", async () => {
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () =>
+        fakeAdmin({
+          lookupFailures: new Set(["patterns"]),
+        }),
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `No patterns ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+          },
+          idea_bank: [],
+          source_summary: `No patterns source ${dayIndex + 1}`,
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals((body.daily_cards as unknown[]).length, 7);
 });
 
 Deno.test("generate-week status returns completed draft snapshot", async () => {
@@ -246,6 +699,368 @@ Deno.test("generate-week status returns completed draft snapshot", async () => {
   assertEquals((body.daily_cards as unknown[]).length, 7);
 });
 
+Deno.test("parallel generate-week status ignores stale cards not recorded on the run", async () => {
+  const state = dayGenerationState();
+  const startedAt = "2026-06-08T08:00:00.000Z";
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+    output_snapshot: {
+      kind: "parallel_week_generation_v1",
+      week_start_date: "2026-06-08",
+      weekly_plan_id: weeklyPlanID,
+      strategy_created: true,
+      updated_at: startedAt,
+      days: weekDatesForTest("2026-06-08").map((scheduledDate) => ({
+        scheduled_date: scheduledDate,
+        status: "pending",
+        attempts: 0,
+      })),
+    },
+  };
+
+  const response = await callHandler(
+    {
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    },
+    state,
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.completed_day_count, 0);
+  assertEquals(body.saved_day_count, 0);
+  assertEquals(Array.isArray(body.daily_cards), true);
+  assertEquals((body.daily_cards as unknown[]).length, 0);
+});
+
+Deno.test("parallel generate-week status finalizes terminal partial progress", async () => {
+  const state = dayGenerationState();
+  const completedAt = "2026-06-08T08:05:00.000Z";
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+    output_snapshot: {
+      kind: "parallel_week_generation_v1",
+      week_start_date: "2026-06-08",
+      weekly_plan_id: weeklyPlanID,
+      strategy_created: true,
+      updated_at: completedAt,
+      days: weekDatesForTest("2026-06-08").map((scheduledDate, index) =>
+        index < 5
+          ? {
+            scheduled_date: scheduledDate,
+            status: "completed",
+            attempts: 1,
+            daily_card_id: dailyCardIDs[index],
+            completed_at: completedAt,
+          }
+          : {
+            scheduled_date: scheduledDate,
+            status: "failed",
+            attempts: 2,
+            error_code: "invalid_generated_week",
+            completed_at: completedAt,
+          }
+      ),
+    },
+  };
+
+  const response = await callHandler(
+    {
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    },
+    state,
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.status, "partial");
+  assertEquals(body.overall_status, "partial");
+  assertEquals(body.saved_day_count, 5);
+  assertEquals(body.failed_day_count, 2);
+  assertEquals((body.daily_cards as unknown[]).length, 5);
+  assertEquals(state.generationRun?.status, "completed");
+  assertEquals(state.generationRun?.error_code, "partial_generation");
+});
+
+Deno.test("parallel generate-week status does not retry failed days at max attempts", async () => {
+  let scheduled: Promise<void> | undefined;
+  const calls: string[] = [];
+  const input = generationInputSnapshot();
+  const state = dayGenerationState();
+  const completedAt = "2026-06-08T08:05:00.000Z";
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: input,
+    output_snapshot: {
+      kind: "parallel_week_generation_v1",
+      week_start_date: "2026-06-08",
+      weekly_plan_id: weeklyPlanID,
+      strategy_created: true,
+      updated_at: completedAt,
+      days: weekDatesForTest("2026-06-08").map((scheduledDate, index) => {
+        if (index === 1) {
+          return {
+            scheduled_date: scheduledDate,
+            status: "failed",
+            attempts: 2,
+            error_code: "invalid_ai_json",
+            completed_at: completedAt,
+          };
+        }
+        if (index === 2) {
+          return {
+            scheduled_date: scheduledDate,
+            status: "pending",
+            attempts: 0,
+          };
+        }
+        return {
+          scheduled_date: scheduledDate,
+          status: "completed",
+          attempts: 1,
+          daily_card_id: dailyCardIDs[index],
+          completed_at: completedAt,
+        };
+      }),
+    },
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (snapshot, _providers, scheduledDate, dayIndex) => {
+        calls.push(scheduledDate);
+        const card = makeMockGeneratedWeek(snapshot).daily_cards[dayIndex];
+        return {
+          strategy_note: `Resumed ${scheduledDate}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: { ...card, scheduled_date: scheduledDate },
+          idea_bank: [],
+          source_summary: "resumed",
+        };
+      },
+      runInBackground: (promise: Promise<void>) => {
+        scheduled = promise;
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  if (!scheduled) {
+    throw new Error("Expected pending day generation to be scheduled.");
+  }
+  await scheduled;
+
+  assertEquals(calls.join(","), "2026-06-10");
+  assertEquals(state.generationRun?.status, "completed");
+  assertEquals(state.generationRun?.error_code, "partial_generation");
+  const progress = recordValue(state.generationRun?.output_snapshot);
+  const days = progress.days as Record<string, unknown>[];
+  assertEquals(days[1].status, "failed");
+  assertEquals(days[1].attempts, 2);
+  assertEquals(days[2].status, "completed");
+});
+
+Deno.test("generate-week status marks twice-stale running days as failed", async () => {
+  let scheduled: Promise<void> | undefined;
+  const input = generationInputSnapshot();
+  const state = dayGenerationState();
+  const startedAt = new Date(Date.now() - 180_000).toISOString();
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    input_snapshot: input,
+    output_snapshot: {
+      kind: "per_day_generation_v1",
+      week_start_date: "2026-06-08",
+      updated_at: startedAt,
+      days: [
+        ...["2026-06-08", "2026-06-09", "2026-06-10"].map((
+          scheduledDate,
+          index,
+        ) => ({
+          scheduled_date: scheduledDate,
+          status: "completed",
+          attempts: 1,
+          completed_at: startedAt,
+          output: {
+            strategy_note: `Completed ${index}`,
+            warnings: [],
+            assumptions: [],
+            daily_card: makeMockGeneratedWeek(input).daily_cards[index],
+            idea_bank: [],
+            source_summary: "completed",
+          },
+        })),
+        {
+          scheduled_date: "2026-06-11",
+          status: "running",
+          attempts: 2,
+          started_at: startedAt,
+        },
+        ...["2026-06-12", "2026-06-13", "2026-06-14"].map((
+          scheduledDate,
+        ) => ({
+          scheduled_date: scheduledDate,
+          status: "pending",
+          attempts: 0,
+        })),
+      ],
+    },
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (snapshot, _providers, scheduledDate, dayIndex) => {
+        const card = makeMockGeneratedWeek(snapshot).daily_cards[dayIndex];
+        return {
+          strategy_note: `Resumed ${scheduledDate}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: { ...card, scheduled_date: scheduledDate },
+          idea_bank: [],
+          source_summary: "resumed",
+        };
+      },
+      runInBackground: (promise: Promise<void>) => {
+        scheduled = promise;
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.completed_day_count, 3);
+  assertEquals(body.failed_day_count, 1);
+  assertEquals(body.current_day, "2026-06-12");
+  assertEquals(Boolean(scheduled), true);
+});
+
+Deno.test({
+  name:
+    "generate-week status returns partial progress when one day failed and six days were saved",
+  ignore: true,
+  async fn() {
+    const input = generationInputSnapshot();
+    const generated = makeMockGeneratedWeek(input);
+    const completedAt = "2026-06-08T08:00:00.000Z";
+    const failedAt = "2026-06-08T08:01:00.000Z";
+    const state = dayGenerationState();
+    state.generationRun = {
+      id: generationRunID,
+      workspace_id: workspaceID,
+      creator_id: creatorID,
+      requested_by_member_id: memberID,
+      status: "partial",
+      weekly_plan_id: weeklyPlanID,
+      input_snapshot: input,
+      output_snapshot: {
+        kind: "per_day_generation_v1",
+        week_start_date: "2026-06-08",
+        updated_at: failedAt,
+        days: weekDatesForTest("2026-06-08").map((scheduledDate, index) =>
+          index === 2
+            ? {
+              scheduled_date: scheduledDate,
+              status: "failed",
+              attempts: 1,
+              error_code: "openai_request_failed",
+              completed_at: failedAt,
+            }
+            : {
+              scheduled_date: scheduledDate,
+              status: "completed",
+              attempts: 1,
+              completed_at: completedAt,
+              daily_card_id: dailyCardIDs[index],
+              output: {
+                strategy_note: `Saved ${index + 1}`,
+                warnings: [],
+                assumptions: [],
+                daily_card: generated.daily_cards[index],
+                idea_bank: [],
+                source_summary: "saved",
+              },
+            }
+        ),
+      },
+    };
+
+    const response = await handleGenerateWeekRequest(
+      requestFor({
+        action: "status",
+        generation_id: generationRunID,
+        creator_id: creatorID,
+      }),
+      {
+        env: fakeEnv("openai-key"),
+        createAdminClient: () => fakeAdmin(state),
+      },
+    );
+
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.generation_id, generationRunID);
+    assertEquals(body.weekly_plan_id, weeklyPlanID);
+    assertEquals(body.status, "partial");
+    assertEquals(body.completed_day_count, 6);
+    assertEquals(body.saved_day_count, 6);
+    assertEquals(body.failed_day_count, 1);
+    assertEquals(body.total_day_count, 7);
+    assertEquals(Array.isArray(body.daily_cards), true);
+    assertEquals((body.daily_cards as unknown[]).length, 6);
+    assertEquals(Array.isArray(body.failed_days), true);
+    const failedDays = body.failed_days as Record<string, unknown>[];
+    assertEquals(failedDays[0].scheduled_date, "2026-06-10");
+    assertEquals(failedDays[0].day_index, 2);
+    assertEquals(failedDays[0].status, "failed");
+    assertEquals(failedDays[0].error_code, "openai_request_failed");
+    assertEquals(failedDays[0].retry_action, "regenerate_day");
+  },
+});
+
 Deno.test("regenerate_day updates exactly one draft card and leaves the other six unchanged", async () => {
   const state = dayGenerationState();
   const before = structuredClone(state.dailyCards);
@@ -292,6 +1107,104 @@ Deno.test("regenerate_day updates exactly one draft card and leaves the other si
     );
   }
   assertEquals(state.updatedDailyCardIDs.join(","), dailyCardIDs[2]);
+});
+
+Deno.test("regenerate_day retries a failed draft day and keeps the other six cards", async () => {
+  const state = dayGenerationState();
+  state.dailyCards[2].title = "Failed Wednesday placeholder";
+  state.dailyCards[2].assumptions = ["Previous generation failed."];
+  const before = structuredClone(state.dailyCards);
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "regenerate_day",
+      creator_id: creatorID,
+      weekly_plan_id: weeklyPlanID,
+      scheduled_date: "2026-06-10",
+      preserve_manual_edits: false,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: "Retry Wednesday only.",
+          warnings: [],
+          assumptions: ["Retried after partial week failure."],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+            title: "Retried Wednesday",
+          },
+          idea_bank: [],
+          source_summary: "Retry context.",
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.target_scheduled_date, "2026-06-10");
+  assertEquals(body.daily_card.title, "Retried Wednesday");
+  assertEquals(state.dailyCards[2].title, "Retried Wednesday");
+  assertEquals(state.updatedDailyCardIDs.join(","), dailyCardIDs[2]);
+  for (const index of [0, 1, 3, 4, 5, 6]) {
+    assertEquals(
+      JSON.stringify(state.dailyCards[index]),
+      JSON.stringify(before[index]),
+      `card ${index} must remain unchanged`,
+    );
+  }
+});
+
+Deno.test("regenerate_day creates a missing draft card for a failed day", async () => {
+  const state = dayGenerationState();
+  state.dailyCards = state.dailyCards.filter((card) =>
+    card.scheduled_date !== "2026-06-10"
+  );
+  const beforeDates = state.dailyCards.map((card) => card.scheduled_date);
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "regenerate_day",
+      creator_id: creatorID,
+      weekly_plan_id: weeklyPlanID,
+      scheduled_date: "2026-06-10",
+      preserve_manual_edits: false,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: "Retry missing Wednesday only.",
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+            title: "Inserted Wednesday",
+          },
+          idea_bank: [],
+          source_summary: "Retry context.",
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.target_scheduled_date, "2026-06-10");
+  assertEquals(body.daily_card.title, "Inserted Wednesday");
+  assertEquals(beforeDates.includes("2026-06-10"), false);
+  assertEquals(state.dailyCards.length, 7);
+  assertEquals(
+    state.dailyCards.find((card) => card.scheduled_date === "2026-06-10")
+      ?.title,
+    "Inserted Wednesday",
+  );
 });
 
 Deno.test("regenerate_day preserves manual review fields by default", async () => {
@@ -478,6 +1391,17 @@ function regenerateDayBody(): Record<string, unknown> {
   };
 }
 
+function weekDatesForTest(weekStartDate: string): string[] {
+  const dates: string[] = [];
+  const start = new Date(`${weekStartDate}T00:00:00.000Z`);
+  for (let index = 0; index < 7; index += 1) {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    dates.push(date.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
 async function callHandler(
   body: Record<string, unknown>,
   state: Partial<FakeState>,
@@ -525,8 +1449,11 @@ type FakeState = {
   weeklyPlan: Record<string, unknown> | null;
   dailyCards: Record<string, unknown>[];
   updatedDailyCardIDs: string[];
+  upsertedDailyCardDates: string[];
+  dailyCardUpdateMissDates: Set<string>;
   openAIKey?: string;
   allowMockRequest: boolean;
+  lookupFailures: Set<string>;
 };
 
 function fakeAdmin(
@@ -541,8 +1468,11 @@ function fakeAdmin(
     weeklyPlan: state.weeklyPlan ?? null,
     dailyCards: state.dailyCards ?? [],
     updatedDailyCardIDs: state.updatedDailyCardIDs ?? [],
+    upsertedDailyCardDates: state.upsertedDailyCardDates ?? [],
+    dailyCardUpdateMissDates: state.dailyCardUpdateMissDates ?? new Set(),
     openAIKey: state.openAIKey,
     allowMockRequest: state.allowMockRequest ?? false,
+    lookupFailures: state.lookupFailures ?? new Set(),
   };
   return {
     from(table: string) {
@@ -650,6 +1580,15 @@ class FakeQuery {
   }
 
   private resolve(): { data: unknown; error: null } {
+    if (
+      this.operation === "select" && this.state.lookupFailures.has(this.table)
+    ) {
+      return {
+        data: null,
+        error: { message: `${this.table} forced lookup failure` } as never,
+      };
+    }
+
     if (this.operation !== "select") {
       if (
         this.table === "weekly_generation_runs" &&
@@ -669,6 +1608,13 @@ class FakeQuery {
         );
       }
       if (this.table === "daily_cards" && this.operation === "update") {
+        if (
+          this.state.dailyCardUpdateMissDates.has(
+            String(this.filters.scheduled_date),
+          )
+        ) {
+          return { data: null, error: null };
+        }
         const card = this.state.dailyCards.find((candidate) =>
           candidate.id === this.filters.id &&
           candidate.scheduled_date === this.filters.scheduled_date
@@ -680,6 +1626,27 @@ class FakeQuery {
         this.state.updatedDailyCardIDs.push(String(card.id));
         return {
           data: { id: card.id, scheduled_date: card.scheduled_date },
+          error: null,
+        };
+      }
+      if (
+        this.table === "daily_cards" &&
+        (this.operation === "insert" || this.operation === "upsert")
+      ) {
+        const values = this.values as Record<string, unknown>;
+        const scheduledDate = String(values.scheduled_date);
+        this.state.upsertedDailyCardDates.push(scheduledDate);
+        const existing = this.state.dailyCards.find((candidate) =>
+          candidate.weekly_plan_id === values.weekly_plan_id &&
+          candidate.scheduled_date === values.scheduled_date
+        );
+        if (existing) {
+          Object.assign(existing, values);
+        } else {
+          this.state.dailyCards.push(values);
+        }
+        return {
+          data: { id: values.id, scheduled_date: values.scheduled_date },
           error: null,
         };
       }
@@ -726,6 +1693,21 @@ class FakeQuery {
       case "weekly_plans":
         if (this.filters.id === weeklyPlanID) {
           return { data: this.state.weeklyPlan, error: null };
+        }
+        if (
+          this.state.weeklyPlan &&
+          this.filters.creator_id === this.state.weeklyPlan.creator_id &&
+          this.filters.week_start_date === this.state.weeklyPlan.week_start_date
+        ) {
+          const statuses = Array.isArray(this.filters.status)
+            ? this.filters.status
+            : [this.filters.status];
+          if (
+            statuses.includes(this.state.weeklyPlan.status) ||
+            statuses.includes(undefined)
+          ) {
+            return { data: [this.state.weeklyPlan], error: null };
+          }
         }
         return {
           data: this.state.publishedWeekExists &&
@@ -828,21 +1810,7 @@ class FakeQuery {
 }
 
 function dayGenerationState(): FakeState {
-  const input = {
-    creator_id: creatorID,
-    week_start_date: "2026-06-08",
-    creator_profile: null,
-    weekly_setup: null,
-    confirmed_references: [],
-    reference_extractions: [],
-    recent_archive: [],
-    idea_bank: [],
-    patterns: [],
-    trends: [],
-    audio_options: [],
-    brand_briefs: [],
-    key_moments: [],
-  };
+  const input = generationInputSnapshot();
   const cards = makeMockGeneratedWeek(input).daily_cards.map((card, index) => ({
     ...card,
     id: dailyCardIDs[index],
@@ -850,8 +1818,28 @@ function dayGenerationState(): FakeState {
     creator_id: creatorID,
     weekly_plan_id: weeklyPlanID,
     status: "draft",
-    backup_story: { line: card.backup_story },
-    backup_caption_only: { line: card.backup_caption_only },
+    post_instructions: {
+      instructions: card.post_instructions,
+      audio_option_notes: card.audio_option_notes,
+      format: card.format,
+      primary_surface: card.primary_surface,
+      duration_seconds: card.duration_seconds,
+      hook: card.hook,
+      weekly_brief_anchor: card.weekly_brief_anchor,
+      brief_alignment: card.brief_alignment,
+      brief_context_tags: card.brief_context_tags,
+      save_share_reason: card.save_share_reason,
+      shot_timeline: card.shot_timeline,
+      voiceover_timeline: card.voiceover_timeline,
+      silent_version_timeline: card.silent_version_timeline,
+      on_screen_text_timeline: card.on_screen_text_timeline,
+      caption_backup_detail: card.caption_backup_detail,
+    },
+    backup_story: { line: card.backup_story, detail: card.backup_story_detail },
+    backup_caption_only: {
+      line: card.backup_caption_only,
+      detail: card.caption_backup_detail,
+    },
   }));
   return {
     memberRole: "owner",
@@ -870,8 +1858,29 @@ function dayGenerationState(): FakeState {
     },
     dailyCards: cards,
     updatedDailyCardIDs: [],
+    upsertedDailyCardDates: [],
+    dailyCardUpdateMissDates: new Set(),
     openAIKey: "openai-key",
     allowMockRequest: false,
+    lookupFailures: new Set(),
+  };
+}
+
+function generationInputSnapshot(): GenerationInputSnapshot {
+  return {
+    creator_id: creatorID,
+    week_start_date: "2026-06-08",
+    creator_profile: null,
+    weekly_setup: null,
+    confirmed_references: [],
+    reference_extractions: [],
+    recent_archive: [],
+    idea_bank: [],
+    patterns: [],
+    trends: [],
+    audio_options: [],
+    brand_briefs: [],
+    key_moments: [],
   };
 }
 
@@ -886,6 +1895,13 @@ function assertEquals<T>(actual: T, expected: T, message?: string): void {
         `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
     );
   }
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`Expected object, got ${JSON.stringify(value)}`);
+  }
+  return value as Record<string, unknown>;
 }
 
 function assertArrayContainsObject(

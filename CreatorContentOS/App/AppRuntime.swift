@@ -138,6 +138,7 @@ private extension WeeklyPlan {
         readinessLine: "Loading",
         isSoftLocked: false,
         days: [],
+        weeklyBriefText: "",
         setupSections: []
     )
 }
@@ -167,16 +168,29 @@ private extension CreatorProfileSummary {
 }
 
 private extension PairedDeviceSession {
-    static func debugEnvironmentSession(environment: [String: String] = ProcessInfo.processInfo.environment) -> PairedDeviceSession? {
+    static func debugEnvironmentSession(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        bundle: Bundle = .main
+    ) -> PairedDeviceSession? {
+        func value(_ key: String) -> String? {
+            if let environmentValue = environment[key]?.nilIfBlank {
+                return environmentValue
+            }
+            guard let bundleValue = bundle.object(forInfoDictionaryKey: key) as? String else {
+                return nil
+            }
+            return bundleValue.nilIfBlank?.hasPrefix("$(") == true ? nil : bundleValue.nilIfBlank
+        }
+
         guard
-            let rawURL = environment["MCO_SUPABASE_URL"],
+            let rawURL = value("MCO_SUPABASE_URL"),
             let projectURL = URL(string: rawURL),
-            let publishableKey = environment["MCO_SUPABASE_PUBLISHABLE_KEY"]?.nilIfBlank,
-            let workspaceID = UUID(uuidString: environment["MCO_DEBUG_PAIRED_WORKSPACE_ID"] ?? ""),
-            let creatorID = UUID(uuidString: environment["MCO_DEBUG_PAIRED_CREATOR_ID"] ?? ""),
-            let memberID = UUID(uuidString: environment["MCO_DEBUG_PAIRED_MEMBER_ID"] ?? ""),
-            let deviceInstallationID = UUID(uuidString: environment["MCO_DEBUG_PAIRED_DEVICE_INSTALLATION_ID"] ?? ""),
-            let deviceToken = environment["MCO_DEBUG_PAIRED_DEVICE_TOKEN"]?.nilIfBlank
+            let publishableKey = value("MCO_SUPABASE_PUBLISHABLE_KEY"),
+            let workspaceID = UUID(uuidString: value("MCO_DEBUG_PAIRED_WORKSPACE_ID") ?? ""),
+            let creatorID = UUID(uuidString: value("MCO_DEBUG_PAIRED_CREATOR_ID") ?? ""),
+            let memberID = UUID(uuidString: value("MCO_DEBUG_PAIRED_MEMBER_ID") ?? ""),
+            let deviceInstallationID = UUID(uuidString: value("MCO_DEBUG_PAIRED_DEVICE_INSTALLATION_ID") ?? ""),
+            let deviceToken = value("MCO_DEBUG_PAIRED_DEVICE_TOKEN")
         else {
             return nil
         }
@@ -189,9 +203,9 @@ private extension PairedDeviceSession {
             memberID: memberID,
             deviceInstallationID: deviceInstallationID,
             deviceToken: deviceToken,
-            workspaceName: environment["MCO_DEBUG_PAIRED_WORKSPACE_NAME"]?.nilIfBlank ?? "Local Workspace",
-            creatorDisplayName: environment["MCO_DEBUG_PAIRED_CREATOR_DISPLAY_NAME"]?.nilIfBlank ?? "Creator",
-            memberRole: environment["MCO_DEBUG_PAIRED_MEMBER_ROLE"]?.nilIfBlank ?? "owner",
+            workspaceName: value("MCO_DEBUG_PAIRED_WORKSPACE_NAME") ?? "Local Workspace",
+            creatorDisplayName: value("MCO_DEBUG_PAIRED_CREATOR_DISPLAY_NAME") ?? "Creator",
+            memberRole: value("MCO_DEBUG_PAIRED_MEMBER_ROLE") ?? "owner",
             pairedAt: Date()
         )
     }

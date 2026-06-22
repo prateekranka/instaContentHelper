@@ -49,21 +49,50 @@ export type GeneratedScene = {
   symbol: string;
 };
 
+export type GeneratedTimelineItem = {
+  timestamp: string;
+  detail: string;
+};
+
+export type GeneratedVoiceoverTimelineItem = {
+  timestamp: string;
+  video_portion: string;
+  voiceover: string;
+};
+
+export type GeneratedOnScreenTextTimelineItem = {
+  timestamp: string;
+  text: string;
+  placement: string;
+};
+
 export type GeneratedDailyCard = {
   id?: string;
   scheduled_date: string;
+  format: "Reel" | "Post" | "Story";
+  primary_surface: string;
+  duration_seconds: number;
   title: string;
+  hook: string;
+  weekly_brief_anchor: string;
+  brief_alignment: string;
+  brief_context_tags: string[];
   why_today: string;
   growth_job: string;
+  save_share_reason: string;
   content_pillar: string;
   shootability: string;
   estimated_shoot_minutes: number;
   energy_required: string;
   language_mode: string;
   scene_list: GeneratedScene[];
+  shot_timeline: GeneratedTimelineItem[];
   script: string;
+  voiceover_timeline: GeneratedVoiceoverTimelineItem[];
   no_voiceover_version: string;
+  silent_version_timeline: GeneratedTimelineItem[];
   on_screen_text: string[];
+  on_screen_text_timeline: GeneratedOnScreenTextTimelineItem[];
   caption: string;
   cta: string;
   hashtags: string[];
@@ -71,7 +100,9 @@ export type GeneratedDailyCard = {
   post_instructions: string;
   brand_event_notes: string;
   backup_story: string;
+  backup_story_detail: GeneratedTimelineItem[];
   backup_caption_only: string;
+  caption_backup_detail: string;
   audio_option_notes: string;
   creator_fit_score: number;
   risk_notes: string[];
@@ -270,10 +301,12 @@ export function buildPromptMessages(input: GenerationInputSnapshot): {
   system: string;
   user: string;
 } {
+  const generationGuidance = buildGenerationGuidance(input);
   return {
     system: [
       "You generate Creator Content OS weekly content as strict JSON.",
       "Use only the provided creator profile, weekly setup, confirmed references and extractions, brand obligations, key moments, archive feedback, and idea bank.",
+      "Apply the generation guidance silently; resolve source conflicts by precedence without asking the admin.",
       "Generate exactly seven daily cards for the requested week.",
       "Prioritize shootability, calm practical tone, and creator safety over trend chasing.",
       "Avoid all no-go topics and surface assumptions or risks instead of inventing facts.",
@@ -281,8 +314,9 @@ export function buildPromptMessages(input: GenerationInputSnapshot): {
     user: JSON.stringify({
       task: "Generate one draft weekly plan for review before publishing.",
       required_output:
-        "JSON only. Match the supplied contract exactly. Do not return idea stubs.",
+        "JSON only. Match the supplied contract exactly. Required string fields must be non-empty; use empty arrays for optional lists. Do not return idea stubs.",
       required_contract: generatedWeekOutputContract(input.week_start_date),
+      generation_guidance: generationGuidance,
       input,
     }),
   };
@@ -324,7 +358,9 @@ export function buildDeepSeekChatRequest(
         content: [
           messages.user,
           "Return one valid JSON object only. Do not wrap the JSON in Markdown.",
-          "Every daily_cards item must include scheduled_date, title, why_today, growth_job, content_pillar, shootability, estimated_shoot_minutes, energy_required, language_mode, scene_list, script, no_voiceover_version, on_screen_text, caption, cta, hashtags, cover_text, post_instructions, brand_event_notes, backup_story, backup_caption_only, audio_option_notes, creator_fit_score, risk_notes, assumptions, source_note, and source_reference_ids.",
+          "Every daily_cards item must include scheduled_date, format, primary_surface, duration_seconds, title, hook, weekly_brief_anchor, brief_alignment, brief_context_tags, why_today, growth_job, save_share_reason, content_pillar, shootability, estimated_shoot_minutes, energy_required, language_mode, scene_list, shot_timeline, script, voiceover_timeline, no_voiceover_version, silent_version_timeline, on_screen_text, on_screen_text_timeline, caption, cta, hashtags, cover_text, post_instructions, brand_event_notes, backup_story, backup_story_detail, backup_caption_only, caption_backup_detail, audio_option_notes, creator_fit_score, risk_notes, assumptions, source_note, and source_reference_ids.",
+          "Every required string field must contain specific non-empty text; do not use empty strings, TBD, placeholders, or null.",
+          "Use timestamp ranges like 0:00-0:03 in shot_timeline, voiceover_timeline, on_screen_text_timeline, silent_version_timeline, and backup_story_detail.",
           "Never use day_of_week instead of scheduled_date.",
         ].join("\n"),
       },
@@ -342,10 +378,12 @@ function buildDayPromptMessages(
   scheduledDate: string,
   dayIndex: number,
 ): { system: string; user: string } {
+  const generationGuidance = buildGenerationGuidance(input, dayIndex);
   return {
     system: [
       "You generate Creator Content OS daily content as strict JSON.",
       "Use only the provided creator profile, weekly setup, confirmed references and extractions, brand obligations, key moments, archive feedback, and idea bank.",
+      "Apply the generation guidance silently; resolve source conflicts by precedence without asking the admin.",
       "Generate exactly one daily card for the requested scheduled_date.",
       "Prioritize shootability, calm practical tone, and creator safety over trend chasing.",
       "Avoid all no-go topics and surface assumptions or risks instead of inventing facts.",
@@ -354,19 +392,140 @@ function buildDayPromptMessages(
       task:
         "Generate one draft daily card that will be combined into a seven-day weekly plan.",
       required_output:
-        "JSON only. Match the supplied contract exactly. Do not return markdown.",
+        "JSON only. Match the supplied contract exactly. Required string fields must be non-empty; use empty arrays for optional lists. Do not return markdown.",
       target: {
         scheduled_date: scheduledDate,
         day_index: dayIndex + 1,
         week_start_date: input.week_start_date,
+        day_intent: generationGuidance.day_specific_intent,
       },
       required_contract: generatedDayOutputContract(scheduledDate),
+      generation_guidance: generationGuidance,
       input,
     }),
   };
 }
 
-function buildOpenAIDayResponsesRequest(
+function buildGenerationGuidance(
+  input: GenerationInputSnapshot,
+  dayIndex?: number,
+): Record<string, unknown> {
+  const dayIntents = [
+    "Gym reset: re-enter the routine simply and make the weekly brief's current location visible if relevant.",
+    "Lower-body strength: one practical training detail, not race recovery unless the weekly brief asks for it.",
+    "Mobility: keep it useful, light, and distinct from walk/recovery content.",
+    "Upper-body strength: a different training angle with easy shoot requirements.",
+    "Core or conditioning: controlled effort, creator-safe pacing, and clear takeaway.",
+    "Home or family rhythm: recovery only if supported by the weekly brief, otherwise routine/family logistics.",
+    "Planning, reflection, or podcast: use podcast/admin planning only when the weekly brief supports it.",
+  ];
+
+  return {
+    precedence: [
+      "Weekly brief and weekly setup notes win for this week's situational facts, including current city, travel, training status, energy, events, and podcast/admin focus.",
+      "Creator profile wins for stable identity, tone, positioning, boundaries, no-go topics, and recurring voice.",
+      "Confirmed references, reference extractions, and idea bank are optional inspiration; adapt only when they fit the weekly brief.",
+      "Archive, prior weeks, older patterns, and past feedback are lowest priority and must not override this week's brief.",
+    ],
+    conflict_resolution: [
+      "Silently exclude stale lower-priority context when it conflicts with the weekly brief; do not ask the admin to choose.",
+      "When uncertain, choose the fact from the weekly brief/setup notes and mention only real output risks, not internal source conflicts.",
+    ],
+    inferred_exclusions: inferStaleContextExclusions(input),
+    weekly_diversity: {
+      avoid_repetition:
+        "Do not repeat the same walk, gentle recovery, or low-effort card across the week unless the weekly brief explicitly asks for that repetition.",
+      preferred_arc: dayIntents,
+    },
+    instagram_defaults: [
+      "Plan each day as Instagram-first content. Default to format Reel and primary_surface Instagram Reels for growth unless the weekly brief explicitly requests Post or Story.",
+      "State the planned format as Reel, Post, or Story. For Reels, include duration_seconds and timestamped production guidance for shots, voiceover, on-screen text, and the silent version.",
+      "Make every scene and timeline item specific enough to shoot: location/detail, action, camera framing, useful fitness cue, and the exact video portion the voiceover belongs to.",
+      "When the weekly brief says Bombay, Mumbai, India, travel, gym return, or podcast, make that current context visible where relevant and let it outrank stale stored setup or archive context.",
+      "Avoid weight-loss, transformation, punishment, extreme intensity, medical, or guaranteed outcome claims.",
+      "Do not output placeholder text, TBD, lorem ipsum, generic assumptions, or fabricated details. If needed details are absent, surface the limitation in risk_notes or assumptions using the provided facts only.",
+    ],
+    brief_evidence_rubric: [
+      "Every daily card must prove it used the current weekly brief, not just evergreen fitness advice.",
+      "Set weekly_brief_anchor to one concrete fact from the weekly setup/brief, such as current city, gym-return routine, family rhythm, brand/collab note, podcast ask, travel status, or explicit avoid list.",
+      "Set brief_alignment to one sentence explaining how this specific Reel/Post/Story uses that anchor today.",
+      "Set brief_context_tags to 1-4 exact short phrases from the weekly brief/setup notes. Prefer phrases like Bombay, back to gym, podcast, family rhythm, or brand/collab when those appear.",
+      "At least five of the seven cards should use the strongest current-week anchors, and the final weekly arc must not drop unusual brief details such as podcast asks or city changes.",
+    ],
+    day_specific_intent: typeof dayIndex === "number"
+      ? dayIntents[dayIndex] ?? `Day ${dayIndex + 1}: keep this distinct.`
+      : undefined,
+  };
+}
+
+function inferStaleContextExclusions(input: GenerationInputSnapshot): string[] {
+  const setupText = weeklySetupText(input.weekly_setup).toLowerCase();
+  const exclusions: string[] = [];
+
+  if (/\b(bombay|mumbai)\b/.test(setupText)) {
+    exclusions.push(
+      "Exclude New Jersey as current location unless the weekly brief also explicitly says New Jersey for this week.",
+    );
+  }
+  if (
+    /\b(back to gym|back in the gym|return(?:ing)? to gym|gym reset|gym)\b/
+      .test(setupText)
+  ) {
+    exclusions.push(
+      "Exclude HYROX, race week, and race recovery as the active training frame unless the weekly brief explicitly includes them.",
+    );
+  }
+  if (/\bpodcast\b/.test(setupText)) {
+    exclusions.push(
+      "Prefer podcast planning/reflection when relevant; do not replace it with older race-recovery context.",
+    );
+  }
+
+  return exclusions;
+}
+
+function weeklySetupText(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(weeklySetupText).join(" ");
+  }
+  if (!isRecord(value)) {
+    return "";
+  }
+  return Object.values(value).map(weeklySetupText).join(" ");
+}
+
+function weeklyBriefContextTags(input: GenerationInputSnapshot): string[] {
+  const setupText = weeklySetupText(input.weekly_setup).toLowerCase();
+  const tags: string[] = [];
+
+  if (/\b(bombay|mumbai)\b/.test(setupText)) {
+    tags.push("Bombay");
+  }
+  if (
+    /\b(back to gym|back in the gym|gym|strength|training)\b/.test(setupText)
+  ) {
+    tags.push("back to gym");
+  }
+  if (/\bregular life|routine|sustainable\b/.test(setupText)) {
+    tags.push("regular routine");
+  }
+  if (/\bfamily|home\b/.test(setupText)) {
+    tags.push("family rhythm");
+  }
+  if (/\bbrand|collab|sponsor\b/.test(setupText)) {
+    tags.push("brand/collab");
+  }
+  if (/\bpodcast\b/.test(setupText)) {
+    tags.push("podcast");
+  }
+
+  return tags.length > 0 ? tags.slice(0, 4) : ["weekly routine"];
+}
+
+export function buildOpenAIDayResponsesRequest(
   input: GenerationInputSnapshot,
   model: string,
   scheduledDate: string,
@@ -380,13 +539,18 @@ function buildOpenAIDayResponsesRequest(
       { role: "user", content: messages.user },
     ],
     text: {
-      format: { type: "json_object" },
+      format: {
+        type: "json_schema",
+        name: "creator_daily_generation",
+        strict: true,
+        schema: generatedDayJSONSchema,
+      },
     },
-    max_output_tokens: 5000,
+    max_output_tokens: 12000,
   };
 }
 
-function buildDeepSeekDayChatRequest(
+export function buildDeepSeekDayChatRequest(
   input: GenerationInputSnapshot,
   model: string,
   scheduledDate: string,
@@ -403,7 +567,9 @@ function buildDeepSeekDayChatRequest(
           messages.user,
           "Return one valid JSON object only. Do not wrap the JSON in Markdown.",
           "The top-level object must include strategy_note, warnings, assumptions, daily_card, idea_bank, and source_summary.",
-          "daily_card must include scheduled_date, title, why_today, growth_job, content_pillar, shootability, estimated_shoot_minutes, energy_required, language_mode, scene_list, script, no_voiceover_version, on_screen_text, caption, cta, hashtags, cover_text, post_instructions, brand_event_notes, backup_story, backup_caption_only, audio_option_notes, creator_fit_score, risk_notes, assumptions, source_note, and source_reference_ids.",
+          "daily_card must include scheduled_date, format, primary_surface, duration_seconds, title, hook, weekly_brief_anchor, brief_alignment, brief_context_tags, why_today, growth_job, save_share_reason, content_pillar, shootability, estimated_shoot_minutes, energy_required, language_mode, scene_list, shot_timeline, script, voiceover_timeline, no_voiceover_version, silent_version_timeline, on_screen_text, on_screen_text_timeline, caption, cta, hashtags, cover_text, post_instructions, brand_event_notes, backup_story, backup_story_detail, backup_caption_only, caption_backup_detail, audio_option_notes, creator_fit_score, risk_notes, assumptions, source_note, and source_reference_ids.",
+          "Every required string field must contain specific non-empty text; do not use empty strings, TBD, placeholders, or null.",
+          "Use timestamp ranges like 0:00-0:03 in shot_timeline, voiceover_timeline, on_screen_text_timeline, silent_version_timeline, and backup_story_detail.",
           "Never use day_of_week instead of scheduled_date.",
         ].join("\n"),
       },
@@ -411,7 +577,7 @@ function buildDeepSeekDayChatRequest(
     response_format: { type: "json_object" },
     thinking: { type: "enabled" },
     reasoning_effort: "max",
-    max_tokens: 5000,
+    max_tokens: 12000,
     temperature: 0.2,
   };
 }
@@ -434,18 +600,30 @@ function generatedWeekOutputContract(
       example_daily_card: generatedDailyCardExample(weekStartDate),
       required_fields: [
         "scheduled_date",
+        "format",
+        "primary_surface",
+        "duration_seconds",
         "title",
+        "hook",
+        "weekly_brief_anchor",
+        "brief_alignment",
+        "brief_context_tags",
         "why_today",
         "growth_job",
+        "save_share_reason",
         "content_pillar",
         "shootability",
         "estimated_shoot_minutes",
         "energy_required",
         "language_mode",
         "scene_list",
+        "shot_timeline",
         "script",
+        "voiceover_timeline",
         "no_voiceover_version",
+        "silent_version_timeline",
         "on_screen_text",
+        "on_screen_text_timeline",
         "caption",
         "cta",
         "hashtags",
@@ -453,7 +631,9 @@ function generatedWeekOutputContract(
         "post_instructions",
         "brand_event_notes",
         "backup_story",
+        "backup_story_detail",
         "backup_caption_only",
+        "caption_backup_detail",
         "audio_option_notes",
         "creator_fit_score",
         "risk_notes",
@@ -463,10 +643,34 @@ function generatedWeekOutputContract(
       ],
       field_types: {
         scheduled_date: "YYYY-MM-DD string from scheduled_dates_in_order",
+        format:
+          "Reel, Post, or Story. Default to Reel unless the weekly brief explicitly asks otherwise.",
+        primary_surface:
+          "Instagram surface such as Instagram Reels, Instagram Feed, or Instagram Stories.",
+        duration_seconds:
+          "positive integer; for Reels usually 12-30 seconds unless brief requires otherwise",
+        weekly_brief_anchor:
+          "one concrete fact from the weekly brief/setup notes that this card uses",
+        brief_alignment:
+          "one sentence explaining how this card uses weekly_brief_anchor today",
+        brief_context_tags:
+          "non-empty string array of 1-4 exact short phrases from the weekly brief/setup notes",
         estimated_shoot_minutes: "non-negative integer",
         scene_list:
           "non-empty array of objects with number, title, duration, symbol. duration should be a string such as '5 sec'.",
+        shot_timeline:
+          "non-empty array of { timestamp, detail } using timestamp ranges like 0:00-0:03; detail must say exactly what to shoot.",
+        voiceover_timeline:
+          "non-empty array of { timestamp, video_portion, voiceover } using timestamp ranges like 0:00-0:03.",
         on_screen_text: "non-empty string array",
+        on_screen_text_timeline:
+          "non-empty array of { timestamp, text, placement } using timestamp ranges like 0:00-0:03.",
+        silent_version_timeline:
+          "non-empty array of { timestamp, detail } for the no-voiceover/silent Reel edit.",
+        backup_story_detail:
+          "non-empty array of { timestamp, detail } describing a clickable Story backup with sticker/link/poll/tap target where useful.",
+        caption_backup_detail:
+          "specific text/caption backup guidance, not a placeholder or abbreviated stub",
         hashtags: "non-empty string array without # characters preferred",
         creator_fit_score: "number from 0 to 100",
         risk_notes: "string array; empty array when no risks",
@@ -501,9 +705,9 @@ function generatedDayOutputContract(
       "source_summary",
     ],
     example_output: {
-      strategy_note: "Keep this day low-effort and recovery-first.",
+      strategy_note: "Keep this day practical, specific, and easy to shoot.",
       warnings: [],
-      assumptions: ["Creator is in New Jersey and keeping recovery gentle."],
+      assumptions: ["Creator has no extra shoot support today."],
       daily_card: generatedDailyCardExample(scheduledDate),
       idea_bank: [],
       source_summary: "Used weekly setup and confirmed Inspiration context.",
@@ -513,18 +717,30 @@ function generatedDayOutputContract(
       example_daily_card: generatedDailyCardExample(scheduledDate),
       required_fields: [
         "scheduled_date",
+        "format",
+        "primary_surface",
+        "duration_seconds",
         "title",
+        "hook",
+        "weekly_brief_anchor",
+        "brief_alignment",
+        "brief_context_tags",
         "why_today",
         "growth_job",
+        "save_share_reason",
         "content_pillar",
         "shootability",
         "estimated_shoot_minutes",
         "energy_required",
         "language_mode",
         "scene_list",
+        "shot_timeline",
         "script",
+        "voiceover_timeline",
         "no_voiceover_version",
+        "silent_version_timeline",
         "on_screen_text",
+        "on_screen_text_timeline",
         "caption",
         "cta",
         "hashtags",
@@ -532,7 +748,9 @@ function generatedDayOutputContract(
         "post_instructions",
         "brand_event_notes",
         "backup_story",
+        "backup_story_detail",
         "backup_caption_only",
+        "caption_backup_detail",
         "audio_option_notes",
         "creator_fit_score",
         "risk_notes",
@@ -551,9 +769,19 @@ function generatedDailyCardExample(
 ): Record<string, unknown> {
   return {
     scheduled_date: weekStartDate,
+    format: "Reel",
+    primary_surface: "Instagram Reels",
+    duration_seconds: 15,
     title: "Monday reset without drama",
+    hook: "First day back? Start smaller than your ego wants.",
+    weekly_brief_anchor: "back in Bombay and returning to the gym routine",
+    brief_alignment:
+      "The Reel turns the weekly brief's Bombay gym-return context into a low-pressure Monday reset.",
+    brief_context_tags: ["Bombay", "back to gym", "regular routine"],
     why_today: "A practical start to the week that is easy to shoot.",
     growth_job: "Build consistency with useful, low-drama fitness content.",
+    save_share_reason:
+      "Saveable restart cue for anyone easing back into training after travel or a busy week.",
     content_pillar: "routine",
     shootability: "easy",
     estimated_shoot_minutes: 12,
@@ -567,10 +795,75 @@ function generatedDailyCardExample(
         symbol: "sparkles",
       },
     ],
+    shot_timeline: [
+      {
+        timestamp: "0:00-0:03",
+        detail:
+          "Open on gym shoes by the Bombay doorway, then tilt up to the packed bag.",
+      },
+      {
+        timestamp: "0:03-0:10",
+        detail:
+          "Show one slow mobility rep and one light set; keep framing waist-up and steady.",
+      },
+      {
+        timestamp: "0:10-0:15",
+        detail: "End on towel and water bottle with a relaxed nod to camera.",
+      },
+    ],
     script: "Keep it simple today. One useful detail is enough.",
+    voiceover_timeline: [
+      {
+        timestamp: "0:00-0:03",
+        video_portion: "Gym shoes and packed bag",
+        voiceover: "First day back does not need a dramatic restart.",
+      },
+      {
+        timestamp: "0:03-0:10",
+        video_portion: "Light mobility and controlled set",
+        voiceover:
+          "Pick one cue, move slowly, and leave some energy for tomorrow.",
+      },
+      {
+        timestamp: "0:10-0:15",
+        video_portion: "Water and towel close",
+        voiceover: "Simple is still a plan.",
+      },
+    ],
     no_voiceover_version:
-      "Use three quiet clips with on-screen text and let the caption carry the point.",
+      "Silent Reel version: use the same three clips with readable timed text and let the caption carry the coaching point.",
+    silent_version_timeline: [
+      {
+        timestamp: "0:00-0:03",
+        detail: "Text hook over gym shoes; no talking head needed.",
+      },
+      {
+        timestamp: "0:03-0:10",
+        detail: "Use text labels for the mobility cue and controlled set.",
+      },
+      {
+        timestamp: "0:10-0:15",
+        detail: "End with save prompt on the towel/water close-up.",
+      },
+    ],
     on_screen_text: ["Simple today", "One useful detail"],
+    on_screen_text_timeline: [
+      {
+        timestamp: "0:00-0:03",
+        text: "First day back?",
+        placement: "Upper third",
+      },
+      {
+        timestamp: "0:03-0:10",
+        text: "One useful cue",
+        placement: "Lower third beside movement",
+      },
+      {
+        timestamp: "0:10-0:15",
+        text: "Save this reset",
+        placement: "Center over static close-up",
+      },
+    ],
     caption:
       "Keeping it simple today. One useful detail is enough when the week is full.",
     cta: "Save this for a low-energy training day.",
@@ -578,8 +871,23 @@ function generatedDailyCardExample(
     cover_text: "Simple today",
     post_instructions: "Keep cover text large and readable.",
     brand_event_notes: "",
-    backup_story: "A 10-second story: one clip, one line, done.",
-    backup_caption_only: "Caption-only backup: keeping the routine steady.",
+    backup_story:
+      "Story backup: one clip of the gym bag, one form-cue text sticker, and a tap-to-reply question.",
+    backup_story_detail: [
+      {
+        timestamp: "0:00-0:05",
+        detail:
+          "Post the gym bag clip with text sticker: 'Back to routine, keeping it light.'",
+      },
+      {
+        timestamp: "0:05-0:10",
+        detail: "Add question sticker: 'What helps you restart after travel?'",
+      },
+    ],
+    backup_caption_only:
+      "Text/caption backup: keeping the routine steady with one small reset cue today.",
+    caption_backup_detail:
+      "If no video is usable, publish a caption-only note about restarting with one light cue and ask followers what helps them restart after travel.",
     audio_option_notes: "Use calm audio only if it fits.",
     creator_fit_score: 88,
     risk_notes: [],
@@ -1108,7 +1416,14 @@ export function makeMockGeneratedWeek(
       "Use Hinglish only when it sounds natural.",
     ],
     daily_cards: dates.map((date, index) =>
-      mockCard(date, index, firstIdea, referenceNote, sourceReferenceIDs)
+      mockCard(
+        input,
+        date,
+        index,
+        firstIdea,
+        referenceNote,
+        sourceReferenceIDs,
+      )
     ),
     idea_bank: [
       {
@@ -1157,31 +1472,32 @@ export function isUUID(value: string | undefined): value is string {
 }
 
 function mockCard(
+  input: GenerationInputSnapshot,
   scheduledDate: string,
   index: number,
   firstIdea: string,
   referenceNote: string,
   sourceReferenceIDs: string[],
 ): GeneratedDailyCard {
-  const weekdayTitles = [
-    "Monday reset without drama",
-    "Tuesday steady training note",
-    "Wednesday fuel and recovery check",
-    "Thursday simple kit detail",
-    "Friday calm race-week reminder",
-    "Saturday family walk moment",
-    "Sunday caption-only backup",
-  ];
-  const title = weekdayTitles[index] ?? `Day ${index + 1} routine`;
+  const plan = fallbackDayPlan(input, index);
+  const title = plan.title;
   const shootability = index === 6 ? "backup" : "easy";
 
   return {
     scheduled_date: scheduledDate,
+    format: "Reel",
+    primary_surface: "Instagram Reels",
+    duration_seconds: 18,
     title,
-    why_today:
+    hook: plan.hook,
+    weekly_brief_anchor: plan.weekly_brief_anchor,
+    brief_alignment: plan.brief_alignment,
+    brief_context_tags: plan.brief_context_tags,
+    why_today: plan.why_today ||
       `This keeps ${firstIdea.toLowerCase()} visible without asking for a heavy shoot.`,
-    growth_job: "Build consistency with practical, low-drama fitness content.",
-    content_pillar: index === 5 ? "family" : "routine",
+    growth_job: plan.growth_job,
+    save_share_reason: plan.save_share_reason,
+    content_pillar: plan.content_pillar,
     shootability,
     estimated_shoot_minutes: index === 6 ? 6 : 12,
     energy_required: index === 6 ? "low" : "medium",
@@ -1189,47 +1505,450 @@ function mockCard(
     scene_list: [
       {
         number: 1,
-        title: "One honest opening detail",
+        title: plan.scene_titles[0],
         duration: "3 sec",
         symbol: "sparkles",
       },
       {
         number: 2,
-        title,
+        title: plan.scene_titles[1],
         duration: "5 sec",
         symbol: "figure.run",
       },
       {
         number: 3,
-        title: "One useful closing line",
+        title: plan.scene_titles[2],
         duration: "4 sec",
         symbol: "text.quote",
       },
     ],
-    script:
-      "Keep it simple today. One useful detail, one steady habit, no overthinking.",
-    no_voiceover_version:
-      "Use three quiet clips with on-screen text and the caption carrying the point.",
-    on_screen_text: ["Simple today", "One useful detail", "Done without drama"],
-    caption:
-      "Keeping it simple today. One useful detail is enough when the week is full.",
-    cta: "Save this for your low-energy training day.",
-    hashtags: ["fitnessover60", "routine", "steady"],
+    shot_timeline: [
+      {
+        timestamp: "0:00-0:03",
+        detail: `${
+          plan.scene_titles[0]
+        }: open with the clearest Bombay/home context detail and a steady vertical frame.`,
+      },
+      {
+        timestamp: "0:03-0:12",
+        detail: `${
+          plan.scene_titles[1]
+        }: show the practical fitness cue slowly enough that viewers can copy the idea safely.`,
+      },
+      {
+        timestamp: "0:12-0:18",
+        detail: `${
+          plan.scene_titles[2]
+        }: finish with a calm close-up, cover-safe framing, and no extreme claim.`,
+      },
+    ],
+    script: plan.script,
+    voiceover_timeline: [
+      {
+        timestamp: "0:00-0:03",
+        video_portion: plan.scene_titles[0],
+        voiceover: plan.voiceover_lines[0],
+      },
+      {
+        timestamp: "0:03-0:12",
+        video_portion: plan.scene_titles[1],
+        voiceover: plan.voiceover_lines[1],
+      },
+      {
+        timestamp: "0:12-0:18",
+        video_portion: plan.scene_titles[2],
+        voiceover: plan.voiceover_lines[2],
+      },
+    ],
+    no_voiceover_version: plan.no_voiceover_version,
+    silent_version_timeline: [
+      {
+        timestamp: "0:00-0:03",
+        detail: `Silent edit opens with text hook: ${plan.on_screen_text[0]}.`,
+      },
+      {
+        timestamp: "0:03-0:12",
+        detail: `Keep movement audio-free and use the cue text: ${
+          plan.on_screen_text[1]
+        }.`,
+      },
+      {
+        timestamp: "0:12-0:18",
+        detail: `End with a save/share prompt over the final clip: ${
+          plan.on_screen_text.at(-1) ?? title
+        }.`,
+      },
+    ],
+    on_screen_text: plan.on_screen_text,
+    on_screen_text_timeline: [
+      {
+        timestamp: "0:00-0:03",
+        text: plan.on_screen_text[0],
+        placement: "Upper third with face or object unobstructed",
+      },
+      {
+        timestamp: "0:03-0:12",
+        text: plan.on_screen_text[1],
+        placement: "Lower third beside the movement cue",
+      },
+      {
+        timestamp: "0:12-0:18",
+        text: plan.on_screen_text.at(-1) ?? title,
+        placement: "Center over the final steady frame",
+      },
+    ],
+    caption: plan.caption,
+    cta: plan.cta,
+    hashtags: plan.hashtags,
     cover_text: title,
     post_instructions:
       "Use calm audio if available. Keep cover text large and readable.",
     brand_event_notes: "",
-    backup_story: "A 10-second story: one clip, one line, done.",
+    backup_story:
+      "Story backup: one vertical clip, one useful cue sticker, and one tap-to-reply prompt.",
+    backup_story_detail: [
+      {
+        timestamp: "0:00-0:05",
+        detail: `Post ${
+          plan.scene_titles[0].toLowerCase()
+        } with a text sticker summarizing today's cue.`,
+      },
+      {
+        timestamp: "0:05-0:10",
+        detail: `Add a question sticker tied to the Reel cue: ${plan.cta}`,
+      },
+    ],
     backup_caption_only:
-      "Caption-only backup: keeping the routine steady today.",
+      "Text/caption backup: keeping the routine steady today with one practical cue from the planned Reel.",
+    caption_backup_detail:
+      "If the Reel cannot be shot, publish the caption as a text-first update with the same useful cue, no fabricated footage, and a reply question.",
     audio_option_notes:
       "Use a confirmed calm audio option if it fits; otherwise post without audio dependence.",
     creator_fit_score: 88,
     risk_notes: [],
-    assumptions: ["Mock generation used deterministic local context."],
+    assumptions: [],
     source_note: referenceNote,
     source_reference_ids: sourceReferenceIDs,
   };
+}
+
+function fallbackDayPlan(
+  input: GenerationInputSnapshot,
+  index: number,
+): {
+  title: string;
+  hook: string;
+  weekly_brief_anchor: string;
+  brief_alignment: string;
+  brief_context_tags: string[];
+  why_today: string;
+  growth_job: string;
+  save_share_reason: string;
+  content_pillar: string;
+  scene_titles: [string, string, string];
+  script: string;
+  voiceover_lines: [string, string, string];
+  no_voiceover_version: string;
+  on_screen_text: string[];
+  caption: string;
+  cta: string;
+  hashtags: string[];
+} {
+  const setupText = weeklySetupText(input.weekly_setup).toLowerCase();
+  const location = /\b(bombay|mumbai)\b/.test(setupText) ? "Bombay" : "home";
+  const gymFrame = /\b(gym|strength|training|routine|regular life)\b/.test(
+    setupText,
+  );
+  const podcastFrame = /\bpodcast\b/.test(setupText);
+  const contextTags = weeklyBriefContextTags(input);
+  const gymPhrase = gymFrame ? "gym routine" : "routine";
+  const podcastLine = podcastFrame
+    ? " Leave one reflective line open for the podcast conversation."
+    : "";
+  const plans = [
+    {
+      title: `Back in ${location}: light reset day`,
+      hook:
+        `Back in ${location}: restart with a light reset, not a big promise.`,
+      weekly_brief_anchor: gymFrame
+        ? "back to gym"
+        : contextTags[0] ?? "weekly routine",
+      brief_alignment: gymFrame
+        ? "This Reel uses the brief's gym-return context to frame Monday as a practical re-entry day."
+        : "This Reel uses the weekly brief's routine context to keep Monday specific and shootable.",
+      brief_context_tags: contextTags,
+      why_today:
+        `Start the week by showing the return to regular life and a low-pressure ${gymPhrase}.`,
+      growth_job:
+        "Rebuild trust around consistency without making the reset feel intense.",
+      save_share_reason:
+        "Followers can save it as a simple first-day-back gym reset after travel.",
+      content_pillar: "routine",
+      scene_titles: [
+        "Gym bag or shoes",
+        "Light full-body reset",
+        "Done is enough",
+      ] as [string, string, string],
+      script:
+        `First day back in routine. Keep it light: mobility, a few easy sets, and one small win. The point is to restart, not prove anything.${podcastLine}`,
+      voiceover_lines: [
+        `Back in ${location}, and today is just about restarting.`,
+        "Keep the first session light: mobility, a few easy sets, and one clean cue.",
+        "The win is getting the rhythm back without overdoing it.",
+      ] as [string, string, string],
+      no_voiceover_version:
+        "Silent Reel version: show shoes or gym bag, one light movement, and a calm post-workout clip with timed text overlays.",
+      on_screen_text: [
+        "Back to routine",
+        "Light reset",
+        "Restart, don't overdo",
+      ],
+      caption:
+        `Back in ${location} and easing into the week. Today is a light reset: move a little, get the rhythm back, and leave the big promises out of it.`,
+      cta: "Save this for your first day back after travel.",
+      hashtags: ["backtoroutine", "gymroutine", "practicalwellness"],
+    },
+    {
+      title: "Lower-body day: one form cue",
+      hook: "One lower-body cue before you add more load.",
+      weekly_brief_anchor: gymFrame ? "gym routine" : "lower-body routine",
+      brief_alignment:
+        "This Reel turns the weekly routine into one safe lower-body cue viewers can copy.",
+      brief_context_tags: contextTags,
+      why_today:
+        "The second day can carry one specific strength detail without becoming a full workout tutorial.",
+      growth_job:
+        "Make training advice practical enough for busy women to use immediately.",
+      save_share_reason:
+        "A saveable form cue viewers can try in their next lower-body session.",
+      content_pillar: "training",
+      scene_titles: [
+        "Set up the movement",
+        "Show the cue",
+        "Quick reminder",
+      ] as [string, string, string],
+      script:
+        "Lower-body day, but keep the focus on one cue: slow the first rep down and feel where the work is happening. Better control before heavier weight.",
+      voiceover_lines: [
+        "Lower-body day does not need ten tips.",
+        "Slow the first rep down and notice where the work is happening.",
+        "Better control comes before adding more load.",
+      ] as [string, string, string],
+      no_voiceover_version:
+        "Silent Reel version: film one setup shot, one controlled rep, and one close-up of the cue as timed text.",
+      on_screen_text: [
+        "Lower body day",
+        "Slow first rep",
+        "Control before load",
+      ],
+      caption:
+        "A simple lower-body cue for the week: slow down the first rep. It tells you more than adding weight too quickly.",
+      cta: "Try this cue in your next strength session.",
+      hashtags: ["strengthtraining", "gymroutine", "formcue"],
+    },
+    {
+      title: "Midweek mobility: 5-minute reset",
+      hook: "Five minutes to feel less stuck before the next session.",
+      weekly_brief_anchor: gymFrame
+        ? "sustainable wellness groove"
+        : "mobility",
+      brief_alignment:
+        "This Reel uses the weekly brief's sustainable-routine frame to make midweek mobility practical.",
+      brief_context_tags: contextTags,
+      why_today:
+        "A mobility day creates contrast between strength days and keeps the week sustainable.",
+      growth_job:
+        "Position recovery as part of regular training, not a fallback.",
+      save_share_reason:
+        "A short mobility reset viewers can save for a stiff midweek day.",
+      content_pillar: "mobility",
+      scene_titles: [
+        "Stiff spot check",
+        "Three gentle moves",
+        "Walk out easier",
+      ] as [string, string, string],
+      script:
+        "Midweek check-in: five minutes for hips, shoulders, and ankles. Nothing fancy, just enough to feel less stuck before the next session.",
+      voiceover_lines: [
+        "Midweek is a good time to check what feels stiff.",
+        "Give hips, shoulders, and ankles a few quiet minutes.",
+        "It is not fancy; it just makes the next session feel better.",
+      ] as [string, string, string],
+      no_voiceover_version:
+        "Silent Reel version: use three short movement clips with timed labels for hips, shoulders, and ankles.",
+      on_screen_text: ["5-minute mobility", "Hips", "Shoulders", "Ankles"],
+      caption:
+        "Midweek mobility does not need to be a production. Five quiet minutes can make the next workout feel better.",
+      cta: "Save this for an active recovery day.",
+      hashtags: ["mobility", "activerecovery", "movewell"],
+    },
+    {
+      title: "Upper-body strength: one useful pull",
+      hook: "One pulling cue that makes the set cleaner.",
+      weekly_brief_anchor: gymFrame
+        ? "back to the gym routine"
+        : "upper-body routine",
+      brief_alignment:
+        "This Reel keeps the gym week moving with a distinct upper-body cue from the brief's routine arc.",
+      brief_context_tags: contextTags,
+      why_today:
+        "A beginner-friendly upper-body cue gives the week a clear training progression.",
+      growth_job:
+        "Offer strength content that feels doable and technically useful.",
+      save_share_reason:
+        "A simple upper-body cue viewers can save before their next pull day.",
+      content_pillar: "training",
+      scene_titles: [
+        "Pick the movement",
+        "Pull with control",
+        "Posture note",
+      ] as [string, string, string],
+      script:
+        "Upper-body day: choose one pulling movement and keep it clean. Pull toward the hip, pause for a second, and avoid rushing the set.",
+      voiceover_lines: [
+        "For upper body today, keep one pulling movement clean.",
+        "Pull toward the hip and pause for a second before you reset.",
+        "That small pause can make the set more useful.",
+      ] as [string, string, string],
+      no_voiceover_version:
+        "Silent Reel version: film the dumbbell or cable setup, one controlled rep, and a timed text cue over the pause.",
+      on_screen_text: [
+        "Upper-body day",
+        "Pull to the hip",
+        "Pause, then reset",
+      ],
+      caption:
+        "One upper-body reminder I like: don't rush the pull. A tiny pause can make the whole set more useful.",
+      cta: "Send this to someone restarting strength training.",
+      hashtags: ["upperbodyworkout", "strengthcue", "fitafter40"],
+    },
+    {
+      title: "Short core finisher, not a punishment",
+      hook: "Core work can be short without becoming punishment.",
+      weekly_brief_anchor: gymFrame
+        ? "Friday core and conditioning"
+        : "busy-day routine",
+      brief_alignment:
+        "This Reel uses the brief's short, doable Friday conditioning idea without pushing extreme intensity.",
+      brief_context_tags: contextTags,
+      why_today:
+        "Friday needs a contained effort that fits a busy routine and avoids extreme framing.",
+      growth_job: "Separate core training from guilt-based fitness language.",
+      save_share_reason:
+        "A repeatable core framing viewers can save for busy gym days.",
+      content_pillar: "training",
+      scene_titles: [
+        "Set a short timer",
+        "One core move",
+        "Stop while form is good",
+      ] as [string, string, string],
+      script:
+        "Core today, but short and controlled. Pick one move, set a small timer, and stop before your form starts falling apart.",
+      voiceover_lines: [
+        "Core today, but keep it short and controlled.",
+        "Pick one move and stop before your form starts falling apart.",
+        "Useful beats punishing every time.",
+      ] as [string, string, string],
+      no_voiceover_version:
+        "Silent Reel version: show timer, one clean core movement, and a final water/rest clip with timed text.",
+      on_screen_text: ["Short core", "Good form only", "Stop before sloppy"],
+      caption:
+        "Core does not have to mean punishment. Keep it short, controlled, and useful enough to repeat next week.",
+      cta: "Save this for a busy gym day.",
+      hashtags: ["coreworkout", "busyroutine", "sustainablefitness"],
+    },
+    {
+      title: "Saturday recovery at home",
+      hook: "Recovery can fit inside normal Saturday life.",
+      weekly_brief_anchor: /family|home/.test(setupText)
+        ? "family rhythm"
+        : contextTags[0] ?? "weekend routine",
+      brief_alignment: /family|home/.test(setupText)
+        ? "This Reel turns the brief's family context into a small wellness rhythm rather than staged family content."
+        : "This Reel uses the weekly brief's weekend rhythm to keep Saturday light and realistic.",
+      brief_context_tags: contextTags,
+      why_today:
+        "The weekend should show regular life and family rhythm without staging family content.",
+      growth_job:
+        "Make recovery feel like part of life, not a separate wellness performance.",
+      save_share_reason:
+        "A realistic recovery reminder viewers can share with someone who overcomplicates rest days.",
+      content_pillar: "family",
+      scene_titles: ["Home rhythm", "One recovery habit", "Keep it real"] as [
+        string,
+        string,
+        string,
+      ],
+      script:
+        "Saturday is for keeping the body moving without making it a project: a walk, a stretch, or ten minutes of foam rolling between normal home things.",
+      voiceover_lines: [
+        "Saturday recovery can happen inside regular home life.",
+        "Choose a walk, a stretch, or ten minutes with the foam roller.",
+        "It counts even when it is not a full production.",
+      ] as [string, string, string],
+      no_voiceover_version:
+        "Silent Reel version: use home detail, recovery tool or walking shoes, and one quiet reset clip with timed text.",
+      on_screen_text: ["Weekend recovery", "No big setup", "Keep it real"],
+      caption:
+        "Saturday recovery can be very normal: a walk, a stretch, a little reset between everything else happening at home.",
+      cta: "What is your easiest weekend recovery habit?",
+      hashtags: ["weekendrecovery", "familyroutine", "realwellness"],
+    },
+    {
+      title: podcastFrame
+        ? "Sunday planning + podcast reflection"
+        : "Sunday planning for next week",
+      hook: podcastFrame
+        ? "A Sunday reset plus one podcast thought."
+        : "Make Monday easier before Monday arrives.",
+      weekly_brief_anchor: podcastFrame
+        ? "podcast"
+        : contextTags[0] ?? "Sunday prep",
+      brief_alignment: podcastFrame
+        ? "This Reel uses the brief's podcast ask as a reflective Sunday planning prompt."
+        : "This Reel uses the weekly brief's planning frame to make Sunday prep useful.",
+      brief_context_tags: contextTags,
+      why_today:
+        "Sunday closes the arc by turning the week into a practical plan for the next one.",
+      growth_job:
+        "Invite reflective engagement while keeping the content easy to film.",
+      save_share_reason:
+        "A planning checklist viewers can save before the next week starts.",
+      content_pillar: "reflection",
+      scene_titles: [
+        "Open notes",
+        "Pick next week's anchors",
+        "One reflection",
+      ] as [string, string, string],
+      script: podcastFrame
+        ? "Sunday planning: gym bag, meals, calendar, and one thought for the podcast question: consistency matters because real life keeps changing."
+        : "Sunday planning: gym bag, meals, calendar, and one small anchor for the week ahead. Make the next restart easier.",
+      voiceover_lines: podcastFrame
+        ? [
+          "Sunday planning is just a few simple anchors.",
+          "Gym bag, meals, calendar, and one thought for the podcast.",
+          "Consistency matters because real life keeps changing.",
+        ] as [string, string, string]
+        : [
+          "Sunday planning can make Monday less dramatic.",
+          "Set up the gym bag, meals, calendar, and one small anchor.",
+          "The goal is to make the next restart easier.",
+        ] as [string, string, string],
+      no_voiceover_version:
+        "Silent Reel version: film notes app or notebook, gym bag prep, and one quiet coffee or home planning shot with timed text.",
+      on_screen_text: podcastFrame
+        ? ["Sunday plan", "Gym bag", "Meals", "Podcast thought"]
+        : ["Sunday plan", "Gym bag", "Meals", "Next week's anchor"],
+      caption: podcastFrame
+        ? "Sunday reset: prep the simple things and leave space for the bigger reflection. The podcast question has me thinking about consistency over intensity."
+        : "Sunday reset: prep the simple things so Monday does not need a dramatic restart.",
+      cta: podcastFrame
+        ? "What would you ask on a wellness podcast?"
+        : "What is one thing you prep before Monday?",
+      hashtags: ["sundayreset", "weeklyroutine", "wellnessreflection"],
+    },
+  ];
+  return plans[index] ?? plans[0];
 }
 
 function validateGeneratedDailyCard(
@@ -1262,6 +1981,31 @@ function validateGeneratedDailyCard(
     throw invalidWeek("Each daily card needs at least one scene.");
   }
 
+  const format = requiredFormat(value.format);
+  const durationSeconds = numberValue(value.duration_seconds);
+  if (!Number.isInteger(durationSeconds) || durationSeconds <= 0) {
+    throw invalidWeek("duration_seconds must be a positive integer.");
+  }
+
+  const shotTimeline = requiredTimeline(
+    value.shot_timeline,
+    "shot_timeline",
+  );
+  const voiceoverTimeline = requiredVoiceoverTimeline(
+    value.voiceover_timeline,
+  );
+  const silentVersionTimeline = requiredTimeline(
+    value.silent_version_timeline,
+    "silent_version_timeline",
+  );
+  const onScreenTextTimeline = requiredOnScreenTextTimeline(
+    value.on_screen_text_timeline,
+  );
+  const backupStoryDetail = requiredTimeline(
+    value.backup_story_detail,
+    "backup_story_detail",
+  );
+
   const score = numberValue(value.creator_fit_score);
   if (!Number.isFinite(score) || score < 0 || score > 100) {
     throw invalidWeek("creator_fit_score must be between 0 and 100.");
@@ -1277,21 +2021,45 @@ function validateGeneratedDailyCard(
   return {
     id: isUUID(stringValue(value.id)) ? stringValue(value.id) : undefined,
     scheduled_date: requiredDate(value.scheduled_date, "scheduled_date"),
+    format,
+    primary_surface: requiredString(value.primary_surface, "primary_surface"),
+    duration_seconds: durationSeconds,
     title: requiredString(value.title, "title"),
+    hook: requiredString(value.hook, "hook"),
+    weekly_brief_anchor: requiredString(
+      value.weekly_brief_anchor,
+      "weekly_brief_anchor",
+    ),
+    brief_alignment: requiredString(
+      value.brief_alignment,
+      "brief_alignment",
+    ),
+    brief_context_tags: requiredNonEmptyStringArray(
+      value.brief_context_tags,
+      "brief_context_tags",
+    ).slice(0, 4),
     why_today: requiredString(value.why_today, "why_today"),
     growth_job: requiredString(value.growth_job, "growth_job"),
+    save_share_reason: requiredString(
+      value.save_share_reason,
+      "save_share_reason",
+    ),
     content_pillar: requiredString(value.content_pillar, "content_pillar"),
     shootability: requiredString(value.shootability, "shootability"),
     estimated_shoot_minutes: minutes,
     energy_required: requiredString(value.energy_required, "energy_required"),
     language_mode: requiredString(value.language_mode, "language_mode"),
     scene_list: scenes,
+    shot_timeline: shotTimeline,
     script: requiredString(value.script, "script"),
+    voiceover_timeline: voiceoverTimeline,
     no_voiceover_version: requiredString(
       value.no_voiceover_version,
       "no_voiceover_version",
     ),
+    silent_version_timeline: silentVersionTimeline,
     on_screen_text: requiredStringArray(value.on_screen_text, "on_screen_text"),
+    on_screen_text_timeline: onScreenTextTimeline,
     caption: requiredString(value.caption, "caption"),
     cta: requiredString(value.cta, "cta"),
     hashtags: requiredStringArray(value.hashtags, "hashtags"),
@@ -1300,13 +2068,24 @@ function validateGeneratedDailyCard(
       value.post_instructions,
       "post_instructions",
     ),
-    brand_event_notes: stringValue(value.brand_event_notes) ?? "",
+    brand_event_notes: optionalCleanString(
+      value.brand_event_notes,
+      "brand_event_notes",
+    ) ?? "",
     backup_story: requiredString(value.backup_story, "backup_story"),
+    backup_story_detail: backupStoryDetail,
     backup_caption_only: requiredString(
       value.backup_caption_only,
       "backup_caption_only",
     ),
-    audio_option_notes: stringValue(value.audio_option_notes) ?? "",
+    caption_backup_detail: requiredString(
+      value.caption_backup_detail,
+      "caption_backup_detail",
+    ),
+    audio_option_notes: optionalCleanString(
+      value.audio_option_notes,
+      "audio_option_notes",
+    ) ?? "",
     creator_fit_score: score,
     risk_notes: requiredStringArray(value.risk_notes, "risk_notes"),
     assumptions: requiredStringArray(value.assumptions, "assumptions"),
@@ -1346,6 +2125,17 @@ function requiredString(value: unknown, field: string): string {
   if (!normalized) {
     throw invalidWeek(`${field} is required.`);
   }
+  rejectPlaceholderContent(normalized, field);
+  return normalized;
+}
+
+function requiredFormat(value: unknown): "Reel" | "Post" | "Story" {
+  const normalized = requiredString(value, "format");
+  if (
+    normalized !== "Reel" && normalized !== "Post" && normalized !== "Story"
+  ) {
+    throw invalidWeek("format must be Reel, Post, or Story.");
+  }
   return normalized;
 }
 
@@ -1360,6 +2150,7 @@ function requiredDate(value: unknown, field: string): string {
 function requiredSceneDuration(value: unknown): string {
   const normalized = stringValue(value)?.trim();
   if (normalized) {
+    rejectPlaceholderContent(normalized, "scene.duration");
     return normalized;
   }
 
@@ -1379,8 +2170,120 @@ function requiredStringArray(value: unknown, field: string): string[] {
     if (typeof item !== "string") {
       throw invalidWeek(`${field} must contain only strings.`);
     }
-    return item.trim();
+    const normalized = item.trim();
+    if (normalized) {
+      rejectPlaceholderContent(normalized, field);
+    }
+    return normalized;
   }).filter((item) => item.length > 0);
+}
+
+function requiredNonEmptyStringArray(value: unknown, field: string): string[] {
+  const normalized = requiredStringArray(value, field);
+  if (normalized.length === 0) {
+    throw invalidWeek(`${field} must contain at least one non-empty string.`);
+  }
+  return normalized;
+}
+
+function requiredTimestamp(value: unknown, field: string): string {
+  const normalized = requiredString(value, field).replace(/\s+/g, "");
+  if (!/^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(normalized)) {
+    throw invalidWeek(`${field} must use a timestamp range like 0:00-0:03.`);
+  }
+  return normalized;
+}
+
+function requiredTimeline(
+  value: unknown,
+  field: string,
+): GeneratedTimelineItem[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw invalidWeek(`${field} must be a non-empty timeline array.`);
+  }
+  return value.map((item, index) => {
+    if (!isRecord(item)) {
+      throw invalidWeek(`${field}[${index}] must be an object.`);
+    }
+    return {
+      timestamp: requiredTimestamp(
+        item.timestamp,
+        `${field}[${index}].timestamp`,
+      ),
+      detail: requiredString(item.detail, `${field}[${index}].detail`),
+    };
+  });
+}
+
+function requiredVoiceoverTimeline(
+  value: unknown,
+): GeneratedVoiceoverTimelineItem[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw invalidWeek("voiceover_timeline must be a non-empty timeline array.");
+  }
+  return value.map((item, index) => {
+    if (!isRecord(item)) {
+      throw invalidWeek(`voiceover_timeline[${index}] must be an object.`);
+    }
+    return {
+      timestamp: requiredTimestamp(
+        item.timestamp,
+        `voiceover_timeline[${index}].timestamp`,
+      ),
+      video_portion: requiredString(
+        item.video_portion,
+        `voiceover_timeline[${index}].video_portion`,
+      ),
+      voiceover: requiredString(
+        item.voiceover,
+        `voiceover_timeline[${index}].voiceover`,
+      ),
+    };
+  });
+}
+
+function requiredOnScreenTextTimeline(
+  value: unknown,
+): GeneratedOnScreenTextTimelineItem[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw invalidWeek(
+      "on_screen_text_timeline must be a non-empty timeline array.",
+    );
+  }
+  return value.map((item, index) => {
+    if (!isRecord(item)) {
+      throw invalidWeek(`on_screen_text_timeline[${index}] must be an object.`);
+    }
+    return {
+      timestamp: requiredTimestamp(
+        item.timestamp,
+        `on_screen_text_timeline[${index}].timestamp`,
+      ),
+      text: requiredString(item.text, `on_screen_text_timeline[${index}].text`),
+      placement: requiredString(
+        item.placement,
+        `on_screen_text_timeline[${index}].placement`,
+      ),
+    };
+  });
+}
+
+function optionalCleanString(
+  value: unknown,
+  field: string,
+): string | undefined {
+  const normalized = stringValue(value)?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  rejectPlaceholderContent(normalized, field);
+  return normalized;
+}
+
+function rejectPlaceholderContent(value: string, field: string): void {
+  if (/\b(?:placeholder|tbd|lorem)\b/i.test(value)) {
+    throw invalidWeek(`${field} contains placeholder content.`);
+  }
 }
 
 function combineText(values: string[], fallback: string): string {
@@ -1526,23 +2429,67 @@ const generatedSceneJSONSchema = {
   },
 };
 
+const generatedTimelineItemJSONSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["timestamp", "detail"],
+  properties: {
+    timestamp: { type: "string" },
+    detail: { type: "string" },
+  },
+};
+
+const generatedVoiceoverTimelineItemJSONSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["timestamp", "video_portion", "voiceover"],
+  properties: {
+    timestamp: { type: "string" },
+    video_portion: { type: "string" },
+    voiceover: { type: "string" },
+  },
+};
+
+const generatedOnScreenTextTimelineItemJSONSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["timestamp", "text", "placement"],
+  properties: {
+    timestamp: { type: "string" },
+    text: { type: "string" },
+    placement: { type: "string" },
+  },
+};
+
 const generatedCardJSONSchema = {
   type: "object",
   additionalProperties: false,
   required: [
     "scheduled_date",
+    "format",
+    "primary_surface",
+    "duration_seconds",
     "title",
+    "hook",
+    "weekly_brief_anchor",
+    "brief_alignment",
+    "brief_context_tags",
     "why_today",
     "growth_job",
+    "save_share_reason",
     "content_pillar",
     "shootability",
     "estimated_shoot_minutes",
     "energy_required",
     "language_mode",
     "scene_list",
+    "shot_timeline",
     "script",
+    "voiceover_timeline",
     "no_voiceover_version",
+    "silent_version_timeline",
     "on_screen_text",
+    "on_screen_text_timeline",
     "caption",
     "cta",
     "hashtags",
@@ -1550,7 +2497,9 @@ const generatedCardJSONSchema = {
     "post_instructions",
     "brand_event_notes",
     "backup_story",
+    "backup_story_detail",
     "backup_caption_only",
+    "caption_backup_detail",
     "audio_option_notes",
     "creator_fit_score",
     "risk_notes",
@@ -1560,18 +2509,59 @@ const generatedCardJSONSchema = {
   ],
   properties: {
     scheduled_date: { type: "string", format: "date" },
+    format: { type: "string", enum: ["Reel", "Post", "Story"] },
+    primary_surface: { type: "string" },
+    duration_seconds: { type: "integer", minimum: 1 },
     title: { type: "string" },
+    hook: { type: "string" },
+    weekly_brief_anchor: { type: "string" },
+    brief_alignment: { type: "string" },
+    brief_context_tags: {
+      type: "array",
+      minItems: 1,
+      maxItems: 4,
+      items: { type: "string" },
+    },
     why_today: { type: "string" },
     growth_job: { type: "string" },
+    save_share_reason: { type: "string" },
     content_pillar: { type: "string" },
     shootability: { type: "string" },
     estimated_shoot_minutes: { type: "integer", minimum: 0 },
     energy_required: { type: "string" },
     language_mode: { type: "string" },
-    scene_list: { type: "array", items: generatedSceneJSONSchema },
+    scene_list: {
+      type: "array",
+      minItems: 1,
+      items: generatedSceneJSONSchema,
+    },
+    shot_timeline: {
+      type: "array",
+      minItems: 1,
+      items: generatedTimelineItemJSONSchema,
+    },
     script: { type: "string" },
+    voiceover_timeline: {
+      type: "array",
+      minItems: 1,
+      items: generatedVoiceoverTimelineItemJSONSchema,
+    },
     no_voiceover_version: { type: "string" },
-    on_screen_text: { type: "array", items: { type: "string" } },
+    silent_version_timeline: {
+      type: "array",
+      minItems: 1,
+      items: generatedTimelineItemJSONSchema,
+    },
+    on_screen_text: {
+      type: "array",
+      minItems: 1,
+      items: { type: "string" },
+    },
+    on_screen_text_timeline: {
+      type: "array",
+      minItems: 1,
+      items: generatedOnScreenTextTimelineItemJSONSchema,
+    },
     caption: { type: "string" },
     cta: { type: "string" },
     hashtags: { type: "array", items: { type: "string" } },
@@ -1579,7 +2569,13 @@ const generatedCardJSONSchema = {
     post_instructions: { type: "string" },
     brand_event_notes: { type: "string" },
     backup_story: { type: "string" },
+    backup_story_detail: {
+      type: "array",
+      minItems: 1,
+      items: generatedTimelineItemJSONSchema,
+    },
     backup_caption_only: { type: "string" },
+    caption_backup_detail: { type: "string" },
     audio_option_notes: { type: "string" },
     creator_fit_score: { type: "number", minimum: 0, maximum: 100 },
     risk_notes: { type: "array", items: { type: "string" } },
@@ -1638,6 +2634,27 @@ export const generatedWeekJSONSchema = {
       maxItems: 7,
       items: generatedCardJSONSchema,
     },
+    idea_bank: { type: "array", items: generatedIdeaJSONSchema },
+    source_summary: { type: "string" },
+  },
+};
+
+export const generatedDayJSONSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "strategy_note",
+    "warnings",
+    "assumptions",
+    "daily_card",
+    "idea_bank",
+    "source_summary",
+  ],
+  properties: {
+    strategy_note: { type: "string" },
+    warnings: { type: "array", items: { type: "string" } },
+    assumptions: { type: "array", items: { type: "string" } },
+    daily_card: generatedCardJSONSchema,
     idea_bank: { type: "array", items: generatedIdeaJSONSchema },
     source_summary: { type: "string" },
   },

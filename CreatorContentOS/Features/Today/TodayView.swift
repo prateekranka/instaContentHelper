@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TodayView: View {
+    @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @State private var sheet: TodaySheet?
     let onOpenProfile: () -> Void
@@ -13,6 +14,7 @@ struct TodayView: View {
         EditorialScreen {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
+                ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
                 switch services.todayContentState {
                 case .ready:
                     NavigationLink(value: CreatorRoute.shootFolio) {
@@ -23,7 +25,12 @@ struct TodayView: View {
                 case .loading:
                     TodayLoadingCard()
                 case .missingPublishedCard(let date):
-                    MissingTodayCardView(date: date, onOpenProfile: onOpenProfile)
+                    MissingTodayCardView(
+                        date: date,
+                        canOpenWeekly: canOpenManagerWeekly,
+                        onOpenWeekly: openManagerWeekly,
+                        onOpenProfile: onOpenProfile
+                    )
                 }
 
                 if case .ready = services.todayContentState,
@@ -74,10 +81,18 @@ struct TodayView: View {
                     .foregroundStyle(MCOTheme.Color.brass)
             }
             Spacer()
-            FloatingIconButton(systemImage: "gearshape", label: "Open Profile") {
+            FloatingIconButton(systemImage: "person.crop.circle", label: "Open Profile") {
                 onOpenProfile()
             }
         }
+    }
+
+    private var canOpenManagerWeekly: Bool {
+        services.memberRole == "owner" || services.memberRole == "editor"
+    }
+
+    private func openManagerWeekly() {
+        appState.activeMode = .admin
     }
 
     private var todayDateLine: String {
@@ -123,10 +138,10 @@ private struct TodayLoadingCard: View {
         JournalBlock {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 ProgressView()
-                Text("Checking live content")
+                Text("Checking today's plan")
                     .font(MCOType.headline)
                     .foregroundStyle(MCOTheme.Color.ink)
-                Text("The app is loading the latest published card from Supabase.")
+                Text("The app is loading the latest published card.")
                     .font(MCOType.bodySmall)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
             }
@@ -137,6 +152,8 @@ private struct TodayLoadingCard: View {
 
 private struct MissingTodayCardView: View {
     let date: String
+    let canOpenWeekly: Bool
+    let onOpenWeekly: () -> Void
     let onOpenProfile: () -> Void
 
     var body: some View {
@@ -146,20 +163,34 @@ private struct MissingTodayCardView: View {
                     .font(.system(size: 30, weight: .regular))
                     .foregroundStyle(MCOTheme.Color.brass)
                 VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                    Text("No published card for this date")
+                    Text("Nothing scheduled for today")
                         .font(MCOType.headline)
                         .foregroundStyle(MCOTheme.Color.ink)
-                    Text("You are signed in, but Supabase does not have a published daily card for \(date). Generate or publish a week from Admin control, then return here.")
+                    Text(message)
                         .font(MCOType.bodySmall)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                         .lineSpacing(4)
                 }
-                SecondaryActionButton(title: "Open Profile") {
-                    onOpenProfile()
+
+                if canOpenWeekly {
+                    PrimaryActionButton(title: "Open Weekly", systemImage: "calendar") {
+                        onOpenWeekly()
+                    }
+                } else {
+                    SecondaryActionButton(title: "Open Profile") {
+                        onOpenProfile()
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var message: String {
+        if canOpenWeekly {
+            return "There is no published plan for \(date). Open Weekly, publish the right day, then return here."
+        }
+        return "Your manager has not published a plan for \(date) yet. Check back after the week is ready."
     }
 }
 
@@ -167,7 +198,7 @@ struct TodayHeroCard: View {
     let card: DailyCard
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(
                     LinearGradient(
@@ -182,50 +213,78 @@ struct TodayHeroCard: View {
                 )
             GeometryReader { proxy in
                 Image(systemName: "shoeprints.fill")
-                    .font(.system(size: 112, weight: .light))
-                    .foregroundStyle(.white.opacity(0.09))
+                    .font(.system(size: 96, weight: .light))
+                    .foregroundStyle(.white.opacity(0.06))
                     .rotationEffect(.degrees(-18))
                     .position(x: proxy.size.width * 0.78, y: proxy.size.height * 0.28)
-                Image(systemName: "book.closed")
-                    .font(.system(size: 96, weight: .light))
-                    .foregroundStyle(.white.opacity(0.08))
-                    .rotationEffect(.degrees(12))
-                    .position(x: proxy.size.width * 0.28, y: proxy.size.height * 0.78)
             }
-            VStack(spacing: MCOSpace.l) {
-                Spacer()
+            VStack(alignment: .leading, spacing: MCOSpace.m) {
+                HStack(alignment: .center) {
+                    Text(card.effortLabel)
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.paperRaised)
+                        .padding(.horizontal, MCOSpace.s)
+                        .padding(.vertical, 7)
+                        .background(MCOTheme.Color.sageDeep.opacity(0.78), in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(MCOTheme.Color.paperRaised.opacity(0.28), lineWidth: 1)
+                        }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.7))
+                }
+
                 Text(card.title)
-                    .font(.system(size: 36, weight: .regular, design: .serif))
+                    .font(.system(size: 31, weight: .regular, design: .serif))
                     .foregroundStyle(MCOTheme.Color.paperRaised)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(.leading)
                     .lineLimit(3)
                     .minimumScaleFactor(0.85)
-                Text(cardSubtitle)
+
+                Text(card.whyToday)
                     .font(.system(size: 17, weight: .regular, design: .serif))
                     .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.82))
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(.leading)
                     .lineLimit(3)
-                    .padding(.horizontal, MCOSpace.m)
-                Text(card.effortLabel)
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.paperRaised)
-                    .padding(.horizontal, MCOSpace.s)
-                    .padding(.vertical, 7)
-                    .background(MCOTheme.Color.sageDeep.opacity(0.78), in: Capsule())
-                    .overlay {
-                        Capsule()
-                            .stroke(MCOTheme.Color.paperRaised.opacity(0.28), lineWidth: 1)
+
+                if !scenePreviewLines.isEmpty {
+                    VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                        ForEach(scenePreviewLines, id: \.self) { sceneLine in
+                            HStack(spacing: MCOSpace.xs) {
+                                Image(systemName: "checkmark.circle")
+                                    .font(.system(size: 12, weight: .medium))
+                                Text(sceneLine)
+                                    .font(MCOType.caption)
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.74))
+                        }
                     }
-                Spacer()
+                    .padding(.top, MCOSpace.xs)
+                }
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: MCOSpace.xs) {
+                    Text("Open Shoot Folio")
+                        .font(MCOType.caption)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.82))
             }
             .padding(MCOSpace.l)
         }
-        .frame(minHeight: 360)
+        .frame(minHeight: 300)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private var cardSubtitle: String {
-        card.sourceNote?.nilIfBlank ?? card.context
+    private var scenePreviewLines: [String] {
+        card.scenes.prefix(2).map { scene in
+            "\(scene.number). \(scene.title)"
+        }
     }
 }
 
