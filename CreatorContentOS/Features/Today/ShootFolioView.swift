@@ -20,15 +20,13 @@ struct ShootFolioView: View {
                     switch selection {
                     case .scenes:
                         sceneProgress
-                        SceneListView(scenes: services.todayCard.scenes)
+                        SceneListView(card: services.todayCard)
                     case .script:
                         CopyBlock(title: "Script", bodyText: services.todayCard.script ?? "Race week isn't about doing more. It's about doing what matters. Simple plan. Steady steps. Let's go.")
                     case .caption:
                         CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "Race week has entered the house. Keeping it simple, steady, and real today.")
                     case .audio:
                         CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "Calm Drive - Instrumental - fallback ready")
-                    case .post:
-                        CopyBlock(title: "Post", bodyText: services.todayCard.postInstructions ?? "Open Instagram, use the saved audio if available, add cover text: Race week mindset.")
                     }
                 } else {
                     ShootFolioEmptyState(state: services.todayContentState)
@@ -79,10 +77,15 @@ struct ShootFolioView: View {
     }
 
     private var header: some View {
-        HStack {
-            Text("Shoot Folio")
-                .font(MCOType.screenTitle)
-                .foregroundStyle(MCOTheme.Color.ink)
+        HStack(alignment: .top, spacing: MCOSpace.xs) {
+            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                Text("Shoot Folio")
+                    .font(MCOType.headline)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                Text("A practical lower body that is easy.")
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
             Spacer()
             shootFolioMenu
         }
@@ -90,26 +93,6 @@ struct ShootFolioView: View {
 
     private var shootFolioMenu: some View {
         Menu {
-            Button {
-                services.refreshFromRepositories()
-                services.lastActionMessage = "Shoot Folio refreshed."
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
-            }
-
-            Button {
-                copyFolioPackage()
-            } label: {
-                Label("Copy package", systemImage: "doc.on.doc")
-            }
-            .disabled(!isReady)
-
-            Button {
-                dismiss()
-            } label: {
-                Label("Switch to Today", systemImage: "sun.max")
-            }
-
             Button {
                 services.lastActionMessage = "Issue noted. Share the screen with the manager if this package looks wrong."
             } label: {
@@ -134,42 +117,6 @@ struct ShootFolioView: View {
         } else {
             return false
         }
-    }
-
-    private func copyFolioPackage() {
-        let card = services.todayCard
-        var sections = [
-            "Title: \(card.title)",
-            "Context: \(card.context)",
-            "Why today: \(card.whyToday)"
-        ]
-
-        if !card.scenes.isEmpty {
-            let sceneLines = card.scenes
-                .map { "\($0.number). \($0.title) (\($0.duration))" }
-                .joined(separator: "\n")
-            sections.append("Scenes:\n\(sceneLines)")
-        }
-
-        if let script = card.script?.nilIfBlank {
-            sections.append("Script:\n\(script)")
-        }
-        if let caption = card.caption?.nilIfBlank {
-            sections.append("Caption:\n\(caption)")
-        }
-        if let audio = card.audioOptionNotes?.nilIfBlank {
-            sections.append("Audio:\n\(audio)")
-        }
-        if let post = card.postInstructions?.nilIfBlank {
-            sections.append("Post instructions:\n\(post)")
-        }
-
-        #if canImport(UIKit)
-        UIPasteboard.general.string = sections.joined(separator: "\n\n")
-        services.lastActionMessage = "Shoot package copied."
-        #else
-        services.lastActionMessage = "Copy is not available on this device."
-        #endif
     }
 
     private var sectionTabs: some View {
@@ -232,40 +179,44 @@ private struct ShootFolioEmptyState: View {
 
 struct SceneListView: View {
     @Environment(AppServices.self) private var services
-    let scenes: [ShotScene]
+    let card: DailyCard
 
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(scenes) { scene in
+        VStack(spacing: MCOSpace.m) {
+            ForEach(Array(card.scenes.enumerated()), id: \.element.id) { index, scene in
                 NavigationLink {
-                    SceneDetailView(scene: scene)
+                    SceneDetailView(card: card, scene: scene)
                 } label: {
-                    FolioRow(title: scene.title, subtitle: services.isSceneShot(scene) ? "Shot" : "Not shot") {
-                        VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                            Text(String(format: "%02d", scene.number))
-                                .font(.system(size: 28, weight: .regular, design: .serif))
-                                .foregroundStyle(MCOTheme.Color.sageDeep)
-                            Text(scene.duration)
-                                .font(MCOType.caption)
-                                .foregroundStyle(MCOTheme.Color.inkMuted)
-                        }
-                    } trailing: {
-                        HStack(spacing: MCOSpace.s) {
-                            Image(systemName: services.isSceneShot(scene) ? "checkmark.circle.fill" : scene.symbol)
-                                .font(.system(size: 20, weight: .light))
-                                .foregroundStyle(services.isSceneShot(scene) ? MCOTheme.Color.sageDeep : MCOTheme.Color.brass)
-                                .frame(width: 42, height: 42)
-                                .background(MCOTheme.Color.paperRaised)
-                                .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                    JournalBlock {
+                        VStack(alignment: .leading, spacing: MCOSpace.s) {
+                            HStack(alignment: .top, spacing: MCOSpace.s) {
+                                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                                    Text("SCENE \(String(format: "%02d", scene.number))")
+                                        .font(MCOType.tinyLabel)
+                                        .foregroundStyle(MCOTheme.Color.oxblood)
+                                    Text(scene.title)
+                                        .font(MCOType.headline)
+                                        .foregroundStyle(MCOTheme.Color.ink)
+                                }
+                                Spacer(minLength: MCOSpace.s)
+                                StatusChip(
+                                    text: services.isSceneShot(scene) ? "Shot" : scene.duration,
+                                    tone: services.isSceneShot(scene) ? .ready : .info
+                                )
+                            }
+
+                            FolioDetailLine(title: "What to capture", text: SceneGuidance.capture(for: scene, at: index, in: card))
+
+                            if let text = SceneGuidance.onScreenText(at: index, in: card) {
+                                FolioDetailLine(title: "On-screen text", text: text)
+                            }
+
+                            FolioDetailLine(title: "Example", text: SceneGuidance.contextExample(for: scene, in: card))
                         }
                     }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Scene \(scene.number), \(scene.title), \(services.isSceneShot(scene) ? "shot" : "not shot")")
-                Hairline()
             }
         }
     }
@@ -273,6 +224,7 @@ struct SceneListView: View {
 
 struct SceneDetailView: View {
     @Environment(AppServices.self) private var services
+    let card: DailyCard
     let scene: ShotScene
 
     var body: some View {
@@ -294,10 +246,10 @@ struct SceneDetailView: View {
                     }
                 }
 
-                detailBlock(title: "What to capture", text: captureGuidance)
-                detailBlock(title: "Supports", text: services.todayCard.title)
+                detailBlock(title: "What to capture", text: SceneGuidance.capture(for: scene, at: sceneIndex, in: card))
+                detailBlock(title: "Example", text: SceneGuidance.contextExample(for: scene, in: card))
 
-                if let onScreenText = services.todayCard.onScreenText?.first?.nilIfBlank {
+                if let onScreenText = SceneGuidance.onScreenText(at: sceneIndex, in: card) {
                     detailBlock(title: "On-screen text", text: onScreenText)
                 }
                 if let postInstructions = services.todayCard.postInstructions?.nilIfBlank {
@@ -336,8 +288,57 @@ struct SceneDetailView: View {
         }
     }
 
-    private var captureGuidance: String {
-        "Capture \(scene.title.lowercased()) as a steady \(scene.duration) clip. Keep the main subject clear, leave room for on-screen text, and hold the final frame briefly for an easy edit."
+    private var sceneIndex: Int {
+        card.scenes.firstIndex { $0.id == scene.id } ?? max(scene.number - 1, 0)
+    }
+}
+
+private struct FolioDetailLine: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(MCOType.tinyLabel)
+                .foregroundStyle(MCOTheme.Color.oxblood)
+            Text(text)
+                .font(MCOType.bodySmall)
+                .foregroundStyle(MCOTheme.Color.ink)
+                .lineSpacing(3)
+        }
+    }
+}
+
+private enum SceneGuidance {
+    static func capture(for scene: ShotScene, at index: Int, in card: DailyCard) -> String {
+        if let detail = card.shotTimeline?[safe: index]?.detail.nilIfBlank {
+            return detail
+        }
+        return "Capture \(scene.title.lowercased()) as a steady \(scene.duration) clip. Keep the main subject clear, leave room for on-screen text, and hold the final frame briefly for an easy edit."
+    }
+
+    static func onScreenText(at index: Int, in card: DailyCard) -> String? {
+        let timelineText = card.onScreenTextTimeline?[safe: index]
+        return timelineText?.onScreenText?.nilIfBlank
+            ?? timelineText?.title.nilIfBlank
+            ?? card.onScreenText?[safe: index]?.nilIfBlank
+            ?? card.onScreenText?.first?.nilIfBlank
+    }
+
+    static func contextExample(for scene: ShotScene, in card: DailyCard) -> String {
+        let context = [
+            card.context,
+            card.whyToday,
+            card.sourceNote,
+            card.postInstructions
+        ]
+            .compactMap { $0?.lowercased() }
+            .joined(separator: " ")
+        let location = context.contains("bombay") || context.contains("mumbai")
+            ? "In Bombay, Mamta can shoot this at home, in the society garden, or in the gym"
+            : "Mamta can shoot this at home, in the society garden, or in the gym"
+        return "\(location), choosing the place that makes \(scene.title.lowercased()) easiest to capture clearly and safely."
     }
 }
 
@@ -356,7 +357,7 @@ struct CopyBlock: View {
                     .font(MCOType.body)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .lineSpacing(5)
-                SecondaryActionButton(title: didCopy ? "Copied" : "Copy \(title.lowercased())") {
+                SecondaryActionButton(title: didCopy ? "Copied" : "Copy") {
                     copyBodyText()
                 }
             }

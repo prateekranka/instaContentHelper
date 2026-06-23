@@ -9,6 +9,8 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     var sourceNote: String?
     var scheduledDate: String?
     var scenes: [ShotScene]
+    var shotTimeline: [ProductionTimelineItem]?
+    var onScreenTextTimeline: [ProductionTimelineItem]?
     var completionState: CompletionState?
     var script: String?
     var noVoiceoverVersion: String?
@@ -35,6 +37,8 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         sourceNote: String? = nil,
         scheduledDate: String? = nil,
         scenes: [ShotScene],
+        shotTimeline: [ProductionTimelineItem]? = nil,
+        onScreenTextTimeline: [ProductionTimelineItem]? = nil,
         completionState: CompletionState? = nil,
         script: String? = nil,
         noVoiceoverVersion: String? = nil,
@@ -60,6 +64,8 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.sourceNote = sourceNote
         self.scheduledDate = scheduledDate
         self.scenes = scenes
+        self.shotTimeline = shotTimeline
+        self.onScreenTextTimeline = onScreenTextTimeline
         self.completionState = completionState
         self.script = script
         self.noVoiceoverVersion = noVoiceoverVersion
@@ -392,7 +398,6 @@ enum PackageSection: String, CaseIterable, Identifiable, Hashable, Sendable {
     case script = "Script"
     case caption = "Caption"
     case audio = "Audio"
-    case post = "Post"
 
     var id: String { rawValue }
 }

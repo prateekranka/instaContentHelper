@@ -72,6 +72,10 @@ private extension AppState {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> AppState {
 #if DEBUG
+        if environment["MCO_FORCE_SIGN_IN"] == "1" {
+            return AppState(authenticationPhase: .signedOut)
+        }
+
         if environment["MCO_FORCE_FIXTURE_UI"] == "1" {
             let mode: AppMode = environment["MCO_FORCE_APP_MODE"] == "admin" ? .admin : .creator
             return AppState(

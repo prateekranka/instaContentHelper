@@ -314,6 +314,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             scenes: sceneList.enumerated().map { index, scene in
                 scene.domainScene(fallbackNumber: index + 1)
             },
+            shotTimeline: shotTimeline,
+            onScreenTextTimeline: onScreenTextTimeline,
             completionState: CompletionState(supabaseStatus: status),
             script: script,
             noVoiceoverVersion: noVoiceoverVersion,
@@ -1112,12 +1114,12 @@ enum SupabaseDateFormatting {
 
     static func effortLabel(shootability: String?, minutes: Int?) -> String {
         switch (shootability?.nilIfBlank, minutes) {
-        case (.some(let shootability), .some(let minutes)):
-            "\(shootability.displayTitle) - \(minutes) min"
+        case (.some(let shootability), .some):
+            shootability.displayTitle
         case (.some(let shootability), .none):
             shootability.displayTitle
-        case (.none, .some(let minutes)):
-            "Ready - \(minutes) min"
+        case (.none, .some):
+            "Ready"
         case (.none, .none):
             "Ready"
         }

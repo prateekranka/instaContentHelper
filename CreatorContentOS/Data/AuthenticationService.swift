@@ -87,11 +87,13 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
         }
 
         let client = try configuredClient()
+        debugAuthLog("supabase:verify-otp:start")
         let response = try await client.auth.verifyOTP(
             email: email,
             token: token,
             type: .email
         )
+        debugAuthLog("supabase:verify-otp:done")
         guard response.session != nil else {
             throw AuthenticationServiceError.missingAuthSession
         }
@@ -106,7 +108,9 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
 
         let authSession: Session
         do {
+            debugAuthLog("supabase:restore-session:start")
             authSession = try await client.auth.session
+            debugAuthLog("supabase:restore-session:done")
         } catch {
             try? runtimeStore.clearPairedSession()
             try? await client.auth.signOut(scope: .local)
@@ -185,6 +189,7 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
         let response: AuthenticationSessionExchangeResponse
 
         do {
+            debugAuthLog("edge:exchange-auth-session:start")
             response = try await client.functions.invoke(
                 "exchange-auth-session",
                 options: FunctionInvokeOptions(
@@ -195,6 +200,7 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
                     )
                 )
             )
+            debugAuthLog("edge:exchange-auth-session:done")
         } catch {
             throw mappedFunctionError(error)
         }
@@ -214,6 +220,7 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
             authenticatedEmail: response.memberEmail ?? email
         )
         try runtimeStore.savePairedSession(session)
+        debugAuthLog("keychain:paired-session:saved")
         return session
     }
 
@@ -241,6 +248,12 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
         }
         return AuthenticationServiceError.backend(code)
     }
+}
+
+private func debugAuthLog(_ message: String) {
+    #if DEBUG
+    print("[ContentHelperAuth] \(Date()) \(message)")
+    #endif
 }
 
 enum CurrentDeviceNameProvider {

@@ -48,9 +48,22 @@ struct NotTodaySheet: View {
                 Spacer()
 
                 GlassCommandBar {
-                    SecondaryActionButton(title: "Skip intentionally") {
+                    Button {
                         complete(.skippedIntentionally)
+                    } label: {
+                        Text("Skip intentionally")
+                            .font(.system(size: 16, weight: .medium, design: .serif))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                            .background(MCOTheme.Color.paperRaised)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                            }
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(MCOSpace.l)

@@ -441,6 +441,11 @@ function buildGenerationGuidance(
       "Plan each day as Instagram-first content. Default to format Reel and primary_surface Instagram Reels for growth unless the weekly brief explicitly requests Post or Story.",
       "State the planned format as Reel, Post, or Story. For Reels, include duration_seconds and timestamped production guidance for shots, voiceover, on-screen text, and the silent version.",
       "Make every scene and timeline item specific enough to shoot: location/detail, action, camera framing, useful fitness cue, and the exact video portion the voiceover belongs to.",
+      "Scene titles must stay short, but shot_timeline.detail must be production-ready: include where Mamta can shoot it, what the frame contains, the movement/action, and why that location fits the creator context.",
+      "When context includes Bombay/Mumbai, gym return, home rhythm, society garden, or family routine, give context-specific capture examples such as home, society garden, building gym, or nearby gym; do not leave scenes as generic labels.",
+      "Scripts must be long enough to record as usable voiceover, usually 45-90 words for a short Reel, with a clear opening, practical middle, and grounded close.",
+      "Captions must be longer than a stub, usually 80-140 words, with the creator's context, a useful takeaway, and one natural CTA.",
+      "Do not include vague support/supports language. Use what_to_capture style guidance in shot_timeline and exact text in on_screen_text_timeline.",
       "When the weekly brief says Bombay, Mumbai, India, travel, gym return, or podcast, make that current context visible where relevant and let it outrank stale stored setup or archive context.",
       "Avoid weight-loss, transformation, punishment, extreme intensity, medical, or guaranteed outcome claims.",
       "Do not output placeholder text, TBD, lorem ipsum, generic assumptions, or fabricated details. If needed details are absent, surface the limitation in risk_notes or assumptions using the provided facts only.",
@@ -659,7 +664,7 @@ function generatedWeekOutputContract(
         scene_list:
           "non-empty array of objects with number, title, duration, symbol. duration should be a string such as '5 sec'.",
         shot_timeline:
-          "non-empty array of { timestamp, detail } using timestamp ranges like 0:00-0:03; detail must say exactly what to shoot.",
+          "non-empty array of { timestamp, detail } using timestamp ranges like 0:00-0:03; detail must say exactly what to shoot with context-specific examples, such as Mamta's home, society garden, building gym, or gym when supported by the brief.",
         voiceover_timeline:
           "non-empty array of { timestamp, video_portion, voiceover } using timestamp ranges like 0:00-0:03.",
         on_screen_text: "non-empty string array",
@@ -811,7 +816,8 @@ function generatedDailyCardExample(
         detail: "End on towel and water bottle with a relaxed nod to camera.",
       },
     ],
-    script: "Keep it simple today. One useful detail is enough.",
+    script:
+      "First day back does not need a dramatic restart. Today I am keeping it very practical: one small setup, one controlled movement, and one cue I can repeat tomorrow. If your routine has been interrupted by travel, family, or just a full week, start with the version you can actually do. Light weight, clean form, slow reps. The win is not intensity today. The win is making the routine easy to enter again.",
     voiceover_timeline: [
       {
         timestamp: "0:00-0:03",
@@ -865,7 +871,7 @@ function generatedDailyCardExample(
       },
     ],
     caption:
-      "Keeping it simple today. One useful detail is enough when the week is full.",
+      "Back to routine does not have to look dramatic. I am keeping today intentionally simple: one setup I can manage, one movement I can do well, and one cue I can carry into the next session. If you are also restarting after travel, family days, or a crowded week, do not make the first workout a test. Make it an entry point. Keep the weight sensible, move slowly, and leave with enough energy to come back tomorrow. Save this for the next time you need a practical reset.",
     cta: "Save this for a low-energy training day.",
     hashtags: ["fitnessover60", "routine", "steady"],
     cover_text: "Simple today",
@@ -1527,13 +1533,13 @@ function mockCard(
         timestamp: "0:00-0:03",
         detail: `${
           plan.scene_titles[0]
-        }: open with the clearest Bombay/home context detail and a steady vertical frame.`,
+        }: open with the clearest context detail in Mamta's home, society garden, building gym, or gym, using a steady vertical frame that explains where the day is happening.`,
       },
       {
         timestamp: "0:03-0:12",
         detail: `${
           plan.scene_titles[1]
-        }: show the practical fitness cue slowly enough that viewers can copy the idea safely.`,
+        }: show the practical fitness cue slowly enough that viewers can copy the idea safely; choose the location that makes the movement easiest to film without clutter.`,
       },
       {
         timestamp: "0:12-0:18",
@@ -1690,7 +1696,7 @@ function fallbackDayPlan(
         "Done is enough",
       ] as [string, string, string],
       script:
-        `First day back in routine. Keep it light: mobility, a few easy sets, and one small win. The point is to restart, not prove anything.${podcastLine}`,
+        `First day back in routine does not need a dramatic restart. I am keeping it light: a little mobility, a few easy sets, and one small win I can repeat tomorrow. If you are also coming back after travel or a full week, do not make the first session a test. Make it an entry point. Move well, leave some energy, and come back again.${podcastLine}`,
       voiceover_lines: [
         `Back in ${location}, and today is just about restarting.`,
         "Keep the first session light: mobility, a few easy sets, and one clean cue.",
@@ -1704,7 +1710,7 @@ function fallbackDayPlan(
         "Restart, don't overdo",
       ],
       caption:
-        `Back in ${location} and easing into the week. Today is a light reset: move a little, get the rhythm back, and leave the big promises out of it.`,
+        `Back in ${location} and easing into the week with a light reset. I am not trying to prove anything on the first day back. The goal is to move a little, get the rhythm back, and leave enough energy to show up again tomorrow. If your routine also gets interrupted by travel, family, or just regular life, keep the first session simple. One setup, one cue, one small win. Save this for your next restart day.`,
       cta: "Save this for your first day back after travel.",
       hashtags: ["backtoroutine", "gymroutine", "practicalwellness"],
     },
@@ -1728,7 +1734,7 @@ function fallbackDayPlan(
         "Quick reminder",
       ] as [string, string, string],
       script:
-        "Lower-body day, but keep the focus on one cue: slow the first rep down and feel where the work is happening. Better control before heavier weight.",
+        "Lower-body day, but I am keeping the focus on one cue instead of ten. Before adding more load, slow the first rep down and notice where the work is happening. If the setup feels rushed, the set usually feels rushed too. So today is simple: set the feet, move with control, and let the first rep tell you whether the weight is right. Better control before heavier weight.",
       voiceover_lines: [
         "Lower-body day does not need ten tips.",
         "Slow the first rep down and notice where the work is happening.",
@@ -1742,7 +1748,7 @@ function fallbackDayPlan(
         "Control before load",
       ],
       caption:
-        "A simple lower-body cue for the week: slow down the first rep. It tells you more than adding weight too quickly.",
+        "A practical lower-body cue for the week: slow down the first rep. It tells you more than adding weight too quickly. If you feel the movement in the wrong place, or the setup feels messy, that first rep is giving you useful information. Reset, reduce the load if needed, and make the next rep cleaner. This is the kind of small cue that makes training feel easier to return to. Save it for your next lower-body day.",
       cta: "Try this cue in your next strength session.",
       hashtags: ["strengthtraining", "gymroutine", "formcue"],
     },
@@ -1768,7 +1774,7 @@ function fallbackDayPlan(
         "Walk out easier",
       ] as [string, string, string],
       script:
-        "Midweek check-in: five minutes for hips, shoulders, and ankles. Nothing fancy, just enough to feel less stuck before the next session.",
+        "Midweek check-in: five minutes for the places that feel stuck before the next session. I like to keep this very simple: hips, shoulders, ankles, and a little breathing room between each move. This is not a workout pretending to be recovery. It is just enough movement to make the next session feel less stiff and more doable.",
       voiceover_lines: [
         "Midweek is a good time to check what feels stiff.",
         "Give hips, shoulders, and ankles a few quiet minutes.",
@@ -1778,7 +1784,7 @@ function fallbackDayPlan(
         "Silent Reel version: use three short movement clips with timed labels for hips, shoulders, and ankles.",
       on_screen_text: ["5-minute mobility", "Hips", "Shoulders", "Ankles"],
       caption:
-        "Midweek mobility does not need to be a production. Five quiet minutes can make the next workout feel better.",
+        "Midweek mobility does not need to be a production. Five quiet minutes can make the next workout feel better, especially when the week is already full. Pick the areas that feel most stuck, move slowly, and stop before it turns into another intense session. For me, this is about making the routine sustainable, not adding more pressure. Save this for a day when your body needs a small reset.",
       cta: "Save this for an active recovery day.",
       hashtags: ["mobility", "activerecovery", "movewell"],
     },

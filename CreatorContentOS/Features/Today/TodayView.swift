@@ -81,9 +81,6 @@ struct TodayView: View {
                     .foregroundStyle(MCOTheme.Color.brass)
             }
             Spacer()
-            FloatingIconButton(systemImage: "person.crop.circle", label: "Open Profile") {
-                onOpenProfile()
-            }
         }
     }
 
@@ -106,12 +103,12 @@ struct TodayView: View {
             return services.todayCard.context
         }
 
-        return Self.headingDateFormatter.string(from: date)
+        return Self.headingDateString(from: date)
     }
 
     private static func formattedHeadingDate(from apiDate: String) -> String? {
         guard let date = apiDateFormatter.date(from: apiDate) else { return nil }
-        return headingDateFormatter.string(from: date)
+        return headingDateString(from: date)
     }
 
     private static let apiDateFormatter: DateFormatter = {
@@ -128,9 +125,35 @@ struct TodayView: View {
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "EEEE, dd/MM/yy"
+        formatter.dateFormat = "d MMMM yyyy"
         return formatter
     }()
+
+    private static func headingDateString(from date: Date) -> String {
+        let day = Calendar(identifier: .gregorian).component(.day, from: date)
+        return headingDateFormatter.string(from: date)
+            .replacingOccurrences(of: "\(day) ", with: "\(ordinalDay(day)) ", options: .anchored)
+    }
+
+    private static func ordinalDay(_ day: Int) -> String {
+        let suffix: String
+        switch day {
+        case 11, 12, 13:
+            suffix = "th"
+        default:
+            switch day % 10 {
+            case 1:
+                suffix = "st"
+            case 2:
+                suffix = "nd"
+            case 3:
+                suffix = "rd"
+            default:
+                suffix = "th"
+            }
+        }
+        return "\(day)\(suffix)"
+    }
 }
 
 private struct TodayLoadingCard: View {
