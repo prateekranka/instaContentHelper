@@ -32,6 +32,21 @@ Deno.test("prompt builder includes profile, setup, references, extractions, obli
   assert(prompt.user.includes("Quiet Sunday family walk"));
 });
 
+Deno.test("prompt builder includes Mamta growth reference rubric", () => {
+  const prompt = buildPromptMessages(fixtureInput());
+  const guidance = `${prompt.system}\n${prompt.user}`;
+
+  assertIncludesAll(guidance, [
+    "Age Myth Reversal",
+    "Real-Life Contradiction Hook",
+    "Proof Before Advice",
+    "Saveable Practical Cue",
+    "Instagram Reels Default",
+    "I eat out. I drink sometimes. I still stay fit at 62.",
+    "0:00-0:02: motion plus bold text.",
+  ]);
+});
+
 Deno.test("prompt builder gives weekly brief/setup notes precedence over stale stored context", () => {
   const prompt = buildPromptMessages(fixtureInput());
   const guidance = `${prompt.system}\n${prompt.user}`;

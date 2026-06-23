@@ -12,6 +12,22 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertTrue(needsReview.contains { $0.typeChip == .unknown })
     }
 
+    func testGrowthReferenceCatalogContainsMamtaSpecificInstagramPatterns() throws {
+        let references = IntelligenceHome.raceWeekLibrary.growthReferences
+
+        XCTAssertEqual(references.count, 6)
+        XCTAssertTrue(references.contains { $0.id == "mamta-age-myth-reversal" })
+        XCTAssertTrue(references.contains { $0.id == "mamta-real-life-contradiction-hook" })
+        XCTAssertTrue(references.contains { $0.title == "Instagram Reels Default" })
+        XCTAssertTrue(references.allSatisfy { !$0.hookFormulas.isEmpty })
+        XCTAssertTrue(references.allSatisfy { !$0.sourceURLs.isEmpty })
+        XCTAssertTrue(
+            references.contains { reference in
+                reference.hookFormulas.contains("I eat out. I drink sometimes. I still stay fit at 62.")
+            }
+        )
+    }
+
     func testManagerSelectsIdeaForNextOpenDay() async throws {
         let weeklyRepository = RecordingWeeklyPlanRepository()
         let services = makeServices(weeklyPlans: weeklyRepository)

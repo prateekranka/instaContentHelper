@@ -450,6 +450,7 @@ function buildGenerationGuidance(
       "Avoid weight-loss, transformation, punishment, extreme intensity, medical, or guaranteed outcome claims.",
       "Do not output placeholder text, TBD, lorem ipsum, generic assumptions, or fabricated details. If needed details are absent, surface the limitation in risk_notes or assumptions using the provided facts only.",
     ],
+    growth_references: mamtaFitnessGrowthReferences(),
     brief_evidence_rubric: [
       "Every daily card must prove it used the current weekly brief, not just evergreen fitness advice.",
       "Set weekly_brief_anchor to one concrete fact from the weekly setup/brief, such as current city, gym-return routine, family rhythm, brand/collab note, podcast ask, travel status, or explicit avoid list.",
@@ -461,6 +462,101 @@ function buildGenerationGuidance(
       ? dayIntents[dayIndex] ?? `Day ${dayIndex + 1}: keep this distinct.`
       : undefined,
   };
+}
+
+function mamtaFitnessGrowthReferences(): Record<string, unknown>[] {
+  return [
+    {
+      id: "mamta-age-myth-reversal",
+      name: "Age Myth Reversal",
+      use_for:
+        "Belief-shift Reels that challenge the idea women should slow down after 60.",
+      hook_patterns: [
+        "They told women my age to slow down. I started lifting.",
+        "At 62, this is what I refuse to give up.",
+        "Fitness after 60 is not about looking young.",
+      ],
+      production_rule:
+        "Open with real movement proof before advice: lifting, shoes, gym entry, HYROX/race proof, or a sweaty post-set reset.",
+      mamta_fit:
+        "Highest fit when the weekly brief includes strength, race proof, confidence, gym return, or discipline.",
+    },
+    {
+      id: "mamta-real-life-contradiction-hook",
+      name: "Real-Life Contradiction Hook",
+      use_for:
+        "Relatable Reels about eating out, travel, family rhythm, missed workouts, and staying consistent without guilt.",
+      hook_patterns: [
+        "I eat out. I drink sometimes. I still stay fit at 62.",
+        "I missed the perfect routine, so I did this instead.",
+        "This is how I restart after travel without guilt.",
+      ],
+      production_rule:
+        "Show one normal-life clip, one fitness/recovery clip, and one practical consistency rule.",
+      mamta_fit:
+        "High fit for Bombay routine, travel return, family plans, brand/collab weeks, and low-pressure gym weeks.",
+    },
+    {
+      id: "mamta-proof-before-advice",
+      name: "Proof Before Advice",
+      use_for:
+        "Reels where the viewer sees Mamta doing the work before hearing the lesson.",
+      hook_patterns: [
+        "One thing I learned after showing up for years...",
+        "This is why you do the boring work.",
+        "Before I give advice, let me show you the part nobody sees.",
+      ],
+      production_rule:
+        "The first 0:00-0:03 must be a visual action, not a talking-head explanation.",
+      mamta_fit:
+        "High fit for gym, mobility, HYROX, run, walk, routine reset, and recovery cards.",
+    },
+    {
+      id: "mamta-saveable-practical-cue",
+      name: "Saveable Practical Cue",
+      use_for:
+        "Utility Reels designed for saves/shares with exactly one movement cue or recovery action.",
+      hook_patterns: [
+        "Save this before your next lower-body day.",
+        "One warm-up I do before lifting.",
+        "If your back feels stiff, try this first.",
+      ],
+      production_rule:
+        "Keep the Reel to one cue. Include exact shot timing, on-screen cue text, and a save/share CTA.",
+      mamta_fit:
+        "High fit for strength, mobility, stiffness relief, recovery, and gym-return cards.",
+    },
+    {
+      id: "mamta-hyrox-hybrid-proof",
+      name: "HYROX / Hybrid Proof",
+      use_for:
+        "Authority-building Reels that connect HYROX/running/strength proof back to everyday routine.",
+      hook_patterns: [
+        "HYROX taught me this, but it applies to regular gym days.",
+        "You do not train for events. You train for the life you want.",
+        "The race is over. The routine is the real win.",
+      ],
+      production_rule:
+        "Use HYROX only when the weekly brief supports it; do not override a current non-race week with stale race context.",
+      mamta_fit:
+        "Conditional fit for race reflection, hybrid conditioning, event proof, and confidence arcs.",
+    },
+    {
+      id: "mamta-instagram-reels-default",
+      name: "Instagram Reels Default",
+      use_for:
+        "Default growth format: short, original, retention-first Reels with one idea and a clear CTA.",
+      hook_patterns: [
+        "0:00-0:02: motion plus bold text.",
+        "0:03-0:08: one real context line.",
+        "0:09-0:25: one useful takeaway.",
+      ],
+      production_rule:
+        "For growth cards, default to 15-45 second Reels, one idea, timestamped shot/voiceover/on-screen text, and save/share CTA.",
+      mamta_fit:
+        "System rule for weekly generation unless the brief explicitly asks for Post or Story.",
+    },
+  ];
 }
 
 function inferStaleContextExclusions(input: GenerationInputSnapshot): string[] {

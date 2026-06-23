@@ -89,6 +89,7 @@
 		843D5A526CCBA04114C4A72A /* TodayCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayCacheStore.swift; sourceTree = "<group>"; };
 		8560C60E9CBBB47E67D121F0 /* GenerateWeekDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerateWeekDTOs.swift; sourceTree = "<group>"; };
 		87FFA552E0792F8074AA8999 /* CreatorContentOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CreatorContentOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8BC9F09F60577E7FBC7DEEBE /* LocalRuntime.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = LocalRuntime.xcconfig; sourceTree = "<group>"; };
 		8E7EEA64764CBFE7F1C70689 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		8EF81B58FA3AF15A81BC5742 /* DevicePairingServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePairingServiceTests.swift; sourceTree = "<group>"; };
 		901CA42E68495333D010A290 /* AppRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRepositories.swift; sourceTree = "<group>"; };
@@ -264,6 +265,7 @@
 			isa = PBXGroup;
 			children = (
 				07626CC82ECFAE52D81D7216 /* LocalRuntime.sample.xcconfig */,
+				8BC9F09F60577E7FBC7DEEBE /* LocalRuntime.xcconfig */,
 				45EB953D27477DBB678EC30D /* Runtime.xcconfig */,
 			);
 			path = Config;
@@ -537,7 +539,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 4JRB53LG5C;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CreatorContentOS/Info.plist;
@@ -620,7 +622,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = 4JRB53LG5C;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CreatorContentOS/Info.plist;

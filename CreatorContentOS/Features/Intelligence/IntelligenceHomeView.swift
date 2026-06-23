@@ -39,6 +39,7 @@ struct IntelligenceHomeView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!services.isLiveSupabaseRuntime)
+                    GrowthReferenceShelf(references: services.intelligenceHome.growthReferences)
                     SourcePulseShelf(sourcePulse: services.intelligenceHome.sourcePulse)
                     IntelligenceShelf(
                         title: "Recently used",
@@ -199,6 +200,204 @@ struct ReferenceImportEntryBlock: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
+        }
+    }
+}
+
+struct GrowthReferenceShelf: View {
+    let references: [GrowthReference]
+
+    var body: some View {
+        if !references.isEmpty {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                ShelfHeader(title: "Growth References", trailing: "\(references.count) active")
+
+                VStack(spacing: 0) {
+                    ForEach(references) { reference in
+                        NavigationLink {
+                            GrowthReferenceDetailView(reference: reference)
+                        } label: {
+                            GrowthReferenceRow(reference: reference)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        Hairline()
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct GrowthReferenceRow: View {
+    let reference: GrowthReference
+
+    var body: some View {
+        HStack(alignment: .center, spacing: MCOSpace.m) {
+            Image(systemName: reference.symbol)
+                .font(.system(size: 20, weight: .light))
+                .foregroundStyle(MCOTheme.Color.oxblood)
+                .frame(width: 34)
+
+            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                Text(reference.title)
+                    .font(.system(size: 17, weight: .regular, design: .serif))
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
+                Text(reference.summary)
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: MCOSpace.s)
+
+            HStack(spacing: MCOSpace.xs) {
+                Text(reference.relevanceLabel)
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
+            .frame(width: 104, alignment: .trailing)
+        }
+        .padding(.vertical, MCOSpace.s)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct GrowthReferenceDetailView: View {
+    @Environment(\.openURL) private var openURL
+    let reference: GrowthReference
+
+    var body: some View {
+        EditorialScreen(bottomContentPadding: MCOSpace.xl, showsBottomBar: false) {
+            VStack(alignment: .leading, spacing: MCOSpace.l) {
+                header
+                summaryBlock
+                hookBlock
+                usageBlock
+                sourcesBlock
+            }
+        } bottomBar: {
+            EmptyView()
+        }
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            HStack(alignment: .center, spacing: MCOSpace.s) {
+                Image(systemName: reference.symbol)
+                    .font(.system(size: 22, weight: .light))
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .frame(width: 38, height: 38)
+                    .background(MCOTheme.Color.paperRaised.opacity(0.72))
+                    .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
+                            .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                    }
+
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    Text("Growth Reference")
+                        .font(MCOType.tinyLabel)
+                        .foregroundStyle(MCOTheme.Color.oxblood)
+                    Text(reference.title)
+                        .font(MCOType.screenTitle)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private var summaryBlock: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.m) {
+                HStack(spacing: MCOSpace.s) {
+                    StatusChip(text: reference.relevanceLabel, tone: .ready)
+                    ForEach(reference.tags.prefix(2), id: \.self) { tag in
+                        StatusChip(text: tag, tone: .quiet)
+                    }
+                }
+
+                Text(reference.summary)
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(reference.whyItWorks)
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var hookBlock: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                Text("Hook formulas")
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                    ForEach(reference.hookFormulas, id: \.self) { hook in
+                        ReferenceDetailLine(title: "Hook", value: hook)
+                    }
+                }
+            }
+        }
+    }
+
+    private var usageBlock: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                Text("When to use")
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                ForEach(reference.useWhen, id: \.self) { line in
+                    Text("- \(line)")
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ReferenceDetailLine(title: "Mamta idea", value: reference.sampleMamtaIdea)
+            }
+        }
+    }
+
+    private var sourcesBlock: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.m) {
+                Text("Sources")
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                ForEach(reference.sourceURLs, id: \.self) { source in
+                    Button {
+                        if let url = URL(string: source) {
+                            openURL(url)
+                        }
+                    } label: {
+                        HStack(spacing: MCOSpace.s) {
+                            Text(source)
+                                .font(MCOType.caption)
+                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: MCOSpace.s)
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(MCOTheme.Color.oxblood)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
