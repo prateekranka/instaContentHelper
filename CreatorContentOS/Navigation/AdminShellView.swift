@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct AdminShellView: View {
+    @Environment(AppServices.self) private var services
+
     var body: some View {
         TabView {
             NavigationStack {
@@ -12,6 +14,23 @@ struct AdminShellView: View {
                 IntelligenceHomeView()
             }
             .tabItem { Label("References", systemImage: "bookmark") }
+
+            NavigationStack {
+                AIRunwayView()
+            }
+            .tabItem { Label("Runway", systemImage: "sparkles") }
+
+            NavigationStack {
+                LiveQAView()
+            }
+            .tabItem { Label("QA", systemImage: "checkmark.seal") }
+
+            if services.canManageTesterAccess {
+                NavigationStack {
+                    TesterAccessView()
+                }
+                .tabItem { Label("Testers", systemImage: "person.2.badge.key") }
+            }
         }
         .tint(MCOTheme.Color.oxblood)
     }

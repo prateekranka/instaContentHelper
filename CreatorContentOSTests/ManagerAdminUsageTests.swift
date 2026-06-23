@@ -3,6 +3,15 @@ import XCTest
 
 @MainActor
 final class ManagerAdminUsageTests: XCTestCase {
+    func testFixtureNeedsReviewRowsAreActionable() throws {
+        let needsReview = IntelligenceHome.raceWeekLibrary.needsReview
+
+        XCTAssertFalse(needsReview.isEmpty)
+        XCTAssertTrue(needsReview.allSatisfy { $0.reviewItem != nil })
+        XCTAssertTrue(needsReview.contains { $0.typeChip == .reel && $0.sourceURL != nil })
+        XCTAssertTrue(needsReview.contains { $0.typeChip == .unknown })
+    }
+
     func testManagerSelectsIdeaForNextOpenDay() async throws {
         let weeklyRepository = RecordingWeeklyPlanRepository()
         let services = makeServices(weeklyPlans: weeklyRepository)
@@ -256,6 +265,54 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertEqual(homeCallCount, 1)
     }
 
+    func testReferenceImportPreviewMapsRowLimitError() async {
+        let importRepository = RecordingReferenceImportRepository(
+            previewError: RepositoryError.edgeFunction("row_limit_exceeded")
+        )
+        let services = makeServices(
+            referenceImport: importRepository,
+            isLiveSupabaseRuntime: true
+        )
+
+        let preview = await services.previewReferenceImportImmediately(
+            rawText: "@creator",
+            inputType: .paste
+        )
+
+        XCTAssertNil(preview)
+        XCTAssertNil(services.referenceImportPreview)
+        XCTAssertEqual(
+            services.lastReferenceImportError,
+            "This import is too large. Split it into smaller batches and try again."
+        )
+        XCTAssertNil(services.referenceImportToast)
+    }
+
+    func testReferenceImportConfirmMapsChecksumMismatchError() async {
+        let importRepository = RecordingReferenceImportRepository(
+            confirmError: RepositoryError.edgeFunction("checksum_mismatch")
+        )
+        let intelligenceRepository = RecordingIntelligenceRepository(home: .adminUsageReviewCleared)
+        let services = makeServices(
+            referenceImport: importRepository,
+            intelligence: intelligenceRepository,
+            isLiveSupabaseRuntime: true
+        )
+
+        let result = await services.confirmReferenceImportImmediately(
+            rawText: "@creator",
+            inputType: .paste,
+            previewChecksum: "stale"
+        )
+
+        XCTAssertNil(result)
+        XCTAssertNil(services.referenceImportConfirmResult)
+        XCTAssertEqual(services.lastReferenceImportError, "The import changed. Preview it again before saving.")
+        XCTAssertNil(services.referenceImportToast)
+        let homeCallCount = await intelligenceRepository.homeCallCount()
+        XCTAssertEqual(homeCallCount, 0)
+    }
+
     func testManagerReviewsNeedsYourCallItemAndHomeRefreshes() async throws {
         let reviewItemID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")!
         let importRepository = RecordingReferenceImportRepository()
@@ -297,12 +354,57 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertEqual(homeCallCount, 1)
     }
 
+    func testReferenceReviewMapsStoryURLRejection() async {
+        let importRepository = RecordingReferenceImportRepository(
+            reviewError: RepositoryError.edgeFunction("story_urls_not_allowed")
+        )
+        let intelligenceRepository = RecordingIntelligenceRepository(home: .adminUsageReviewCleared)
+        let services = makeServices(
+            referenceImport: importRepository,
+            intelligence: intelligenceRepository,
+            isLiveSupabaseRuntime: true
+        )
+
+        let result = await services.reviewReferenceItemImmediately(
+            ReferenceReviewRequest(
+                item: ReferenceReviewItem(
+                    kind: .sourceReference,
+                    id: UUID(uuidString: "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB")!
+                ),
+                action: .edit,
+                edit: ReferenceReviewEdit(
+                    targetType: .reel,
+                    handle: nil,
+                    url: "https://www.instagram.com/stories/example/1/",
+                    notes: nil
+                )
+            )
+        )
+
+        XCTAssertNil(result)
+        XCTAssertNil(services.referenceReviewResult)
+        XCTAssertEqual(
+            services.lastReferenceImportError,
+            "Story URLs cannot be used as references. Add a reel, post, audio link, or account instead."
+        )
+        XCTAssertNil(services.referenceImportToast)
+        let homeCallCount = await intelligenceRepository.homeCallCount()
+        XCTAssertEqual(homeCallCount, 0)
+    }
+
+    func testTesterAccessRequiresLiveOwnerRuntime() {
+        XCTAssertFalse(makeServices().canManageTesterAccess)
+        XCTAssertFalse(makeServices(isLiveSupabaseRuntime: true, memberRole: "editor").canManageTesterAccess)
+        XCTAssertTrue(makeServices(isLiveSupabaseRuntime: true, memberRole: "owner").canManageTesterAccess)
+    }
+
     private func makeServices(
         weeklyPlans: any WeeklyPlanRepository = RecordingWeeklyPlanRepository(),
         referenceImport: any ReferenceImportRepository = RecordingReferenceImportRepository(),
         intelligence: any IntelligenceRepository = FixtureIntelligenceRepository(),
         creatorProfile: any CreatorProfileRepository = FixtureCreatorProfileRepository(),
-        isLiveSupabaseRuntime: Bool = false
+        isLiveSupabaseRuntime: Bool = false,
+        memberRole: String = "owner"
     ) -> AppServices {
         let repositories = AppRepositories(
             context: .creatorFixture,
@@ -318,6 +420,7 @@ final class ManagerAdminUsageTests: XCTestCase {
         return AppServices.fixtureBacked(
             repositories: repositories,
             isLiveSupabaseRuntime: isLiveSupabaseRuntime,
+            memberRole: memberRole,
             todayCache: AdminUsageMemoryTodayCacheStore(),
             notifications: NoopTodayNotificationScheduler()
         )
@@ -535,6 +638,19 @@ private actor RecordingReferenceImportRepository: ReferenceImportRepository {
     private var previewRequests: [PreviewRequest] = []
     private var confirmRequests: [ConfirmRequest] = []
     private var reviewRequests: [ReferenceReviewRequest] = []
+    private let previewError: Error?
+    private let confirmError: Error?
+    private let reviewError: Error?
+
+    init(
+        previewError: Error? = nil,
+        confirmError: Error? = nil,
+        reviewError: Error? = nil
+    ) {
+        self.previewError = previewError
+        self.confirmError = confirmError
+        self.reviewError = reviewError
+    }
 
     func previewImport(
         rawText: String,
@@ -545,6 +661,9 @@ private actor RecordingReferenceImportRepository: ReferenceImportRepository {
         previewRequests.append(
             PreviewRequest(rawText: rawText, inputType: inputType, filename: filename)
         )
+        if let previewError {
+            throw previewError
+        }
         return .referenceImportFixture
     }
 
@@ -563,6 +682,9 @@ private actor RecordingReferenceImportRepository: ReferenceImportRepository {
                 previewChecksum: previewChecksum
             )
         )
+        if let confirmError {
+            throw confirmError
+        }
         return ReferenceImportConfirmResult(
             parserVersion: "v1",
             destination: ReferenceImportDestination(watchlistID: nil, watchlistName: "Inspiration"),
@@ -581,6 +703,9 @@ private actor RecordingReferenceImportRepository: ReferenceImportRepository {
         context: WorkspaceContext
     ) async throws -> ReferenceReviewResult {
         reviewRequests.append(request)
+        if let reviewError {
+            throw reviewError
+        }
         return ReferenceReviewResult(
             itemID: request.item.id,
             kind: request.item.kind,

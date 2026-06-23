@@ -264,11 +264,18 @@ final class AppServices {
               !isPublishingWeek,
               !isGeneratingWeek,
               !weeklyPlan.isSoftLocked,
-              weeklyPlan.days.count == 7,
-              weeklyPlan.openDayCount == 0,
-              let draft = latestGenerationSummary,
-              draft.weeklyPlanID == weeklyPlan.id,
-              draft.isCompleteWeekDraft
+              weeklyPlan.days.count == 7
+        else {
+            return false
+        }
+
+        guard let draft = latestGenerationSummary else {
+            return true
+        }
+
+        guard draft.weeklyPlanID == weeklyPlan.id,
+              draft.isCompleteWeekDraft,
+              weeklyPlan.openDayCount == 0
         else {
             return false
         }
@@ -723,7 +730,7 @@ final class AppServices {
             lastReferenceImportError = nil
             return preview
         } catch {
-            lastReferenceImportError = error.localizedDescription
+            lastReferenceImportError = ReferenceImportErrorDisplay.message(for: error)
             referenceImportToast = nil
             return nil
         }
@@ -774,7 +781,7 @@ final class AppServices {
             await refreshIntelligenceHomeImmediately()
             return result
         } catch {
-            lastReferenceImportError = error.localizedDescription
+            lastReferenceImportError = ReferenceImportErrorDisplay.message(for: error)
             referenceImportToast = nil
             return nil
         }
@@ -807,7 +814,7 @@ final class AppServices {
             await refreshIntelligenceHomeImmediately()
             return result
         } catch {
-            lastReferenceImportError = error.localizedDescription
+            lastReferenceImportError = ReferenceImportErrorDisplay.message(for: error)
             referenceImportToast = nil
             return nil
         }
@@ -1165,5 +1172,43 @@ private enum WeeklyGenerationErrorDisplay {
 
     static func message(forCode code: String) -> String {
         userFacingMessages[code] ?? code
+    }
+}
+
+private enum ReferenceImportErrorDisplay {
+    private static let userFacingMessages = [
+        "missing_raw_text": "Paste at least one handle, reel link, audio link, or CSV row before previewing.",
+        "row_limit_exceeded": "This import is too large. Split it into smaller batches and try again.",
+        "checksum_mismatch": "The import changed. Preview it again before saving.",
+        "story_urls_not_allowed": "Story URLs cannot be used as references. Add a reel, post, audio link, or account instead.",
+        "missing_reference_url": "Add a reference URL before saving this review item.",
+        "invalid_account_handle": "Enter a valid Instagram handle for this account reference.",
+        "invalid_review_payload": "This review item is missing required details. Refresh and try again.",
+        "invalid_review_action": "This review action is not supported. Refresh and try again.",
+        "review_item_not_found": "This review item is no longer available. Refresh References.",
+        "creator_not_found": "This creator workspace is no longer available. Refresh and try again.",
+        "role_not_allowed": "Only owners and editors can manage references.",
+        "missing_device_token": "This device session is missing. Sign in again.",
+        "invalid_device_token": "This device session has expired. Sign in again.",
+        "import_failed_nothing_saved": "The import could not be saved. Try previewing again.",
+        "duplicate_lookup_failed": "Duplicate checking failed. Try previewing again.",
+        "import_parse_failed": "The import could not be parsed. Check the pasted rows or CSV format.",
+        "invalid_input_type": "Choose paste or CSV import and try again.",
+        "invalid_mode": "Choose preview or import and try again."
+    ]
+
+    private static let stableCodes = Array(userFacingMessages.keys)
+
+    static func message(for error: Error) -> String {
+        let description = error.localizedDescription
+        if let message = userFacingMessages[description] {
+            return message
+        }
+
+        if let code = stableCodes.first(where: { description.contains($0) }) {
+            return userFacingMessages[code] ?? code
+        }
+
+        return description
     }
 }

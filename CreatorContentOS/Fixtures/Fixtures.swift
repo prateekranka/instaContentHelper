@@ -227,20 +227,33 @@ extension IntelligenceHome {
         ],
         needsReview: [
             IntelligenceItem(
+                id: UUID(uuidString: "2B01A874-F839-4F01-9D63-842D8D1BB701")!,
                 title: "Real training highlight",
                 subtitle: "USA reel structure, not the script.",
                 kind: .trend,
                 state: .needsReview,
                 trailingNote: "Check fit",
-                symbol: "sparkle.magnifyingglass"
+                symbol: "sparkle.magnifyingglass",
+                typeChip: .reel,
+                sourceURL: "https://www.instagram.com/reel/fixture-training-highlight/",
+                reviewItem: ReferenceReviewItem(
+                    kind: .sourceReference,
+                    id: UUID(uuidString: "D0DA7C7B-E52B-48FD-BBC4-1201B5E7B801")!
+                )
             ),
             IntelligenceItem(
+                id: UUID(uuidString: "6477C1F0-3DB4-4A46-B0EB-FE5A10B97C64")!,
                 title: "Gym mirror format",
                 subtitle: "Could feel too generic.",
                 kind: .pattern,
                 state: .needsReview,
                 trailingNote: "Low fit",
-                symbol: "rectangle.on.rectangle"
+                symbol: "rectangle.on.rectangle",
+                typeChip: .unknown,
+                reviewItem: ReferenceReviewItem(
+                    kind: .sourceReference,
+                    id: UUID(uuidString: "E0F2B681-BCF5-4B0D-93C7-BC896E09D9D8")!
+                )
             )
         ],
         ideaCandidates: [

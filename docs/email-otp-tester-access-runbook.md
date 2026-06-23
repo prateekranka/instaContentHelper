@@ -5,8 +5,8 @@ kept as a backend compatibility boundary, but testers should not need them.
 
 ## Flow
 
-1. Owner uses the backend/admin tester flow. The old Manager Control Testers
-   tab is no longer on the primary bottom bar.
+1. Owner uses the Testers tab in Manager Control, or the backend/admin tester
+   flow when operating outside the app.
 2. Owner invites an approved tester email.
 3. Supabase sends an email OTP.
 4. Tester enters the email and OTP in ContentHelper.
@@ -58,4 +58,5 @@ All functions use the service role key only server-side.
 - `invalid_auth_session`: request a fresh OTP.
 - `device_session_failed`: inspect `exchange-auth-session` logs and confirm
   the member has a workspace, creator, role, and active status.
-- No email: resend the code and confirm Supabase Auth SMTP settings.
+- No email: resend the code from the Testers tab or backend/admin flow and
+  confirm Supabase Auth SMTP settings.

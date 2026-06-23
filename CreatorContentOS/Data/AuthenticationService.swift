@@ -1,5 +1,8 @@
 import Foundation
 import Supabase
+#if canImport(UIKit)
+import UIKit
+#endif
 
 protocol AuthenticationServicing: Sendable {
     func requestEmailOTP(email: String) async throws
@@ -60,7 +63,7 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
     init(
         bootstrapConfiguration: SupabaseBootstrapConfiguration? = .fromInfoDictionary(),
         runtimeStore: RuntimeConfigurationStoring = RuntimeConfigurationStore(),
-        deviceNameProvider: @escaping @Sendable () -> String = { "iPhone" }
+        deviceNameProvider: @escaping @Sendable () -> String = CurrentDeviceNameProvider.deviceName
     ) {
         self.bootstrapConfiguration = bootstrapConfiguration
         self.runtimeStore = runtimeStore
@@ -237,5 +240,27 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
             return error
         }
         return AuthenticationServiceError.backend(code)
+    }
+}
+
+enum CurrentDeviceNameProvider {
+    static func deviceName() -> String {
+        #if canImport(UIKit)
+        if let simulatorName = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] {
+            return displayName(from: simulatorName)
+        }
+
+        if Thread.isMainThread {
+            return displayName(from: MainActor.assumeIsolated { UIDevice.current.name })
+        }
+
+        return displayName(from: nil)
+        #else
+        displayName(from: nil)
+        #endif
+    }
+
+    static func displayName(from rawValue: String?, fallback: String = "iPhone") -> String {
+        rawValue?.nilIfBlank ?? fallback
     }
 }

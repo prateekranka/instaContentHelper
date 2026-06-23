@@ -42,20 +42,20 @@ struct SupabaseBootstrapConfiguration: Hashable, Sendable {
     var projectURL: URL
     var publishableKey: String
 
-    static func fromInfoDictionary(_ bundle: Bundle = .main) -> SupabaseBootstrapConfiguration? {
-        let environment = ProcessInfo.processInfo.environment
+    static func fromInfoDictionary(
+        _ bundle: Bundle = .main,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> SupabaseBootstrapConfiguration? {
         let rawURL = environment["MCO_SUPABASE_URL"]
             ?? bundle.object(forInfoDictionaryKey: "MCO_SUPABASE_URL") as? String
         let rawKey = environment["MCO_SUPABASE_PUBLISHABLE_KEY"]
             ?? bundle.object(forInfoDictionaryKey: "MCO_SUPABASE_PUBLISHABLE_KEY") as? String
 
         guard
-            let rawURL,
-            !rawURL.isEmpty,
+            let rawURL = rawURL?.nilIfBlank,
             !rawURL.hasPrefix("$("),
             let projectURL = URL(string: rawURL),
-            let rawKey,
-            !rawKey.isEmpty,
+            let rawKey = rawKey?.nilIfBlank,
             !rawKey.hasPrefix("$(")
         else {
             return nil

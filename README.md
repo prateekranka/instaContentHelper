@@ -2,7 +2,7 @@
 
 Native iPhone-only SwiftUI app for Creator Content OS V2.
 
-The app is currently fixture-first, with Supabase-ready repository boundaries and local Edge Functions for device pairing and weekly publishing.
+The app is fixture-safe by default for local development, with live Supabase runtime, approved-email OTP sign-in, manager tooling, and Edge Functions for the TestFlight path.
 
 ## Local iOS
 
