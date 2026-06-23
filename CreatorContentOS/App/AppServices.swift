@@ -264,13 +264,14 @@ final class AppServices {
               !isPublishingWeek,
               !isGeneratingWeek,
               !weeklyPlan.isSoftLocked,
-              weeklyPlan.days.count == 7
+              weeklyPlan.days.count == 7,
+              weeklyPlan.openDayCount == 0
         else {
             return false
         }
 
         guard let draft = latestGenerationSummary else {
-            return true
+            return weeklyPlan.days.allSatisfy { $0.state != .open }
         }
 
         guard draft.weeklyPlanID == weeklyPlan.id,
@@ -294,16 +295,47 @@ final class AppServices {
         updateWeeklyStartDate(startDate)
     }
 
+#if DEBUG
+    func applyDebugWeekStartOverrideIfNeeded(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) {
+        let argumentValue = arguments
+            .first { $0.hasPrefix("MCO_DEBUG_WEEK_START=") }?
+            .split(separator: "=", maxSplits: 1)
+            .last
+            .map(String.init)
+
+        guard let startDate = (environment["MCO_DEBUG_WEEK_START"] ?? argumentValue)?.nilIfBlank,
+              SupabaseDateFormatting.weekEndDate(starting: startDate) != startDate
+        else {
+            return
+        }
+
+        let currentStartDate = weeklyPlan.weekStartDate
+            ?? weeklyPlan.days.compactMap(\.scheduledDate).first
+        guard currentStartDate != startDate else {
+            return
+        }
+
+        updateWeeklyStartDate(startDate)
+    }
+#endif
+
     func updateWeeklyStartDate(_ startDate: String) {
         guard !weeklyPlan.isSoftLocked else { return }
 
         let constrainedEndDate = SupabaseDateFormatting.weekEndDate(starting: startDate)
+        let openDays = Self.emptyWeekDays(starting: startDate)
         weeklyPlan.weekStartDate = startDate
         weeklyPlan.weekEndDate = constrainedEndDate
         weeklyPlan.weekRange = SupabaseDateFormatting.dateRange(
             starting: startDate,
             ending: constrainedEndDate
         )
+        weeklyPlan.days = openDays
+        weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
+        latestGenerationSummary = nil
         generationError = nil
         weeklyGenerationProgress = nil
     }
@@ -350,6 +382,11 @@ final class AppServices {
                 ?? weeklyPlan.days.compactMap(\.scheduledDate).first
                 ?? SupabaseDateFormatting.todayDateString()
             let mode: GenerateWeekMode = latestGenerationSummary == nil ? .generateDraft : .regenerateDraft
+            if mode == .regenerateDraft {
+                latestGenerationSummary = nil
+                weeklyPlan.days = Self.emptyWeekDays(starting: weekStartDate)
+                weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
+            }
             let draft = try await repositories.weeklyGeneration.generateWeek(
                 creatorID: context.creatorID,
                 weekStartDate: weekStartDate,
@@ -366,14 +403,16 @@ final class AppServices {
 
             applyGeneratedDraft(draft)
             if !draft.isCompleteWeekDraft {
-                let message = WeeklyGenerationErrorDisplay.message(forCode: "invalid_generated_week")
-                generationError = message
+                let message = "Some days were saved and some days failed. Retry the failed days before publishing."
+                let terminalProgress = weeklyGenerationProgress
+                generationError = nil
                 weeklyGenerationProgress = WeeklyGenerationProgress.partialFailure(
                     from: draft,
-                    message: message
+                    message: message,
+                    preserving: terminalProgress
                 )
                 lastRepositoryError = nil
-                return nil
+                return draft
             }
 
             weeklyGenerationProgress = .savingDraftWeek(from: draft)
@@ -401,6 +440,34 @@ final class AppServices {
             weeklyBriefText: weeklyPlan.weeklyBriefText
         )
         weeklyIdeas = draft.ideaBank.isEmpty ? weeklyIdeas : draft.ideaBank
+    }
+
+    private static func emptyWeekDays(starting startDate: String) -> [WeeklyDay] {
+        let dateParser = DateFormatter()
+        dateParser.locale = Locale(identifier: "en_US_POSIX")
+        dateParser.dateFormat = "yyyy-MM-dd"
+
+        let weekdayFormatter = DateFormatter()
+        weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        weekdayFormatter.dateFormat = "EEE"
+
+        let dayFormatter = DateFormatter()
+        dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dayFormatter.dateFormat = "d"
+
+        return SupabaseDateFormatting.weekDates(starting: startDate).map { dateString in
+            let date = dateParser.date(from: dateString)
+            return WeeklyDay(
+                weekday: date.map { weekdayFormatter.string(from: $0).uppercased() } ?? "",
+                date: date.map { dayFormatter.string(from: $0) } ?? "",
+                scheduledDate: dateString,
+                title: "Open",
+                reason: "",
+                source: .open,
+                state: .open,
+                isSoftLocked: false
+            )
+        }
     }
 
     func generatedDailyCard(for dayID: UUID) -> GeneratedDailyCardDraft? {
@@ -572,10 +639,6 @@ final class AppServices {
             lastRepositoryError = nil
             lastActionMessage = "Weekly brief saved."
 
-            if isLiveSupabaseRuntime {
-                await refreshWeeklyDataFromRepositories()
-            }
-
             return true
         } catch {
             weeklyBriefEditError = error.localizedDescription
@@ -601,10 +664,6 @@ final class AppServices {
             weeklyBriefEditError = nil
             lastRepositoryError = nil
             lastActionMessage = "Weekly brief saved."
-
-            if isLiveSupabaseRuntime {
-                await refreshWeeklyDataFromRepositories()
-            }
 
             return true
         } catch {
@@ -907,6 +966,10 @@ final class AppServices {
             lastRepositoryRefreshAt = Date()
             todayContentState = .ready
         }
+
+#if DEBUG
+        applyDebugWeekStartOverrideIfNeeded()
+#endif
     }
 
     func refreshIntelligenceHomeImmediately() async {

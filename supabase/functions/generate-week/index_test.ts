@@ -896,7 +896,7 @@ Deno.test("generate-week status marks twice-stale running days as failed", async
   let scheduled: Promise<void> | undefined;
   const input = generationInputSnapshot();
   const state = dayGenerationState();
-  const startedAt = new Date(Date.now() - 180_000).toISOString();
+  const startedAt = new Date(Date.now() - 300_000).toISOString();
   state.generationRun = {
     id: generationRunID,
     workspace_id: workspaceID,

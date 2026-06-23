@@ -328,6 +328,15 @@ async function updateWeeklySetup(
 
   let resolvedWeeklySetupID = weeklySetupID;
   let resolvedWeekStartDate = weekStartDate;
+  let resolvedWeeklyPlan:
+    | {
+      id: string;
+      workspace_id: string;
+      creator_id: string;
+      weekly_setup_id: string | null;
+      week_start_date: string | null;
+    }
+    | null = null;
 
   if (!resolvedWeeklySetupID && weeklyPlanID) {
     const { data: weeklyPlan, error: planLookupError } = await admin
@@ -356,9 +365,12 @@ async function updateWeeklySetup(
         return jsonResponse({ error: "cross_workspace_forbidden" }, 403);
       }
     } else {
+      resolvedWeeklyPlan = weeklyPlan;
       resolvedWeeklySetupID = weeklyPlan.weekly_setup_id ?? null;
-      resolvedWeekStartDate = weeklyPlan.week_start_date ??
-        resolvedWeekStartDate;
+      if (!isDateString(resolvedWeekStartDate)) {
+        resolvedWeekStartDate = weeklyPlan.week_start_date ??
+          resolvedWeekStartDate;
+      }
     }
   }
 
@@ -386,6 +398,12 @@ async function updateWeeklySetup(
   }
 
   if (weeklySetup) {
+    await maybeAttachWeeklySetupToPlan(
+      admin,
+      resolvedWeeklyPlan,
+      weeklySetup.id,
+      resolvedWeekStartDate,
+    );
     return jsonResponse({
       action: "update_weekly_setup",
       weekly_setup: weeklySetup,
@@ -408,7 +426,120 @@ async function updateWeeklySetup(
     }
   }
 
-  return jsonResponse({ error: "weekly_setup_not_found" }, 404);
+  const createResult = await createWeeklySetupForWeek(
+    admin,
+    session,
+    creatorID,
+    resolvedWeekStartDate!,
+    update,
+  );
+  if ("response" in createResult) {
+    return createResult.response;
+  }
+
+  await maybeAttachWeeklySetupToPlan(
+    admin,
+    resolvedWeeklyPlan,
+    createResult.weeklySetup.id,
+    resolvedWeekStartDate,
+  );
+
+  return jsonResponse({
+    action: "update_weekly_setup",
+    weekly_setup: createResult.weeklySetup,
+  });
+}
+
+async function createWeeklySetupForWeek(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  creatorID: string,
+  weekStartDate: string,
+  update: Record<string, unknown>,
+): Promise<{ weeklySetup: Record<string, unknown> } | { response: Response }> {
+  const { data: profile } = await admin
+    .from("creator_profiles")
+    .select("id")
+    .eq("workspace_id", session.workspaceID)
+    .eq("creator_id", creatorID)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: weeklySetup, error } = await admin
+    .from("weekly_setups")
+    .insert({
+      workspace_id: session.workspaceID,
+      creator_id: creatorID,
+      creator_profile_id: profile?.id ?? null,
+      week_start_date: weekStartDate,
+      status: "ready_to_generate",
+      created_by_member_id: session.memberID,
+      ...update,
+    })
+    .select(WEEKLY_SETUP_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "23505") {
+      const { data: existing, error: lookupError } = await admin
+        .from("weekly_setups")
+        .update(update)
+        .eq("workspace_id", session.workspaceID)
+        .eq("creator_id", creatorID)
+        .eq("week_start_date", weekStartDate)
+        .select(WEEKLY_SETUP_SELECT)
+        .maybeSingle();
+
+      if (lookupError || !existing) {
+        return {
+          response: jsonResponse({ error: "weekly_setup_update_failed" }, 500),
+        };
+      }
+
+      return { weeklySetup: existing as Record<string, unknown> };
+    }
+
+    return {
+      response: jsonResponse({ error: "weekly_setup_update_failed" }, 500),
+    };
+  }
+
+  if (!weeklySetup) {
+    return {
+      response: jsonResponse({ error: "weekly_setup_update_failed" }, 500),
+    };
+  }
+
+  return { weeklySetup: weeklySetup as Record<string, unknown> };
+}
+
+async function maybeAttachWeeklySetupToPlan(
+  admin: SupabaseAdminClient,
+  weeklyPlan: {
+    id: string;
+    workspace_id: string;
+    creator_id: string;
+    weekly_setup_id: string | null;
+    week_start_date: string | null;
+  } | null,
+  weeklySetupID: string,
+  requestedWeekStartDate?: string,
+): Promise<void> {
+  if (
+    !weeklyPlan ||
+    weeklyPlan.weekly_setup_id ||
+    weeklyPlan.week_start_date !== requestedWeekStartDate
+  ) {
+    return;
+  }
+
+  await admin
+    .from("weekly_plans")
+    .update({ weekly_setup_id: weeklySetupID })
+    .eq("id", weeklyPlan.id)
+    .eq("workspace_id", weeklyPlan.workspace_id)
+    .eq("creator_id", weeklyPlan.creator_id);
 }
 
 function normalizedWeeklySetupUpdate(

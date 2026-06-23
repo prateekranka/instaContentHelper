@@ -282,7 +282,8 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
             mode: mode,
             preserveManualEdits: false,
             mock: nil,
-            responseMode: .async
+            responseMode: .async,
+            featureFlags: ["parallel_week_generation"]
         )
         do {
             let initial = try await invokeInitialGenerateWeek(asyncRequest)
@@ -340,6 +341,7 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         var pollAfterSeconds = 5
         var lastProgress = initialProgress
         var acceptedRunNotFoundCount = 0
+        var ambiguousFailedStatusCount = 0
 
         while Date() < deadline {
             try await Task.sleep(nanoseconds: UInt64(pollAfterSeconds) * 1_000_000_000)
@@ -349,6 +351,15 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
                     statusRequest(generationID: generationID, creatorID: creatorID)
                 )
             } catch {
+                if SupabaseFunctionErrorMapper.errorCode(from: error) == "invalid_generated_week",
+                   ambiguousFailedStatusCount < 12,
+                   let lastProgress,
+                   lastProgress.phase != .failed {
+                    ambiguousFailedStatusCount += 1
+                    await progress?(lastProgress.waitingForStatusRetry)
+                    pollAfterSeconds = 5
+                    continue
+                }
                 if SupabaseGenerationRetryPolicy.isAcceptedRunNotFoundStatusError(error) {
                     acceptedRunNotFoundCount += 1
                     if let lastProgress {
@@ -370,15 +381,29 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
             switch invocation {
             case .draft(let response):
                 let draft = response.domainDraft()
-                await progress?(.savingDraftWeek(from: draft))
+                if response.status == "partial" || (response.failedDayCount ?? 0) > 0 {
+                    await progress?(response.weekProgress)
+                } else {
+                    await progress?(.savingDraftWeek(from: draft))
+                }
                 return draft
             case .running(let status):
                 acceptedRunNotFoundCount = 0
+                ambiguousFailedStatusCount = 0
                 let currentProgress = status.weekProgress
                 lastProgress = currentProgress
                 await progress?(currentProgress)
                 pollAfterSeconds = max(2, min(status.pollAfterSeconds ?? 5, 15))
             case .failed(let status):
+                if status.isAmbiguousEarlyWeekFailure,
+                   ambiguousFailedStatusCount < 12,
+                   let lastProgress,
+                   lastProgress.phase != .failed {
+                    ambiguousFailedStatusCount += 1
+                    await progress?(lastProgress.waitingForStatusRetry)
+                    pollAfterSeconds = 5
+                    continue
+                }
                 throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_week")
             }
         }

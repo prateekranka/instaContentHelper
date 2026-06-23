@@ -319,6 +319,14 @@ struct WeeklyControlView: View {
                 RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
                     .stroke(MCOTheme.Color.hairline, lineWidth: 1)
             }
+        } else if isWeeklyBriefSet {
+            PrimaryActionButton(
+                title: "Generate",
+                systemImage: "paperplane"
+            ) {
+                services.generateCurrentWeek()
+            }
+            .disabled(services.isGeneratingWeek)
         }
     }
 }
@@ -410,10 +418,31 @@ struct WeeklyGenerationStatusPanel: View {
             }
 
             if let error = progress.error {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: MCOSpace.s) {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.oxblood)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if progress.phase == .failed {
+                        Button {
+                            onRegenerate()
+                        } label: {
+                            HStack(spacing: MCOSpace.xs) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text(draft == nil ? "Generate" : "Regenerate")
+                                    .font(MCOType.bodySmall.weight(.semibold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 42)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(MCOTheme.Color.paperRaised)
+                        .background(MCOTheme.Color.oxblood, in: Capsule())
+                        .accessibilityLabel(draft == nil ? "Generate draft week again" : "Regenerate draft week")
+                    }
+                }
             } else if let currentDay = progress.currentDay {
                 Text("Working on \(SupabaseDateFormatting.displayDate(for: currentDay)).")
                     .font(MCOType.caption)

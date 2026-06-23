@@ -201,8 +201,8 @@ type CreatorRecord = Record<string, unknown> & {
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const PROMPT_VERSION = "creator-weekly-generation-v1";
-const DEFAULT_RUNNING_DAY_STALE_MS = 120_000;
-const DEFAULT_DAY_GENERATION_MAX_ATTEMPTS = 1;
+const DEFAULT_RUNNING_DAY_STALE_MS = 240_000;
+const DEFAULT_DAY_GENERATION_MAX_ATTEMPTS = 2;
 
 export async function handleGenerateWeekRequest(
   request: Request,
@@ -965,18 +965,15 @@ async function generateSplitWeekOutput(
   dependencies: GenerateWeekDependencies,
 ): Promise<GeneratedWeekOutput> {
   if (dependencies.generateDayAI) {
-    const dayOutputs = await Promise.all(
-      weekDates(prepared.inputSnapshot.week_start_date).map((
-        scheduledDate,
-        dayIndex,
-      ) =>
+    const dayOutputs = await runDayGenerationBatches(
+      weekDates(prepared.inputSnapshot.week_start_date),
+      (scheduledDate, dayIndex) =>
         dependencies.generateDayAI!(
           prepared.inputSnapshot,
           prepared.providers,
           scheduledDate,
           dayIndex,
-        )
-      ),
+        ),
     );
     return combineGeneratedDayOutputs(prepared.inputSnapshot, dayOutputs);
   }
@@ -984,6 +981,24 @@ async function generateSplitWeekOutput(
     prepared.inputSnapshot,
     prepared.providers,
   );
+}
+
+async function runDayGenerationBatches<T>(
+  dates: string[],
+  generate: (scheduledDate: string, dayIndex: number) => Promise<T>,
+): Promise<T[]> {
+  const concurrency = parallelWeekGenerationConcurrency();
+  const outputs: T[] = [];
+  for (let start = 0; start < dates.length; start += concurrency) {
+    const batch = dates.slice(start, start + concurrency);
+    const batchOutputs = await Promise.all(
+      batch.map((scheduledDate, offset) =>
+        generate(scheduledDate, start + offset)
+      ),
+    );
+    outputs.push(...batchOutputs);
+  }
+  return outputs;
 }
 
 function shouldRetryWeekAsSplitGeneration(error: unknown): boolean {
@@ -1120,6 +1135,21 @@ async function handleParallelWeekGeneration(
     return linkResult.response;
   }
 
+  const clearResult = await clearExistingDraftDailyCardsForFullGeneration(
+    admin,
+    prepared.session.workspaceID,
+    prepared.request.creator_id,
+    planResult.weeklyPlanID,
+  );
+  if ("response" in clearResult) {
+    await markGenerationRunFailed(
+      admin,
+      generationID,
+      "generation_persist_failed",
+    );
+    return clearResult.response;
+  }
+
   const progress = initialParallelWeekGenerationSnapshot(
     prepared.request.week_start_date,
     planResult.weeklyPlanID,
@@ -1162,6 +1192,26 @@ async function handleParallelWeekGeneration(
 
   const result = await runPromise;
   return "response" in result ? result.response : jsonResponse(result.payload);
+}
+
+async function clearExistingDraftDailyCardsForFullGeneration(
+  admin: SupabaseAdminClient,
+  workspaceID: string,
+  creatorID: string,
+  weeklyPlanID: string,
+): Promise<{ ok: true } | { response: Response }> {
+  const { error } = await admin
+    .from("daily_cards")
+    .delete()
+    .eq("workspace_id", workspaceID)
+    .eq("creator_id", creatorID)
+    .eq("weekly_plan_id", weeklyPlanID);
+
+  if (error) {
+    return generationPersistFailure("daily_cards_clear_existing", error);
+  }
+
+  return { ok: true };
 }
 
 async function runParallelWeekGeneration(
@@ -1256,9 +1306,9 @@ async function runParallelWeekGeneration(
 function parallelWeekGenerationConcurrency(): number {
   const configured = Deno.env.get("MCO_PARALLEL_WEEK_GENERATION_CONCURRENCY")
     ?.trim();
-  const parsed = configured ? Number(configured) : 3;
+  const parsed = configured ? Number(configured) : 2;
   if (!Number.isFinite(parsed)) {
-    return 3;
+    return 2;
   }
   return Math.max(1, Math.min(Math.trunc(parsed), 7));
 }

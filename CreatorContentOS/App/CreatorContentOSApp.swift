@@ -23,6 +23,9 @@ struct CreatorContentOSApp: App {
                         await services.scheduleTodayNotificationIfNeededImmediately()
                     }
                     await services.refreshFromRepositoriesImmediately()
+#if DEBUG
+                    services.applyDebugWeekStartOverrideIfNeeded()
+#endif
                 }
         }
     }

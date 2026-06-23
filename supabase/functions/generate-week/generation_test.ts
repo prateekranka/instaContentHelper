@@ -13,6 +13,7 @@ import {
   makeMockGeneratedWeek,
   parseGeneratedWeekJSON,
   preserveManualDailyCardEdits,
+  validateGeneratedDayOutput,
   validateGeneratedWeek,
   weekDates,
 } from "./generation.ts";
@@ -188,6 +189,52 @@ Deno.test("day AI request includes target day intent and diversity guidance", ()
     /divers|distinct|varied|avoid.{0,60}generic|not all generic|different/i
       .test(requestText),
     "day request should include diversity guidance so cards are not generic repeats",
+  );
+});
+
+Deno.test("day AI request uses the scheduled date weekday instead of the week slot", () => {
+  const sundayStartInput = {
+    ...fixtureInput(),
+    week_start_date: "2026-06-21",
+  };
+  const request = buildDeepSeekDayChatRequest(
+    sundayStartInput,
+    "deepseek-v4-pro",
+    "2026-06-21",
+    0,
+  );
+  const messages = request.messages as Record<string, string>[];
+  const userPayload = JSON.parse(messages[1].content.split("\n")[0]);
+
+  assertEquals(userPayload.target.weekday, "Sunday");
+  assertEquals(userPayload.target.scheduled_date, "2026-06-21");
+  assert(
+    userPayload.target.day_intent.includes("Sunday:"),
+    "Sunday-start weeks should get Sunday-specific guidance",
+  );
+  assert(
+    !userPayload.target.day_intent.includes("Monday:"),
+    "Sunday-start weeks must not inherit the first slot's old Monday guidance",
+  );
+  assert(
+    JSON.stringify(userPayload.generation_guidance.weekly_diversity)
+      .includes("Sunday 2026-06-21"),
+    "weekly arc should be labeled by actual scheduled weekdays",
+  );
+});
+
+Deno.test("per-day validator rejects weekday language that conflicts with scheduled date", () => {
+  const card = {
+    ...makeMockGeneratedWeek(fixtureInput()).daily_cards[0],
+    scheduled_date: "2026-06-21",
+    why_today: "Monday is the ideal day to restart the gym routine.",
+    brief_alignment:
+      "This uses Monday as a practical re-entry day after travel.",
+  };
+
+  assertThrowsGenerationCode(
+    () => validateGeneratedDayOutput({ daily_card: card }, "2026-06-21", 0),
+    "invalid_generated_week",
   );
 });
 

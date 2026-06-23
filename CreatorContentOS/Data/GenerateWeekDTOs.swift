@@ -8,7 +8,7 @@ struct SupabaseGenerateWeekRequest: Encodable, Sendable {
     var preserveManualEdits: Bool
     var mock: Bool?
     var responseMode: GenerateWeekResponseMode? = nil
-    var featureFlags: [String] = ["parallel_week_generation"]
+    var featureFlags: [String]? = nil
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
@@ -109,21 +109,30 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
         )
     }
 
-    static func partialFailure(from draft: GeneratedWeekDraft, message: String) -> WeeklyGenerationProgress {
+    static func partialFailure(
+        from draft: GeneratedWeekDraft,
+        message: String,
+        preserving existingProgress: WeeklyGenerationProgress? = nil
+    ) -> WeeklyGenerationProgress {
         let savedCount = min(draft.dailyCards.count, 7)
+        let dayStatuses = existingProgress?.dayStatuses ?? []
+        let failedCount = dayStatuses.isEmpty
+            ? max(7 - savedCount, 0)
+            : dayStatuses.filter(\.isFailed).count
         return WeeklyGenerationProgress(
             phase: .failed,
-            generationID: draft.id,
-            weeklyPlanID: draft.weeklyPlanID,
-            draftedDayCount: savedCount,
+            generationID: existingProgress?.generationID ?? draft.id,
+            weeklyPlanID: existingProgress?.weeklyPlanID ?? draft.weeklyPlanID,
+            draftedDayCount: max(existingProgress?.draftedDayCount ?? savedCount, savedCount + failedCount),
             checkedDayCount: savedCount,
-            totalDayCount: 7,
+            totalDayCount: existingProgress?.totalDayCount ?? 7,
             currentDay: nil,
             message: "Generation incomplete",
             error: message,
             savedDayCount: savedCount,
-            failedDayCount: max(7 - savedCount, 0),
-            strategyCreated: true
+            failedDayCount: failedCount,
+            strategyCreated: true,
+            dayStatuses: dayStatuses
         )
     }
 
@@ -348,6 +357,12 @@ struct SupabaseGenerateWeekResponse: Decodable, Hashable, Sendable {
     var ideaBank: [SupabaseIdeaRow]
     var sourceSummary: String
     var generatedAt: String
+    var completedDayCount: Int?
+    var totalDayCount: Int?
+    var savedDayCount: Int?
+    var failedDayCount: Int?
+    var strategyCreated: Bool?
+    var dayStatuses: [WeeklyDayGenerationStatus]
 
     enum CodingKeys: String, CodingKey {
         case generationID = "generation_id"
@@ -360,6 +375,40 @@ struct SupabaseGenerateWeekResponse: Decodable, Hashable, Sendable {
         case ideaBank = "idea_bank"
         case sourceSummary = "source_summary"
         case generatedAt = "generated_at"
+        case completedDayCount = "completed_day_count"
+        case totalDayCount = "total_day_count"
+        case savedDayCount = "saved_day_count"
+        case failedDayCount = "failed_day_count"
+        case strategyCreated = "strategy_created"
+        case dayStatuses = "day_statuses"
+        case perDayStatuses = "per_day_statuses"
+        case failedDays = "failed_days"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        generationID = try container.decode(UUID.self, forKey: .generationID)
+        weeklyPlanID = try container.decode(UUID.self, forKey: .weeklyPlanID)
+        status = try container.decode(String.self, forKey: .status)
+        strategySummary = try container.decode(String.self, forKey: .strategySummary)
+        warnings = try container.decode([String].self, forKey: .warnings)
+        assumptions = try container.decode([String].self, forKey: .assumptions)
+        dailyCards = try container.decode([SupabaseGeneratedDailyCardDTO].self, forKey: .dailyCards)
+        ideaBank = try container.decode([SupabaseIdeaRow].self, forKey: .ideaBank)
+        sourceSummary = try container.decode(String.self, forKey: .sourceSummary)
+        generatedAt = try container.decode(String.self, forKey: .generatedAt)
+        completedDayCount = try container.decodeIfPresent(Int.self, forKey: .completedDayCount)
+        totalDayCount = try container.decodeIfPresent(Int.self, forKey: .totalDayCount)
+        savedDayCount = try container.decodeIfPresent(Int.self, forKey: .savedDayCount)
+        failedDayCount = try container.decodeIfPresent(Int.self, forKey: .failedDayCount)
+        strategyCreated = try container.decodeIfPresent(Bool.self, forKey: .strategyCreated)
+        if let statuses = try container.decodeIfPresent([WeeklyDayGenerationStatus].self, forKey: .dayStatuses) {
+            dayStatuses = statuses
+        } else if let statuses = try container.decodeIfPresent([WeeklyDayGenerationStatus].self, forKey: .perDayStatuses) {
+            dayStatuses = statuses
+        } else {
+            dayStatuses = try container.decodeIfPresent([WeeklyDayGenerationStatus].self, forKey: .failedDays) ?? []
+        }
     }
 
     func domainDraft() -> GeneratedWeekDraft {
@@ -374,6 +423,28 @@ struct SupabaseGenerateWeekResponse: Decodable, Hashable, Sendable {
             ideaBank: ideaBank.map { $0.domainIdea() },
             sourceSummary: sourceSummary,
             generatedAt: generatedAt
+        )
+    }
+
+    var weekProgress: WeeklyGenerationProgress {
+        let total = max(totalDayCount ?? 7, 1)
+        let saved = min(max(savedDayCount ?? dailyCards.count, 0), total)
+        let failed = min(max(failedDayCount ?? dayStatuses.filter(\.isFailed).count, 0), total)
+        let completed = min(max(completedDayCount ?? (saved + failed), saved + failed), total)
+        return WeeklyGenerationProgress(
+            phase: status == "partial" || failed > 0 ? .failed : .savingDraftWeek,
+            generationID: generationID,
+            weeklyPlanID: weeklyPlanID,
+            draftedDayCount: completed,
+            checkedDayCount: saved,
+            totalDayCount: total,
+            currentDay: nil,
+            message: status == "partial" ? "Generation incomplete" : "Saving draft week",
+            error: status == "partial" || failed > 0 ? "Some days were saved and some days failed. Retry the failed days before publishing." : nil,
+            savedDayCount: saved,
+            failedDayCount: failed,
+            strategyCreated: strategyCreated ?? true,
+            dayStatuses: dayStatuses
         )
     }
 }
@@ -479,6 +550,14 @@ struct SupabaseGenerateWeekStatusResponse: Decodable, Hashable, Sendable {
             dayStatuses: dayStatuses
         )
     }
+
+    var isAmbiguousEarlyWeekFailure: Bool {
+        status == "failed" &&
+            (error == nil || error == "invalid_generated_week") &&
+            (savedDayCount ?? 0) == 0 &&
+            (failedDayCount ?? 0) == 0 &&
+            dayStatuses.isEmpty
+    }
 }
 
 enum SupabaseGenerateWeekInvocation: Sendable {
@@ -487,8 +566,11 @@ enum SupabaseGenerateWeekInvocation: Sendable {
     case failed(SupabaseGenerateWeekStatusResponse)
 
     static func decode(_ data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> SupabaseGenerateWeekInvocation {
-        if let response = try? decoder.decode(SupabaseGenerateWeekResponse.self, from: data) {
-            return .draft(response)
+        let probe = try? decoder.decode(SupabaseGenerationStatusProbe.self, from: data)
+        if probe?.status == "draft" || probe?.status == "partial" {
+            if let response = try? decoder.decode(SupabaseGenerateWeekResponse.self, from: data) {
+                return .draft(response)
+            }
         }
 
         let status = try decoder.decode(SupabaseGenerateWeekStatusResponse.self, from: data)
@@ -505,8 +587,11 @@ enum SupabaseRegenerateDayInvocation: Sendable {
     case failed(SupabaseGenerateWeekStatusResponse)
 
     static func decode(_ data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> SupabaseRegenerateDayInvocation {
-        if let response = try? decoder.decode(SupabaseRegenerateDayResponse.self, from: data) {
-            return .completed(response)
+        let probe = try? decoder.decode(SupabaseGenerationStatusProbe.self, from: data)
+        if probe?.status == "draft" || probe?.status == "completed" {
+            if let response = try? decoder.decode(SupabaseRegenerateDayResponse.self, from: data) {
+                return .completed(response)
+            }
         }
 
         let status = try decoder.decode(SupabaseGenerateWeekStatusResponse.self, from: data)
@@ -515,6 +600,10 @@ enum SupabaseRegenerateDayInvocation: Sendable {
         }
         return .running(status)
     }
+}
+
+private struct SupabaseGenerationStatusProbe: Decodable {
+    let status: String?
 }
 
 struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
