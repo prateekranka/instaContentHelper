@@ -213,9 +213,10 @@ deno run --allow-all supabase/functions/generate-week/acceptance.ts
 ## Queued day worker
 
 Weekly generation can be processed by durable per-day jobs instead of one long
-Edge Function lifecycle. `scripts/workers/generate-day-worker.ts` claims at most
-one `weekly_generation_day_jobs` row per invocation, moves it to `generating`,
-calls day generation, then marks the row `generated` or `failed`.
+Edge Function lifecycle. `scripts/workers/generate-day-worker.ts` runs a bounded
+worker pool, defaults to four concurrent lanes, claims `queued` or `retrying`
+`weekly_generation_day_jobs` rows, moves each owned row to `generating`, calls
+day generation, then marks the row `generated` or `failed`.
 
 The worker expects day jobs with these columns:
 
@@ -246,7 +247,7 @@ SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key> \
 deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --dry-run
 ```
 
-Local one-job execution against served functions:
+Local bounded-pool execution against served functions:
 
 ```sh
 SUPABASE_URL=http://127.0.0.1:54321 \
@@ -254,22 +255,29 @@ SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key> \
 MCO_GENERATE_WEEK_FUNCTION_URL=http://127.0.0.1:54321/functions/v1/generate-week \
 MCO_WORKER_DEVICE_TOKEN=<owner-or-editor-device-token> \
 MCO_DAY_WORKER_MOCK=1 \
-deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --once
+deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --once --concurrency=4
 ```
 
-Production one-job execution:
+Production bounded-pool execution:
 
 ```sh
 SUPABASE_URL=https://<project-ref>.supabase.co \
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key> \
 MCO_GENERATE_WEEK_FUNCTION_URL=https://<project-ref>.supabase.co/functions/v1/generate-week \
 MCO_WORKER_DEVICE_TOKEN=<owner-or-editor-device-token> \
-deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --once
+deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --once --concurrency=4
 ```
 
+Use `MCO_DAY_WORKER_CONCURRENCY=4` instead of `--concurrency=4` when the process
+supervisor owns command arguments. Keep the cap at four until two live four-wide
+runs are stable; after that the cap can be tuned without code changes. Use
+`--run-id=<generation_run_id>` when a scheduler should drain only one generation
+run.
+
 Do not print or commit the service role key or worker device token. Run the
-worker repeatedly from a scheduler, queue runner, or process supervisor; each
-invocation is intentionally bounded to one job.
+worker from a scheduler, queue runner, or process supervisor. Each invocation is
+bounded by the concurrency cap and exits after no matching queued/retrying jobs
+remain.
 
 Current integration hook: the worker uses the existing `generate-week`
 `regenerate_day` action with `response_mode: "sync"`. That endpoint still

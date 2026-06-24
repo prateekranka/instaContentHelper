@@ -11,7 +11,7 @@ struct WeeklyControlView: View {
     @State private var isCreatorProfileExpanded = false
 
     var body: some View {
-        EditorialScreen(bottomContentPadding: MCOSpace.l, showsBottomBar: false) {
+        EditorialScreen(bottomContentPadding: 140, showsBottomBar: false) {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
                 ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
@@ -155,6 +155,7 @@ struct WeeklyControlView: View {
             services.publishCurrentWeek()
         }
         .disabled(!services.canPublishCurrentWeek)
+        .accessibilityIdentifier("weekly.publish")
     }
 
     private func toggleDayFilter(_ state: WeeklyDayState) {
@@ -478,6 +479,7 @@ struct WeeklyGenerationStatusPanel: View {
                 .foregroundStyle(MCOTheme.Color.paperRaised)
                 .background(MCOTheme.Color.oxblood, in: Capsule())
                 .accessibilityLabel("Review generated day cards")
+                .accessibilityIdentifier("weekly.reviewGenerated")
 
                 Button {
                     onRegenerate()
@@ -1062,11 +1064,17 @@ struct WeekStartDateSelector: View {
     let onChange: (_ startDate: String) -> Void
 
     private var startOptions: [String] {
-        SupabaseDateFormatting.dateOptions(
-            around: startDate,
-            daysBefore: 21,
-            daysAfter: 42
+        let today = SupabaseDateFormatting.todayDateString()
+        let forwardOptions = SupabaseDateFormatting.dateOptions(
+            starting: today,
+            dayCount: 84
         )
+
+        guard startDate >= today, !forwardOptions.contains(startDate) else {
+            return forwardOptions
+        }
+
+        return (forwardOptions + [startDate]).sorted()
     }
 
     var body: some View {
@@ -1674,6 +1682,7 @@ struct GeneratedWeekReviewSheet: View {
                         dismiss()
                     }
                     .foregroundStyle(MCOTheme.Color.oxblood)
+                    .accessibilityIdentifier("weekly.generatedReview.done")
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -1681,10 +1690,12 @@ struct GeneratedWeekReviewSheet: View {
                     SecondaryActionButton(title: "Save edits") {
                         onSave(draft)
                     }
+                    .accessibilityIdentifier("weekly.generatedReview.save")
                     PrimaryActionButton(title: "Publish draft", systemImage: "paperplane") {
                         onPublish(draft)
                         dismiss()
                     }
+                    .accessibilityIdentifier("weekly.generatedReview.publishDraft")
                 }
                 .padding(.horizontal, MCOSpace.m)
             }
@@ -1973,6 +1984,7 @@ struct WeeklyDayDetailSheet: View {
                         dismiss()
                     }
                     .foregroundStyle(MCOTheme.Color.oxblood)
+                    .accessibilityIdentifier("weekly.day.detail.close")
                 }
             }
         }
@@ -2036,7 +2048,8 @@ struct WeeklyDayDetailSheet: View {
                     WeeklyDayStateActionButton(
                         state: .planned,
                         selectedState: day.state,
-                        isDisabled: isLocked
+                        isDisabled: isLocked,
+                        identifier: "weekly.day.\(day.weekday).ready"
                     ) {
                         onSetState(.planned)
                         dismiss()
@@ -2044,7 +2057,8 @@ struct WeeklyDayDetailSheet: View {
                     WeeklyDayStateActionButton(
                         state: .backup,
                         selectedState: day.state,
-                        isDisabled: isLocked
+                        isDisabled: isLocked,
+                        identifier: "weekly.day.\(day.weekday).backup"
                     ) {
                         onSetState(.backup)
                         dismiss()
@@ -2052,7 +2066,8 @@ struct WeeklyDayDetailSheet: View {
                     WeeklyDayStateActionButton(
                         state: .open,
                         selectedState: day.state,
-                        isDisabled: isLocked
+                        isDisabled: isLocked,
+                        identifier: "weekly.day.\(day.weekday).open"
                     ) {
                         onSetState(.open)
                         dismiss()
@@ -2141,6 +2156,7 @@ struct WeeklyDayStateActionButton: View {
     let state: WeeklyDayState
     let selectedState: WeeklyDayState
     let isDisabled: Bool
+    var identifier: String?
     let action: () -> Void
 
     var body: some View {
@@ -2164,6 +2180,7 @@ struct WeeklyDayStateActionButton: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
+        .accessibilityIdentifier(identifier ?? "")
     }
 
     private var isSelected: Bool {
@@ -2939,6 +2956,7 @@ struct WeeklyRhythmList: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(day.weekday) \(day.title). \(day.state.label). Open planned content.")
+                .accessibilityIdentifier("weekly.day.\(day.weekday)")
                 Hairline()
             }
         }
@@ -2984,6 +3002,7 @@ struct WeeklyDayRow: View {
                     Text(day.state.label)
                         .font(MCOType.caption)
                         .foregroundStyle(day.state.accent)
+                        .accessibilityIdentifier("weekly.day.\(day.weekday).status.\(day.state.label.lowercased())")
                     if day.isSoftLocked {
                         Image(systemName: "lock.fill")
                             .font(.system(size: 9, weight: .semibold))

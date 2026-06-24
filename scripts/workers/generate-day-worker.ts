@@ -27,8 +27,10 @@ export type DayJob = {
 type JsonObject = Record<string, unknown>;
 
 type WorkerOptions = {
+  concurrency: number;
   dryRun: boolean;
   once: boolean;
+  runID?: string;
   stub: boolean;
 };
 
@@ -37,7 +39,7 @@ export type ProcessResult =
   | { status: "failed"; errorCode: string };
 
 export type DayJobStore = {
-  peekJob: () => Promise<DayJob | null>;
+  peekJob: (filter?: DayJobFilter) => Promise<DayJob | null>;
   claimJob: (
     candidate: DayJob,
     fields: {
@@ -53,11 +55,29 @@ export type DayJobStore = {
   markFailed: (job: DayJob, errorCode: string, now: string) => Promise<void>;
 };
 
+export type DayJobFilter = {
+  runID?: string;
+};
+
 export type ClaimOptions = {
+  filter?: DayJobFilter;
   maxClaimAttempts?: number;
   wait?: (ms: number) => Promise<void>;
   now?: () => string;
   onLostRace?: (candidate: DayJob, attempt: number) => void;
+};
+
+export type WorkerPoolOptions = {
+  concurrency: number;
+  dryRun: boolean;
+  filter?: DayJobFilter;
+  onClaimLostRace?: (candidate: DayJob, attempt: number) => void;
+};
+
+export type WorkerPoolResult = {
+  claimed: number;
+  generated: number;
+  failed: number;
 };
 
 export type ProcessJobContext = {
@@ -96,70 +116,41 @@ export async function main(args: string[]): Promise<void> {
   });
   const store = createSupabaseDayJobStore(supabase);
 
-  const job = options.dryRun
-    ? await store.peekJob()
-    : await claimOneJobFromStore(store, {
-      onLostRace: (candidate, attempt) => {
-        info("day_job_claim_lost_race", {
-          candidate_job_id: candidate.id,
-          attempt,
-        });
-      },
-    });
-  if (!job) {
-    info("no_job", {});
-    Deno.exit(0);
-  }
-
-  if (options.dryRun) {
-    info("dry_run_job", {
-      job_id: job.id,
-      generation_run_id: job.generation_run_id,
-      weekly_plan_id: job.weekly_plan_id,
-      scheduled_date: job.scheduled_date,
-      day_index: job.day_index,
-      would_call: options.stub ? "stub" : generateWeekFunctionURL,
-    });
-    Deno.exit(0);
-  }
-
-  info("job_claimed", {
-    job_id: job.id,
-    generation_run_id: job.generation_run_id,
-    scheduled_date: job.scheduled_date,
-    attempt_count: job.attempt_count,
-  });
-
-  const result = await processJob(job, {
+  const processContext: ProcessJobContext = {
     stub: options.stub,
     serviceRoleKey,
     generateWeekFunctionURL,
     workerDeviceToken: env("MCO_WORKER_DEVICE_TOKEN"),
     mock: env("MCO_DAY_WORKER_MOCK") === "1",
+  };
+
+  const poolResult = await runWorkerPool(store, processContext, {
+    concurrency: options.concurrency,
+    dryRun: options.dryRun,
+    filter: { runID: options.runID },
+    onClaimLostRace: (candidate, attempt) => {
+      info("day_job_claim_lost_race", {
+        candidate_job_id: candidate.id,
+        attempt,
+      });
+    },
   });
-  await recordProcessResult(store, job, result);
-  if (result.status === "generated") {
-    info("job_generated", {
-      job_id: job.id,
-      daily_card_id: result.dailyCardID,
-    });
-  } else {
-    info("job_failed", {
-      job_id: job.id,
-      error_code: result.errorCode,
-    });
-  }
+  info("worker_pool_complete", poolResult);
 }
 
 export function createSupabaseDayJobStore(supabase: {
   from: (table: string) => any;
 }): DayJobStore {
   return {
-    async peekJob(): Promise<DayJob | null> {
-      const { data, error } = await supabase
+    async peekJob(filter: DayJobFilter = {}): Promise<DayJob | null> {
+      let query = supabase
         .from("weekly_generation_day_jobs")
         .select(dayJobSelect())
-        .in("status", ["queued", "retrying"])
+        .in("status", ["queued", "retrying"]);
+      if (filter.runID) {
+        query = query.eq("generation_run_id", filter.runID);
+      }
+      const { data, error } = await query
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
@@ -247,7 +238,7 @@ export async function claimOneJobFromStore(
   const wait = options.wait ?? delay;
   const now = options.now ?? (() => new Date().toISOString());
   for (let attempt = 0; attempt < maxClaimAttempts; attempt += 1) {
-    const candidate = await store.peekJob();
+    const candidate = await store.peekJob(options.filter);
     if (!candidate) {
       return null;
     }
@@ -265,6 +256,76 @@ export async function claimOneJobFromStore(
     await wait(100 + attempt * 50);
   }
   return null;
+}
+
+export async function runWorkerPool(
+  store: DayJobStore,
+  context: ProcessJobContext,
+  options: WorkerPoolOptions,
+): Promise<WorkerPoolResult> {
+  const concurrency = normalizeConcurrency(options.concurrency);
+  const totals: WorkerPoolResult = { claimed: 0, generated: 0, failed: 0 };
+
+  if (options.dryRun) {
+    const job = await store.peekJob(options.filter);
+    if (!job) {
+      info("no_job", {});
+      return totals;
+    }
+    info("dry_run_job", {
+      job_id: job.id,
+      generation_run_id: job.generation_run_id,
+      weekly_plan_id: job.weekly_plan_id,
+      scheduled_date: job.scheduled_date,
+      day_index: job.day_index,
+      would_call: context.stub ? "stub" : context.generateWeekFunctionURL,
+    });
+    return totals;
+  }
+
+  async function runLane(laneIndex: number): Promise<void> {
+    while (true) {
+      const job = await claimOneJobFromStore(store, {
+        filter: options.filter,
+        onLostRace: options.onClaimLostRace,
+      });
+      if (!job) {
+        if (laneIndex === 0) {
+          info("no_job", {});
+        }
+        return;
+      }
+
+      totals.claimed += 1;
+      info("job_claimed", {
+        job_id: job.id,
+        generation_run_id: job.generation_run_id,
+        scheduled_date: job.scheduled_date,
+        attempt_count: job.attempt_count,
+      });
+
+      const result = await processJob(job, context);
+      await recordProcessResult(store, job, result);
+      if (result.status === "generated") {
+        totals.generated += 1;
+        info("job_generated", {
+          job_id: job.id,
+          daily_card_id: result.dailyCardID,
+        });
+      } else {
+        totals.failed += 1;
+        info("job_failed", {
+          job_id: job.id,
+          error_code: result.errorCode,
+        });
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: concurrency }, (_, index) => runLane(index)),
+  );
+  return totals;
 }
 
 export async function processJob(
@@ -365,12 +426,14 @@ function dayJobSelect(): string {
 
 function parseOptions(args: string[]): WorkerOptions {
   const options: WorkerOptions = {
+    concurrency: parseConcurrency(env("MCO_DAY_WORKER_CONCURRENCY")),
     dryRun: env("MCO_DAY_WORKER_DRY_RUN") === "1",
     once: true,
     stub: env("MCO_DAY_WORKER_STUB") === "1",
   };
 
-  for (const arg of args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
     if (arg === "--dry-run") {
       options.dryRun = true;
     } else if (arg === "--once") {
@@ -379,6 +442,21 @@ function parseOptions(args: string[]): WorkerOptions {
       options.stub = true;
     } else if (arg === "--loop") {
       options.once = false;
+    } else if (arg.startsWith("--concurrency=")) {
+      options.concurrency = parseConcurrency(
+        arg.slice("--concurrency=".length),
+      );
+    } else if (arg === "--concurrency") {
+      options.concurrency = parseConcurrency(
+        requiredArgValue("--concurrency", args[++index] ?? ""),
+      );
+    } else if (arg.startsWith("--run-id=")) {
+      options.runID = requiredArgValue(
+        "--run-id",
+        arg.slice("--run-id=".length),
+      );
+    } else if (arg === "--run-id") {
+      options.runID = requiredArgValue("--run-id", args[++index] ?? "");
     } else if (arg === "--help" || arg === "-h") {
       printUsage();
       Deno.exit(0);
@@ -390,6 +468,29 @@ function parseOptions(args: string[]): WorkerOptions {
   return options;
 }
 
+function parseConcurrency(value: string | undefined): number {
+  if (!value) {
+    return 4;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    fail(`Invalid concurrency: ${value}`);
+  }
+  return normalizeConcurrency(parsed);
+}
+
+function normalizeConcurrency(value: number): number {
+  return Math.max(1, Math.floor(value));
+}
+
+function requiredArgValue(name: string, value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    fail(`${name} requires a non-empty value`);
+  }
+  return trimmed;
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -398,6 +499,7 @@ function printUsage(): void {
   console.log(
     [
       "Usage: deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts [--once] [--dry-run] [--stub]",
+      "       deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts [--concurrency=4] [--run-id=<generation_run_id>]",
       "",
       "Required env:",
       "  SUPABASE_URL or MCO_SUPABASE_URL",
@@ -411,6 +513,7 @@ function printUsage(): void {
       "  MCO_DAY_WORKER_DRY_RUN=1 selects one job without mutation",
       "  MCO_DAY_WORKER_STUB=1 claims one job and marks it failed with day_generation_endpoint_stubbed",
       "  MCO_DAY_WORKER_MOCK=1 forwards mock:true to generate-week where allowed",
+      "  MCO_DAY_WORKER_CONCURRENCY sets the bounded pool size; defaults to 4",
     ].join("\n"),
   );
 }
