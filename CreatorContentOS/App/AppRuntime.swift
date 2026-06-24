@@ -56,7 +56,8 @@ struct AppRuntime {
                 weeklyIdeas: [],
                 intelligenceHome: .liveLoadingPlaceholder,
                 creatorProfileSummary: .liveLoadingPlaceholder,
-                weekCards: []
+                weekCards: [],
+                todayContentState: .loading
             )
         )
     }

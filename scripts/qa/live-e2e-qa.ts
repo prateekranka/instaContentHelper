@@ -7,25 +7,27 @@ const config = {
   publishableKey: requiredEnv("MCO_SUPABASE_PUBLISHABLE_KEY"),
   serviceRoleKey: requiredEnv("MCO_SUPABASE_SERVICE_ROLE_KEY"),
   weekStartDate: env("MCO_QA_WEEK_START_DATE") ?? "2026-07-06",
+  idSuffix: env("MCO_QA_ID_SUFFIX") ?? "e2",
   useMockAI: env("MCO_QA_GENERATE_MOCK") === "1",
   responseMode: env("MCO_QA_GENERATION_RESPONSE_MODE") ?? "sync",
+  parallelWeekGeneration: env("MCO_QA_PARALLEL_WEEK_GENERATION") === "1",
   cleanupOnly: env("MCO_QA_CLEANUP_ONLY") === "1",
 };
 
 const ids = {
-  workspace: "7a111111-1111-4111-8111-1111111111e2",
-  creator: "7a222222-2222-4222-8222-2222222222e2",
-  profile: "7a333333-3333-4333-8333-3333333333e2",
-  setup: "7a444444-4444-4444-8444-4444444444e2",
-  ownerMember: "7a555555-5555-4555-8555-5555555555e2",
-  editorMember: "7a666666-6666-4666-8666-6666666666e2",
-  creatorMember: "7a777777-7777-4777-8777-7777777777e2",
-  ownerDevice: "7a888888-8888-4888-8888-8888888888e2",
-  editorDevice: "7a999999-9999-4999-8999-9999999999e2",
-  creatorDevice: "7aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaae2",
-  idea: "7abbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbe2",
-  otherWorkspace: "7acccccc-cccc-4ccc-8ccc-cccccccccce2",
-  otherCreator: "7adddddd-dddd-4ddd-8ddd-dddddddddde2",
+  workspace: qaUUID("7a111111-1111-4111-8111-1111111111"),
+  creator: qaUUID("7a222222-2222-4222-8222-2222222222"),
+  profile: qaUUID("7a333333-3333-4333-8333-3333333333"),
+  setup: qaUUID("7a444444-4444-4444-8444-4444444444"),
+  ownerMember: qaUUID("7a555555-5555-4555-8555-5555555555"),
+  editorMember: qaUUID("7a666666-6666-4666-8666-6666666666"),
+  creatorMember: qaUUID("7a777777-7777-4777-8777-7777777777"),
+  ownerDevice: qaUUID("7a888888-8888-4888-8888-8888888888"),
+  editorDevice: qaUUID("7a999999-9999-4999-8999-9999999999"),
+  creatorDevice: qaUUID("7aaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa"),
+  idea: qaUUID("7abbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb"),
+  otherWorkspace: qaUUID("7acccccc-cccc-4ccc-8ccc-cccccccccc"),
+  otherCreator: qaUUID("7adddddd-dddd-4ddd-8ddd-dddddddddd"),
 };
 
 const tokens = {
@@ -41,6 +43,9 @@ const admin = createClient(config.supabaseURL, config.serviceRoleKey, {
 
 if (!isDateString(config.weekStartDate)) {
   fail("MCO_QA_WEEK_START_DATE must be YYYY-MM-DD");
+}
+if (!/^[0-9a-f]{2}$/i.test(config.idSuffix)) {
+  fail("MCO_QA_ID_SUFFIX must be two hex characters");
 }
 if (config.responseMode !== "sync" && config.responseMode !== "async") {
   fail("MCO_QA_GENERATION_RESPONSE_MODE must be sync or async");
@@ -59,12 +64,36 @@ await runRoleAndBoundaryChecks();
 console.log("PASS live Supabase QA E2E suite");
 
 async function resetQAWorkspace() {
+  const qaWorkspaceIDs = [ids.workspace, ids.otherWorkspace];
+  const workspaceScopedTables = [
+    "archive_entries",
+    "post_results",
+    "daily_card_references",
+    "daily_card_trends",
+    "daily_card_patterns",
+    "daily_cards",
+    "weekly_generation_runs",
+    "weekly_plans",
+    "weekly_setups",
+    "ideas",
+    "reference_extractions",
+    "source_references",
+    "creator_profiles",
+    "device_installations",
+    "members",
+    "creators",
+  ];
+
+  for (const table of workspaceScopedTables) {
+    await must(
+      `clean QA ${table}`,
+      admin.from(table).delete().in("workspace_id", qaWorkspaceIDs),
+    );
+  }
+
   await must(
     "clean QA workspaces",
-    admin.from("workspaces").delete().in("id", [
-      ids.workspace,
-      ids.otherWorkspace,
-    ]),
+    admin.from("workspaces").delete().in("id", qaWorkspaceIDs),
   );
 }
 
@@ -605,6 +634,9 @@ async function generateWeek(): Promise<JsonObject> {
     mode: "generate_draft",
     preserve_manual_edits: true,
     response_mode: config.responseMode,
+    ...(config.parallelWeekGeneration
+      ? { feature_flags: ["parallel_week_generation"] }
+      : {}),
     ...(config.useMockAI ? { mock: true } : {}),
   }, { allowAccepted: true });
   return await resolveGenerationResponse(response);
@@ -920,6 +952,10 @@ function requiredEnv(name: string): string {
     fail(`missing ${name}`);
   }
   return value;
+}
+
+function qaUUID(prefix: string): string {
+  return `${prefix}${config.idSuffix.toLowerCase()}`;
 }
 
 function fail(message: string): never {

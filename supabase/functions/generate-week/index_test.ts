@@ -240,6 +240,124 @@ Deno.test("generate-week async mode returns a run that is immediately pollable",
   assertEquals(statusBody.total_day_count, 7);
 });
 
+Deno.test("generate-week queued mode creates seven durable day jobs", async () => {
+  const state = dayGenerationState();
+  state.dailyCards = [];
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+      feature_flags: ["queued_week_generation"],
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+    },
+  );
+
+  assertEquals(response.status, 202);
+  const body = await response.json();
+  assertEquals(body.generation_id, generationRunID);
+  assertEquals(body.weekly_plan_id, weeklyPlanID);
+  assertEquals(body.status, "running");
+  assertEquals(body.total_day_count, 7);
+  assertEquals(body.completed_day_count, 0);
+  assertEquals(state.dayJobs.length, 7);
+  assertEquals(state.dayJobs[0].status, "queued");
+  assertEquals(state.dayJobs[6].scheduled_date, "2026-06-14");
+});
+
+Deno.test("generate-week status returns queued day-job progress", async () => {
+  const state = dayGenerationState();
+  state.dayJobs = makeQueuedDayJobs([
+    ["generated", dailyCardIDs[0]],
+    ["generated", dailyCardIDs[1]],
+    ["generating", null],
+    ["queued", null],
+    ["queued", null],
+    ["failed", null],
+    ["retrying", null],
+  ]);
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    status: "running",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.status, "running");
+  assertEquals(body.completed_day_count, 2);
+  assertEquals(body.failed_day_count, 1);
+  assertEquals(body.current_day, "2026-06-10");
+  const days = body.days as Record<string, unknown>[];
+  assertEquals(days[0].status, "generated");
+  assertEquals(days[2].status, "generating");
+  assertEquals(days[5].retry_action, "retry_day");
+});
+
+Deno.test("retry_day requeues only a failed durable day job", async () => {
+  const state = dayGenerationState();
+  state.dayJobs = makeQueuedDayJobs([
+    ["generated", dailyCardIDs[0]],
+    ["failed", null],
+  ]);
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    status: "running",
+    weekly_plan_id: weeklyPlanID,
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "retry_day",
+      generation_id: generationRunID,
+      scheduled_date: "2026-06-09",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+    },
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(state.dayJobs[0].status, "generated");
+  assertEquals(state.dayJobs[1].status, "retrying");
+
+  const rejectedResponse = await handleGenerateWeekRequest(
+    requestFor({
+      action: "retry_day",
+      generation_id: generationRunID,
+      scheduled_date: "2026-06-08",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+    },
+  );
+
+  assertEquals(rejectedResponse.status, 409);
+  assertEquals((await rejectedResponse.json()).error, "day_job_not_retryable");
+  assertEquals(state.dayJobs[0].status, "generated");
+});
+
 Deno.test("generate-week async mode reports failed days when validation fails", async () => {
   let scheduled: Promise<void> | undefined;
   const admin = fakeAdmin({});
@@ -1448,6 +1566,7 @@ type FakeState = {
   generationRun: Record<string, unknown> | null;
   weeklyPlan: Record<string, unknown> | null;
   dailyCards: Record<string, unknown>[];
+  dayJobs: Record<string, unknown>[];
   updatedDailyCardIDs: string[];
   upsertedDailyCardDates: string[];
   dailyCardUpdateMissDates: Set<string>;
@@ -1467,6 +1586,7 @@ function fakeAdmin(
     generationRun: state.generationRun ?? null,
     weeklyPlan: state.weeklyPlan ?? null,
     dailyCards: state.dailyCards ?? [],
+    dayJobs: state.dayJobs ?? [],
     updatedDailyCardIDs: state.updatedDailyCardIDs ?? [],
     upsertedDailyCardDates: state.upsertedDailyCardDates ?? [],
     dailyCardUpdateMissDates: state.dailyCardUpdateMissDates ?? new Set(),
@@ -1607,6 +1727,30 @@ class FakeQuery {
           this.values as Record<string, unknown>,
         );
       }
+      if (
+        this.table === "weekly_generation_day_jobs" &&
+        this.operation === "update"
+      ) {
+        const values = this.values as Record<string, unknown>;
+        const rows = this.state.dayJobs.filter((job) =>
+          (!this.filters.generation_run_id ||
+            job.generation_run_id === this.filters.generation_run_id) &&
+          (!this.filters.workspace_id ||
+            job.workspace_id === this.filters.workspace_id) &&
+          (!this.filters.creator_id ||
+            job.creator_id === this.filters.creator_id) &&
+          (!this.filters.scheduled_date ||
+            job.scheduled_date === this.filters.scheduled_date) &&
+          (!this.filters.status || job.status === this.filters.status ||
+            (Array.isArray(this.filters.status) &&
+              this.filters.status.includes(job.status)))
+        );
+        rows.forEach((row) => Object.assign(row, values));
+        return {
+          data: rows.length === 1 ? rows[0] : rows,
+          error: null,
+        };
+      }
       if (this.table === "daily_cards" && this.operation === "update") {
         if (
           this.state.dailyCardUpdateMissDates.has(
@@ -1649,6 +1793,30 @@ class FakeQuery {
           data: { id: values.id, scheduled_date: values.scheduled_date },
           error: null,
         };
+      }
+      if (
+        this.table === "weekly_generation_day_jobs" &&
+        (this.operation === "insert" || this.operation === "upsert")
+      ) {
+        const values = Array.isArray(this.values)
+          ? this.values as Record<string, unknown>[]
+          : [this.values as Record<string, unknown>];
+        values.forEach((value, index) => {
+          const existing = this.state.dayJobs.find((job) =>
+            job.generation_run_id === value.generation_run_id &&
+            job.scheduled_date === value.scheduled_date
+          );
+          const row = {
+            id: `99999999-9999-4999-8999-99999999999${index}`,
+            ...value,
+          };
+          if (existing) {
+            Object.assign(existing, row);
+          } else {
+            this.state.dayJobs.push(row);
+          }
+        });
+        return { data: this.state.dayJobs, error: null };
       }
       return {
         data: Array.isArray(this.values) ? this.values : this.values ?? {
@@ -1719,6 +1887,18 @@ class FakeQuery {
       case "weekly_generation_runs":
         return {
           data: this.state.generationRun ? this.state.generationRun : [],
+          error: null,
+        };
+      case "weekly_generation_day_jobs":
+        return {
+          data: this.state.dayJobs.filter((job) =>
+            (!this.filters.generation_run_id ||
+              job.generation_run_id === this.filters.generation_run_id) &&
+            (!this.filters.workspace_id ||
+              job.workspace_id === this.filters.workspace_id) &&
+            (!this.filters.creator_id ||
+              job.creator_id === this.filters.creator_id)
+          ),
           error: null,
         };
       case "daily_cards":
@@ -1857,6 +2037,7 @@ function dayGenerationState(): FakeState {
       is_soft_locked: false,
     },
     dailyCards: cards,
+    dayJobs: [],
     updatedDailyCardIDs: [],
     upsertedDailyCardDates: [],
     dailyCardUpdateMissDates: new Set(),
@@ -1864,6 +2045,37 @@ function dayGenerationState(): FakeState {
     allowMockRequest: false,
     lookupFailures: new Set(),
   };
+}
+
+function makeQueuedDayJobs(
+  statuses: Array<[string, string | null]>,
+): Record<string, unknown>[] {
+  return statuses.map(([status, dailyCardID], index) => ({
+    id: `99999999-9999-4999-8999-99999999999${index}`,
+    generation_run_id: generationRunID,
+    weekly_plan_id: weeklyPlanID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    scheduled_date: weekDatesForTests("2026-06-08")[index],
+    day_index: index,
+    status,
+    attempt_count: status === "queued" ? 0 : 1,
+    daily_card_id: dailyCardID,
+    error_code: status === "failed" ? "invalid_ai_json" : null,
+    started_at: status === "queued" ? null : "2026-06-01T00:00:00.000Z",
+    completed_at: status === "generated" || status === "failed"
+      ? "2026-06-01T00:01:00.000Z"
+      : null,
+  }));
+}
+
+function weekDatesForTests(weekStartDate: string): string[] {
+  const start = new Date(`${weekStartDate}T00:00:00.000Z`);
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    return date.toISOString().slice(0, 10);
+  });
 }
 
 function generationInputSnapshot(): GenerationInputSnapshot {

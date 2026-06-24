@@ -270,6 +270,12 @@ final class AppServices {
             return false
         }
 
+        if let progress = weeklyGenerationProgress,
+           !progress.dayStatuses.isEmpty,
+           !progress.dayStatuses.allSatisfy(\.isCompleted) {
+            return false
+        }
+
         guard let draft = latestGenerationSummary else {
             return weeklyPlan.days.allSatisfy { $0.state != .open }
         }
@@ -377,11 +383,14 @@ final class AppServices {
         weeklyGenerationProgress = .loadingContext
         defer { isGeneratingWeek = false }
 
+        let weekStartDate = weeklyPlan.weekStartDate
+            ?? weeklyPlan.days.compactMap(\.scheduledDate).first
+            ?? SupabaseDateFormatting.todayDateString()
+        let mode: GenerateWeekMode = latestGenerationSummary == nil ? .generateDraft : .regenerateDraft
+        let previousDraft = latestGenerationSummary
+        let previousPlan = weeklyPlan
+
         do {
-            let weekStartDate = weeklyPlan.weekStartDate
-                ?? weeklyPlan.days.compactMap(\.scheduledDate).first
-                ?? SupabaseDateFormatting.todayDateString()
-            let mode: GenerateWeekMode = latestGenerationSummary == nil ? .generateDraft : .regenerateDraft
             if mode == .regenerateDraft {
                 latestGenerationSummary = nil
                 weeklyPlan.days = Self.emptyWeekDays(starting: weekStartDate)
@@ -398,6 +407,10 @@ final class AppServices {
                 }
             )
             guard !draft.dailyCards.isEmpty else {
+                if mode == .regenerateDraft {
+                    latestGenerationSummary = previousDraft
+                    weeklyPlan = previousPlan
+                }
                 throw RepositoryError.edgeFunction("invalid_generated_week")
             }
 
@@ -421,6 +434,12 @@ final class AppServices {
             lastRepositoryError = nil
             return draft
         } catch {
+            if latestGenerationSummary == nil,
+               let previousDraft = previousDraft,
+               mode == .regenerateDraft {
+                latestGenerationSummary = previousDraft
+                weeklyPlan = previousPlan
+            }
             generationError = WeeklyGenerationErrorDisplay.message(for: error)
             let message = generationError ?? error.localizedDescription
             weeklyGenerationProgress = weeklyGenerationProgress?.failed(message) ?? .failed(message)
@@ -530,6 +549,65 @@ final class AppServices {
         }
     }
 
+    func retryQueuedGenerationDay(scheduledDate: String) async throws {
+        guard memberRole == "owner" || memberRole == "editor" else {
+            let error = "role_not_allowed"
+            regenerationDayErrors[scheduledDate] = error
+            throw RepositoryError.edgeFunction(error)
+        }
+
+        guard !weeklyPlan.isSoftLocked else {
+            let error = "published_week_locked"
+            regenerationDayErrors[scheduledDate] = error
+            throw RepositoryError.edgeFunction(error)
+        }
+
+        guard let generationID = weeklyGenerationProgress?.generationID else {
+            let error = "generation_not_found"
+            regenerationDayErrors[scheduledDate] = error
+            throw RepositoryError.edgeFunction(error)
+        }
+
+        regeneratingDayDates.insert(scheduledDate)
+        regenerationDayErrors[scheduledDate] = nil
+        defer { regeneratingDayDates.remove(scheduledDate) }
+
+        do {
+            let preservedDayStates = reviewedDayStatesByDate()
+            markQueuedDayRetrying(scheduledDate: scheduledDate)
+            let draft = try await repositories.weeklyGeneration.retryQueuedDay(
+                generationID: generationID,
+                scheduledDate: scheduledDate,
+                context: context,
+                progress: { [weak self] progress in
+                    self?.weeklyGenerationProgress = progress
+                }
+            )
+            applyGeneratedDraft(draft)
+            restoreReviewedDayStates(preservedDayStates)
+            if !draft.isCompleteWeekDraft {
+                let message = "Some days were saved and some days failed. Retry the failed days before publishing."
+                weeklyGenerationProgress = WeeklyGenerationProgress.partialFailure(
+                    from: draft,
+                    message: message,
+                    preserving: weeklyGenerationProgress
+                )
+                generationError = nil
+                lastRepositoryError = nil
+                return
+            }
+
+            weeklyGenerationProgress = .readyForReview(from: draft)
+            generationError = nil
+            lastRepositoryError = nil
+        } catch {
+            let message = WeeklyGenerationErrorDisplay.message(for: error)
+            regenerationDayErrors[scheduledDate] = message
+            generationError = message
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
     func applyRegeneratedDay(_ card: GeneratedDailyCardDraft) {
         if var draft = latestGenerationSummary {
             if draft.replaceDailyCard(card) {
@@ -564,6 +642,51 @@ final class AppServices {
             progress = .readyForReview(from: draft)
         }
         weeklyGenerationProgress = progress
+    }
+
+    private func markQueuedDayRetrying(scheduledDate: String) {
+        guard var progress = weeklyGenerationProgress,
+              let index = progress.dayStatuses.firstIndex(where: { $0.scheduledDate == scheduledDate })
+        else { return }
+
+        progress.dayStatuses[index].status = "retrying"
+        progress.dayStatuses[index].errorCode = nil
+        progress.dayStatuses[index].message = nil
+        progress.failedDayCount = progress.dayStatuses.filter(\.isFailed).count
+        progress.currentDay = scheduledDate
+        weeklyGenerationProgress = progress
+    }
+
+    private func reviewedDayStatesByDate() -> [String: WeeklyDayState] {
+        weeklyPlan.days.reduce(into: [String: WeeklyDayState]()) { result, day in
+            guard let scheduledDate = day.scheduledDate,
+                  day.state != .open
+            else { return }
+
+            result[scheduledDate] = day.state
+        }
+    }
+
+    private func restoreReviewedDayStates(_ statesByDate: [String: WeeklyDayState]) {
+        guard !statesByDate.isEmpty else { return }
+
+        for index in weeklyPlan.days.indices {
+            guard let scheduledDate = weeklyPlan.days[index].scheduledDate,
+                  let state = statesByDate[scheduledDate]
+            else { continue }
+
+            weeklyPlan.days[index].state = state
+        }
+        weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
+
+        guard var draft = latestGenerationSummary else { return }
+        for index in draft.dailyCards.indices {
+            guard let state = statesByDate[draft.dailyCards[index].scheduledDate] else {
+                continue
+            }
+            draft.dailyCards[index].status = state.generatedDraftStatus
+        }
+        latestGenerationSummary = draft
     }
 
     func updateWeeklyDayState(dayID: UUID, state: WeeklyDayState) {

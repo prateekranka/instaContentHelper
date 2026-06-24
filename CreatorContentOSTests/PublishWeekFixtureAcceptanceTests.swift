@@ -12,6 +12,7 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         XCTAssertEqual(services.weekCards.count, 7)
         XCTAssertNil(services.lastRepositoryError)
 
+        markAllFixtureDaysPlanned(in: services)
         await services.publishCurrentWeekImmediately()
 
         XCTAssertTrue(services.weeklyPlan.isSoftLocked)
@@ -29,6 +30,7 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         let cache = MemoryTodayCacheStore()
         let services = AppServices.fixtureBacked(todayCache: cache)
 
+        markAllFixtureDaysPlanned(in: services)
         await services.publishCurrentWeekImmediately()
 
         let snapshot = try XCTUnwrap(cache.loadSnapshot(for: .creatorFixture))
@@ -326,6 +328,12 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
             "MCO_DEBUG_PAIRED_CREATOR_DISPLAY_NAME": "Creator",
             "MCO_DEBUG_PAIRED_MEMBER_ROLE": memberRole
         ]
+    }
+
+    private func markAllFixtureDaysPlanned(in services: AppServices) {
+        for day in services.weeklyPlan.days {
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
     }
 }
 

@@ -139,6 +139,13 @@ protocol WeeklyGenerationRepository: Sendable {
         preserveManualEdits: Bool,
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult
+
+    func retryQueuedDay(
+        generationID: UUID,
+        scheduledDate: String,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft
 }
 
 extension WeeklyGenerationRepository {
@@ -167,6 +174,15 @@ extension WeeklyGenerationRepository {
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult {
         throw RepositoryError.notConfigured("regenerate_day_not_configured")
+    }
+
+    func retryQueuedDay(
+        generationID: UUID,
+        scheduledDate: String,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        throw RepositoryError.notConfigured("retry_day_not_configured")
     }
 }
 

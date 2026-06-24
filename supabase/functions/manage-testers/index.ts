@@ -7,7 +7,7 @@ import {
 } from "../_shared/device-auth.ts";
 
 type ManageTesterRequest = {
-  action?: "list" | "invite" | "resend" | "revoke";
+  action?: "list" | "invite" | "resend" | "revoke" | "bind_creator";
   email?: string;
   member_id?: string;
   display_name?: string;
@@ -61,7 +61,10 @@ export async function handleManageTestersRequest(
   }
 
   const action = body.action;
-  if (!action || !["list", "invite", "resend", "revoke"].includes(action)) {
+  if (
+    !action ||
+    !["list", "invite", "resend", "revoke", "bind_creator"].includes(action)
+  ) {
     return jsonResponse({ error: "invalid_tester_action" }, 400);
   }
 
@@ -81,12 +84,24 @@ export async function handleManageTestersRequest(
   }
 
   const email = normalizeEmail(body.email);
-  if ((action === "invite" || action === "resend") && !email) {
+  if (
+    (action === "invite" || action === "resend" ||
+      action === "bind_creator") && !email
+  ) {
     return jsonResponse({ error: "invalid_email" }, 400);
   }
 
   if (action === "invite") {
     return await inviteTester(
+      admin,
+      workspaceID,
+      email!,
+      normalizeDisplayName(body.display_name, email!),
+    );
+  }
+
+  if (action === "bind_creator") {
+    return await bindCreatorAuth(
       admin,
       workspaceID,
       email!,
@@ -145,6 +160,66 @@ export async function handleManageTestersRequest(
   }
 
   return jsonResponse({ tester: revokedMember, access_revoked: true });
+}
+
+async function bindCreatorAuth(
+  admin: any,
+  workspaceID: string,
+  email: string,
+  displayName: string,
+): Promise<Response> {
+  const existing = await findTester(admin, workspaceID, email, undefined);
+  if (existing.error) {
+    return jsonResponse({ error: "creator_auth_bind_failed" }, 500);
+  }
+  if (!existing.data || existing.data.role !== "creator") {
+    return jsonResponse({ error: "creator_member_not_found" }, 404);
+  }
+  if (existing.data.status !== "active") {
+    return jsonResponse({ error: "creator_member_revoked" }, 403);
+  }
+
+  let authUser = await findAuthUserByEmail(admin, email);
+  let createdAuthUser = false;
+  if (!authUser) {
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: { display_name: displayName },
+    });
+    if (error || !data?.user) {
+      return jsonResponse({ error: "creator_auth_bind_failed" }, 500);
+    }
+    authUser = data.user;
+    createdAuthUser = true;
+  }
+
+  const { data: creatorMember, error: bindError } = await admin
+    .from("members")
+    .update({
+      auth_user_id: authUser.id,
+      email,
+      display_name: existing.data.display_name ?? displayName,
+      role: "creator",
+      status: "active",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", existing.data.id)
+    .eq("workspace_id", workspaceID)
+    .eq("role", "creator")
+    .select("id,email,display_name,role,status,created_at,updated_at")
+    .maybeSingle();
+  if (bindError || !creatorMember) {
+    if (createdAuthUser) {
+      await admin.auth.admin.deleteUser(authUser.id);
+    }
+    return jsonResponse({ error: "creator_auth_bind_failed" }, 500);
+  }
+
+  return jsonResponse({
+    creator_member: creatorMember,
+    auth_bound: true,
+  });
 }
 
 async function inviteTester(

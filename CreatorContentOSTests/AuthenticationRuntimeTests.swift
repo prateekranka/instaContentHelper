@@ -187,6 +187,10 @@ final class AuthenticationRuntimeTests: XCTestCase {
 
         await state.requestEmailOTP("tester@example.com")
         await state.verifyEmailOTP("123456")
+        await waitForTodayContentState(
+            in: state,
+            toBecome: TodayContentState.missingPublishedCard(date: "2026-06-14")
+        )
 
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.live(session))
@@ -409,6 +413,21 @@ final class AuthenticationRuntimeTests: XCTestCase {
             pairedAt: Date(timeIntervalSince1970: 1_780_000_000),
             authenticatedEmail: email
         )
+    }
+
+    private func waitForTodayContentState(
+        in state: AppState,
+        toBecome expectedState: TodayContentState,
+        timeoutNanoseconds: UInt64 = 1_000_000_000
+    ) async {
+        let intervalNanoseconds: UInt64 = 20_000_000
+        var elapsedNanoseconds: UInt64 = 0
+
+        while state.runtime.services.todayContentState != expectedState,
+              elapsedNanoseconds < timeoutNanoseconds {
+            try? await Task.sleep(nanoseconds: intervalNanoseconds)
+            elapsedNanoseconds += intervalNanoseconds
+        }
     }
 }
 

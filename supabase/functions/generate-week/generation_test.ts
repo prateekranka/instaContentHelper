@@ -204,10 +204,22 @@ Deno.test("day AI request uses the scheduled date weekday instead of the week sl
     0,
   );
   const messages = request.messages as Record<string, string>[];
-  const userPayload = JSON.parse(messages[1].content.split("\n")[0]);
+  const userContent = messages[1].content;
+  const userPayload = JSON.parse(userContent.split("\n")[0]);
+  const requiredContract = recordValue(userPayload.required_contract);
 
   assertEquals(userPayload.target.weekday, "Sunday");
   assertEquals(userPayload.target.scheduled_date, "2026-06-21");
+  assert(
+    userContent.includes(
+      "Hard day/date lock: this output is only for scheduled_date 2026-06-21, day 1.",
+    ),
+    "DeepSeek day prompt should repeat the date lock outside the JSON payload",
+  );
+  assertEquals(
+    requiredContract.day_date_lock,
+    "daily_card.scheduled_date must be exactly 2026-06-21; all copy, title, why_today, timelines, backup story, and caption must describe only that scheduled date's day intent.",
+  );
   assert(
     userPayload.target.day_intent.includes("Sunday:"),
     "Sunday-start weeks should get Sunday-specific guidance",

@@ -66,6 +66,8 @@ const startVariantIndex =
     0;
 const timeoutMs = parsePositiveInt(Deno.env.get("PROMPT_BENCH_TIMEOUT_MS")) ??
   180_000;
+const disableAdaptiveFeedback =
+  Deno.env.get("PROMPT_BENCH_DISABLE_ADAPTIVE_FEEDBACK") === "1";
 
 const weekDates = [
   "2026-08-24",
@@ -484,8 +486,8 @@ async function main(): Promise<void> {
       variant,
       scheduledDate,
       dayIndex,
-      previousMetric,
-      previousOutput,
+      disableAdaptiveFeedback ? null : previousMetric,
+      disableAdaptiveFeedback ? null : previousOutput,
     );
 
     const startedAt = Date.now();

@@ -25,7 +25,7 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(object["preserve_manual_edits"] as? Bool, true)
         XCTAssertEqual(object["mock"] as? Bool, true)
         XCTAssertEqual(object["response_mode"] as? String, "sync")
-        XCTAssertEqual(object["feature_flags"] as? [String], ["parallel_week_generation"])
+        XCTAssertEqual(object["feature_flags"] as? [String], ["queued_week_generation"])
     }
 
     func testGenerateWeekStatusRequestAndRunningResponseUseAsyncContract() throws {
@@ -126,7 +126,75 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(status.weekProgress.message, "six_days_saved_one_failed")
         XCTAssertEqual(status.weekProgress.effectiveSavedDayCount, 6)
         XCTAssertEqual(status.weekProgress.effectiveFailedDayCount, 1)
-        XCTAssertEqual(status.weekProgress.failedDayStatuses.first?.failureDetail, "openai_request_failed")
+        XCTAssertEqual(status.weekProgress.failedDayStatuses.first?.failureDetail, "The AI service failed for this day.")
+    }
+
+    func testGenerateWeekStatusResponseAcceptsDaysMixedQueuedGenerationState() throws {
+        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888884")!
+        let weeklyPlanID = UUID(uuidString: "77777777-7777-4777-8777-777777777774")!
+        let mondayCardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+        let tuesdayCardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA2")!
+        let responseData = Data(
+            """
+            {
+              "generation_id": "\(generationID.uuidString)",
+              "weekly_plan_id": "\(weeklyPlanID.uuidString)",
+              "status": "running",
+              "message": "generation_running",
+              "completed_day_count": 2,
+              "total_day_count": 7,
+              "current_day": "2026-07-15",
+              "days": [
+                {
+                  "scheduled_date": "2026-07-13",
+                  "day_index": 0,
+                  "status": "generated",
+                  "daily_card_id": "\(mondayCardID.uuidString)",
+                  "error_code": null,
+                  "retry_action": null
+                },
+                {
+                  "scheduled_date": "2026-07-14",
+                  "day_index": 1,
+                  "status": "generated",
+                  "daily_card_id": "\(tuesdayCardID.uuidString)",
+                  "error_code": null,
+                  "retry_action": null
+                },
+                {
+                  "scheduled_date": "2026-07-15",
+                  "day_index": 2,
+                  "status": "generating",
+                  "daily_card_id": null,
+                  "error_code": null,
+                  "retry_action": null
+                },
+                { "scheduled_date": "2026-07-16", "day_index": 3, "status": "queued" },
+                { "scheduled_date": "2026-07-17", "day_index": 4, "status": "queued" },
+                { "scheduled_date": "2026-07-18", "day_index": 5, "status": "queued" },
+                { "scheduled_date": "2026-07-19", "day_index": 6, "status": "queued" }
+              ]
+            }
+            """.utf8
+        )
+
+        let invocation = try SupabaseGenerateWeekInvocation.decode(responseData)
+        guard case .running(let status) = invocation else {
+            XCTFail("Expected running generation status")
+            return
+        }
+
+        XCTAssertEqual(status.dayStatuses.count, 7)
+        XCTAssertEqual(status.weekProgress.effectiveSavedDayCount, 2)
+        XCTAssertEqual(status.weekProgress.currentDay, "2026-07-15")
+        XCTAssertEqual(status.dayStatuses[0].displayName, "Mon")
+        XCTAssertEqual(status.dayStatuses[0].displayStatusLabel, "Generated")
+        XCTAssertEqual(status.dayStatuses[1].displayStatusLabel, "Generated")
+        XCTAssertEqual(status.dayStatuses[2].displayStatusLabel, "Generating")
+        XCTAssertEqual(status.dayStatuses[3...6].map(\.displayStatusLabel), Array(repeating: "Queued", count: 4))
+        XCTAssertTrue(status.dayStatuses[0].isCompleted)
+        XCTAssertTrue(status.dayStatuses[2].isRunning)
+        XCTAssertTrue(status.dayStatuses[3].isQueued)
     }
 
     func testGenerateWeekStatusResponseAcceptsPerDayStatusesAlias() throws {
@@ -159,6 +227,78 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(status.weekProgress.effectiveSavedDayCount, 1)
     }
 
+    func testGenerateWeekInvocationDecodesLightweightQueuedDraftAsDraft() throws {
+        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888881")!
+        let weeklyPlanID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
+        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+        let data = Data(
+            """
+            {
+              "generation_id": "\(generationID.uuidString)",
+              "weekly_plan_id": "\(weeklyPlanID.uuidString)",
+              "status": "draft",
+              "completed_day_count": 7,
+              "saved_day_count": 7,
+              "failed_day_count": 0,
+              "total_day_count": 7,
+              "daily_cards": [
+                {
+                  "id": "\(cardID.uuidString)",
+                  "scheduled_date": "2026-09-21",
+                  "status": "draft",
+                  "title": "Recovery walk reset",
+                  "why_today": "Keep recovery visible.",
+                  "growth_job": "Consistency.",
+                  "content_pillar": "recovery",
+                  "shootability": "easy",
+                  "estimated_shoot_minutes": 8,
+                  "energy_required": "low",
+                  "language_mode": "English",
+                  "scene_list": [{"number":1,"title":"Walking shoes","duration":"3 sec","symbol":"shoeprints.fill"}],
+                  "script": "Recovery still counts.",
+                  "no_voiceover_version": "Use three quiet clips.",
+                  "on_screen_text": ["Recovery still counts"],
+                  "caption": "A short recovery walk in New Jersey.",
+                  "cta": "Save this reminder.",
+                  "hashtags": ["recovery"],
+                  "cover_text": "Recovery counts",
+                  "post_instructions": "Use natural sound.",
+                  "brand_event_notes": "",
+                  "backup_story": "One walking clip.",
+                  "backup_caption_only": "Recovery day note.",
+                  "audio_option_notes": "No audio dependency.",
+                  "creator_fit_score": 94,
+                  "risk_notes": [],
+                  "assumptions": ["Low energy"],
+                  "source_note": "Weekly setup."
+                }
+              ],
+              "days": [
+                {
+                  "scheduled_date": "2026-09-21",
+                  "day_index": 0,
+                  "status": "generated",
+                  "daily_card_id": "\(cardID.uuidString)"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let invocation = try SupabaseGenerateWeekInvocation.decode(data)
+        guard case .draft(let response) = invocation else {
+            XCTFail("Expected lightweight queued terminal status to decode as a draft")
+            return
+        }
+
+        XCTAssertEqual(response.generationID, generationID)
+        XCTAssertEqual(response.weeklyPlanID, weeklyPlanID)
+        XCTAssertEqual(response.dailyCards.map(\.id), [cardID])
+        XCTAssertEqual(response.ideaBank, [])
+        XCTAssertEqual(response.weekProgress.phase, .savingDraftWeek)
+        XCTAssertEqual(response.weekProgress.effectiveSavedDayCount, 7)
+    }
+
     func testRegenerateDayRequestEncodesEdgeFunctionContract() throws {
         let request = SupabaseRegenerateDayRequest(
             creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
@@ -178,6 +318,49 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(object["preserve_manual_edits"] as? Bool, false)
         XCTAssertEqual(object["response_mode"] as? String, "sync")
         XCTAssertEqual(object["mock"] as? Bool, true)
+    }
+
+    func testRetryQueuedDayRequestEncodesEdgeFunctionContract() throws {
+        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888881")!
+        let weeklyPlanID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
+        let request = SupabaseRetryQueuedDayRequest(
+            generationID: generationID,
+            scheduledDate: "2026-06-10"
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(object["action"] as? String, "retry_day")
+        XCTAssertEqual(object["generation_id"] as? String, generationID.uuidString.lowercased())
+        XCTAssertEqual(object["scheduled_date"] as? String, "2026-06-10")
+
+        let responseData = Data(
+            """
+            {
+              "generation_id": "\(generationID.uuidString)",
+              "weekly_plan_id": "\(weeklyPlanID.uuidString)",
+              "status": "running",
+              "message": "day_retry_queued",
+              "poll_after_seconds": 5,
+              "day": {
+                "scheduled_date": "2026-06-10",
+                "day_index": 2,
+                "status": "retrying",
+                "retry_action": null
+              }
+            }
+            """.utf8
+        )
+
+        let response = try JSONDecoder().decode(SupabaseRetryQueuedDayResponse.self, from: responseData)
+        XCTAssertEqual(response.generationID, generationID)
+        XCTAssertEqual(response.weeklyPlanID, weeklyPlanID)
+        XCTAssertEqual(response.status, "running")
+        XCTAssertEqual(response.message, "day_retry_queued")
+        XCTAssertEqual(response.pollAfterSeconds, 5)
+        XCTAssertEqual(response.day?.scheduledDate, "2026-06-10")
+        XCTAssertEqual(response.day?.displayStatusLabel, "Retrying")
     }
 
     func testRegenerateDayResponseDecodesRichCard() throws {
@@ -787,6 +970,143 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(services.latestGenerationSummary?.status, "published")
         XCTAssertNil(services.lastRepositoryError)
     }
+
+    func testPublishCurrentWeekIsLockedWhileDayStatusesAreStillGenerating() async throws {
+        let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
+        let draft = try await FixtureWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: "2026-07-13",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
+        services.applyGeneratedDraft(draft)
+        for day in services.weeklyPlan.days {
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
+        XCTAssertTrue(services.canPublishCurrentWeek)
+
+        services.weeklyGenerationProgress = WeeklyGenerationProgress(
+            phase: .draftingDays,
+            generationID: draft.id,
+            weeklyPlanID: draft.weeklyPlanID,
+            draftedDayCount: 2,
+            checkedDayCount: 2,
+            totalDayCount: 7,
+            currentDay: "2026-07-15",
+            message: "generation_running",
+            error: nil,
+            savedDayCount: 2,
+            failedDayCount: 0,
+            strategyCreated: true,
+            dayStatuses: [
+                WeeklyDayGenerationStatus(
+                    scheduledDate: "2026-07-13",
+                    dayIndex: 0,
+                    status: "generated",
+                    dailyCardID: draft.dailyCards[0].id,
+                    errorCode: nil,
+                    retryAction: nil,
+                    message: nil
+                ),
+                WeeklyDayGenerationStatus(
+                    scheduledDate: "2026-07-14",
+                    dayIndex: 1,
+                    status: "generated",
+                    dailyCardID: draft.dailyCards[1].id,
+                    errorCode: nil,
+                    retryAction: nil,
+                    message: nil
+                ),
+                WeeklyDayGenerationStatus(
+                    scheduledDate: "2026-07-15",
+                    dayIndex: 2,
+                    status: "generating",
+                    dailyCardID: nil,
+                    errorCode: nil,
+                    retryAction: nil,
+                    message: nil
+                ),
+                WeeklyDayGenerationStatus(
+                    scheduledDate: "2026-07-16",
+                    dayIndex: 3,
+                    status: "queued",
+                    dailyCardID: nil,
+                    errorCode: nil,
+                    retryAction: nil,
+                    message: nil
+                )
+            ]
+        )
+
+        XCTAssertFalse(services.canPublishCurrentWeek)
+    }
+
+    func testRetryQueuedDayAppliesCompletedDraftAndUnlocksPublish() async throws {
+        let draft = try await FixtureWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-07-13",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: RetryCompletesQueuedDayRepository(draft: draft),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore()
+        )
+        services.applyGeneratedDraft(draft)
+        for day in services.weeklyPlan.days {
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
+        services.weeklyGenerationProgress = WeeklyGenerationProgress(
+            phase: .draftingDays,
+            generationID: draft.id,
+            weeklyPlanID: draft.weeklyPlanID,
+            draftedDayCount: 7,
+            checkedDayCount: 6,
+            totalDayCount: 7,
+            currentDay: draft.dailyCards[6].scheduledDate,
+            message: "generation_partial",
+            error: nil,
+            savedDayCount: 6,
+            failedDayCount: 1,
+            strategyCreated: true,
+            dayStatuses: draft.dailyCards.enumerated().map { index, card in
+                WeeklyDayGenerationStatus(
+                    scheduledDate: card.scheduledDate,
+                    dayIndex: index,
+                    status: index == 6 ? "failed" : "generated",
+                    dailyCardID: index == 6 ? nil : card.id,
+                    errorCode: index == 6 ? "day_generation_endpoint_http_504" : nil,
+                    retryAction: index == 6 ? "retry_day" : nil,
+                    message: nil
+                )
+            }
+        )
+
+        XCTAssertFalse(services.canPublishCurrentWeek)
+
+        try await services.retryQueuedGenerationDay(scheduledDate: draft.dailyCards[6].scheduledDate)
+
+        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .readyForReview)
+        XCTAssertEqual(services.weeklyGenerationProgress?.effectiveSavedDayCount, 7)
+        XCTAssertEqual(services.weeklyGenerationProgress?.effectiveFailedDayCount, 0)
+        XCTAssertEqual(services.latestGenerationSummary?.dailyCards.count, 7)
+        XCTAssertTrue(services.canPublishCurrentWeek)
+        XCTAssertNil(services.generationError)
+    }
 }
 
 private struct EmptyDraftWeeklyGenerationRepository: WeeklyGenerationRepository {
@@ -850,6 +1170,31 @@ private struct ProgressThenFailWeeklyGenerationRepository: WeeklyGenerationRepos
             )
         )
         throw RepositoryError.edgeFunction("invalid_ai_json")
+    }
+}
+
+private struct RetryCompletesQueuedDayRepository: WeeklyGenerationRepository {
+    var draft: GeneratedWeekDraft
+
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        draft
+    }
+
+    func retryQueuedDay(
+        generationID: UUID,
+        scheduledDate: String,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        await progress?(.readyForReview(from: draft))
+        return draft
     }
 }
 

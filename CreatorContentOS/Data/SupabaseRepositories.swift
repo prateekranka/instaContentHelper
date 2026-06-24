@@ -283,7 +283,7 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
             preserveManualEdits: false,
             mock: nil,
             responseMode: .async,
-            featureFlags: ["parallel_week_generation"]
+            featureFlags: ["queued_week_generation"]
         )
         do {
             let initial = try await invokeInitialGenerateWeek(asyncRequest)
@@ -440,6 +440,37 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
             case .failed(let status):
                 throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_day")
             }
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
+    func retryQueuedDay(
+        generationID: UUID,
+        scheduledDate: String,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        do {
+            let response = try await client.functions.invoke(
+                "generate-week",
+                options: FunctionInvokeOptions(
+                    body: SupabaseRetryQueuedDayRequest(
+                        generationID: generationID,
+                        scheduledDate: scheduledDate
+                    )
+                )
+            ) { data, _ in
+                try JSONDecoder().decode(SupabaseRetryQueuedDayResponse.self, from: data)
+            }
+            return try await pollGeneratedWeek(
+                generationID: response.generationID,
+                creatorID: context.creatorID,
+                progress: progress
+            )
         } catch {
             if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
                 throw RepositoryError.edgeFunction(code)

@@ -717,6 +717,9 @@ export function buildDeepSeekDayChatRequest(
         content: [
           messages.user,
           "Return one valid JSON object only. Do not wrap the JSON in Markdown.",
+          `Hard day/date lock: this output is only for scheduled_date ${scheduledDate}, day ${
+            dayIndex + 1
+          }. Do not mention another weekday unless the weekly brief explicitly names it as context.`,
           "Copy the exact required_contract.daily_card_template key structure. Replace sample values with specific content. Fields shown as arrays must remain arrays.",
           "Set top-level idea_bank to [] unless the brief explicitly asks for extra saved ideas.",
           "Every required string field must contain specific non-empty text; do not use empty strings, TBD, placeholders, null, or undefined.",
@@ -857,6 +860,8 @@ function generatedDayOutputContract(
     ],
     output_rule:
       "Copy the exact daily_card_template key structure. Replace sample values with specific content. Fields shown as arrays must remain arrays.",
+    day_date_lock:
+      `daily_card.scheduled_date must be exactly ${scheduledDate}; all copy, title, why_today, timelines, backup story, and caption must describe only that scheduled date's day intent.`,
     daily_card_template: generatedDailyCardCompactTemplate(scheduledDate),
     array_shapes: {
       scene_list:

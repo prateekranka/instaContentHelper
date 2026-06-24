@@ -93,6 +93,13 @@ type PreparedGeneration = {
 
 type DayGenerationStatus = "pending" | "running" | "completed" | "failed";
 type GenerationOverallStatus = "running" | "completed" | "partial" | "failed";
+type QueuedDayJobStatus =
+  | "queued"
+  | "generating"
+  | "generated"
+  | "failed"
+  | "retrying"
+  | "cancelled";
 
 type DayGenerationState = {
   scheduled_date: string;
@@ -130,6 +137,38 @@ type DayGenerationStatusResponse = {
   started_at: string | null;
   completed_at: string | null;
   retry_action?: "regenerate_day";
+};
+
+type QueuedDayJobRecord = {
+  id: string;
+  generation_run_id: string;
+  weekly_plan_id: string;
+  workspace_id: string;
+  creator_id: string;
+  scheduled_date: string;
+  day_index: number;
+  status: QueuedDayJobStatus;
+  attempt_count?: number | null;
+  daily_card_id?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  heartbeat_at?: string | null;
+};
+
+type QueuedDayStatusResponse = {
+  scheduled_date: string;
+  day_index: number;
+  status: QueuedDayJobStatus;
+  error_code: string | null;
+  daily_card_id: string | null;
+  drafted: boolean;
+  saved: boolean;
+  attempt_count: number;
+  started_at: string | null;
+  completed_at: string | null;
+  retry_action?: "retry_day";
 };
 
 type WeekGenerationStatusSummary = {
@@ -256,6 +295,14 @@ export async function handleGenerateWeekRequest(
     );
   }
 
+  if (isRetryDayAction(rawBody)) {
+    return await retryQueuedDayGeneration(admin, session, rawBody);
+  }
+
+  if (isCancelGenerationAction(rawBody)) {
+    return await cancelQueuedGeneration(admin, session, rawBody);
+  }
+
   if (isRegenerateDayAction(rawBody)) {
     return await handleRegenerateDayRequest(
       admin,
@@ -287,6 +334,14 @@ export async function handleGenerateWeekRequest(
   );
   if ("response" in runResult) {
     return runResult.response;
+  }
+
+  if (isQueuedWeekGenerationEnabled(rawBody, env)) {
+    return await handleQueuedWeekGeneration(
+      admin,
+      prepared,
+      runResult.run.id,
+    );
   }
 
   if (isParallelWeekGenerationEnabled(rawBody, env)) {
@@ -1096,6 +1151,125 @@ function isParallelWeekGenerationEnabled(
   return false;
 }
 
+function isQueuedWeekGenerationEnabled(
+  rawBody: unknown,
+  env: EnvReader,
+): boolean {
+  if (env.get("MCO_QUEUED_WEEK_GENERATION") === "1") {
+    return true;
+  }
+  if (!isRecord(rawBody)) {
+    return false;
+  }
+  const flags = rawBody.feature_flags;
+  if (Array.isArray(flags)) {
+    return flags.includes("queued_week_generation");
+  }
+  if (isRecord(flags)) {
+    return flags.queued_week_generation === true;
+  }
+  return false;
+}
+
+async function handleQueuedWeekGeneration(
+  admin: SupabaseAdminClient,
+  prepared: PreparedGeneration,
+  generationID: string,
+): Promise<Response> {
+  const strategy = makeInitialWeekStrategyOutput(prepared.inputSnapshot);
+  const planResult = await upsertDraftWeeklyPlan(
+    admin,
+    prepared.session.workspaceID,
+    prepared.request,
+    prepared.session.memberID,
+    prepared.weeklySetup,
+    prepared.inputSnapshot,
+    strategy,
+  );
+  if ("response" in planResult) {
+    await markGenerationRunFailed(
+      admin,
+      generationID,
+      "generation_persist_failed",
+    );
+    return planResult.response;
+  }
+
+  const linkResult = await updateGenerationRunWeeklyPlan(
+    admin,
+    generationID,
+    planResult.weeklyPlanID,
+  );
+  if ("response" in linkResult) {
+    await markGenerationRunFailed(
+      admin,
+      generationID,
+      "generation_persist_failed",
+    );
+    return linkResult.response;
+  }
+
+  const clearResult = await clearExistingDraftDailyCardsForFullGeneration(
+    admin,
+    prepared.session.workspaceID,
+    prepared.request.creator_id,
+    planResult.weeklyPlanID,
+  );
+  if ("response" in clearResult) {
+    await markGenerationRunFailed(
+      admin,
+      generationID,
+      "generation_persist_failed",
+    );
+    return clearResult.response;
+  }
+
+  const progress = initialParallelWeekGenerationSnapshot(
+    prepared.request.week_start_date,
+    planResult.weeklyPlanID,
+    strategy,
+  );
+  const progressResult = await updateGenerationProgress(
+    admin,
+    generationID,
+    progress,
+  );
+  if ("response" in progressResult) {
+    await markGenerationRunFailed(
+      admin,
+      generationID,
+      "generation_persist_failed",
+    );
+    return progressResult.response;
+  }
+
+  const jobsResult = await createQueuedDayJobs(
+    admin,
+    prepared,
+    generationID,
+    planResult.weeklyPlanID,
+  );
+  if ("response" in jobsResult) {
+    await markGenerationRunFailed(
+      admin,
+      generationID,
+      "generation_persist_failed",
+    );
+    return jobsResult.response;
+  }
+
+  const summary = queuedDayJobStatusSummary(jobsResult.jobs);
+  return jsonResponse({
+    generation_id: generationID,
+    weekly_plan_id: planResult.weeklyPlanID,
+    status: "running",
+    message: "generation_queued",
+    ...summary,
+    days: summary.day_statuses,
+    poll_after_seconds: 5,
+  }, 202);
+}
+
 async function handleParallelWeekGeneration(
   admin: SupabaseAdminClient,
   prepared: PreparedGeneration,
@@ -1212,6 +1386,100 @@ async function clearExistingDraftDailyCardsForFullGeneration(
   }
 
   return { ok: true };
+}
+
+async function createQueuedDayJobs(
+  admin: SupabaseAdminClient,
+  prepared: PreparedGeneration,
+  generationID: string,
+  weeklyPlanID: string,
+): Promise<{ jobs: QueuedDayJobRecord[] } | { response: Response }> {
+  const rows = weekDates(prepared.request.week_start_date).map((
+    scheduledDate,
+    dayIndex,
+  ) => ({
+    generation_run_id: generationID,
+    weekly_plan_id: weeklyPlanID,
+    workspace_id: prepared.session.workspaceID,
+    creator_id: prepared.request.creator_id,
+    scheduled_date: scheduledDate,
+    day_index: dayIndex,
+    status: "queued",
+    attempt_count: 0,
+  }));
+
+  const { data, error } = await admin
+    .from("weekly_generation_day_jobs")
+    .upsert(rows, { onConflict: "generation_run_id,scheduled_date" })
+    .select(queuedDayJobSelect())
+    .order("day_index", { ascending: true });
+
+  if (error) {
+    return generationPersistFailure("create_generation_day_jobs", error);
+  }
+
+  return { jobs: normalizeQueuedDayJobRows(data) };
+}
+
+function queuedDayJobSelect(): string {
+  return [
+    "id",
+    "generation_run_id",
+    "weekly_plan_id",
+    "workspace_id",
+    "creator_id",
+    "scheduled_date",
+    "day_index",
+    "status",
+    "attempt_count",
+    "daily_card_id",
+    "error_code",
+    "error_message",
+    "started_at",
+    "completed_at",
+    "heartbeat_at",
+  ].join(",");
+}
+
+function normalizeQueuedDayJobRows(value: unknown): QueuedDayJobRecord[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord).flatMap((row) => {
+    const scheduledDate = stringValue(row.scheduled_date);
+    const status = normalizeQueuedDayJobStatus(row.status);
+    const dayIndex = numberValue(row.day_index);
+    if (!scheduledDate || !status || dayIndex === undefined) {
+      return [];
+    }
+    return [{
+      id: stringValue(row.id) ?? "",
+      generation_run_id: stringValue(row.generation_run_id) ?? "",
+      weekly_plan_id: stringValue(row.weekly_plan_id) ?? "",
+      workspace_id: stringValue(row.workspace_id) ?? "",
+      creator_id: stringValue(row.creator_id) ?? "",
+      scheduled_date: scheduledDate,
+      day_index: dayIndex,
+      status,
+      attempt_count: numberValue(row.attempt_count) ?? 0,
+      daily_card_id: stringValue(row.daily_card_id) ?? null,
+      error_code: stringValue(row.error_code) ?? null,
+      error_message: stringValue(row.error_message) ?? null,
+      started_at: stringValue(row.started_at) ?? null,
+      completed_at: stringValue(row.completed_at) ?? null,
+      heartbeat_at: stringValue(row.heartbeat_at) ?? null,
+    }];
+  }).sort((left, right) => left.day_index - right.day_index);
+}
+
+function normalizeQueuedDayJobStatus(
+  value: unknown,
+): QueuedDayJobStatus | undefined {
+  return value === "queued" || value === "generating" ||
+      value === "generated" || value === "failed" ||
+      value === "retrying" || value === "cancelled"
+    ? value
+    : undefined;
 }
 
 async function runParallelWeekGeneration(
@@ -1724,6 +1992,141 @@ function isStatusAction(body: unknown): body is Record<string, unknown> {
   return isRecord(body) && body.action === "status";
 }
 
+function isRetryDayAction(body: unknown): body is Record<string, unknown> {
+  return isRecord(body) && body.action === "retry_day";
+}
+
+function isCancelGenerationAction(
+  body: unknown,
+): body is Record<string, unknown> {
+  return isRecord(body) && body.action === "cancel_generation";
+}
+
+async function retryQueuedDayGeneration(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const generationID = stringValue(body.generation_id);
+  const scheduledDate = stringValue(body.scheduled_date);
+  if (!isUUID(generationID) || !scheduledDate) {
+    return jsonResponse({ error: "invalid_generation_payload" }, 400);
+  }
+
+  const runResult = await readGenerationRunForQueuedAction(
+    admin,
+    session,
+    generationID,
+  );
+  if ("response" in runResult) {
+    return runResult.response;
+  }
+
+  const { data, error } = await admin
+    .from("weekly_generation_day_jobs")
+    .update({
+      status: "retrying",
+      error_code: null,
+      error_message: null,
+      completed_at: null,
+      heartbeat_at: null,
+    })
+    .eq("generation_run_id", generationID)
+    .eq("workspace_id", session.workspaceID)
+    .eq("creator_id", runResult.run.creator_id)
+    .eq("scheduled_date", scheduledDate)
+    .eq("status", "failed")
+    .select(queuedDayJobSelect())
+    .maybeSingle();
+
+  if (error) {
+    return generationPersistFailure("retry_generation_day_job", error).response;
+  }
+  if (!isRecord(data)) {
+    return jsonResponse({ error: "day_job_not_retryable" }, 409);
+  }
+
+  return jsonResponse({
+    generation_id: generationID,
+    weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ??
+      stringValue(data.weekly_plan_id) ?? null,
+    status: "running",
+    day: queuedDayJobStatusResponse(
+      normalizeQueuedDayJobRows([data])[0],
+    ),
+    message: "day_retry_queued",
+    poll_after_seconds: 5,
+  });
+}
+
+async function cancelQueuedGeneration(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const generationID = stringValue(body.generation_id);
+  if (!isUUID(generationID)) {
+    return jsonResponse({ error: "invalid_generation_payload" }, 400);
+  }
+
+  const runResult = await readGenerationRunForQueuedAction(
+    admin,
+    session,
+    generationID,
+  );
+  if ("response" in runResult) {
+    return runResult.response;
+  }
+
+  const { error } = await admin
+    .from("weekly_generation_day_jobs")
+    .update({
+      status: "cancelled",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("generation_run_id", generationID)
+    .eq("workspace_id", session.workspaceID)
+    .eq("creator_id", runResult.run.creator_id)
+    .in("status", ["queued", "retrying"]);
+
+  if (error) {
+    return generationPersistFailure("cancel_generation_day_jobs", error)
+      .response;
+  }
+
+  await markGenerationRunFailed(admin, generationID, "generation_cancelled");
+
+  return jsonResponse({
+    generation_id: generationID,
+    weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ?? null,
+    status: "cancelled",
+    message: "generation_cancelled",
+  });
+}
+
+async function readGenerationRunForQueuedAction(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  generationID: string,
+): Promise<{ run: GenerationRunStatusRecord } | { response: Response }> {
+  const { data, error } = await admin
+    .from("weekly_generation_runs")
+    .select("id,workspace_id,creator_id,status,weekly_plan_id")
+    .eq("id", generationID)
+    .eq("workspace_id", session.workspaceID)
+    .maybeSingle();
+
+  if (error) {
+    return generationPersistFailure("read_generation_run", error);
+  }
+  if (!isRecord(data)) {
+    return {
+      response: jsonResponse({ error: "invalid_generation_payload" }, 404),
+    };
+  }
+  return { run: data as GenerationRunStatusRecord };
+}
+
 async function readGenerationStatus(
   admin: SupabaseAdminClient,
   session: VerifiedDeviceSession,
@@ -1756,6 +2159,24 @@ async function readGenerationStatus(
   }
   if (creatorID && data.creator_id !== creatorID) {
     return jsonResponse({ error: "invalid_generation_payload" }, 404);
+  }
+
+  const queuedJobsResult = await readQueuedDayJobsForRun(
+    admin,
+    generationID,
+    session.workspaceID,
+    stringValue(data.creator_id) ?? "",
+  );
+  if ("response" in queuedJobsResult) {
+    return queuedJobsResult.response;
+  }
+  if (queuedJobsResult.jobs.length > 0) {
+    return await readQueuedGenerationStatus(
+      admin,
+      generationID,
+      data as GenerationRunStatusRecord,
+      queuedJobsResult.jobs,
+    );
   }
 
   const status = stringValue(data.status) ?? "running";
@@ -1961,6 +2382,63 @@ async function readGenerationStatus(
     generation_id: generationID,
     status: responseStatus,
     ...summary,
+    poll_after_seconds: summary.overall_status === "running" ? 5 : null,
+  });
+}
+
+async function readQueuedDayJobsForRun(
+  admin: SupabaseAdminClient,
+  generationID: string,
+  workspaceID: string,
+  creatorID: string,
+): Promise<{ jobs: QueuedDayJobRecord[] } | { response: Response }> {
+  const { data, error } = await admin
+    .from("weekly_generation_day_jobs")
+    .select(queuedDayJobSelect())
+    .eq("generation_run_id", generationID)
+    .eq("workspace_id", workspaceID)
+    .eq("creator_id", creatorID)
+    .order("day_index", { ascending: true });
+
+  if (error) {
+    return generationPersistFailure("read_generation_day_jobs", error);
+  }
+
+  return { jobs: normalizeQueuedDayJobRows(data) };
+}
+
+async function readQueuedGenerationStatus(
+  admin: SupabaseAdminClient,
+  generationID: string,
+  run: GenerationRunStatusRecord,
+  jobs: QueuedDayJobRecord[],
+): Promise<Response> {
+  const weeklyPlanID = stringValue(run.weekly_plan_id) ??
+    jobs.find((job) => isUUID(job.weekly_plan_id))?.weekly_plan_id ?? null;
+  const summary = queuedDayJobStatusSummary(jobs);
+  const responseStatus = summary.overall_status === "completed"
+    ? "draft"
+    : summary.overall_status;
+  const dailyCardsResult = weeklyPlanID
+    ? await readSavedDailyCards(
+      admin,
+      stringValue(run.workspace_id) ?? "",
+      stringValue(run.creator_id) ?? "",
+      weeklyPlanID,
+    )
+    : { dailyCards: [] as GeneratedDailyCard[] };
+  if ("response" in dailyCardsResult) {
+    return dailyCardsResult.response;
+  }
+
+  return jsonResponse({
+    generation_id: generationID,
+    weekly_plan_id: weeklyPlanID,
+    status: responseStatus,
+    daily_cards: dailyCardsResult.dailyCards,
+    ...summary,
+    days: summary.day_statuses,
+    failed_days: summary.day_statuses.filter((day) => day.status === "failed"),
     poll_after_seconds: summary.overall_status === "running" ? 5 : null,
   });
 }
@@ -2263,6 +2741,69 @@ function weekGenerationStatusSummary(
     total_day_count: dayStatuses.length,
     current_day: currentDay,
     day_statuses: dayStatuses,
+  };
+}
+
+function queuedDayJobStatusSummary(
+  jobs: QueuedDayJobRecord[],
+): Omit<WeekGenerationStatusSummary, "day_statuses"> & {
+  day_statuses: QueuedDayStatusResponse[];
+} {
+  const dayStatuses = jobs.map(queuedDayJobStatusResponse);
+  const savedDayCount = dayStatuses.filter((day) => day.saved).length;
+  const failedDayCount =
+    dayStatuses.filter((day) => day.status === "failed").length;
+  const completedDayCount =
+    dayStatuses.filter((day) => day.status === "generated").length;
+  const cancelledDayCount =
+    dayStatuses.filter((day) => day.status === "cancelled").length;
+  const runningDay = dayStatuses.find((day) => day.status === "generating");
+  const totalDayCount = dayStatuses.length;
+  const terminalDayCount = completedDayCount + failedDayCount +
+    cancelledDayCount;
+  const hasActiveWork = dayStatuses.some((day) =>
+    day.status === "queued" || day.status === "generating" ||
+    day.status === "retrying"
+  );
+
+  let overallStatus: GenerationOverallStatus = "running";
+  if (totalDayCount > 0 && completedDayCount === totalDayCount) {
+    overallStatus = "completed";
+  } else if (totalDayCount > 0 && terminalDayCount === totalDayCount) {
+    overallStatus = completedDayCount > 0 ? "partial" : "failed";
+  } else if (!hasActiveWork && failedDayCount > 0) {
+    overallStatus = completedDayCount > 0 ? "partial" : "failed";
+  }
+
+  return {
+    overall_status: overallStatus,
+    strategy_created: true,
+    drafted_day_count: completedDayCount,
+    saved_day_count: savedDayCount,
+    failed_day_count: failedDayCount,
+    completed_day_count: completedDayCount,
+    total_day_count: totalDayCount,
+    current_day: runningDay?.scheduled_date ?? null,
+    day_statuses: dayStatuses,
+  };
+}
+
+function queuedDayJobStatusResponse(
+  job: QueuedDayJobRecord,
+): QueuedDayStatusResponse {
+  const saved = Boolean(job.daily_card_id);
+  return {
+    scheduled_date: job.scheduled_date,
+    day_index: job.day_index,
+    status: job.status,
+    error_code: job.error_code ?? null,
+    daily_card_id: job.daily_card_id ?? null,
+    drafted: job.status === "generated" || saved,
+    saved,
+    attempt_count: job.attempt_count ?? 0,
+    started_at: job.started_at ?? null,
+    completed_at: job.completed_at ?? null,
+    retry_action: job.status === "failed" ? "retry_day" : undefined,
   };
 }
 

@@ -210,6 +210,76 @@ SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key> \
 deno run --allow-all supabase/functions/generate-week/acceptance.ts
 ```
 
+## Queued day worker
+
+Weekly generation can be processed by durable per-day jobs instead of one long
+Edge Function lifecycle. `scripts/workers/generate-day-worker.ts` claims at most
+one `weekly_generation_day_jobs` row per invocation, moves it to `generating`,
+calls day generation, then marks the row `generated` or `failed`.
+
+The worker expects day jobs with these columns:
+
+- `id`
+- `generation_run_id`
+- `workspace_id`
+- `creator_id`
+- `weekly_plan_id`
+- `scheduled_date`
+- `day_index`
+- `status`
+- `attempt_count`
+- `daily_card_id`
+- `error_code`
+- `started_at`
+- `completed_at`
+- `created_at`
+- `updated_at`
+
+Claimable statuses are `queued` and `retrying`. Terminal statuses are
+`generated`, `failed`, and `cancelled`.
+
+Local dry-run, which selects one queued/retrying job without mutation:
+
+```sh
+SUPABASE_URL=http://127.0.0.1:54321 \
+SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key> \
+deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --dry-run
+```
+
+Local one-job execution against served functions:
+
+```sh
+SUPABASE_URL=http://127.0.0.1:54321 \
+SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key> \
+MCO_GENERATE_WEEK_FUNCTION_URL=http://127.0.0.1:54321/functions/v1/generate-week \
+MCO_WORKER_DEVICE_TOKEN=<owner-or-editor-device-token> \
+MCO_DAY_WORKER_MOCK=1 \
+deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --once
+```
+
+Production one-job execution:
+
+```sh
+SUPABASE_URL=https://<project-ref>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key> \
+MCO_GENERATE_WEEK_FUNCTION_URL=https://<project-ref>.supabase.co/functions/v1/generate-week \
+MCO_WORKER_DEVICE_TOKEN=<owner-or-editor-device-token> \
+deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --once
+```
+
+Do not print or commit the service role key or worker device token. Run the
+worker repeatedly from a scheduler, queue runner, or process supervisor; each
+invocation is intentionally bounded to one job.
+
+Current integration hook: the worker uses the existing `generate-week`
+`regenerate_day` action with `response_mode: "sync"`. That endpoint still
+requires `x-mco-device-token`, so production should either provide an
+owner/editor worker device token or add a service-role-only internal
+day-generation endpoint/helper in `generate-week/index.ts`. Until that hook is
+added, `MCO_DAY_WORKER_STUB=1` can exercise the claim/terminal-failure path; it
+marks the claimed row `failed` with `day_generation_endpoint_stubbed` and does
+not create a daily card.
+
 ## Local simulator live-runtime smoke
 
 Use this when validating the iOS app against local Supabase rather than
