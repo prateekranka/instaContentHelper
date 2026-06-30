@@ -1026,7 +1026,7 @@ final class GenerateWeekTests: XCTestCase {
         draft.dailyCards[0].backupStory = "Edited backup story."
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
 
         await services.publishCurrentWeekImmediately()
@@ -1049,7 +1049,7 @@ final class GenerateWeekTests: XCTestCase {
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
         XCTAssertTrue(services.canPublishCurrentWeek)
 
@@ -1134,7 +1134,7 @@ final class GenerateWeekTests: XCTestCase {
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
         services.weeklyGenerationProgress = WeeklyGenerationProgress(
             phase: .draftingDays,
@@ -1260,7 +1260,7 @@ final class GenerateWeekTests: XCTestCase {
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
         services.weeklyGenerationProgress = WeeklyGenerationProgress(
             phase: .draftingDays,
@@ -1323,7 +1323,7 @@ final class GenerateWeekTests: XCTestCase {
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
         services.weeklyGenerationProgress = WeeklyGenerationProgress(
             phase: .draftingDays,
@@ -1547,7 +1547,8 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(regeneratedCard.title, "Regenerated past day")
         XCTAssertEqual(
             services.weeklyGenerationProgress?.dayStatuses.first { $0.scheduledDate == failedDate }?.isCompleted,
-            true
+            true,
+            "Progress statuses: \(String(describing: services.weeklyGenerationProgress?.dayStatuses))"
         )
     }
 
@@ -2142,7 +2143,7 @@ final class GenerateWeekTests: XCTestCase {
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
 
         await services.publishCurrentWeekImmediately()
@@ -2185,7 +2186,7 @@ final class GenerateWeekTests: XCTestCase {
         // Review only 6 of 7 days — leaves openDayCount > 0, blocking publish
         for (index, day) in services.weeklyPlan.days.enumerated() {
             guard index < 6 else { break }
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
         services.lastPublishError = nil
         services.lastRepositoryError = nil
@@ -2321,7 +2322,7 @@ final class GenerateWeekTests: XCTestCase {
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
 
         await services.publishCurrentWeekImmediately()
@@ -2367,7 +2368,7 @@ final class GenerateWeekTests: XCTestCase {
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
 
         await services.publishCurrentWeekImmediately()
@@ -2422,7 +2423,7 @@ final class GenerateWeekTests: XCTestCase {
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
         var editedCard = draft.dailyCards[1]
         editedCard.title = "Locally edited Tuesday"

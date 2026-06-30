@@ -12,7 +12,7 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         XCTAssertEqual(services.weekCards.count, 7)
         XCTAssertNil(services.lastRepositoryError)
 
-        markAllFixtureDaysPlanned(in: services)
+        await markAllFixtureDaysPlanned(in: services)
         await services.publishCurrentWeekImmediately()
 
         XCTAssertTrue(services.weeklyPlan.isSoftLocked)
@@ -30,7 +30,7 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         let cache = MemoryTodayCacheStore()
         let services = AppServices.fixtureBacked(todayCache: cache)
 
-        markAllFixtureDaysPlanned(in: services)
+        await markAllFixtureDaysPlanned(in: services)
         await services.publishCurrentWeekImmediately()
 
         let snapshot = try XCTUnwrap(cache.loadSnapshot(for: .creatorFixture))
@@ -330,9 +330,9 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         ]
     }
 
-    private func markAllFixtureDaysPlanned(in services: AppServices) {
+    private func markAllFixtureDaysPlanned(in services: AppServices) async {
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
     }
 }

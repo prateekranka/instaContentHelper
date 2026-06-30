@@ -22,7 +22,7 @@ final class PublishedWeekPersistenceTests: XCTestCase {
         let draft = await services.generateCurrentWeekImmediately()
         XCTAssertNotNil(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
         await services.publishCurrentWeekImmediately()
         let publishedTodayTitle = services.todayCard.title
@@ -63,7 +63,7 @@ final class PublishedWeekPersistenceTests: XCTestCase {
         let draft = await services.generateCurrentWeekImmediately()
         XCTAssertNotNil(draft)
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
         await services.publishCurrentWeekImmediately()
 
@@ -119,7 +119,7 @@ final class PublishedWeekPersistenceTests: XCTestCase {
         )
 
         for day in services.weeklyPlan.days {
-            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
 
         await services.publishCurrentWeekImmediately()

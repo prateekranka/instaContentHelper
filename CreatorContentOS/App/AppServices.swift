@@ -726,10 +726,11 @@ final class AppServices {
 
         if shouldRetryFailedDayViaRegeneration(scheduledDate: scheduledDate) {
             markQueuedDayRetrying(scheduledDate: scheduledDate)
-            _ = try await regeneratedDailyCard(
+            let regeneratedCard = try await regeneratedDailyCard(
                 scheduledDate: scheduledDate,
                 preserveManualEdits: false
             )
+            markRegeneratedDayCompleted(regeneratedCard)
             return
         }
 
@@ -785,10 +786,11 @@ final class AppServices {
                 regeneratingDayDates.remove(scheduledDate)
                 regenerationDayErrors[scheduledDate] = nil
                 markQueuedDayRetrying(scheduledDate: scheduledDate)
-                _ = try await regeneratedDailyCard(
+                let regeneratedCard = try await regeneratedDailyCard(
                     scheduledDate: scheduledDate,
                     preserveManualEdits: false
                 )
+                markRegeneratedDayCompleted(regeneratedCard)
                 return
             }
             let message = WeeklyGenerationErrorDisplay.message(for: error)
@@ -835,13 +837,30 @@ final class AppServices {
     }
 
     private func markRegeneratedDayCompleted(_ card: GeneratedDailyCardDraft) {
-        guard var progress = weeklyGenerationProgress,
-              let index = progress.dayStatuses.firstIndex(where: { $0.scheduledDate == card.scheduledDate })
-        else { return }
+        guard var progress = weeklyGenerationProgress else { return }
+
+        let index: Int
+        if let existingIndex = progress.dayStatuses.firstIndex(where: { $0.scheduledDate == card.scheduledDate }) {
+            index = existingIndex
+        } else {
+            progress.dayStatuses.append(
+                WeeklyDayGenerationStatus(
+                    scheduledDate: card.scheduledDate,
+                    dayIndex: progress.dayStatuses.count,
+                    status: "pending",
+                    dailyCardID: nil,
+                    errorCode: nil,
+                    retryAction: nil,
+                    message: nil
+                )
+            )
+            index = progress.dayStatuses.endIndex - 1
+        }
 
         progress.dayStatuses[index].status = "completed"
         progress.dayStatuses[index].dailyCardID = card.id
         progress.dayStatuses[index].errorCode = nil
+        progress.dayStatuses[index].retryAction = nil
         progress.dayStatuses[index].message = nil
         let savedCount = progress.dayStatuses.filter(\.isCompleted).count
         let failedCount = progress.dayStatuses.filter(\.isFailed).count

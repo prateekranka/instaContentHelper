@@ -88,7 +88,18 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
             error: nil,
             savedDayCount: draft.dailyCards.count,
             failedDayCount: 0,
-            strategyCreated: true
+            strategyCreated: true,
+            dayStatuses: draft.dailyCards.enumerated().map { index, card in
+                WeeklyDayGenerationStatus(
+                    scheduledDate: card.scheduledDate,
+                    dayIndex: index,
+                    status: "generated",
+                    dailyCardID: card.id,
+                    errorCode: nil,
+                    retryAction: nil,
+                    message: nil
+                )
+            }
         )
     }
 
@@ -105,7 +116,18 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
             error: nil,
             savedDayCount: draft.dailyCards.count,
             failedDayCount: 0,
-            strategyCreated: true
+            strategyCreated: true,
+            dayStatuses: draft.dailyCards.enumerated().map { index, card in
+                WeeklyDayGenerationStatus(
+                    scheduledDate: card.scheduledDate,
+                    dayIndex: index,
+                    status: "generated",
+                    dailyCardID: card.id,
+                    errorCode: nil,
+                    retryAction: nil,
+                    message: nil
+                )
+            }
         )
     }
 
