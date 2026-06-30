@@ -924,10 +924,6 @@ final class AppServices {
             return false
         }
 
-        if weeklyPlan.days[dayIndex].id != dailyCardID {
-            weeklyPlan.days[dayIndex].id = dailyCardID
-        }
-
         let previousState = weeklyPlan.days[dayIndex].state
         weeklyPlan.days[dayIndex].state = state
         weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
