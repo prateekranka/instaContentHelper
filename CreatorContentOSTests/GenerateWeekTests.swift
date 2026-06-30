@@ -1492,6 +1492,90 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(regeneratedCard.title, "Regenerated past day")
     }
 
+    func testRetryQueuedDayUsesRegenerateForReloadedDraftWithoutGenerationRun() async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-07-13",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let weekDates = SupabaseDateFormatting.weekDates(starting: "2026-07-13")
+        let failedDate = try XCTUnwrap(weekDates.last)
+        let reloadedDraft = GeneratedWeekDraft(
+            id: draft.weeklyPlanID,
+            weeklyPlanID: draft.weeklyPlanID,
+            status: draft.status,
+            strategySummary: draft.strategySummary,
+            warnings: draft.warnings,
+            assumptions: draft.assumptions,
+            dailyCards: Array(draft.dailyCards.dropLast()),
+            ideaBank: draft.ideaBank,
+            sourceSummary: draft.sourceSummary,
+            generatedAt: draft.generatedAt
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: RetryPastDateFallbackRepository(draft: draft),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-07-01" }
+        )
+        services.applyGeneratedDraft(reloadedDraft)
+        services.weeklyGenerationProgress = WeeklyGenerationProgress.partialFailure(
+            from: reloadedDraft,
+            message: "Some days were saved and some days failed. Retry the failed days before publishing.",
+            preserving: nil,
+            expectedScheduledDates: weekDates
+        )
+
+        try await services.retryQueuedGenerationDay(scheduledDate: failedDate)
+
+        XCTAssertNil(services.generationError)
+        let regeneratedCard = try XCTUnwrap(
+            services.latestGenerationSummary?.dailyCards.first { $0.scheduledDate == failedDate }
+        )
+        XCTAssertEqual(regeneratedCard.title, "Regenerated past day")
+        XCTAssertEqual(
+            services.weeklyGenerationProgress?.dayStatuses.first { $0.scheduledDate == failedDate }?.isCompleted,
+            true
+        )
+    }
+
+    func testPartialFailurePreservesNilGenerationIDForReloadedDraft() {
+        let planID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
+        let draft = GeneratedWeekDraft(
+            id: planID,
+            weeklyPlanID: planID,
+            status: "draft",
+            strategySummary: "Reloaded draft",
+            warnings: [],
+            assumptions: [],
+            dailyCards: [],
+            ideaBank: [],
+            sourceSummary: "Reloaded",
+            generatedAt: "2026-06-30T00:00:00Z"
+        )
+
+        let progress = WeeklyGenerationProgress.partialFailure(
+            from: draft,
+            message: "Some days were saved and some days failed. Retry the failed days before publishing.",
+            preserving: nil,
+            expectedScheduledDates: SupabaseDateFormatting.weekDates(starting: "2026-07-13")
+        )
+
+        XCTAssertNil(progress.generationID)
+    }
+
     // MARK: — Working Plan Persistence
 
     func testWorkingPlanReturnsNilWhenNoDraftExists() {
