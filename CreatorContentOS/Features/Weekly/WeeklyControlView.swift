@@ -104,7 +104,7 @@ struct WeeklyControlView: View {
                 isLocked: services.weeklyPlan.isSoftLocked || selection.day.isSoftLocked,
                 canRegenerateDay: canRegenerateDay,
                 onSetState: { state in
-                    services.updateWeeklyDayState(dayID: selection.id, state: state)
+                    await services.updateWeeklyDayStateImmediately(dayID: selection.id, state: state)
                 },
                 onRegenerateDay: services.regeneratedDailyCard
             )
@@ -2009,7 +2009,7 @@ struct WeeklyDayDetailSheet: View {
     @State private var generatedCard: GeneratedDailyCardDraft?
     let isLocked: Bool
     let canRegenerateDay: Bool
-    let onSetState: (WeeklyDayState) -> Void
+    let onSetState: @MainActor (WeeklyDayState) async -> Bool
     let onRegenerateDay: RegenerateDayAction?
     @State private var preserveManualEdits = true
     @State private var isRegenerating = false
@@ -2020,7 +2020,7 @@ struct WeeklyDayDetailSheet: View {
         generatedCard: GeneratedDailyCardDraft?,
         isLocked: Bool,
         canRegenerateDay: Bool = false,
-        onSetState: @escaping (WeeklyDayState) -> Void,
+        onSetState: @escaping @MainActor (WeeklyDayState) async -> Bool,
         onRegenerateDay: RegenerateDayAction? = nil
     ) {
         self.day = day
@@ -2128,8 +2128,11 @@ struct WeeklyDayDetailSheet: View {
                         isDisabled: isLocked,
                         identifier: "weekly.day.\(day.weekday).ready"
                     ) {
-                        onSetState(.planned)
-                        dismiss()
+                        Task {
+                            if await onSetState(.planned) {
+                                dismiss()
+                            }
+                        }
                     }
                     WeeklyDayStateActionButton(
                         state: .backup,
@@ -2137,8 +2140,11 @@ struct WeeklyDayDetailSheet: View {
                         isDisabled: isLocked,
                         identifier: "weekly.day.\(day.weekday).backup"
                     ) {
-                        onSetState(.backup)
-                        dismiss()
+                        Task {
+                            if await onSetState(.backup) {
+                                dismiss()
+                            }
+                        }
                     }
                     WeeklyDayStateActionButton(
                         state: .open,
@@ -2146,8 +2152,11 @@ struct WeeklyDayDetailSheet: View {
                         isDisabled: isLocked,
                         identifier: "weekly.day.\(day.weekday).open"
                     ) {
-                        onSetState(.open)
-                        dismiss()
+                        Task {
+                            if await onSetState(.open) {
+                                dismiss()
+                            }
+                        }
                     }
                 }
 

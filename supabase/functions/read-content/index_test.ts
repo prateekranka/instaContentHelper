@@ -39,6 +39,7 @@ Deno.test("readWeekly returns published_weekly_plan when both published and draf
     is_soft_locked: false,
     published_at: null,
     weekly_setup_id: "draft-setup-id",
+    updated_at: "2026-06-08T08:00:00Z",
   };
 
   const publishedCards = [

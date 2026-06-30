@@ -158,6 +158,63 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
             setupSections: setupSections
         )
     }
+
+    /// Builds the manager-visible working plan directly from persisted daily card
+    /// rows so review_state survives reload without an extra status round-trip.
+    static func makeWorkingPlan(
+        from cardRows: [SupabaseDailyCardRow],
+        planRow: SupabaseWeeklyPlanRow,
+        setupSections: [WeeklySetupSection],
+        weeklyBriefText: String
+    ) -> WeeklyPlan? {
+        guard !cardRows.isEmpty else { return nil }
+
+        let daysByDate = Dictionary(
+            uniqueKeysWithValues: cardRows.map { ($0.scheduledDate, $0.weeklyDay()) }
+        )
+        let expectedDates = SupabaseDateFormatting.weekDates(starting: planRow.weekStartDate)
+
+        let dateParser = DateFormatter()
+        dateParser.locale = Locale(identifier: "en_US_POSIX")
+        dateParser.dateFormat = "yyyy-MM-dd"
+        let weekdayFormatter = DateFormatter()
+        weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        weekdayFormatter.dateFormat = "EEE"
+        let dayFormatter = DateFormatter()
+        dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dayFormatter.dateFormat = "d"
+
+        let days: [WeeklyDay] = expectedDates.map { dateString in
+            if let day = daysByDate[dateString] {
+                return day
+            }
+            let date = dateParser.date(from: dateString)
+            return WeeklyDay(
+                weekday: date.map { weekdayFormatter.string(from: $0).uppercased() } ?? "",
+                date: date.map { dayFormatter.string(from: $0) } ?? "",
+                scheduledDate: dateString,
+                title: "Open",
+                reason: "",
+                source: .open,
+                state: .open,
+                isSoftLocked: false
+            )
+        }
+
+        return WeeklyPlan(
+            id: planRow.id,
+            title: "Generate a Week",
+            eyebrow: "MANAGER AI REVIEW",
+            weekRange: SupabaseDateFormatting.weekRange(starting: planRow.weekStartDate),
+            weekStartDate: planRow.weekStartDate,
+            weekEndDate: SupabaseDateFormatting.weekEndDate(starting: planRow.weekStartDate),
+            readinessLine: "\(days.filter { $0.state == .planned }.count) ready, \(days.filter { $0.state == .backup }.count) backup, \(days.filter { $0.state == .open }.count) open",
+            isSoftLocked: planRow.isSoftLocked || planRow.status == "published",
+            days: days,
+            weeklyBriefText: weeklyBriefText,
+            setupSections: setupSections
+        )
+    }
 }
 
 protocol WeeklyPlanRepository: Sendable {

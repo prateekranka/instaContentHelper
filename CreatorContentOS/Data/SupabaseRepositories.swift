@@ -264,12 +264,22 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
             generatedDraft = nil
         }
 
-        let workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
-            from: generatedDraft,
-            weekStartDate: response.weeklyPlan?.weekStartDate,
-            setupSections: response.weeklySetup?.setupSections ?? [],
-            weeklyBriefText: response.weeklySetup?.weeklyBriefText ?? ""
-        )
+        let workingPlan: WeeklyPlan?
+        if let workingPlanRow = response.weeklyPlan, !response.dailyCards.isEmpty {
+            workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
+                from: response.dailyCards,
+                planRow: workingPlanRow,
+                setupSections: response.weeklySetup?.setupSections ?? [],
+                weeklyBriefText: response.weeklySetup?.weeklyBriefText ?? ""
+            )
+        } else {
+            workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
+                from: generatedDraft,
+                weekStartDate: response.weeklyPlan?.weekStartDate,
+                setupSections: response.weeklySetup?.setupSections ?? [],
+                weeklyBriefText: response.weeklySetup?.weeklyBriefText ?? ""
+            )
+        }
 
         let ideaBank = response.ideaBank.map { $0.domainIdea() }
 
@@ -875,10 +885,13 @@ private extension SupabaseClient {
 
     func writeContent(_ request: SupabaseWriteContentRequest) async throws {
         do {
-            let _: SupabaseWriteContentResponse = try await functions.invoke(
+            let response: SupabaseWriteContentResponse = try await functions.invoke(
                 "write-content",
                 options: FunctionInvokeOptions(body: request)
             )
+            if let error = response.error?.nilIfBlank {
+                throw RepositoryError.edgeFunction(error)
+            }
         } catch {
             if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
                 throw RepositoryError.edgeFunction(code)

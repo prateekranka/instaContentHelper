@@ -1853,6 +1853,57 @@ final class GenerateWeekTests: XCTestCase {
                       "Published card should be soft locked")
     }
 
+    func testWorkingPlanBuiltFromCardRowsPreservesReviewStateOnReload() throws {
+        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+        let planID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
+        let row = try JSONDecoder().decode(
+            SupabaseDailyCardRow.self,
+            from: Data(
+                """
+                {
+                  "id": "\(cardID.uuidString)",
+                  "workspace_id": "11111111-1111-4111-8111-111111111111",
+                  "creator_id": "33333333-3333-4333-8333-333333333333",
+                  "weekly_plan_id": "\(planID.uuidString)",
+                  "scheduled_date": "2026-06-08",
+                  "status": "draft",
+                  "review_state": "ready",
+                  "title": "Ready card",
+                  "scene_list": []
+                }
+                """.utf8
+            )
+        )
+        let planRow = try JSONDecoder().decode(
+            SupabaseWeeklyPlanRow.self,
+            from: Data(
+                """
+                {
+                  "id": "\(planID.uuidString)",
+                  "workspace_id": "11111111-1111-4111-8111-111111111111",
+                  "creator_id": "33333333-3333-4333-8333-333333333333",
+                  "week_start_date": "2026-06-08",
+                  "status": "draft",
+                  "warnings": [],
+                  "assumptions": [],
+                  "is_soft_locked": false
+                }
+                """.utf8
+            )
+        )
+
+        let workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
+            from: [row],
+            planRow: planRow,
+            setupSections: [],
+            weeklyBriefText: ""
+        )
+
+        let monday = try XCTUnwrap(workingPlan?.days.first)
+        XCTAssertEqual(monday.id, cardID)
+        XCTAssertEqual(monday.state, .planned)
+    }
+
     func testDraftDailyCardPublishRequestEncodesReviewState() throws {
         let request = SupabaseDraftDailyCardPublishRequest(
             card: GeneratedDailyCardDraft(
@@ -1927,10 +1978,8 @@ final class GenerateWeekTests: XCTestCase {
         services.applyGeneratedDraft(draft)
 
         let firstDay = try XCTUnwrap(services.weeklyPlan.days.first)
-        services.updateWeeklyDayState(dayID: firstDay.id, state: .backup)
-
-        // The persistence is async - wait briefly
-        try await Task.sleep(nanoseconds: 100_000_000)
+        let didSave = await services.updateWeeklyDayStateImmediately(dayID: firstDay.id, state: .backup)
+        XCTAssertTrue(didSave)
 
         let calls = await repo.reviewStateCalls
         XCTAssertFalse(calls.isEmpty, "Expected review state persistence call")
@@ -1938,6 +1987,48 @@ final class GenerateWeekTests: XCTestCase {
             XCTAssertEqual(firstCall.dailyCardID, firstDay.id)
             XCTAssertEqual(firstCall.reviewState, "backup")
         }
+    }
+
+    func testMarkReadySurvivesRepositoryReload() async throws {
+        let repo = ReviewStateReloadRepository()
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: repo,
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore()
+        )
+
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: "2026-06-01",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
+        await repo.seed(draft: draft)
+        services.applyGeneratedDraft(draft)
+
+        let firstDay = try XCTUnwrap(services.weeklyPlan.days.first)
+        let didSave = await services.updateWeeklyDayStateImmediately(dayID: firstDay.id, state: .planned)
+        XCTAssertTrue(didSave)
+
+        await services.refreshFromRepositoriesImmediately()
+
+        let reloadedDay = try XCTUnwrap(
+            services.weeklyPlan.days.first(where: { $0.scheduledDate == firstDay.scheduledDate })
+        )
+        XCTAssertEqual(reloadedDay.state, .planned,
+                       "Ready state should survive a cold repository reload")
+        XCTAssertNil(services.lastRepositoryError)
     }
 
     // MARK: — Publish Error Isolation
@@ -2844,6 +2935,148 @@ private actor NonTransientFailingPublishRepository: WeeklyPlanRepository {
         context: WorkspaceContext
     ) async throws -> WeeklyPlan {
         throw RepositoryError.notConfigured("brief not needed")
+    }
+}
+
+private actor ReviewStateReloadRepository: WeeklyPlanRepository {
+    private var draft: GeneratedWeekDraft?
+    private var reviewStates: [UUID: String] = [:]
+
+    func seed(draft: GeneratedWeekDraft) {
+        self.draft = draft
+        reviewStates = [:]
+    }
+
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
+        .raceWeek
+    }
+
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
+        try await currentWeeklyContent(for: context).generatedDraft
+    }
+
+    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
+        draft?.ideaBank ?? []
+    }
+
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        guard let draft else {
+            return WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
+        }
+
+        let cardRows = try draft.dailyCards.map { card in
+            try Self.makeDailyCardRow(
+                from: card,
+                planID: draft.weeklyPlanID,
+                reviewState: reviewStates[card.id] ?? "open"
+            )
+        }
+        let planRow = try Self.makeWeeklyPlanRow(from: draft)
+        let workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
+            from: cardRows,
+            planRow: planRow,
+            setupSections: [],
+            weeklyBriefText: ""
+        )
+        let generatedDraft = GeneratedWeekDraft(
+            id: draft.id,
+            weeklyPlanID: draft.weeklyPlanID,
+            status: draft.status,
+            strategySummary: draft.strategySummary,
+            warnings: draft.warnings,
+            assumptions: draft.assumptions,
+            dailyCards: cardRows.map { $0.generatedDailyCardDraft() },
+            ideaBank: draft.ideaBank,
+            sourceSummary: draft.sourceSummary,
+            generatedAt: draft.generatedAt
+        )
+
+        return WeeklyRepositoryContent(
+            publishedPlan: .raceWeek,
+            workingPlan: workingPlan,
+            generatedDraft: generatedDraft,
+            ideaBank: draft.ideaBank
+        )
+    }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw RepositoryError.notConfigured("publish not needed")
+    }
+
+    func selectIdeaForNextOpenDay(
+        _ idea: WeeklyIdea,
+        in plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        context: WorkspaceContext
+    ) async throws -> WeeklySelectionUpdate {
+        throw RepositoryError.notConfigured("selection not needed")
+    }
+
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("setup not needed")
+    }
+
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("brief not needed")
+    }
+
+    func updateDailyCardReviewState(
+        dailyCardID: UUID,
+        reviewState: String,
+        context: WorkspaceContext
+    ) async throws {
+        reviewStates[dailyCardID] = reviewState
+    }
+
+    private static func makeDailyCardRow(
+        from card: GeneratedDailyCardDraft,
+        planID: UUID,
+        reviewState: String
+    ) throws -> SupabaseDailyCardRow {
+        let json = """
+        {
+          "id": "\(card.id.uuidString)",
+          "workspace_id": "\(WorkspaceContext.creatorFixture.workspaceID.uuidString)",
+          "creator_id": "\(WorkspaceContext.creatorFixture.creatorID.uuidString)",
+          "weekly_plan_id": "\(planID.uuidString)",
+          "scheduled_date": "\(card.scheduledDate)",
+          "status": "draft",
+          "review_state": "\(reviewState)",
+          "title": "Generated card",
+          "scene_list": []
+        }
+        """
+        return try JSONDecoder().decode(SupabaseDailyCardRow.self, from: Data(json.utf8))
+    }
+
+    private static func makeWeeklyPlanRow(from draft: GeneratedWeekDraft) throws -> SupabaseWeeklyPlanRow {
+        let weekStartDate = draft.dailyCards.map(\.scheduledDate).sorted().first ?? "2026-06-01"
+        let json = """
+        {
+          "id": "\(draft.weeklyPlanID.uuidString)",
+          "workspace_id": "\(WorkspaceContext.creatorFixture.workspaceID.uuidString)",
+          "creator_id": "\(WorkspaceContext.creatorFixture.creatorID.uuidString)",
+          "week_start_date": "\(weekStartDate)",
+          "status": "draft",
+          "warnings": [],
+          "assumptions": [],
+          "is_soft_locked": false
+        }
+        """
+        return try JSONDecoder().decode(SupabaseWeeklyPlanRow.self, from: Data(json.utf8))
     }
 }
 

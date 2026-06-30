@@ -904,11 +904,28 @@ final class AppServices {
     }
 
     func updateWeeklyDayState(dayID: UUID, state: WeeklyDayState) {
+        Task {
+            _ = await updateWeeklyDayStateImmediately(dayID: dayID, state: state)
+        }
+    }
+
+    @discardableResult
+    func updateWeeklyDayStateImmediately(dayID: UUID, state: WeeklyDayState) async -> Bool {
         guard !weeklyPlan.isSoftLocked,
               let dayIndex = weeklyPlan.days.firstIndex(where: { $0.id == dayID }),
               !weeklyPlan.days[dayIndex].isSoftLocked
         else {
-            return
+            return false
+        }
+
+        let day = weeklyPlan.days[dayIndex]
+        guard let dailyCardID = resolvedDailyCardID(for: day) else {
+            lastRepositoryError = "Review state could not be saved for this day."
+            return false
+        }
+
+        if weeklyPlan.days[dayIndex].id != dailyCardID {
+            weeklyPlan.days[dayIndex].id = dailyCardID
         }
 
         let previousState = weeklyPlan.days[dayIndex].state
@@ -917,39 +934,51 @@ final class AppServices {
 
         if var draft = latestGenerationSummary,
            draft.weeklyPlanID == weeklyPlan.id,
-           let cardIndex = draft.dailyCards.firstIndex(where: { $0.id == dayID }) {
+           let cardIndex = draft.dailyCards.firstIndex(where: {
+               $0.id == dailyCardID || $0.scheduledDate == day.scheduledDate
+           }) {
             draft.dailyCards[cardIndex].status = state.generatedDraftStatus
             latestGenerationSummary = draft
         }
 
         generationError = nil
 
-        // Persist review state asynchronously with optimistic rollback
-        let capturedDayID = dayID
-        let capturedState = state
-        let capturedPreviousState = previousState
-        let capturedContext = context
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.repositories.weeklyPlans.updateDailyCardReviewState(
-                    dailyCardID: capturedDayID,
-                    reviewState: capturedState.generatedDraftStatus,
-                    context: capturedContext
-                )
-            } catch {
-                // Roll back only if the same optimistic state is still current
-                guard
-                    let currentIndex = self.weeklyPlan.days.firstIndex(where: { $0.id == capturedDayID }),
-                    self.weeklyPlan.days[currentIndex].state == capturedState
-                else {
-                    return
-                }
-                self.weeklyPlan.days[currentIndex].state = capturedPreviousState
-                self.weeklyPlan.readinessLine = self.weeklyPlan.computedReadinessLine
-                self.lastRepositoryError = error.localizedDescription
+        do {
+            try await repositories.weeklyPlans.updateDailyCardReviewState(
+                dailyCardID: dailyCardID,
+                reviewState: state.generatedDraftStatus,
+                context: context
+            )
+            lastRepositoryError = nil
+            return true
+        } catch {
+            guard weeklyPlan.days[dayIndex].state == state else {
+                return false
             }
+            weeklyPlan.days[dayIndex].state = previousState
+            weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
+            if var draft = latestGenerationSummary,
+               draft.weeklyPlanID == weeklyPlan.id,
+               let cardIndex = draft.dailyCards.firstIndex(where: {
+                   $0.id == dailyCardID || $0.scheduledDate == day.scheduledDate
+               }) {
+                draft.dailyCards[cardIndex].status = previousState.generatedDraftStatus
+                latestGenerationSummary = draft
+            }
+            lastRepositoryError = error.localizedDescription
+            return false
         }
+    }
+
+    private func resolvedDailyCardID(for day: WeeklyDay) -> UUID? {
+        if let scheduledDate = day.scheduledDate?.nilIfBlank,
+           let draft = latestGenerationSummary,
+           draft.weeklyPlanID == weeklyPlan.id,
+           let card = draft.dailyCards.first(where: { $0.scheduledDate == scheduledDate }) {
+            return card.id
+        }
+
+        return day.id
     }
 
     func selectIdeaForNextOpenDay(_ idea: WeeklyIdea) {
