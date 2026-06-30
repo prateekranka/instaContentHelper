@@ -343,7 +343,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         GeneratedDailyCardDraft(
             id: id,
             scheduledDate: scheduledDate,
-            status: status,
+            status: Self.draftReviewStatus(dbStatus: status, reviewState: reviewState),
             title: title,
             whyToday: whyToday ?? growthJob ?? "Prepared for this day.",
             growthJob: growthJob ?? whyToday ?? "Support this week’s content arc.",
@@ -385,12 +385,30 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         )
     }
 
+    private static func draftReviewStatus(dbStatus: String, reviewState: String?) -> String {
+        guard dbStatus == "draft" else { return dbStatus }
+
+        guard let reviewState = reviewState?.nilIfBlank?.lowercased() else {
+            return "open"
+        }
+
+        switch reviewState {
+        case "ready", "planned":
+            return "ready"
+        case "backup":
+            return "backup"
+        default:
+            return "open"
+        }
+    }
+
     func weeklyDay() -> WeeklyDay {
         let reviewBasedState: WeeklyDayState? = {
             guard status == "draft", let reviewState = reviewState?.nilIfBlank else { return nil }
             return WeeklyDayState(reviewState: reviewState)
         }()
         return WeeklyDay(
+            id: id,
             weekday: SupabaseDateFormatting.weekdayAbbreviation(for: scheduledDate),
             date: SupabaseDateFormatting.dayNumber(for: scheduledDate),
             scheduledDate: scheduledDate,

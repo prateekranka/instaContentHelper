@@ -1780,6 +1780,53 @@ final class GenerateWeekTests: XCTestCase {
                        "Draft card with review_state=backup maps to backup")
     }
 
+    func testGeneratedDailyCardDraftMapsReviewStateForDraftCards() throws {
+        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+        let data = Data(
+            """
+            {
+              "id": "\(cardID.uuidString)",
+              "workspace_id": "11111111-1111-4111-8111-111111111111",
+              "creator_id": "33333333-3333-4333-8333-333333333333",
+              "weekly_plan_id": "77777777-7777-4777-8777-777777777771",
+              "scheduled_date": "2026-06-08",
+              "status": "draft",
+              "review_state": "ready",
+              "title": "Ready card",
+              "scene_list": []
+            }
+            """.utf8
+        )
+
+        let row = try JSONDecoder().decode(SupabaseDailyCardRow.self, from: data)
+        let draft = row.generatedDailyCardDraft()
+        XCTAssertEqual(draft.status, "ready",
+                       "Reloaded draft card should preserve review_state as generated status")
+        XCTAssertEqual(draft.weeklyDay.state, .planned)
+        XCTAssertEqual(draft.weeklyDay.id, cardID)
+    }
+
+    func testWeeklyDayPreservesDailyCardID() throws {
+        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+        let data = Data(
+            """
+            {
+              "id": "\(cardID.uuidString)",
+              "workspace_id": "11111111-1111-4111-8111-111111111111",
+              "creator_id": "33333333-3333-4333-8333-333333333333",
+              "weekly_plan_id": "77777777-7777-4777-8777-777777777771",
+              "scheduled_date": "2026-06-08",
+              "status": "draft",
+              "title": "Card with stable id",
+              "scene_list": []
+            }
+            """.utf8
+        )
+
+        let row = try JSONDecoder().decode(SupabaseDailyCardRow.self, from: data)
+        XCTAssertEqual(row.weeklyDay().id, cardID)
+    }
+
     func testReviewStateDoesNotOverridePublishedStatusMapping() throws {
         let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
         let data = Data(
