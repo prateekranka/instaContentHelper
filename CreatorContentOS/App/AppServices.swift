@@ -724,22 +724,19 @@ final class AppServices {
             throw RepositoryError.edgeFunction(error)
         }
 
-        guard let generationID = weeklyGenerationProgress?.generationID else {
-            let error = "generation_not_found"
-            regenerationDayErrors[scheduledDate] = error
-            throw RepositoryError.edgeFunction(error)
-        }
-
-        // Past failed dates in the active draft week must use regenerate_day,
-        // not the durable retry_day path which rejects past dates.
-        if SupabaseDateFormatting.isDatePast(scheduledDate, todayString: todayDate()),
-           isRetryableFailedGenerationDate(scheduledDate) {
+        if shouldRetryFailedDayViaRegeneration(scheduledDate: scheduledDate) {
             markQueuedDayRetrying(scheduledDate: scheduledDate)
             _ = try await regeneratedDailyCard(
                 scheduledDate: scheduledDate,
                 preserveManualEdits: false
             )
             return
+        }
+
+        guard let generationID = resolvedGenerationRunID() else {
+            let error = "generation_not_found"
+            regenerationDayErrors[scheduledDate] = error
+            throw RepositoryError.edgeFunction(error)
         }
 
         let canFallbackToRegenerateDay = isRetryableFailedGenerationDate(scheduledDate)
@@ -1505,8 +1502,45 @@ final class AppServices {
         let description = error.localizedDescription
         return [
             "past_generation_date_not_allowed",
-            "day_job_not_retryable"
+            "day_job_not_retryable",
+            "generation_not_found",
+            "invalid_generation_payload"
         ].contains { description.contains($0) }
+    }
+
+    private func shouldRetryFailedDayViaRegeneration(scheduledDate: String) -> Bool {
+        guard isRetryableFailedGenerationDate(scheduledDate) else { return false }
+
+        if retryAction(for: scheduledDate) == "regenerate_day" {
+            return true
+        }
+
+        if resolvedGenerationRunID() == nil {
+            return true
+        }
+
+        return SupabaseDateFormatting.isDatePast(scheduledDate, todayString: todayDate())
+    }
+
+    private func retryAction(for scheduledDate: String) -> String? {
+        weeklyGenerationProgress?.dayStatuses
+            .first(where: { $0.scheduledDate == scheduledDate })?
+            .retryAction?
+            .nilIfBlank
+    }
+
+    private func resolvedGenerationRunID() -> UUID? {
+        if let progressID = weeklyGenerationProgress?.generationID,
+           progressID != weeklyPlan.id {
+            return progressID
+        }
+
+        if let draft = latestGenerationSummary,
+           draft.id != draft.weeklyPlanID {
+            return draft.id
+        }
+
+        return nil
     }
 
     func scheduleTodayNotificationIfNeeded() {

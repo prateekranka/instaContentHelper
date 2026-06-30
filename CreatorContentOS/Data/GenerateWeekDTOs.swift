@@ -126,7 +126,7 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
             : dayStatuses.filter(\.isFailed).count
         return WeeklyGenerationProgress(
             phase: .failed,
-            generationID: existingProgress?.generationID ?? draft.id,
+            generationID: existingProgress?.generationID ?? (draft.id != draft.weeklyPlanID ? draft.id : nil),
             weeklyPlanID: existingProgress?.weeklyPlanID ?? draft.weeklyPlanID,
             draftedDayCount: savedCount,
             checkedDayCount: savedCount,

@@ -269,13 +269,15 @@ struct WeeklyControlView: View {
         guard retryingDayDate == nil else { return }
         retryingDayDate = scheduledDate
         Task {
+            defer { retryingDayDate = nil }
             do {
                 try await services.retryQueuedGenerationDay(scheduledDate: scheduledDate)
                 await services.reconcileGeneratedDayCardFromCurrentWeeklyContent(scheduledDate: scheduledDate)
             } catch {
-                _ = error
+                if services.generationError == nil {
+                    services.generationError = error.localizedDescription
+                }
             }
-            retryingDayDate = nil
         }
     }
 
