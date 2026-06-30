@@ -160,6 +160,9 @@ struct SupabaseWriteDecisionRequest: Encodable, Sendable {
 
 struct SupabaseWriteContentResponse: Decodable, Hashable, Sendable {
     var action: String?
+    var error: String?
+    var dailyCardID: UUID?
+    var reviewState: String?
     var dailyCard: SupabaseWriteDailyCardResponse?
     var archiveEntry: SupabaseWriteArchiveEntryResponse?
     var idea: SupabaseWriteIdeaResponse?
@@ -168,6 +171,9 @@ struct SupabaseWriteContentResponse: Decodable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case action
+        case error
+        case dailyCardID = "daily_card_id"
+        case reviewState = "review_state"
         case dailyCard = "daily_card"
         case archiveEntry = "archive_entry"
         case idea
