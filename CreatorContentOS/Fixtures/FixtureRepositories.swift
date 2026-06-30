@@ -1,12 +1,46 @@
 import Foundation
 
+/// Keeps the fixture today and weekly repositories on the same published content.
+actor FixturePublishedContentStore {
+    private var weekCards: [DailyCard] = []
+    private var todayCard: DailyCard?
+
+    func readWeekCards() -> [DailyCard] {
+        weekCards
+    }
+
+    func readTodayCard() -> DailyCard? {
+        todayCard
+    }
+
+    func savePublishedContent(cards: [DailyCard], todayCard: DailyCard?) {
+        self.weekCards = cards
+        self.todayCard = todayCard
+    }
+}
+
 struct FixtureTodayCardRepository: TodayCardRepository {
+    let publishedStore: FixturePublishedContentStore?
+
+    init(publishedStore: FixturePublishedContentStore? = nil) {
+        self.publishedStore = publishedStore
+    }
+
     func todayCard(for context: WorkspaceContext) async throws -> DailyCard {
-        DailyCard.raceWeekToday
+        if let publishedCard = await publishedStore?.readTodayCard() {
+            return publishedCard
+        }
+        return DailyCard.raceWeekToday
     }
 
     func weekCards(for context: WorkspaceContext) async throws -> [DailyCard] {
-        DailyCard.weekFixtures
+        if let store = publishedStore {
+            let publishedCards = await store.readWeekCards()
+            if !publishedCards.isEmpty {
+                return publishedCards
+            }
+        }
+        return DailyCard.weekFixtures
     }
 
     func completeToday(
@@ -30,13 +64,16 @@ struct FixtureTodayCardRepository: TodayCardRepository {
 actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
     private var plan: WeeklyPlan
     private var ideas: [WeeklyIdea]
+    private let publishedStore: FixturePublishedContentStore?
 
     init(
         plan: WeeklyPlan = .raceWeek,
-        ideas: [WeeklyIdea] = WeeklyIdea.raceWeekBank
+        ideas: [WeeklyIdea] = WeeklyIdea.raceWeekBank,
+        publishedStore: FixturePublishedContentStore? = nil
     ) {
         self.plan = plan
         self.ideas = ideas
+        self.publishedStore = publishedStore
     }
 
     func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
@@ -49,6 +86,14 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
 
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
         ideas
+    }
+
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        WeeklyRepositoryContent(
+            publishedPlan: plan,
+            generatedDraft: nil,
+            ideaBank: ideas
+        )
     }
 
     func publishWeek(
@@ -74,10 +119,13 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         self.plan = publishedPlan
         self.ideas = ideaBank
 
+        let todayCard = DailyCard.bestTodayCard(from: cards)
+        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
+
         return WeeklyPublishResult(
             weeklyPlan: publishedPlan,
             weekCards: cards,
-            todayCard: DailyCard.bestTodayCard(from: cards),
+            todayCard: todayCard,
             summary: "Published \(cards.count) cards to Creator Today."
         )
     }
@@ -131,9 +179,21 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         self.plan = updatedPlan
         return updatedPlan
     }
+
+    func updateDailyCardReviewState(
+        dailyCardID: UUID,
+        reviewState: String,
+        context: WorkspaceContext
+    ) async throws {
+        guard var currentPlan = try? await currentPublishedPlan(for: context) else { return }
+        guard let dayIndex = currentPlan.days.firstIndex(where: { $0.id == dailyCardID }) else { return }
+        let newState = WeeklyDayState(reviewState: reviewState)
+        currentPlan.days[dayIndex].state = newState
+        self.plan = currentPlan
+    }
 }
 
-struct FixtureWeeklyGenerationRepository: WeeklyGenerationRepository {
+struct AppFixtureWeeklyGenerationUnavailableRepository: WeeklyGenerationRepository {
     func generateWeek(
         creatorID: UUID,
         weekStartDate: String,
@@ -142,82 +202,8 @@ struct FixtureWeeklyGenerationRepository: WeeklyGenerationRepository {
         context: WorkspaceContext,
         progress: WeeklyGenerationProgressHandler?
     ) async throws -> GeneratedWeekDraft {
-        await progress?(
-            WeeklyGenerationProgress(
-                phase: .draftingDays,
-                generationID: nil,
-                weeklyPlanID: nil,
-                draftedDayCount: 7,
-                checkedDayCount: 7,
-                totalDayCount: 7,
-                currentDay: nil,
-                message: "Fixture draft generated",
-                error: nil
-            )
-        )
-
-        let cards = SupabaseDateFormatting.weekDates(starting: weekStartDate).enumerated().map { index, date in
-            GeneratedDailyCardDraft(
-                id: UUID(),
-                scheduledDate: date,
-                status: "draft",
-                title: [
-                    "Generated Monday reset",
-                    "Generated training detail",
-                    "Generated recovery check",
-                    "Generated kit note",
-                    "Generated calm reminder",
-                    "Generated family walk",
-                    "Generated caption backup"
-                ][index],
-                whyToday: "A fixture AI draft grounded in Creator's weekly rhythm.",
-                growthJob: "Build consistency with practical fitness content.",
-                contentPillar: index == 5 ? "family" : "routine",
-                shootability: index == 6 ? "backup" : "easy",
-                estimatedShootMinutes: index == 6 ? 6 : 12,
-                energyRequired: index == 6 ? "low" : "medium",
-                languageMode: "English with light Hinglish if natural",
-                sceneList: [
-                    ShotScene(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
-                    ShotScene(number: 2, title: "One steady movement", duration: "5 sec", symbol: "figure.run"),
-                    ShotScene(number: 3, title: "Useful close", duration: "4 sec", symbol: "text.quote")
-                ],
-                script: "One useful detail is enough today. Keep it simple and steady.",
-                noVoiceoverVersion: "Three quiet clips with simple on-screen text.",
-                onScreenText: ["Simple today", "One useful detail", "Done"],
-                caption: "Keeping it simple today. One useful detail, done properly.",
-                cta: "Save this for a low-effort training day.",
-                hashtags: ["routine", "fitnessover60"],
-                coverText: "Simple today",
-                postInstructions: "Use calm audio only if it fits.",
-                brandEventNotes: "",
-                backupStory: "A 10-second story with one detail and one line.",
-                backupCaptionOnly: "Caption-only backup for a crowded day.",
-                audioOptionNotes: "Calm fallback audio, or no audio dependency.",
-                creatorFitScore: 88,
-                riskNotes: [],
-                assumptions: ["Fixture generation used deterministic local context."],
-                sourceNote: "Fixture AI weekly generation."
-            )
-        }
-
-        return GeneratedWeekDraft(
-            id: UUID(),
-            weeklyPlanID: UUID(),
-            strategySummary: "Fixture AI draft: seven shootable Creator-safe cards for review.",
-            warnings: [],
-            assumptions: ["Fixture mode does not call AI services."],
-            dailyCards: cards,
-            ideaBank: [
-                WeeklyIdea(
-                    title: "Fixture caption-only backup",
-                    reason: "Saved from fixture AI generation.",
-                    source: .pattern,
-                    effortLabel: "Easy"
-                )
-            ],
-            sourceSummary: "Fixture profile, setup, references, archive, and idea bank.",
-            generatedAt: ISO8601DateFormatter().string(from: Date())
+        throw RepositoryError.notConfigured(
+            "Fixture generation is unavailable. Use live generation or backend mock generation."
         )
     }
 }

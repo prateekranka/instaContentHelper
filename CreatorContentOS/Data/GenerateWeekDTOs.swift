@@ -8,7 +8,7 @@ struct SupabaseGenerateWeekRequest: Encodable, Sendable {
     var preserveManualEdits: Bool
     var mock: Bool?
     var responseMode: GenerateWeekResponseMode? = nil
-    var featureFlags: [String]? = ["queued_week_generation"]
+    var featureFlags: [String]? = ["parallel_week_generation"]
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
@@ -112,10 +112,15 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
     static func partialFailure(
         from draft: GeneratedWeekDraft,
         message: String,
-        preserving existingProgress: WeeklyGenerationProgress? = nil
+        preserving existingProgress: WeeklyGenerationProgress? = nil,
+        expectedScheduledDates: [String] = []
     ) -> WeeklyGenerationProgress {
         let savedCount = min(draft.dailyCards.count, 7)
-        let dayStatuses = existingProgress?.dayStatuses ?? []
+        let dayStatuses = partialFailureDayStatuses(
+            for: draft,
+            preserving: existingProgress,
+            expectedScheduledDates: expectedScheduledDates
+        )
         let failedCount = dayStatuses.isEmpty
             ? max(7 - savedCount, 0)
             : dayStatuses.filter(\.isFailed).count
@@ -123,7 +128,7 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
             phase: .failed,
             generationID: existingProgress?.generationID ?? draft.id,
             weeklyPlanID: existingProgress?.weeklyPlanID ?? draft.weeklyPlanID,
-            draftedDayCount: max(existingProgress?.draftedDayCount ?? savedCount, savedCount + failedCount),
+            draftedDayCount: savedCount,
             checkedDayCount: savedCount,
             totalDayCount: existingProgress?.totalDayCount ?? 7,
             currentDay: nil,
@@ -134,6 +139,51 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
             strategyCreated: true,
             dayStatuses: dayStatuses
         )
+    }
+
+    private static func partialFailureDayStatuses(
+        for draft: GeneratedWeekDraft,
+        preserving existingProgress: WeeklyGenerationProgress?,
+        expectedScheduledDates: [String]
+    ) -> [WeeklyDayGenerationStatus] {
+        let existingStatuses = existingProgress?.dayStatuses ?? []
+        let existingByDate = existingStatuses.reduce(into: [String: WeeklyDayGenerationStatus]()) { statusesByDate, status in
+            guard let scheduledDate = status.scheduledDate else { return }
+            statusesByDate[scheduledDate] = status
+        }
+
+        let generatedDates = Set(draft.dailyCards.map(\.scheduledDate))
+        let orderedDates = expectedScheduledDates.isEmpty
+            ? draft.dailyCards.map(\.scheduledDate).sorted()
+            : expectedScheduledDates
+
+        return orderedDates.enumerated().map { index, scheduledDate in
+            if let existingStatus = existingByDate[scheduledDate] {
+                return existingStatus
+            }
+
+            if let generatedCard = draft.dailyCards.first(where: { $0.scheduledDate == scheduledDate }) {
+                return WeeklyDayGenerationStatus(
+                    scheduledDate: scheduledDate,
+                    dayIndex: index,
+                    status: "completed",
+                    dailyCardID: generatedCard.id,
+                    errorCode: nil,
+                    retryAction: nil,
+                    message: nil
+                )
+            }
+
+            return WeeklyDayGenerationStatus(
+                scheduledDate: scheduledDate,
+                dayIndex: index,
+                status: generatedDates.contains(scheduledDate) ? "completed" : "failed",
+                dailyCardID: nil,
+                errorCode: "generation_timeout",
+                retryAction: "regenerate_day",
+                message: nil
+            )
+        }
     }
 
     static func failed(_ message: String, generationID: UUID? = nil) -> WeeklyGenerationProgress {
@@ -339,6 +389,21 @@ struct SupabaseRetryQueuedDayRequest: Encodable, Sendable {
     }
 }
 
+struct SupabaseCancelGenerationRequest: Encodable, Sendable {
+    let action = "cancel_generation"
+    let generationID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case action
+        case generationID = "generation_id"
+    }
+}
+
+struct SupabaseCancelGenerationResponse: Decodable, Hashable, Sendable {
+    var status: String
+    var message: String?
+}
+
 struct SupabaseRetryQueuedDayResponse: Decodable, Hashable, Sendable {
     var generationID: UUID
     var weeklyPlanID: UUID?
@@ -510,12 +575,11 @@ struct SupabaseGenerateWeekResponse: Decodable, Hashable, Sendable {
         let total = max(totalDayCount ?? 7, 1)
         let saved = min(max(savedDayCount ?? dailyCards.count, 0), total)
         let failed = min(max(failedDayCount ?? dayStatuses.filter(\.isFailed).count, 0), total)
-        let completed = min(max(completedDayCount ?? (saved + failed), saved + failed), total)
         return WeeklyGenerationProgress(
             phase: status == "partial" || failed > 0 ? .failed : .savingDraftWeek,
             generationID: generationID,
             weeklyPlanID: weeklyPlanID,
-            draftedDayCount: completed,
+            draftedDayCount: saved,
             checkedDayCount: saved,
             totalDayCount: total,
             currentDay: nil,
@@ -621,7 +685,7 @@ struct SupabaseGenerateWeekStatusResponse: Decodable, Hashable, Sendable {
             phase: completed >= total && failed == 0 ? .savingDraftWeek : .draftingDays,
             generationID: generationID,
             weeklyPlanID: weeklyPlanID,
-            draftedDayCount: completed,
+            draftedDayCount: effectiveSaved,
             checkedDayCount: effectiveSaved,
             totalDayCount: total,
             currentDay: currentDay ?? targetScheduledDate ?? dayStatuses.first(where: \.isRunning)?.scheduledDate,
@@ -729,6 +793,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
     var riskNotes: [String]
     var assumptions: [String]
     var sourceNote: String
+    var reviewState: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -770,6 +835,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
         case riskNotes = "risk_notes"
         case assumptions
         case sourceNote = "source_note"
+        case reviewState = "review_state"
     }
 
     var domainCard: GeneratedDailyCardDraft {
@@ -857,6 +923,7 @@ struct SupabaseDraftDailyCardPublishRequest: Encodable, Sendable {
     var riskNotes: [String]
     var assumptions: [String]
     var sourceNote: String
+    var reviewState: String
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -896,6 +963,7 @@ struct SupabaseDraftDailyCardPublishRequest: Encodable, Sendable {
         case riskNotes = "risk_notes"
         case assumptions
         case sourceNote = "source_note"
+        case reviewState = "review_state"
     }
 
     init(card: GeneratedDailyCardDraft) {
@@ -963,6 +1031,9 @@ struct SupabaseDraftDailyCardPublishRequest: Encodable, Sendable {
         riskNotes = card.riskNotes
         assumptions = card.assumptions
         sourceNote = card.sourceNote
+        reviewState = card.status.lowercased() == "ready" ? "ready"
+            : card.status.lowercased() == "backup" ? "backup"
+            : "open"
     }
 }
 

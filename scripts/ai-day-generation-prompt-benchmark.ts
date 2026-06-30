@@ -51,8 +51,9 @@ type RunResult = {
 };
 
 const decoder = new TextDecoder();
+const homeDir = Deno.env.get("HOME")?.trim();
 const opencodeBin = Deno.env.get("OPENCODE_BIN")?.trim() ||
-  "/Users/prateekranka/.opencode/bin/opencode";
+  (homeDir ? `${homeDir}/.opencode/bin/opencode` : "opencode");
 const model = Deno.env.get("OPENCODE_MODEL")?.trim() ||
   "opencode-go/glm-5.2";
 const modelVariant = Deno.env.get("OPENCODE_VARIANT")?.trim() || "max";
@@ -309,9 +310,9 @@ const fixture: GenerationInputSnapshot = {
   creator_id: "dbc7452d-c2ff-4d52-976f-734fad55f86b",
   week_start_date: weekDates[0],
   creator_profile: {
-    display_name: "Mamta",
+    display_name: "Creator",
     positioning:
-      "Mamta is a grounded fitness and family creator who makes practical, low-drama content for women who want consistency without overproduction.",
+      "The creator is a grounded fitness and family creator who makes practical, low-drama content for women who want consistency without overproduction.",
     voice_rules: [
       "warm",
       "direct",
@@ -338,7 +339,7 @@ const fixture: GenerationInputSnapshot = {
   weekly_setup: {
     location: "Bombay / Mumbai",
     notes:
-      "Mamta is back in Bombay this week and settling into regular life again after travel. The week should feel like a calm return to routine: home, gym, food, recovery, family rhythm, and getting back into a sustainable wellness groove. She is restarting her gym routine with a practical, low-pressure week. She has also been asked about a podcast she might like to be on, so leave room for one reflective or conversational post about what she is learning and why consistency matters more than intensity.",
+      "The creator is back in Bombay this week and settling into regular life again after travel. The week should feel like a calm return to routine: home, gym, food, recovery, family rhythm, and getting back into a sustainable wellness groove. She is restarting her gym routine with a practical, low-pressure week. She has also been asked about a podcast she might like to be on, so leave room for one reflective or conversational post about what she is learning and why consistency matters more than intensity.",
     routine:
       "Monday light full-body reset and mobility. Tuesday lower-body strength. Wednesday active recovery. Thursday upper-body strength. Friday core and conditioning. Saturday recovery or family rhythm. Sunday prep the next week and reflect on the podcast ask.",
     brand_collab:
@@ -424,7 +425,7 @@ const fixture: GenerationInputSnapshot = {
     {
       name: "Original audio voiceover",
       instruction:
-        "Use Mamta's own voice when the content is reflective or instructive.",
+        "Use the creator's own voice when the content is reflective or instructive.",
     },
   ],
   audio_options: [
@@ -637,7 +638,7 @@ function buildContextBlock(
   const setup = fixture.weekly_setup as Record<string, unknown>;
   const lines = [
     "Context:",
-    `- Creator: Mamta.`,
+    `- Creator: Creator.`,
     `- Profile: ${profile.positioning}`,
     `- Voice: ${(profile.voice_rules as string[]).join(", ")}.`,
     `- Weekly truth: ${setup.notes}`,
@@ -706,7 +707,7 @@ function buildQualityBlock(variant: PromptVariant): string {
     "- Default to Instagram Reel unless the day intent strongly calls for a Story/Post.",
     "- First 0:00-0:03 must be retention-first: motion/proof before advice, not generic talking head.",
     "- The card must be specific to this week, not generic fitness advice.",
-    "- Scenes must say what to shoot, where to shoot it, the action, framing, and why it fits Mamta's context.",
+    "- Scenes must say what to shoot, where to shoot it, the action, framing, and why it fits the creator's context.",
     "- Include voiceover_timeline with video_portion for each timestamp.",
     "- Include on_screen_text_timeline and silent_version_timeline with matching timestamps.",
     "- Keep no-go topics out: weight loss, guilt, shaming, politics, medical claims, extreme intensity.",
@@ -721,7 +722,7 @@ function buildQualityBlock(variant: PromptVariant): string {
 
   if (variant.focus === "shoot_detail" || variant.focus === "final") {
     rules.push(
-      "- shot_timeline must be production-ready enough that Mamta can shoot without asking follow-up questions.",
+      "- shot_timeline must be production-ready enough that the creator can shoot without asking follow-up questions.",
       "- Include 3-5 timestamped shots, not abstract scene labels.",
     );
   }

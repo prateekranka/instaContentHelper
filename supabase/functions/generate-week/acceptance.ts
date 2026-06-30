@@ -285,7 +285,7 @@ const profileRead = await callFunction(
 assertEquals(profileRead.status, 200, "read creator profile status");
 assertEquals(
   profileRead.json.profile.positioning,
-  "Premium fitness after 60, warm and practical.",
+  "Lifestyle creator after 60, warm and practical.",
   "creator profile positioning",
 );
 assertEquals(
@@ -470,9 +470,9 @@ async function seedData() {
       creator_id: ids.creator,
       status: "active",
       version: 1,
-      positioning: "Premium fitness after 60, warm and practical.",
+      positioning: "Lifestyle creator after 60, warm and practical.",
       voice_rules: ["warm", "steady", "no hype"],
-      content_pillars: ["routine", "fitness", "family"],
+      content_pillars: ["gym", "lifestyle", "eating", "recovery"],
       never_say: ["weight talk", "politics"],
       caption_style: "Short and human.",
       language_preferences: { primary: "English", allow_hinglish: true },

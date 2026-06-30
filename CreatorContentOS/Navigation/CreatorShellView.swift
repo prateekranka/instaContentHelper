@@ -45,10 +45,8 @@ struct ProfileModeView: View {
                 }
                 creatorProfileSection
                 Hairline()
-                    .padding(.vertical, MCOSpace.m)
+                    .padding(.vertical, MCOSpace.s)
                 ArchiveSection()
-                Hairline()
-                    .padding(.vertical, MCOSpace.m)
                 runtimeStatus
             }
             .padding(.horizontal, MCOSpace.l)
@@ -78,23 +76,71 @@ struct ProfileModeView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
                     Spacer(minLength: MCOSpace.s)
-                    Button {
-                        services.refreshFromRepositories()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 14, weight: .semibold))
-                            .frame(width: 34, height: 34)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
-                    .background(MCOTheme.Color.paper.opacity(0.82), in: Circle())
-                    .overlay {
-                        Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                    }
-                    .accessibilityLabel("Refresh profile data")
+                    refreshButton
+                }
+
+                if let message = refreshFeedbackMessage {
+                    Text(message)
+                        .font(MCOType.caption)
+                        .foregroundStyle(refreshFeedbackColor)
+                        .transition(.opacity)
                 }
             }
+            .animation(.snappy(duration: 0.2), value: services.isRefreshingRepository)
+            .animation(.snappy(duration: 0.2), value: refreshFeedbackMessage)
         }
+    }
+
+    private var refreshButton: some View {
+        Button {
+            services.refreshFromRepositories()
+        } label: {
+            ZStack {
+                if services.isRefreshingRepository {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+            }
+            .frame(width: 44, height: 44)
+            .foregroundStyle(MCOTheme.Color.oxblood)
+            .background(MCOTheme.Color.paper.opacity(0.82), in: Circle())
+            .overlay {
+                Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+            }
+            .opacity(services.isRefreshingRepository ? 0.6 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(services.isRefreshingRepository)
+        .accessibilityLabel(services.isRefreshingRepository ? "Refreshing" : "Refresh profile data")
+    }
+
+    private var refreshFeedbackMessage: String? {
+        if services.isRefreshingRepository {
+            return "Refreshing…"
+        }
+        if let error = services.lastRepositoryRefreshError?.nilIfBlank {
+            return "Refresh failed: \(error)"
+        }
+        if let succeeded = services.lastRepositoryRefreshSucceededAt {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .none
+            formatter.timeStyle = .short
+            return "Up to date as of \(formatter.string(from: succeeded))."
+        }
+        return nil
+    }
+
+    private var refreshFeedbackColor: Color {
+        if services.isRefreshingRepository {
+            return MCOTheme.Color.inkMuted
+        }
+        if services.lastRepositoryRefreshError != nil {
+            return MCOTheme.Color.danger
+        }
+        return MCOTheme.Color.sageDeep
     }
 
     private var accountSection: some View {
@@ -143,7 +189,7 @@ struct ProfileModeView: View {
                         .frame(width: 34)
 
                     Text("Creator Profile")
-                        .font(.system(size: 24, weight: .regular, design: .serif))
+                        .font(MCOType.headline)
                         .foregroundStyle(MCOTheme.Color.ink)
 
                     Spacer(minLength: MCOSpace.s)
@@ -151,7 +197,7 @@ struct ProfileModeView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                 }
-                .padding(.vertical, MCOSpace.s)
+                .padding(.vertical, MCOSpace.xs)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

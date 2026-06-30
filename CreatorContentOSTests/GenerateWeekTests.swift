@@ -25,7 +25,7 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(object["preserve_manual_edits"] as? Bool, true)
         XCTAssertEqual(object["mock"] as? Bool, true)
         XCTAssertEqual(object["response_mode"] as? String, "sync")
-        XCTAssertEqual(object["feature_flags"] as? [String], ["queued_week_generation"])
+        XCTAssertEqual(object["feature_flags"] as? [String], ["parallel_week_generation"])
     }
 
     func testGenerateWeekStatusRequestAndRunningResponseUseAsyncContract() throws {
@@ -71,6 +71,62 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(status.currentDay, "2026-06-03")
         XCTAssertEqual(status.weekProgress.draftedDayCount, 3)
         XCTAssertEqual(status.weekProgress.checkedDayCount, 3)
+    }
+
+    func testWeeklyReadResponseDecodesLegacyWeeklyShapeWithoutPublishedKeys() throws {
+        let data = Data(
+            """
+            {
+              "weekly_plan": {
+                "id": "77777777-7777-4777-8777-777777777771",
+                "workspace_id": "11111111-1111-4111-8111-111111111111",
+                "creator_id": "33333333-3333-4333-8333-333333333333",
+                "weekly_setup_id": "99999999-9999-4999-8999-999999999991",
+                "creator_profile_id": null,
+                "week_start_date": "2026-07-06",
+                "status": "published",
+                "strategy_summary": "Legacy deployed read-content response.",
+                "warnings": [],
+                "assumptions": [],
+                "is_soft_locked": false,
+                "published_at": null
+              },
+              "daily_cards": [
+                {
+                  "id": "88888888-8888-4888-8888-888888888881",
+                  "workspace_id": "11111111-1111-4111-8111-111111111111",
+                  "creator_id": "33333333-3333-4333-8333-333333333333",
+                  "weekly_plan_id": "77777777-7777-4777-8777-777777777771",
+                  "scheduled_date": "2026-07-06",
+                  "status": "published",
+                  "title": "Legacy Monday",
+                  "why_today": "Keep the old response shape loading.",
+                  "scene_list": []
+                }
+              ],
+              "weekly_setup": {
+                "id": "99999999-9999-4999-8999-999999999991",
+                "notes": "Weekly routine: legacy brief"
+              },
+              "idea_bank": [
+                {
+                  "id": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1",
+                  "title": "Legacy idea",
+                  "status": "new"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let response = try JSONDecoder().decode(SupabaseWeeklyReadResponse.self, from: data)
+
+        XCTAssertEqual(response.weeklyPlan?.id, UUID(uuidString: "77777777-7777-4777-8777-777777777771"))
+        XCTAssertEqual(response.dailyCards.map(\.title), ["Legacy Monday"])
+        XCTAssertEqual(response.weeklySetup?.weeklyBriefText, "Weekly routine: legacy brief")
+        XCTAssertEqual(response.ideaBank.map(\.title), ["Legacy idea"])
+        XCTAssertNil(response.publishedWeeklyPlan)
+        XCTAssertTrue(response.publishedDailyCards.isEmpty)
     }
 
     func testGenerateWeekPartialStatusDecodesIntoProgressModel() throws {
@@ -119,7 +175,7 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(status.savedDayCount, 6)
         XCTAssertEqual(status.failedDayCount, 1)
         XCTAssertEqual(status.dayStatuses.count, 1)
-        XCTAssertEqual(status.weekProgress.draftedDayCount, 7)
+        XCTAssertEqual(status.weekProgress.draftedDayCount, 6)
         XCTAssertEqual(status.weekProgress.checkedDayCount, 6)
         XCTAssertEqual(status.weekProgress.totalDayCount, 7)
         XCTAssertEqual(status.weekProgress.currentDay, "2026-06-10")
@@ -448,7 +504,7 @@ final class GenerateWeekTests: XCTestCase {
                   "title": "Generated Monday",
                   "why_today": "Start simple.",
                   "growth_job": "Consistency.",
-                  "content_pillar": "routine",
+                  "content_pillar": "lifestyle",
                   "shootability": "easy",
                   "estimated_shoot_minutes": 12,
                   "energy_required": "medium",
@@ -572,7 +628,7 @@ final class GenerateWeekTests: XCTestCase {
                 title: "Generated Monday",
                 whyToday: "Start simple.",
                 growthJob: "Consistency.",
-                contentPillar: "routine",
+                contentPillar: "lifestyle",
                 shootability: "easy",
                 estimatedShootMinutes: 12,
                 energyRequired: "medium",
@@ -696,7 +752,7 @@ final class GenerateWeekTests: XCTestCase {
               "title": "Generated Monday",
               "why_today": "Start simple.",
               "growth_job": "Consistency.",
-              "content_pillar": "routine",
+              "content_pillar": "lifestyle",
               "shootability": "easy",
               "estimated_shoot_minutes": 12,
               "energy_required": "medium",
@@ -808,18 +864,18 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(generatedDraft.captionBackupDetail, "Caption-only version for a busy day. Simple caption backup.")
     }
 
-    func testAppServicesGenerationSuccessWithFixtureRepository() async throws {
-        let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
+    func testAppServicesFixtureGenerationThrowsNotConfigured() async throws {
+        let services = AppServices.fixtureBacked(
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
 
         let generatedDraft = await services.generateCurrentWeekImmediately()
-        let draft = try XCTUnwrap(generatedDraft)
 
-        XCTAssertEqual(services.latestGenerationSummary?.id, draft.id)
-        XCTAssertEqual(services.weeklyPlan.id, draft.weeklyPlanID)
-        XCTAssertEqual(services.weeklyPlan.days.count, 7)
-        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .readyForReview)
-        XCTAssertEqual(services.weeklyGenerationProgress?.draftedDayCount, 7)
-        XCTAssertNil(services.generationError)
+        XCTAssertNil(generatedDraft)
+        XCTAssertEqual(services.generationError, "Fixture generation is unavailable. Use live generation or backend mock generation.")
+        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .failed)
+        XCTAssertEqual(services.weeklyGenerationProgress?.error, "Fixture generation is unavailable. Use live generation or backend mock generation.")
     }
 
     func testEmptyGeneratedDraftDoesNotReplaceExistingWeek() async throws {
@@ -835,9 +891,10 @@ final class GenerateWeekTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
         )
-        let existingDraft = try await FixtureWeeklyGenerationRepository().generateWeek(
+        let existingDraft = try await TestWeeklyGenerationRepository().generateWeek(
             creatorID: services.context.creatorID,
             weekStartDate: "2026-06-22",
             weeklySetupID: nil,
@@ -872,7 +929,8 @@ final class GenerateWeekTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
         )
 
         let draft = await services.generateCurrentWeekImmediately()
@@ -896,7 +954,8 @@ final class GenerateWeekTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
         )
 
         let draft = await services.generateCurrentWeekImmediately()
@@ -920,7 +979,8 @@ final class GenerateWeekTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
         )
 
         let draft = await services.generateCurrentWeekImmediately()
@@ -954,8 +1014,14 @@ final class GenerateWeekTests: XCTestCase {
 
     func testPublishingGeneratedDraftPreservesRichFieldsInFixtureModel() async throws {
         let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
-        let generatedDraft = await services.generateCurrentWeekImmediately()
-        var draft = try XCTUnwrap(generatedDraft)
+        var draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: services.weeklyPlan.weekStartDate ?? "2026-06-01",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
         draft.dailyCards[0].caption = "Edited generated caption."
         draft.dailyCards[0].backupStory = "Edited backup story."
         services.applyGeneratedDraft(draft)
@@ -973,9 +1039,9 @@ final class GenerateWeekTests: XCTestCase {
 
     func testPublishCurrentWeekIsLockedWhileDayStatusesAreStillGenerating() async throws {
         let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
-        let draft = try await FixtureWeeklyGenerationRepository().generateWeek(
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
             creatorID: services.context.creatorID,
-            weekStartDate: "2026-07-13",
+            weekStartDate: "2026-06-01",
             weeklySetupID: nil,
             mode: .generateDraft,
             context: services.context,
@@ -1044,7 +1110,7 @@ final class GenerateWeekTests: XCTestCase {
     }
 
     func testRetryQueuedDayAppliesCompletedDraftAndUnlocksPublish() async throws {
-        let draft = try await FixtureWeeklyGenerationRepository().generateWeek(
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
             creatorID: WorkspaceContext.creatorFixture.creatorID,
             weekStartDate: "2026-07-13",
             weeklySetupID: nil,
@@ -1106,6 +1172,1071 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(services.latestGenerationSummary?.dailyCards.count, 7)
         XCTAssertTrue(services.canPublishCurrentWeek)
         XCTAssertNil(services.generationError)
+    }
+
+    func testPartialFailureMergesExistingStatusesWithMissingExpectedDates() async throws {
+        var completeDraft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-06-28",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let expectedDates = completeDraft.dailyCards.map(\.scheduledDate)
+        let omittedDate = try XCTUnwrap(expectedDates.first)
+        completeDraft.dailyCards.removeAll { $0.scheduledDate == omittedDate }
+
+        let existingProgress = WeeklyGenerationProgress(
+            phase: .draftingDays,
+            generationID: completeDraft.id,
+            weeklyPlanID: completeDraft.weeklyPlanID,
+            draftedDayCount: 7,
+            checkedDayCount: 6,
+            totalDayCount: 7,
+            currentDay: nil,
+            message: "generation_partial",
+            error: nil,
+            savedDayCount: 6,
+            failedDayCount: 1,
+            strategyCreated: true,
+            dayStatuses: completeDraft.dailyCards.enumerated().map { index, card in
+                WeeklyDayGenerationStatus(
+                    scheduledDate: card.scheduledDate,
+                    dayIndex: index + 1,
+                    status: "generated",
+                    dailyCardID: card.id,
+                    errorCode: nil,
+                    retryAction: nil,
+                    message: nil
+                )
+            }
+        )
+
+        let progress = WeeklyGenerationProgress.partialFailure(
+            from: completeDraft,
+            message: "Some days were saved and some days failed. Retry the failed days before publishing.",
+            preserving: existingProgress,
+            expectedScheduledDates: expectedDates
+        )
+
+        XCTAssertEqual(progress.dayStatuses.map(\.scheduledDate), expectedDates)
+        XCTAssertEqual(progress.dayStatuses.count, 7)
+        XCTAssertEqual(progress.draftedDayCount, 6)
+        XCTAssertEqual(progress.checkedDayCount, 6)
+        let synthesizedFailure = try XCTUnwrap(progress.dayStatuses.first)
+        XCTAssertEqual(synthesizedFailure.scheduledDate, omittedDate)
+        XCTAssertTrue(synthesizedFailure.isFailed)
+        XCTAssertEqual(synthesizedFailure.dayIndex, 0)
+        XCTAssertEqual(synthesizedFailure.errorCode, "generation_timeout")
+        XCTAssertEqual(synthesizedFailure.retryAction, "regenerate_day")
+        XCTAssertEqual(progress.effectiveFailedDayCount, 1)
+    }
+
+    func testRetryQueuedDayRoutesPastFailedDraftWeekDayToRegenerateDay() async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-06-01",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let failedDate = try XCTUnwrap(draft.dailyCards.first?.scheduledDate)
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: PastDateRegenerateDayOnlyRepository(draft: draft),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-29" }
+        )
+        services.applyGeneratedDraft(draft)
+        for day in services.weeklyPlan.days {
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
+        services.weeklyGenerationProgress = WeeklyGenerationProgress(
+            phase: .draftingDays,
+            generationID: draft.id,
+            weeklyPlanID: draft.weeklyPlanID,
+            draftedDayCount: 7,
+            checkedDayCount: 6,
+            totalDayCount: 7,
+            currentDay: draft.dailyCards[6].scheduledDate,
+            message: "generation_partial",
+            error: nil,
+            savedDayCount: 6,
+            failedDayCount: 1,
+            strategyCreated: true,
+            dayStatuses: draft.dailyCards.enumerated().map { index, card in
+                WeeklyDayGenerationStatus(
+                    scheduledDate: card.scheduledDate,
+                    dayIndex: index,
+                    status: index == 0 ? "failed" : "generated",
+                    dailyCardID: index == 0 ? nil : card.id,
+                    errorCode: index == 0 ? "openai_request_failed" : nil,
+                    retryAction: index == 0 ? "retry_day" : nil,
+                    message: nil
+                )
+            }
+        )
+
+        try await services.retryQueuedGenerationDay(scheduledDate: failedDate)
+
+        // retryQueuedDay throws, so reaching here proves regenerateDay was used.
+        XCTAssertNil(services.generationError)
+        XCTAssertNotNil(services.latestGenerationSummary?.dailyCards.first { $0.scheduledDate == failedDate },
+                        "Regenerated card should be present in draft after recovery")
+    }
+
+    func testRetryQueuedDayFallsBackToRegenerateWhenServerRejectsPastDate() async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-07-13",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let retryDate = try XCTUnwrap(draft.dailyCards.first?.scheduledDate)
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: RetryPastDateFallbackRepository(draft: draft),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-05-01" }
+        )
+        services.applyGeneratedDraft(draft)
+        for day in services.weeklyPlan.days {
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
+        services.weeklyGenerationProgress = WeeklyGenerationProgress(
+            phase: .draftingDays,
+            generationID: draft.id,
+            weeklyPlanID: draft.weeklyPlanID,
+            draftedDayCount: 7,
+            checkedDayCount: 6,
+            totalDayCount: 7,
+            currentDay: draft.dailyCards[6].scheduledDate,
+            message: "generation_partial",
+            error: nil,
+            savedDayCount: 6,
+            failedDayCount: 1,
+            strategyCreated: true,
+            dayStatuses: draft.dailyCards.enumerated().map { index, card in
+                WeeklyDayGenerationStatus(
+                    scheduledDate: card.scheduledDate,
+                    dayIndex: index,
+                    status: index == 0 ? "failed" : "generated",
+                    dailyCardID: index == 0 ? nil : card.id,
+                    errorCode: index == 0 ? "openai_request_failed" : nil,
+                    retryAction: index == 0 ? "retry_day" : nil,
+                    message: nil
+                )
+            }
+        )
+
+        try await services.retryQueuedGenerationDay(scheduledDate: retryDate)
+
+        XCTAssertNil(services.generationError,
+                     "generationError should be cleared after regenerate fallback")
+        XCTAssertNotNil(services.latestGenerationSummary?.dailyCards.first { $0.scheduledDate == retryDate },
+                        "Regenerated card should be present in draft after server past-date fallback")
+        let regeneratedCard = try XCTUnwrap(
+            services.latestGenerationSummary?.dailyCards.first { $0.scheduledDate == retryDate }
+        )
+        XCTAssertEqual(regeneratedCard.title, "Regenerated past day")
+        XCTAssertEqual(regeneratedCard.caption, "Test regenerated caption.")
+        XCTAssertNil(services.regenerationDayErrors[retryDate])
+    }
+
+    func testRetryQueuedDayFallsBackToRegenerateWhenQueuedJobIsUnavailable() async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-07-13",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let retryDate = try XCTUnwrap(draft.dailyCards.last?.scheduledDate)
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: RetryPastDateFallbackRepository(
+                    draft: draft,
+                    retryErrorCode: "day_job_not_retryable"
+                ),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-30" }
+        )
+        services.applyGeneratedDraft(draft)
+        services.weeklyGenerationProgress = WeeklyGenerationProgress(
+            phase: .draftingDays,
+            generationID: draft.id,
+            weeklyPlanID: draft.weeklyPlanID,
+            draftedDayCount: 6,
+            checkedDayCount: 6,
+            totalDayCount: 7,
+            currentDay: retryDate,
+            message: "generation_partial",
+            error: nil,
+            savedDayCount: 6,
+            failedDayCount: 1,
+            strategyCreated: true,
+            dayStatuses: draft.dailyCards.enumerated().map { index, card in
+                WeeklyDayGenerationStatus(
+                    scheduledDate: card.scheduledDate,
+                    dayIndex: index,
+                    status: card.scheduledDate == retryDate ? "failed" : "generated",
+                    dailyCardID: card.scheduledDate == retryDate ? nil : card.id,
+                    errorCode: card.scheduledDate == retryDate ? "generation_timeout" : nil,
+                    retryAction: card.scheduledDate == retryDate ? "retry_day" : nil,
+                    message: nil
+                )
+            }
+        )
+
+        try await services.retryQueuedGenerationDay(scheduledDate: retryDate)
+
+        XCTAssertNil(services.regenerationDayErrors[retryDate])
+        let regeneratedCard = try XCTUnwrap(
+            services.latestGenerationSummary?.dailyCards.first { $0.scheduledDate == retryDate }
+        )
+        XCTAssertEqual(regeneratedCard.title, "Regenerated past day")
+        XCTAssertEqual(services.weeklyGenerationProgress?.effectiveFailedDayCount, 0)
+    }
+
+    func testRetryQueuedPastDayCanRecoverWhenFailedDateIsOnlyInProgress() async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-07-13",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let retryDate = try XCTUnwrap(draft.dailyCards.first?.scheduledDate)
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: RetryPastDateFallbackRepository(draft: draft),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-05-01" }
+        )
+        services.applyGeneratedDraft(draft)
+        services.weeklyPlan.days.removeAll { $0.scheduledDate == retryDate }
+        services.weeklyGenerationProgress = WeeklyGenerationProgress(
+            phase: .draftingDays,
+            generationID: draft.id,
+            weeklyPlanID: draft.weeklyPlanID,
+            draftedDayCount: 6,
+            checkedDayCount: 6,
+            totalDayCount: 7,
+            currentDay: retryDate,
+            message: "generation_partial",
+            error: nil,
+            savedDayCount: 6,
+            failedDayCount: 1,
+            strategyCreated: true,
+            dayStatuses: draft.dailyCards.enumerated().map { index, card in
+                WeeklyDayGenerationStatus(
+                    scheduledDate: card.scheduledDate,
+                    dayIndex: index,
+                    status: index == 0 ? "failed" : "generated",
+                    dailyCardID: index == 0 ? nil : card.id,
+                    errorCode: index == 0 ? "generation_timeout" : nil,
+                    retryAction: index == 0 ? "retry_day" : nil,
+                    message: nil
+                )
+            }
+        )
+
+        try await services.retryQueuedGenerationDay(scheduledDate: retryDate)
+
+        XCTAssertNil(services.regenerationDayErrors[retryDate])
+        let regeneratedCard = try XCTUnwrap(
+            services.latestGenerationSummary?.dailyCards.first { $0.scheduledDate == retryDate }
+        )
+        XCTAssertEqual(regeneratedCard.title, "Regenerated past day")
+    }
+
+    // MARK: — Working Plan Persistence
+
+    func testWorkingPlanReturnsNilWhenNoDraftExists() {
+        let workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
+            from: nil,
+            weekStartDate: "2026-07-06",
+            setupSections: [],
+            weeklyBriefText: ""
+        )
+        XCTAssertNil(workingPlan)
+    }
+
+    func testWorkingPlanReturnsNilWhenDraftHasNoCards() {
+        let emptyDraft = GeneratedWeekDraft(
+            id: UUID(),
+            weeklyPlanID: UUID(),
+            status: "draft",
+            strategySummary: "Empty.",
+            warnings: [],
+            assumptions: [],
+            dailyCards: [],
+            ideaBank: [],
+            sourceSummary: "Empty.",
+            generatedAt: "2026-07-06T00:00:00Z"
+        )
+        let workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
+            from: emptyDraft,
+            weekStartDate: "2026-07-06",
+            setupSections: [],
+            weeklyBriefText: ""
+        )
+        XCTAssertNil(workingPlan)
+    }
+
+    func testWorkingPlanFillsSevenSlotsForSixCardDraft() async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-07-06",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let expectedDates = draft.dailyCards.map(\.scheduledDate)
+        XCTAssertEqual(expectedDates.count, 7)
+
+        let omittedDate = try XCTUnwrap(expectedDates.last)
+        var partialDraft = draft
+        partialDraft.dailyCards.removeAll { $0.scheduledDate == omittedDate }
+        XCTAssertEqual(partialDraft.dailyCards.count, 6)
+
+        let workingPlan = try XCTUnwrap(WeeklyRepositoryContent.makeWorkingPlan(
+            from: partialDraft,
+            weekStartDate: "2026-07-06",
+            setupSections: [],
+            weeklyBriefText: ""
+        ))
+
+        XCTAssertEqual(workingPlan.days.count, 7)
+        XCTAssertEqual(workingPlan.weekStartDate, "2026-07-06")
+
+        let generatedDates = Set(partialDraft.dailyCards.map(\.scheduledDate))
+        let generatedDays = workingPlan.days.filter { generatedDates.contains($0.scheduledDate ?? "") }
+        XCTAssertEqual(generatedDays.count, 6)
+        let generatedTitles = Set(partialDraft.dailyCards.map(\.title))
+        let planTitles = Set(generatedDays.map(\.title))
+        XCTAssertEqual(planTitles, generatedTitles,
+                       "Generated card titles should be preserved in management plan")
+
+        let missingDay = try XCTUnwrap(workingPlan.days.first { ($0.scheduledDate ?? "") == omittedDate })
+        XCTAssertEqual(missingDay.state, .open)
+        XCTAssertEqual(missingDay.title, "Open")
+        XCTAssertEqual(missingDay.reason, "")
+        XCTAssertFalse(missingDay.isSoftLocked)
+    }
+
+    func testCompleteUnpublishedDraftProducesWorkingPlanWithAllSevenDays() async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-07-06",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        XCTAssertTrue(draft.isCompleteWeekDraft)
+
+        let workingPlan = try XCTUnwrap(WeeklyRepositoryContent.makeWorkingPlan(
+            from: draft,
+            weekStartDate: "2026-07-06",
+            setupSections: [],
+            weeklyBriefText: ""
+        ))
+
+        XCTAssertEqual(workingPlan.days.count, 7)
+        XCTAssertEqual(workingPlan.id, draft.weeklyPlanID)
+        XCTAssertEqual(workingPlan.weekStartDate, "2026-07-06")
+        XCTAssertFalse(workingPlan.isSoftLocked)
+        let expectedScheduledDates = Set(draft.dailyCards.map(\.scheduledDate))
+        let planScheduledDates = Set(workingPlan.days.compactMap(\.scheduledDate))
+        XCTAssertEqual(planScheduledDates, expectedScheduledDates,
+                       "All seven scheduled dates should be present in management plan")
+    }
+
+    func testManagerRefreshPrefersWorkingPlanOverPublishedPlan() async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-07-06",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let workingPlanID = draft.weeklyPlanID
+        var publishedPlan = WeeklyPlan.raceWeek
+        publishedPlan.weekStartDate = "2026-07-06"
+
+        let weeklyRepository = WorkingPlanPreferringWeeklyPlanRepository(
+            publishedPlan: publishedPlan,
+            workingDraft: draft,
+            weekStartDate: "2026-07-06"
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: weeklyRepository,
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore()
+        )
+
+        await services.refreshFromRepositoriesImmediately()
+
+        XCTAssertEqual(services.weeklyPlan.id, workingPlanID,
+                       "Manager should see the working plan, not the published plan")
+        XCTAssertNotNil(services.latestGenerationSummary)
+        XCTAssertEqual(services.latestGenerationSummary?.id, draft.id)
+        XCTAssertEqual(services.weeklyPlan.days.count, 7)
+        XCTAssertNil(services.lastRepositoryError)
+    }
+
+    func testManagerRefreshFallsBackToPublishedPlanWhenNoDraftExists() async throws {
+        let publishedPlan = WeeklyPlan.raceWeek
+        let workingPlanID = publishedPlan.id
+        let publishedStartDate = try XCTUnwrap(
+            publishedPlan.weekStartDate ?? publishedPlan.days.compactMap(\.scheduledDate).first
+        )
+
+        let weeklyRepository = WorkingPlanPreferringWeeklyPlanRepository(
+            publishedPlan: publishedPlan,
+            workingDraft: nil,
+            weekStartDate: nil
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: weeklyRepository,
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { publishedStartDate }
+        )
+
+        await services.refreshFromRepositoriesImmediately()
+
+        XCTAssertEqual(services.weeklyPlan.id, workingPlanID,
+                       "Manager should fall back to published plan when no working draft exists")
+        XCTAssertNil(services.latestGenerationSummary)
+        XCTAssertNil(services.lastRepositoryError)
+    }
+
+    func testCurrentPublishedPlanStillReturnsCanonicalPublishedPlan() async throws {
+        let publishedPlan = WeeklyPlan.raceWeek
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-07-06",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+
+        let weeklyRepository = WorkingPlanPreferringWeeklyPlanRepository(
+            publishedPlan: publishedPlan,
+            workingDraft: draft,
+            weekStartDate: "2026-07-06"
+        )
+
+        let canonicalPlan = try await weeklyRepository.currentPublishedPlan(for: .creatorFixture)
+        XCTAssertEqual(canonicalPlan.id, publishedPlan.id,
+                       "currentPublishedPlan must return the canonical published plan")
+        XCTAssertEqual(canonicalPlan.title, publishedPlan.title)
+
+        let content = try await weeklyRepository.currentWeeklyContent(for: .creatorFixture)
+        XCTAssertNotNil(content.workingPlan,
+                        "currentWeeklyContent should include workingPlan when draft exists")
+        XCTAssertEqual(content.publishedPlan.id, publishedPlan.id,
+                       "publishedPlan in content should be the canonical published plan")
+        XCTAssertEqual(content.workingPlan?.id, draft.weeklyPlanID,
+                       "workingPlan should use the draft's plan ID")
+    }
+
+    func testReviewStateDecodedAsNilWhenAbsentFromDraftCard() throws {
+        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+        let data = Data(
+            """
+            {
+              "id": "\(cardID.uuidString)",
+              "workspace_id": "11111111-1111-4111-8111-111111111111",
+              "creator_id": "33333333-3333-4333-8333-333333333333",
+              "weekly_plan_id": "77777777-7777-4777-8777-777777777771",
+              "scheduled_date": "2026-06-08",
+              "status": "draft",
+              "title": "No review state",
+              "scene_list": []
+            }
+            """.utf8
+        )
+
+        let row = try JSONDecoder().decode(SupabaseDailyCardRow.self, from: data)
+        XCTAssertNil(row.reviewState)
+        let weeklyDay = row.weeklyDay()
+        XCTAssertEqual(weeklyDay.state, .open,
+                       "Draft card without review_state defaults to open")
+    }
+
+    func testReviewStateDecodedAsReadyMapsToPlannedForDraftCard() throws {
+        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+        let data = Data(
+            """
+            {
+              "id": "\(cardID.uuidString)",
+              "workspace_id": "11111111-1111-4111-8111-111111111111",
+              "creator_id": "33333333-3333-4333-8333-333333333333",
+              "weekly_plan_id": "77777777-7777-4777-8777-777777777771",
+              "scheduled_date": "2026-06-08",
+              "status": "draft",
+              "review_state": "ready",
+              "title": "Ready card",
+              "scene_list": []
+            }
+            """.utf8
+        )
+
+        let row = try JSONDecoder().decode(SupabaseDailyCardRow.self, from: data)
+        XCTAssertEqual(row.reviewState, "ready")
+        let weeklyDay = row.weeklyDay()
+        XCTAssertEqual(weeklyDay.state, .planned,
+                       "Draft card with review_state=ready maps to planned")
+    }
+
+    func testReviewStateDecodedAsBackupMapsToBackupForDraftCard() throws {
+        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+        let data = Data(
+            """
+            {
+              "id": "\(cardID.uuidString)",
+              "workspace_id": "11111111-1111-4111-8111-111111111111",
+              "creator_id": "33333333-3333-4333-8333-333333333333",
+              "weekly_plan_id": "77777777-7777-4777-8777-777777777771",
+              "scheduled_date": "2026-06-08",
+              "status": "draft",
+              "review_state": "backup",
+              "title": "Backup card",
+              "scene_list": []
+            }
+            """.utf8
+        )
+
+        let row = try JSONDecoder().decode(SupabaseDailyCardRow.self, from: data)
+        XCTAssertEqual(row.reviewState, "backup")
+        let weeklyDay = row.weeklyDay()
+        XCTAssertEqual(weeklyDay.state, .backup,
+                       "Draft card with review_state=backup maps to backup")
+    }
+
+    func testReviewStateDoesNotOverridePublishedStatusMapping() throws {
+        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+        let data = Data(
+            """
+            {
+              "id": "\(cardID.uuidString)",
+              "workspace_id": "11111111-1111-4111-8111-111111111111",
+              "creator_id": "33333333-3333-4333-8333-333333333333",
+              "weekly_plan_id": "77777777-7777-4777-8777-777777777771",
+              "scheduled_date": "2026-06-08",
+              "status": "published",
+              "review_state": "backup",
+              "title": "Published card",
+              "scene_list": []
+            }
+            """.utf8
+        )
+
+        let row = try JSONDecoder().decode(SupabaseDailyCardRow.self, from: data)
+        let weeklyDay = row.weeklyDay()
+        XCTAssertEqual(weeklyDay.state, .planned,
+                       "Published card should use status mapping, not review_state")
+        XCTAssertTrue(weeklyDay.isSoftLocked,
+                      "Published card should be soft locked")
+    }
+
+    func testDraftDailyCardPublishRequestEncodesReviewState() throws {
+        let request = SupabaseDraftDailyCardPublishRequest(
+            card: GeneratedDailyCardDraft(
+                id: UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!,
+                scheduledDate: "2026-06-08",
+                status: "ready",
+                title: "Reviewed Monday",
+                whyToday: "Start simple.",
+                growthJob: "Consistency.",
+                contentPillar: "lifestyle",
+                shootability: "easy",
+                estimatedShootMinutes: 12,
+                energyRequired: "medium",
+                languageMode: "English",
+                sceneList: [ShotScene(number: 1, title: "Test", duration: "3 sec", symbol: "sparkles")],
+                script: "Test.",
+                noVoiceoverVersion: "",
+                onScreenText: [],
+                caption: "",
+                cta: "",
+                hashtags: [],
+                coverText: "",
+                postInstructions: "",
+                brandEventNotes: "",
+                backupStory: "",
+                backupCaptionOnly: "",
+                audioOptionNotes: "",
+                creatorFitScore: 90,
+                riskNotes: [],
+                assumptions: [],
+                sourceNote: ""
+            )
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["review_state"] as? String, "ready",
+                       "Ready status should encode as review_state=ready")
+    }
+
+    func testWeeklyDayStateReviewStateValueMapsCorrectly() {
+        XCTAssertEqual(WeeklyDayState.planned.generatedDraftStatus, "ready")
+        XCTAssertEqual(WeeklyDayState.backup.generatedDraftStatus, "backup")
+        XCTAssertEqual(WeeklyDayState.open.generatedDraftStatus, "open")
+    }
+
+    func testUpdateWeeklyDayStatePersistsReviewStateAsynchronously() async throws {
+        let repo = ReviewStateTrackingRepository()
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: repo,
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore()
+        )
+
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: "2026-06-01",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
+        services.applyGeneratedDraft(draft)
+
+        let firstDay = try XCTUnwrap(services.weeklyPlan.days.first)
+        services.updateWeeklyDayState(dayID: firstDay.id, state: .backup)
+
+        // The persistence is async - wait briefly
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let calls = await repo.reviewStateCalls
+        XCTAssertFalse(calls.isEmpty, "Expected review state persistence call")
+        if let firstCall = calls.first {
+            XCTAssertEqual(firstCall.dailyCardID, firstDay.id)
+            XCTAssertEqual(firstCall.reviewState, "backup")
+        }
+    }
+
+    // MARK: — Publish Error Isolation
+
+    func testPublishErrorSetsLastPublishErrorNotLastRepositoryError() async throws {
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FailingPublishWeeklyPlanRepository(error: RepositoryError.edgeFunction("publish_validation_failed")),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore()
+        )
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: "2026-06-01",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
+        services.applyGeneratedDraft(draft)
+        for day in services.weeklyPlan.days {
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
+
+        await services.publishCurrentWeekImmediately()
+
+        XCTAssertEqual(services.lastPublishError, "publish_validation_failed",
+                       "Publish error should set lastPublishError")
+        XCTAssertNil(services.lastRepositoryError,
+                     "Publish error should not set lastRepositoryError")
+    }
+
+    func testGeneralRepositoryErrorDoesNotSetLastPublishError() async throws {
+        let services = AppServices.fixtureBacked(
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+
+        services.lastRepositoryError = "network connection lost"
+        services.lastPublishError = nil
+
+        XCTAssertNotNil(services.lastRepositoryError,
+                        "lastRepositoryError should be set for general error")
+        XCTAssertNil(services.lastPublishError,
+                     "lastPublishError should remain nil for non-publish error")
+    }
+
+    func testPublishGuardSetsLastPublishErrorNotLastRepositoryError() async throws {
+        let services = AppServices.fixtureBacked(
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: "2026-06-01",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
+        services.applyGeneratedDraft(draft)
+        // Review only 6 of 7 days — leaves openDayCount > 0, blocking publish
+        for (index, day) in services.weeklyPlan.days.enumerated() {
+            guard index < 6 else { break }
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
+        services.lastPublishError = nil
+        services.lastRepositoryError = nil
+
+        await services.publishCurrentWeekImmediately()
+
+        XCTAssertNotNil(services.lastPublishError,
+                        "Publish guard should set lastPublishError")
+        XCTAssertNil(services.lastRepositoryError,
+                     "Publish guard should not set lastRepositoryError")
+    }
+
+    // MARK: — Stale Date Normalization
+
+    func testNormalizeManagerWeekStartSkipsWhenWorkingDraftExists() async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-05-25",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-29" }
+        )
+        services.applyGeneratedDraft(draft)
+        let originalStartDate = services.weeklyPlan.weekStartDate
+
+        services.normalizeManagerWeekStartIfStale()
+
+        XCTAssertEqual(services.weeklyPlan.weekStartDate, originalStartDate,
+                       "Week start should be preserved when working draft exists")
+        XCTAssertNotNil(services.latestGenerationSummary,
+                        "Working draft should still be present")
+    }
+
+    func testNormalizeManagerWeekStartReplacesStalePublishedWeekWithCurrentWindow() async throws {
+        let services = AppServices.fixtureBacked(
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-29" }
+        )
+        services.latestGenerationSummary = nil
+        services.weeklyPlan.weekStartDate = "2026-06-01"
+        let oldID = services.weeklyPlan.id
+
+        services.normalizeManagerWeekStartIfStale()
+
+        XCTAssertEqual(services.weeklyPlan.weekStartDate, "2026-06-29",
+                       "Stale published week should be replaced with today's start")
+        XCTAssertEqual(services.weeklyPlan.days.count, 7,
+                       "Replacement window should have 7 days")
+        XCTAssertNotEqual(services.weeklyPlan.id, oldID,
+                          "Stale normalization should produce a new plan ID")
+        XCTAssertFalse(services.weeklyPlan.isSoftLocked,
+                       "Normalized plan should be unlocked")
+        XCTAssertNil(services.weeklyGenerationProgress,
+                     "Progress should be cleared after normalization")
+        XCTAssertNil(services.generationError,
+                     "Generation error should be cleared after normalization")
+    }
+
+    func testNormalizeManagerWeekStartSkipsWhenWeekStartIsNotPast() async throws {
+        let services = AppServices.fixtureBacked(
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+        services.latestGenerationSummary = nil
+        services.weeklyPlan.weekStartDate = "2026-06-01"
+
+        services.normalizeManagerWeekStartIfStale()
+
+        XCTAssertEqual(services.weeklyPlan.weekStartDate, "2026-06-01",
+                       "Current week start should be preserved")
+    }
+
+    func testNormalizeManagerWeekStartSkipsWhenWeekStartsToday() async throws {
+        let services = AppServices.fixtureBacked(
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-07-01" }
+        )
+        services.latestGenerationSummary = nil
+        services.weeklyPlan.weekStartDate = "2026-07-01"
+
+        services.normalizeManagerWeekStartIfStale()
+
+        XCTAssertEqual(services.weeklyPlan.weekStartDate, "2026-07-01",
+                       "Week starting today should not be normalized")
+    }
+
+    // MARK: — Publish Transient Retry
+
+    func testTransientPublishTimeoutRetriesOnceAndEndsPublished() async throws {
+        let publishRepo = TransientThenSuccessPublishRepository(
+            transientError: NSError(
+                domain: NSURLErrorDomain,
+                code: NSURLErrorTimedOut
+            )
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: publishRepo,
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore()
+        )
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: "2026-06-01",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
+        services.applyGeneratedDraft(draft)
+        for day in services.weeklyPlan.days {
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
+
+        await services.publishCurrentWeekImmediately()
+
+        let callCount = await publishRepo.publishCallCount
+        XCTAssertEqual(callCount, 2,
+                       "Transient publish error should trigger exactly one retry — two total calls")
+        XCTAssertNil(services.lastPublishError,
+                     "Publish should succeed after retry")
+        XCTAssertEqual(services.weeklyPlan.isSoftLocked, true,
+                       "Plan should be soft-locked after successful publish")
+        XCTAssertFalse(services.weeklyPlan.days.isEmpty,
+                       "Weekly plan should contain days after publish")
+        XCTAssertNil(services.lastRepositoryError,
+                     "No repository error on successful publish")
+    }
+
+    func testNonTransientPublishFailureDoesNotRetry() async throws {
+        let publishRepo = NonTransientFailingPublishRepository(
+            error: RepositoryError.edgeFunction("publish_validation_failed")
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: publishRepo,
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore()
+        )
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: "2026-06-01",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
+        services.applyGeneratedDraft(draft)
+        for day in services.weeklyPlan.days {
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
+
+        await services.publishCurrentWeekImmediately()
+
+        let callCount = await publishRepo.publishCallCount
+        XCTAssertEqual(callCount, 1,
+                       "Non-transient publish error must not retry — exactly one call")
+        XCTAssertNotNil(services.lastPublishError,
+                        "Non-transient publish error should set lastPublishError")
+        XCTAssertNil(services.lastRepositoryError,
+                     "Publish error should not set lastRepositoryError")
+    }
+
+    // MARK: — Targeted Day Reconciliation
+
+    func testReconcileGeneratedDayRestoresMissingDayWithoutOverwritingEditedCard() async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: WorkspaceContext.creatorFixture.creatorID,
+            weekStartDate: "2026-07-06",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: .creatorFixture,
+            progress: nil
+        )
+        let reconciledDate = try XCTUnwrap(draft.dailyCards[0].scheduledDate)
+        let editedDate = try XCTUnwrap(draft.dailyCards[1].scheduledDate)
+
+        var canonicalCard = draft.dailyCards[0]
+        canonicalCard.title = "Canonical regenerated Monday"
+        canonicalCard.caption = "Freshly regenerated caption."
+        var canonicalDraft = draft
+        canonicalDraft.dailyCards[0] = canonicalCard
+
+        let contentRepo = ReconciliationContentRepository(
+            publishedPlan: WeeklyPlan.raceWeek,
+            generatedDraft: canonicalDraft,
+            weekStartDate: "2026-07-06"
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: contentRepo,
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore()
+        )
+        services.applyGeneratedDraft(draft)
+        for day in services.weeklyPlan.days {
+            services.updateWeeklyDayState(dayID: day.id, state: .planned)
+        }
+        var editedCard = draft.dailyCards[1]
+        editedCard.title = "Locally edited Tuesday"
+        editedCard.caption = "User edited this."
+        if var localDraft = services.latestGenerationSummary {
+            localDraft.replaceDailyCard(editedCard)
+            services.latestGenerationSummary = localDraft
+        }
+        if let dayIndex = services.weeklyPlan.days.firstIndex(where: { $0.scheduledDate == editedDate }) {
+            services.weeklyPlan.days[dayIndex].title = "Locally edited Tuesday"
+        }
+
+        await services.reconcileGeneratedDayCardFromCurrentWeeklyContent(scheduledDate: reconciledDate)
+
+        let reconciledCard = services.latestGenerationSummary?.dailyCards
+            .first { $0.scheduledDate == reconciledDate }
+        XCTAssertEqual(reconciledCard?.title, "Canonical regenerated Monday",
+                       "Reconciled day title should match canonical draft")
+        XCTAssertEqual(reconciledCard?.caption, "Freshly regenerated caption.",
+                       "Reconciled day caption should match canonical draft")
+
+        let editedCardAfter = services.latestGenerationSummary?.dailyCards
+            .first { $0.scheduledDate == editedDate }
+        XCTAssertEqual(editedCardAfter?.title, "Locally edited Tuesday",
+                       "Edited card title must not be overwritten by reconciliation")
+        XCTAssertEqual(editedCardAfter?.caption, "User edited this.",
+                       "Edited card caption must not be overwritten by reconciliation")
+
+        let planDay = services.weeklyPlan.days.first { $0.scheduledDate == reconciledDate }
+        XCTAssertEqual(planDay?.title, "Canonical regenerated Monday",
+                       "Weekly plan day title should match canonical draft for reconciled day")
+
+        XCTAssertEqual(services.latestGenerationSummary?.dailyCards.count, 7,
+                       "Reconciliation must not change total card count")
+        XCTAssertNil(services.lastRepositoryError,
+                     "Reconciliation should not set repository error on success")
     }
 }
 
@@ -1231,6 +2362,161 @@ private struct WrappedErrorWeeklyGenerationRepository: WeeklyGenerationRepositor
     }
 }
 
+private struct RetryPastDateFallbackRepository: WeeklyGenerationRepository {
+    let draft: GeneratedWeekDraft
+    var retryErrorCode = "past_generation_date_not_allowed"
+
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        draft
+    }
+
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult {
+        RegeneratedDayResult(
+            generationID: draft.id,
+            weeklyPlanID: draft.weeklyPlanID,
+            status: "draft",
+            targetScheduledDate: scheduledDate,
+            dailyCard: GeneratedDailyCardDraft(
+                id: UUID(),
+                scheduledDate: scheduledDate,
+                status: "draft",
+                title: "Regenerated past day",
+                whyToday: "Test regenerated recovery.",
+                growthJob: "Consistency.",
+                contentPillar: "lifestyle",
+                shootability: "easy",
+                estimatedShootMinutes: 8,
+                energyRequired: "low",
+                languageMode: "English",
+                sceneList: [
+                    ShotScene(number: 1, title: "Test scene", duration: "3 sec", symbol: "sparkles")
+                ],
+                script: "Test regenerated script.",
+                noVoiceoverVersion: "No VO.",
+                onScreenText: ["Test"],
+                caption: "Test regenerated caption.",
+                cta: "Save this.",
+                hashtags: ["test"],
+                coverText: "Test",
+                postInstructions: "Test instructions.",
+                brandEventNotes: "",
+                backupStory: "Backup story.",
+                backupCaptionOnly: "Backup caption.",
+                audioOptionNotes: "",
+                creatorFitScore: 90,
+                riskNotes: [],
+                assumptions: ["Test assumption."],
+                sourceNote: "Test source."
+            ),
+            warnings: [],
+            assumptions: [],
+            sourceSummary: "Test regenerate.",
+            generatedAt: "2026-06-29T00:00:00Z"
+        )
+    }
+
+    func retryQueuedDay(
+        generationID: UUID,
+        scheduledDate: String,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        throw RepositoryError.edgeFunction(retryErrorCode)
+    }
+
+    func cancelGeneration(generationID: UUID, context: WorkspaceContext) async throws {}
+}
+
+private struct PastDateRegenerateDayOnlyRepository: WeeklyGenerationRepository {
+    let draft: GeneratedWeekDraft
+
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        draft
+    }
+
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult {
+        RegeneratedDayResult(
+            generationID: draft.id,
+            weeklyPlanID: draft.weeklyPlanID,
+            status: "draft",
+            targetScheduledDate: scheduledDate,
+            dailyCard: GeneratedDailyCardDraft(
+                id: UUID(),
+                scheduledDate: scheduledDate,
+                status: "draft",
+                title: "Regenerated past day",
+                whyToday: "Test regenerated recovery.",
+                growthJob: "Consistency.",
+                contentPillar: "lifestyle",
+                shootability: "easy",
+                estimatedShootMinutes: 8,
+                energyRequired: "low",
+                languageMode: "English",
+                sceneList: [
+                    ShotScene(number: 1, title: "Test scene", duration: "3 sec", symbol: "sparkles")
+                ],
+                script: "Test regenerated script.",
+                noVoiceoverVersion: "No VO.",
+                onScreenText: ["Test"],
+                caption: "Test regenerated caption.",
+                cta: "Save this.",
+                hashtags: ["test"],
+                coverText: "Test",
+                postInstructions: "Test instructions.",
+                brandEventNotes: "",
+                backupStory: "Backup story.",
+                backupCaptionOnly: "Backup caption.",
+                audioOptionNotes: "",
+                creatorFitScore: 90,
+                riskNotes: [],
+                assumptions: ["Test assumption."],
+                sourceNote: "Test source."
+            ),
+            warnings: [],
+            assumptions: [],
+            sourceSummary: "Test regenerate.",
+            generatedAt: "2026-06-29T00:00:00Z"
+        )
+    }
+
+    func retryQueuedDay(
+        generationID: UUID,
+        scheduledDate: String,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        throw RepositoryError.edgeFunction("retry_queued_day_should_not_be_called_for_past_date")
+    }
+
+    func cancelGeneration(generationID: UUID, context: WorkspaceContext) async throws {}
+}
+
 private final class GenerateWeekMemoryTodayCacheStore: TodayCacheStoring {
     private var snapshots: [WorkspaceContext: CachedTodaySnapshot] = [:]
 
@@ -1244,5 +2530,411 @@ private final class GenerateWeekMemoryTodayCacheStore: TodayCacheStoring {
 
     func clearSnapshot(for context: WorkspaceContext) throws {
         snapshots[context] = nil
+    }
+}
+
+private actor WorkingPlanPreferringWeeklyPlanRepository: WeeklyPlanRepository {
+    let publishedPlan: WeeklyPlan
+    let workingDraft: GeneratedWeekDraft?
+    let weekStartDate: String?
+
+    init(
+        publishedPlan: WeeklyPlan,
+        workingDraft: GeneratedWeekDraft?,
+        weekStartDate: String?
+    ) {
+        self.publishedPlan = publishedPlan
+        self.workingDraft = workingDraft
+        self.weekStartDate = weekStartDate
+    }
+
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
+        publishedPlan
+    }
+
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
+        workingDraft
+    }
+
+    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
+        workingDraft?.ideaBank ?? []
+    }
+
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        let workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
+            from: workingDraft,
+            weekStartDate: weekStartDate ?? publishedPlan.weekStartDate,
+            setupSections: publishedPlan.setupSections,
+            weeklyBriefText: publishedPlan.weeklyBriefText
+        )
+        return WeeklyRepositoryContent(
+            publishedPlan: publishedPlan,
+            workingPlan: workingPlan,
+            generatedDraft: workingDraft,
+            ideaBank: workingDraft?.ideaBank ?? []
+        )
+    }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw RepositoryError.notConfigured("publish not needed")
+    }
+
+    func selectIdeaForNextOpenDay(
+        _ idea: WeeklyIdea,
+        in plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        context: WorkspaceContext
+    ) async throws -> WeeklySelectionUpdate {
+        throw RepositoryError.notConfigured("selection not needed")
+    }
+
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("setup not needed")
+    }
+
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("brief not needed")
+    }
+}
+
+private actor FailingPublishWeeklyPlanRepository: WeeklyPlanRepository {
+    let error: Error
+
+    init(error: Error) {
+        self.error = error
+    }
+
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
+        .raceWeek
+    }
+
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
+        nil
+    }
+
+    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
+        []
+    }
+
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
+    }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw error
+    }
+
+    func selectIdeaForNextOpenDay(
+        _ idea: WeeklyIdea,
+        in plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        context: WorkspaceContext
+    ) async throws -> WeeklySelectionUpdate {
+        throw RepositoryError.notConfigured("selection not needed")
+    }
+
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("setup not needed")
+    }
+
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("brief not needed")
+    }
+}
+
+private actor TransientThenSuccessPublishRepository: WeeklyPlanRepository {
+    let transientError: Error
+    var publishCallCount = 0
+    private var latestPublishedPlan: WeeklyPlan = .raceWeek
+
+    init(transientError: Error) {
+        self.transientError = transientError
+    }
+
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
+        latestPublishedPlan
+    }
+
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
+        nil
+    }
+
+    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
+        []
+    }
+
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
+    }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        publishCallCount += 1
+        if publishCallCount == 1 {
+            throw transientError
+        }
+        let publishedPlan = plan.softLockedForPublish
+        self.latestPublishedPlan = publishedPlan
+        let cards = DailyCard.publishedCards(from: publishedPlan)
+        return WeeklyPublishResult(
+            weeklyPlan: publishedPlan,
+            weekCards: cards,
+            todayCard: nil,
+            summary: "Published after retry."
+        )
+    }
+
+    func selectIdeaForNextOpenDay(
+        _ idea: WeeklyIdea,
+        in plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        context: WorkspaceContext
+    ) async throws -> WeeklySelectionUpdate {
+        throw RepositoryError.notConfigured("selection not needed")
+    }
+
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("setup not needed")
+    }
+
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("brief not needed")
+    }
+}
+
+private actor NonTransientFailingPublishRepository: WeeklyPlanRepository {
+    let error: Error
+    var publishCallCount = 0
+
+    init(error: Error) {
+        self.error = error
+    }
+
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
+        .raceWeek
+    }
+
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
+        nil
+    }
+
+    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
+        []
+    }
+
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
+    }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        publishCallCount += 1
+        throw error
+    }
+
+    func selectIdeaForNextOpenDay(
+        _ idea: WeeklyIdea,
+        in plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        context: WorkspaceContext
+    ) async throws -> WeeklySelectionUpdate {
+        throw RepositoryError.notConfigured("selection not needed")
+    }
+
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("setup not needed")
+    }
+
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("brief not needed")
+    }
+}
+
+private actor ReviewStateTrackingRepository: WeeklyPlanRepository {
+    var reviewStateCalls: [(dailyCardID: UUID, reviewState: String)] = []
+
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
+        .raceWeek
+    }
+
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
+        nil
+    }
+
+    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
+        []
+    }
+
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
+    }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw RepositoryError.notConfigured("publish not needed")
+    }
+
+    func selectIdeaForNextOpenDay(
+        _ idea: WeeklyIdea,
+        in plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        context: WorkspaceContext
+    ) async throws -> WeeklySelectionUpdate {
+        throw RepositoryError.notConfigured("selection not needed")
+    }
+
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("setup not needed")
+    }
+
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("brief not needed")
+    }
+
+    func updateDailyCardReviewState(
+        dailyCardID: UUID,
+        reviewState: String,
+        context: WorkspaceContext
+    ) async throws {
+        reviewStateCalls.append((dailyCardID: dailyCardID, reviewState: reviewState))
+    }
+}
+
+private actor ReconciliationContentRepository: WeeklyPlanRepository {
+    let publishedPlan: WeeklyPlan
+    let generatedDraft: GeneratedWeekDraft?
+    let weekStartDate: String?
+
+    init(
+        publishedPlan: WeeklyPlan,
+        generatedDraft: GeneratedWeekDraft?,
+        weekStartDate: String?
+    ) {
+        self.publishedPlan = publishedPlan
+        self.generatedDraft = generatedDraft
+        self.weekStartDate = weekStartDate
+    }
+
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
+        publishedPlan
+    }
+
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
+        generatedDraft
+    }
+
+    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
+        generatedDraft?.ideaBank ?? []
+    }
+
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        let workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
+            from: generatedDraft,
+            weekStartDate: weekStartDate ?? publishedPlan.weekStartDate,
+            setupSections: publishedPlan.setupSections,
+            weeklyBriefText: publishedPlan.weeklyBriefText
+        )
+        return WeeklyRepositoryContent(
+            publishedPlan: publishedPlan,
+            workingPlan: workingPlan,
+            generatedDraft: generatedDraft,
+            ideaBank: generatedDraft?.ideaBank ?? []
+        )
+    }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw RepositoryError.notConfigured("publish not needed")
+    }
+
+    func selectIdeaForNextOpenDay(
+        _ idea: WeeklyIdea,
+        in plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        context: WorkspaceContext
+    ) async throws -> WeeklySelectionUpdate {
+        throw RepositoryError.notConfigured("selection not needed")
+    }
+
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("setup not needed")
+    }
+
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("brief not needed")
     }
 }

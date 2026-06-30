@@ -12,7 +12,8 @@ type WriteAction =
   | "upsert_archive_decision"
   | "select_idea_for_next_open_day"
   | "update_weekly_setup"
-  | "update_creator_profile";
+  | "update_creator_profile"
+  | "update_daily_card_review_state";
 
 type WriteContentRequest = {
   action?: WriteAction;
@@ -40,6 +41,7 @@ type WriteContentRequest = {
   decision_at?: string | null;
   output_line?: string;
   has_post_thumbnail?: unknown;
+  review_state?: string;
 };
 
 const DAILY_DECISION_STATUSES = new Set([
@@ -71,6 +73,8 @@ const WEEKLY_SETUP_SECTION_ALIASES: Record<string, string> = {
   place: "location",
   notes: "notes",
   note: "notes",
+  weekly_brief: "notes",
+  brief: "notes",
   workout: "workout_race_schedule",
   workouts: "workout_race_schedule",
   body: "workout_race_schedule",
@@ -152,6 +156,39 @@ Deno.serve(async (request) => {
 
   if (action === "update_creator_profile") {
     return await updateCreatorProfile(admin, session, creatorID, body);
+  }
+
+  if (action === "update_daily_card_review_state") {
+    if (
+      !isUUID(body.daily_card_id) ||
+      !isReviewState(body.review_state)
+    ) {
+      return jsonResponse({ error: "invalid_review_state_payload" }, 400);
+    }
+
+    const payload = {
+      action: body.action,
+      workspace_id: session.workspaceID,
+      creator_id: creatorID,
+      member_id: session.memberID,
+      daily_card_id: body.daily_card_id,
+      review_state: body.review_state,
+    };
+
+    const { data, error } = await admin.rpc("write_content", { payload });
+    if (error) {
+      return jsonResponse({ error: "review_state_update_failed" }, 500);
+    }
+
+    if (data?.error) {
+      const responseError = stableWriteError(data.error, action);
+      return jsonResponse(
+        { error: responseError },
+        typeof data.status === "number" ? data.status : 500,
+      );
+    }
+
+    return jsonResponse(data ?? { action });
   }
 
   const payload = normalizedPayload(body, session, creatorID);
@@ -299,6 +336,7 @@ function normalizedPayload(
 
     case "update_weekly_setup":
     case "update_creator_profile":
+    case "update_daily_card_review_state":
       return null;
   }
 
@@ -456,7 +494,11 @@ async function createWeeklySetupForWeek(
   creatorID: string,
   weekStartDate: string,
   update: Record<string, unknown>,
-): Promise<{ weeklySetup: Record<string, unknown> } | { response: Response }> {
+): Promise<
+  { weeklySetup: Record<string, unknown> & { id: string } } | {
+    response: Response;
+  }
+> {
   const { data: profile } = await admin
     .from("creator_profiles")
     .select("id")
@@ -497,7 +539,9 @@ async function createWeeklySetupForWeek(
         };
       }
 
-      return { weeklySetup: existing as Record<string, unknown> };
+      return {
+        weeklySetup: existing as Record<string, unknown> & { id: string },
+      };
     }
 
     return {
@@ -511,7 +555,9 @@ async function createWeeklySetupForWeek(
     };
   }
 
-  return { weeklySetup: weeklySetup as Record<string, unknown> };
+  return {
+    weeklySetup: weeklySetup as Record<string, unknown> & { id: string },
+  };
 }
 
 async function maybeAttachWeeklySetupToPlan(
@@ -832,7 +878,8 @@ function allowedRoles(action: WriteAction): string[] {
   if (
     action === "select_idea_for_next_open_day" ||
     action === "update_weekly_setup" ||
-    action === "update_creator_profile"
+    action === "update_creator_profile" ||
+    action === "update_daily_card_review_state"
   ) {
     return ["owner", "editor"];
   }
@@ -854,7 +901,10 @@ function stableWriteError(value: unknown, action: WriteAction): string {
     value === "invalid_creator_profile_payload" ||
     value === "creator_profile_not_found" ||
     value === "creator_profile_update_failed" ||
-    value === "cross_workspace_forbidden"
+    value === "cross_workspace_forbidden" ||
+    value === "invalid_review_state_payload" ||
+    value === "review_state_update_failed" ||
+    value === "published_week_locked"
   ) {
     return value;
   }
@@ -874,6 +924,8 @@ function actionFailureError(action: WriteAction): string {
       return "weekly_setup_update_failed";
     case "update_creator_profile":
       return "creator_profile_update_failed";
+    case "update_daily_card_review_state":
+      return "review_state_update_failed";
   }
 }
 
@@ -883,6 +935,8 @@ function invalidPayloadError(action: WriteAction): string {
       return "invalid_weekly_setup_payload";
     case "update_creator_profile":
       return "invalid_creator_profile_payload";
+    case "update_daily_card_review_state":
+      return "invalid_review_state_payload";
     case "complete_today":
     case "upsert_archive_decision":
     case "select_idea_for_next_open_day":
@@ -895,7 +949,8 @@ function isWriteAction(value: string | undefined): value is WriteAction {
     value === "upsert_archive_decision" ||
     value === "select_idea_for_next_open_day" ||
     value === "update_weekly_setup" ||
-    value === "update_creator_profile";
+    value === "update_creator_profile" ||
+    value === "update_daily_card_review_state";
 }
 
 function isDecisionStatus(value: string | undefined): value is string {
@@ -931,4 +986,8 @@ function stringProperty(
 function isUUID(value: string | undefined | null): value is string {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     .test(value ?? "");
+}
+
+function isReviewState(value: string | undefined): value is string {
+  return value === "open" || value === "ready" || value === "backup";
 }

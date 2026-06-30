@@ -9,6 +9,7 @@ struct WeeklyControlView: View {
     @State private var selectedDayFilter: WeeklyDayState?
     @State private var isEditingWeeklyBrief = false
     @State private var isCreatorProfileExpanded = false
+    @State private var retryingDayDate: String?
 
     var body: some View {
         EditorialScreen(bottomContentPadding: 140, showsBottomBar: false) {
@@ -60,10 +61,16 @@ struct WeeklyControlView: View {
                 }
                 WeeklyRhythmList(
                     days: visibleWeeklyDays,
-                    generatedCard: services.generatedDailyCard
-                ) { day in
-                    dayDetailSelection = makeDayDetailSelection(for: day.id)
-                }
+                    generatedCard: services.generatedDailyCard,
+                    onSelect: { day in
+                        dayDetailSelection = makeDayDetailSelection(for: day.id)
+                    },
+                    dayStatuses: services.weeklyGenerationProgress?.dayStatuses ?? [],
+                    retryingDayDate: retryingDayDate,
+                    onRetryDay: { [self] scheduledDate in
+                        retryDayInline(scheduledDate)
+                    }
+                )
                 publishWeekPageAction
             }
         } bottomBar: {
@@ -148,14 +155,29 @@ struct WeeklyControlView: View {
     }
 
     private var publishWeekPageAction: some View {
-        PrimaryActionButton(
-            title: publishButtonTitle,
-            systemImage: services.weeklyPlan.isSoftLocked ? "lock.fill" : "paperplane"
-        ) {
-            services.publishCurrentWeek()
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            if let publishError = publishErrorMessage {
+                ActionFeedbackBanner(message: publishError, tone: .danger)
+            }
+            PrimaryActionButton(
+                title: publishButtonTitle,
+                systemImage: services.weeklyPlan.isSoftLocked ? "lock.fill" : "paperplane"
+            ) {
+                services.publishCurrentWeek()
+            }
+            .disabled(!services.canPublishCurrentWeek)
+            .accessibilityIdentifier("weekly.publish")
         }
-        .disabled(!services.canPublishCurrentWeek)
-        .accessibilityIdentifier("weekly.publish")
+    }
+
+    private var publishErrorMessage: String? {
+        guard !services.isPublishingWeek,
+              let error = services.lastPublishError?.nilIfBlank,
+              !services.weeklyPlan.isSoftLocked
+        else {
+            return nil
+        }
+        return "Publish failed — \(error)"
     }
 
     private func toggleDayFilter(_ state: WeeklyDayState) {
@@ -243,6 +265,20 @@ struct WeeklyControlView: View {
         )
     }
 
+    private func retryDayInline(_ scheduledDate: String) {
+        guard retryingDayDate == nil else { return }
+        retryingDayDate = scheduledDate
+        Task {
+            do {
+                try await services.retryQueuedGenerationDay(scheduledDate: scheduledDate)
+                await services.reconcileGeneratedDayCardFromCurrentWeeklyContent(scheduledDate: scheduledDate)
+            } catch {
+                _ = error
+            }
+            retryingDayDate = nil
+        }
+    }
+
     private var softLockStrip: some View {
         HStack(spacing: MCOSpace.s) {
             Image(systemName: "lock")
@@ -281,7 +317,8 @@ struct WeeklyControlView: View {
                     services.generateCurrentWeek()
                 },
                 onRegenerateDay: services.regeneratedDailyCard,
-                onRetryQueuedDay: services.retryQueuedGenerationDay
+                onRetryQueuedDay: services.retryQueuedGenerationDay,
+                onCancel: { services.cancelGeneration() }
             )
         } else if let draft = services.latestGenerationSummary {
             WeeklyGenerationStatusPanel(
@@ -296,7 +333,8 @@ struct WeeklyControlView: View {
                     services.generateCurrentWeek()
                 },
                 onRegenerateDay: services.regeneratedDailyCard,
-                onRetryQueuedDay: services.retryQueuedGenerationDay
+                onRetryQueuedDay: services.retryQueuedGenerationDay,
+                onCancel: { services.cancelGeneration() }
             )
         } else if let error = services.generationError {
             HStack(spacing: MCOSpace.s) {
@@ -343,6 +381,7 @@ struct WeeklyGenerationStatusPanel: View {
     let onRegenerate: () -> Void
     let onRegenerateDay: RegenerateDayAction?
     let onRetryQueuedDay: RetryQueuedDayAction?
+    let onCancel: (() -> Void)?
     @State private var regeneratingFailedDay: String?
     @State private var failedDayRegenerationErrors: [String: String] = [:]
 
@@ -452,6 +491,29 @@ struct WeeklyGenerationStatusPanel: View {
                 Text("Working on \(SupabaseDateFormatting.displayDate(for: currentDay)).")
                     .font(MCOType.caption)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
+
+            if progress.phase == .draftingDays || progress.phase == .loadingContext || progress.phase == .savingDraftWeek {
+                if let onCancel {
+                    HStack {
+                        Spacer()
+                        Button(action: onCancel) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "stop.circle.fill")
+                                    .font(.system(size: 16))
+                                Text("Stop Generation")
+                                    .font(.system(size: 14, weight: .medium, design: .serif))
+                            }
+                            .foregroundStyle(MCOTheme.Color.oxblood)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(MCOTheme.Color.oxblood.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, MCOSpace.xs)
+                }
             }
         }
     }
@@ -662,10 +724,10 @@ struct WeeklyGenerationDayProgressRow: View {
                     .frame(width: 18)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("\(dayStatus.displayName): \(dayStatus.displayStatusLabel)")
+                    Text("\(dayStatus.displayName): \(displayStatusLabel)")
                         .font(MCOType.bodySmall)
                         .foregroundStyle(titleColor)
-                    if dayStatus.isFailed {
+                    if dayStatus.isFailed, !isRegenerating {
                         Text(dayStatus.failureDetail)
                             .font(MCOType.caption)
                             .foregroundStyle(MCOTheme.Color.inkMuted)
@@ -730,7 +792,11 @@ struct WeeklyGenerationDayProgressRow: View {
 
     @ViewBuilder
     private var statusIcon: some View {
-        if dayStatus.isCompleted {
+        if isRegenerating {
+            ProgressView()
+                .controlSize(.mini)
+                .tint(MCOTheme.Color.oxblood)
+        } else if dayStatus.isCompleted {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(MCOTheme.Color.success)
@@ -758,6 +824,9 @@ struct WeeklyGenerationDayProgressRow: View {
     }
 
     private var titleColor: Color {
+        if isRegenerating {
+            return MCOTheme.Color.oxblood
+        }
         if dayStatus.isFailed {
             return MCOTheme.Color.oxblood
         }
@@ -765,6 +834,10 @@ struct WeeklyGenerationDayProgressRow: View {
             return MCOTheme.Color.inkMuted
         }
         return MCOTheme.Color.ink
+    }
+
+    private var displayStatusLabel: String {
+        isRegenerating ? "Retrying" : dayStatus.displayStatusLabel
     }
 }
 
@@ -1070,7 +1143,11 @@ struct WeekStartDateSelector: View {
             dayCount: 84
         )
 
-        guard startDate >= today, !forwardOptions.contains(startDate) else {
+        if SupabaseDateFormatting.isDatePast(startDate, todayString: today) {
+            return forwardOptions
+        }
+
+        if forwardOptions.contains(startDate) {
             return forwardOptions
         }
 
@@ -2944,21 +3021,60 @@ struct WeeklyRhythmList: View {
     let days: [WeeklyDay]
     let generatedCard: (WeeklyDay) -> GeneratedDailyCardDraft?
     let onSelect: (WeeklyDay) -> Void
+    let dayStatuses: [WeeklyDayGenerationStatus]
+    let retryingDayDate: String?
+    let onRetryDay: (String) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             ForEach(days) { day in
-                Button {
-                    onSelect(day)
-                } label: {
-                    WeeklyDayRow(day: day, generatedCard: generatedCard(day))
+                let status = dayStatus(day)
+                let isRetrying = retryingDayDate == day.scheduledDate || status?.isRetrying == true
+                HStack(alignment: .center, spacing: 0) {
+                    Button {
+                        onSelect(day)
+                    } label: {
+                        WeeklyDayRow(
+                            day: day,
+                            generatedCard: generatedCard(day),
+                            dayStatus: status,
+                            isRetrying: isRetrying
+                        )
                         .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(day.weekday) \(day.title). \(day.state.label). Open planned content.")
+                    .accessibilityIdentifier("weekly.day.\(day.weekday)")
+
+                    if isRetrying {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(MCOTheme.Color.oxblood)
+                            .frame(width: 44, height: 44)
+                            .accessibilityLabel("\(day.weekday) generation retrying")
+                    } else if status?.isFailed == true {
+                        Button {
+                            onRetryDay(day.scheduledDate ?? "")
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(MCOTheme.Color.oxblood)
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Retry \(day.weekday) generation")
+                        .accessibilityIdentifier("weekly.day.\(day.weekday).retry")
+                        .disabled(retryingDayDate != nil)
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(day.weekday) \(day.title). \(day.state.label). Open planned content.")
-                .accessibilityIdentifier("weekly.day.\(day.weekday)")
                 Hairline()
             }
+        }
+    }
+
+    private func dayStatus(_ day: WeeklyDay) -> WeeklyDayGenerationStatus? {
+        dayStatuses.first {
+            $0.scheduledDate == day.scheduledDate && ($0.isFailed || $0.isRetrying)
         }
     }
 }
@@ -2966,6 +3082,8 @@ struct WeeklyRhythmList: View {
 struct WeeklyDayRow: View {
     let day: WeeklyDay
     let generatedCard: GeneratedDailyCardDraft?
+    let dayStatus: WeeklyDayGenerationStatus?
+    let isRetrying: Bool
 
     var body: some View {
         HStack(alignment: .center, spacing: MCOSpace.m) {
@@ -2999,9 +3117,9 @@ struct WeeklyDayRow: View {
             VStack(alignment: .trailing, spacing: MCOSpace.xs) {
                 WeeklySourceTag(text: formatLabel, tone: .quiet)
                 HStack(spacing: MCOSpace.xxs) {
-                    Text(day.state.label)
+                    Text(isRetrying ? "Retrying" : day.state.label)
                         .font(MCOType.caption)
-                        .foregroundStyle(day.state.accent)
+                        .foregroundStyle(isRetrying ? MCOTheme.Color.oxblood : day.state.accent)
                         .accessibilityIdentifier("weekly.day.\(day.weekday).status.\(day.state.label.lowercased())")
                     if day.isSoftLocked {
                         Image(systemName: "lock.fill")

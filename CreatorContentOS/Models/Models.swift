@@ -6,6 +6,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     var context: String
     var effortLabel: String
     var whyToday: String
+    var hook: String?
     var sourceNote: String?
     var scheduledDate: String?
     var scenes: [ShotScene]
@@ -34,6 +35,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         context: String,
         effortLabel: String,
         whyToday: String,
+        hook: String? = nil,
         sourceNote: String? = nil,
         scheduledDate: String? = nil,
         scenes: [ShotScene],
@@ -61,6 +63,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.context = context
         self.effortLabel = effortLabel
         self.whyToday = whyToday
+        self.hook = hook
         self.sourceNote = sourceNote
         self.scheduledDate = scheduledDate
         self.scenes = scenes
@@ -579,6 +582,7 @@ extension WeeklyDayState {
             "open"
         }
     }
+
 }
 
 enum WeeklySourceReason: String, CaseIterable, Codable, Hashable, Sendable {
@@ -872,6 +876,7 @@ extension GeneratedDailyCardDraft {
                 minutes: estimatedShootMinutes
             ),
             whyToday: whyToday,
+            hook: hook?.nilIfBlank,
             sourceNote: sourceNote.nilIfBlank ?? contentPillar,
             scheduledDate: scheduledDate,
             scenes: sceneList,
@@ -902,18 +907,18 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
     var whyItWorks: String
     var hookFormulas: [String]
     var useWhen: [String]
-    var sampleMamtaIdea: String
+    var sampleCreatorIdea: String
     var sourceURLs: [String]
     var tags: [String]
     var relevanceLabel: String
     var symbol: String
 
-    static let mamtaFitnessGrowthReferences: [GrowthReference] = [
+    static let creatorFitnessGrowthReferences: [GrowthReference] = [
         GrowthReference(
-            id: "mamta-age-myth-reversal",
+            id: "creator-age-myth-reversal",
             title: "Age Myth Reversal",
-            summary: "Lead with a belief women are told after 60, then show Mamta disproving it through movement.",
-            whyItWorks: "Mamta's strongest visible Reel uses identity and proof, not a generic workout tip. It gives viewers a reason to watch because it challenges the cultural script around age, strength, and women.",
+            summary: "Lead with a belief women are told after 60, then show the creator disproving it through movement.",
+            whyItWorks: "The creator's strongest visible Reel uses identity and proof, not a generic workout tip. It gives viewers a reason to watch because it challenges the cultural script around age, strength, and women.",
             hookFormulas: [
                 "They told women my age to slow down. I started lifting.",
                 "At 62, this is what I refuse to give up.",
@@ -924,9 +929,9 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
                 "The weekly brief includes confidence, return to routine, or proof of consistency.",
                 "The content needs a stronger first two seconds than a simple exercise demo."
             ],
-            sampleMamtaIdea: "Open on Mamta loading a weight or tying shoes, then voiceover: 'Women are told to be careful after a certain age. I agree with careful. I do not agree with stopping.'",
+            sampleCreatorIdea: "Open on the creator loading a weight or tying shoes, then voiceover: 'Women are told to be careful after a certain age. I agree with careful. I do not agree with stopping.'",
             sourceURLs: [
-                "https://www.instagram.com/rankamamta77/reel/DZWJ3vbROho/",
+                "https://transparency.meta.com/features/explaining-ranking/ig-reels-chaining/",
                 "https://about.instagram.com/blog/announcements/instagram-ranking-explained"
             ],
             tags: ["belief shift", "fitness after 60", "identity", "proof"],
@@ -934,10 +939,10 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
             symbol: "figure.strengthtraining.traditional"
         ),
         GrowthReference(
-            id: "mamta-real-life-contradiction-hook",
+            id: "creator-real-life-contradiction-hook",
             title: "Real-Life Contradiction Hook",
             summary: "Start with a tension that feels honest: eating out, travel, family, missed workouts, and still staying consistent.",
-            whyItWorks: "Contradiction hooks create curiosity without hype. They fit Mamta because her authority comes from sustainable discipline, not perfection.",
+            whyItWorks: "Contradiction hooks create curiosity without hype. They fit the creator because her authority comes from sustainable discipline, not perfection.",
             hookFormulas: [
                 "I eat out. I drink sometimes. I still stay fit at 62.",
                 "I missed the perfect routine, so I did this instead.",
@@ -948,9 +953,9 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
                 "The card can show a normal-life moment before the fitness takeaway.",
                 "The idea should feel relatable and shareable."
             ],
-            sampleMamtaIdea: "Shoot a quick restaurant/home/gym contrast: one real-life clip, one gym clip, one recovery clip. End with a practical consistency rule.",
+            sampleCreatorIdea: "Shoot a quick restaurant/home/gym contrast: one real-life clip, one gym clip, one recovery clip. End with a practical consistency rule.",
             sourceURLs: [
-                "https://www.instagram.com/rankamamta77/reel/DZwSBZfM2yk/",
+                "https://about.instagram.com/blog/announcements/instagram-ranking-explained",
                 "https://buffer.com/resources/instagram-algorithms/"
             ],
             tags: ["contradiction", "real life", "consistency", "retention"],
@@ -958,10 +963,10 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
             symbol: "arrow.left.arrow.right"
         ),
         GrowthReference(
-            id: "mamta-proof-before-advice",
+            id: "creator-proof-before-advice",
             title: "Proof Before Advice",
             summary: "Show the action first, then explain the lesson. Do not open with abstract advice.",
-            whyItWorks: "Reels need fast visual confirmation. A clip of Mamta lifting, walking into the gym, stretching, or finishing a set gives immediate credibility before the voiceover teaches.",
+            whyItWorks: "Reels need fast visual confirmation. A clip of the creator lifting, walking into the gym, stretching, or finishing a set gives immediate credibility before the voiceover teaches.",
             hookFormulas: [
                 "One thing I learned after showing up for years...",
                 "This is why you do the boring work.",
@@ -972,9 +977,9 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
                 "The idea risks sounding preachy if it starts as advice.",
                 "The weekly card needs stronger watch-time potential."
             ],
-            sampleMamtaIdea: "Open with a 2-second set, cut to breath/reset, then voiceover explains one useful cue or mindset from that exact movement.",
+            sampleCreatorIdea: "Open with a 2-second set, cut to breath/reset, then voiceover explains one useful cue or mindset from that exact movement.",
             sourceURLs: [
-                "https://www.instagram.com/rankamamta77/reel/DZd-wtdRDFV/",
+                "https://buffer.com/resources/instagram-algorithms/",
                 "https://transparency.meta.com/features/explaining-ranking/ig-reels-chaining/"
             ],
             tags: ["visual proof", "watch time", "movement first"],
@@ -982,7 +987,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
             symbol: "play.rectangle"
         ),
         GrowthReference(
-            id: "mamta-saveable-practical-cue",
+            id: "creator-saveable-practical-cue",
             title: "Saveable Practical Cue",
             summary: "Make one Reel around one small cue followers can save for their own gym day.",
             whyItWorks: "Saves and sends are useful distribution signals, and practical fitness cues turn inspiration into utility. This keeps growth content useful without becoming generic.",
@@ -996,7 +1001,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
                 "The card should be more instructional than emotional.",
                 "The output needs a clear CTA."
             ],
-            sampleMamtaIdea: "Film one movement from two angles, add on-screen text with the cue, and close with 'save this for your next gym day.'",
+            sampleCreatorIdea: "Film one movement from two angles, add on-screen text with the cue, and close with 'save this for your next gym day.'",
             sourceURLs: [
                 "https://www.theverge.com/2024/10/1/24259462/instagram-best-practices-business-profiles-tips-reach",
                 "https://acsm.org/top-fitness-trends-2026/"
@@ -1006,10 +1011,10 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
             symbol: "bookmark"
         ),
         GrowthReference(
-            id: "mamta-hyrox-hybrid-proof",
+            id: "creator-hyrox-hybrid-proof",
             title: "HYROX / Hybrid Proof",
             summary: "Use HYROX, running, and strength as authority signals, but only when the weekly brief supports it.",
-            whyItWorks: "HYROX and hybrid training are culturally current and already part of Mamta's credibility. The risk is overusing old race context when the current week is about normal life.",
+            whyItWorks: "HYROX and hybrid training are culturally current and already part of the creator's credibility. The risk is overusing old race context when the current week is about normal life.",
             hookFormulas: [
                 "HYROX taught me this, but it applies to regular gym days.",
                 "You do not train for events. You train for the life you want.",
@@ -1020,7 +1025,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
                 "The story can bridge achievement back into everyday routine.",
                 "The weekly brief does not conflict with race/HYROX context."
             ],
-            sampleMamtaIdea: "Use one race/HYROX clip as the first beat, then cut to a simple Bombay gym routine to show how event confidence becomes daily discipline.",
+            sampleCreatorIdea: "Use one race/HYROX clip as the first beat, then cut to a simple Bombay gym routine to show how event confidence becomes daily discipline.",
             sourceURLs: [
                 "https://www.womenshealthmag.com/fitness/a71592589/menopause-symptoms-endometriosis-strength-endurance-hyrox-transformation/",
                 "https://www.nasm.org/resource-center/blog/top-fitness-trends"
@@ -1030,10 +1035,10 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
             symbol: "medal"
         ),
         GrowthReference(
-            id: "mamta-instagram-reels-default",
+            id: "creator-instagram-reels-default",
             title: "Instagram Reels Default",
             summary: "Default growth ideas to short, specific Reels with one idea, one hook, timestamped shots, and a save/share CTA.",
-            whyItWorks: "Instagram guidance and platform analysis consistently point to retention, originality, shares, and saves. For Mamta, that means clear movement, specific context, and no overproduced influencer language.",
+            whyItWorks: "Instagram guidance and platform analysis consistently point to retention, originality, shares, and saves. For this creator, that means clear movement, specific context, and no overproduced influencer language.",
             hookFormulas: [
                 "0:00-0:02: motion plus bold text.",
                 "0:03-0:08: one real context line.",
@@ -1044,7 +1049,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
                 "The day needs growth potential rather than only documentation.",
                 "The admin needs shot, voiceover, and on-screen text details."
             ],
-            sampleMamtaIdea: "Any weekly idea should specify the Reel length, first-frame visual, voiceover timing, on-screen text timing, CTA, and backup story.",
+            sampleCreatorIdea: "Any weekly idea should specify the Reel length, first-frame visual, voiceover timing, on-screen text timing, CTA, and backup story.",
             sourceURLs: [
                 "https://about.instagram.com/blog/announcements/instagram-ranking-explained",
                 "https://buffer.com/resources/instagram-algorithms/",
@@ -1070,7 +1075,7 @@ struct IntelligenceHome: Identifiable, Hashable, Sendable {
     init(
         id: UUID = UUID(),
         sourcePulse: SourcePulseSummary,
-        growthReferences: [GrowthReference] = GrowthReference.mamtaFitnessGrowthReferences,
+        growthReferences: [GrowthReference] = GrowthReference.creatorFitnessGrowthReferences,
         readyForThisWeek: [IntelligenceItem],
         needsReview: [IntelligenceItem],
         ideaCandidates: [IntelligenceItem],

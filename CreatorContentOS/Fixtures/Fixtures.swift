@@ -6,6 +6,7 @@ extension DailyCard {
         context: "Friday, Race Week",
         effortLabel: "Easy - 12 min",
         whyToday: "Stay visible without overthinking it.",
+        hook: "The tiny thing I changed this race week.",
         sourceNote: "Inspired by a race-week discipline pattern.",
         scheduledDate: "2026-06-05",
         scenes: [

@@ -135,9 +135,9 @@ final class SupabaseWriteContentDTOTests: XCTestCase {
     func testUpdateCreatorProfileRequestEncodesEdgeFunctionContract() throws {
         let context = fixtureContext()
         let update = CreatorProfileUpdate(
-            positioning: "Premium fitness-after-60 voice.",
+            positioning: "Lifestyle creator voice.",
             voiceRules: ["Warm", "Precise"],
-            contentPillars: ["routine", "recovery"],
+            contentPillars: ["gym", "recovery"],
             captionStyle: "Short and practical.",
             noGoTopics: ["Politics", "Weight talk"],
             recurringFormats: ["one practical detail", "caption-only backup"]
@@ -189,6 +189,24 @@ final class SupabaseWriteContentDTOTests: XCTestCase {
         XCTAssertEqual(response.idea?.id, ideaID)
         XCTAssertEqual(response.idea?.status, "scheduled")
         XCTAssertNil(response.archiveEntry)
+    }
+
+    func testUpdateDailyCardReviewStateRequestEncodesEdgeFunctionContract() throws {
+        let context = fixtureContext()
+        let dailyCardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
+
+        let object = try encodedObject(
+            .updateDailyCardReviewState(
+                dailyCardID: dailyCardID,
+                reviewState: "ready",
+                context: context
+            )
+        )
+
+        XCTAssertEqual(object["action"] as? String, "update_daily_card_review_state")
+        XCTAssertEqual(try uuidValue(object, key: "creator_id"), context.creatorID)
+        XCTAssertEqual(try uuidValue(object, key: "daily_card_id"), dailyCardID)
+        XCTAssertEqual(object["review_state"] as? String, "ready")
     }
 
     private func encodedObject(_ request: SupabaseWriteContentRequest) throws -> [String: Any] {

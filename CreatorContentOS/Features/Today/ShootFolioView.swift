@@ -22,11 +22,11 @@ struct ShootFolioView: View {
                         sceneProgress
                         SceneListView(card: services.todayCard)
                     case .script:
-                        CopyBlock(title: "Script", bodyText: services.todayCard.script ?? "Race week isn't about doing more. It's about doing what matters. Simple plan. Steady steps. Let's go.")
+                        CopyBlock(title: "Script", bodyText: services.todayCard.script ?? "No script recorded for today.")
                     case .caption:
-                        CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "Race week has entered the house. Keeping it simple, steady, and real today.")
+                        CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "No caption recorded for today.")
                     case .audio:
-                        CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "Calm Drive - Instrumental - fallback ready")
+                        CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "No audio notes recorded for today.")
                     }
                 } else {
                     ShootFolioEmptyState(state: services.todayContentState)
@@ -37,12 +37,16 @@ struct ShootFolioView: View {
                case .ready = services.todayContentState {
                 GlassCommandBar {
                     PrimaryActionButton(
-                        title: services.areAllScenesShot ? "All scenes shot" : "Mark all as shot",
-                        systemImage: services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal"
+                        title: services.canMarkPosted ? "Mark as posted" : (services.areAllScenesShot ? "All scenes shot" : "Mark all as shot"),
+                        systemImage: services.canMarkPosted ? "paperplane.fill" : (services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal")
                     ) {
-                        services.markAllScenesShot()
+                        if services.canMarkPosted {
+                            services.markPosted()
+                        } else {
+                            services.markAllScenesShot()
+                        }
                     }
-                    .disabled(services.areAllScenesShot)
+                    .disabled(services.areAllScenesShot && !services.canMarkPosted)
                 }
             }
         }
@@ -82,7 +86,7 @@ struct ShootFolioView: View {
                 Text("Shoot Folio")
                     .font(MCOType.headline)
                     .foregroundStyle(MCOTheme.Color.ink)
-                Text("A practical lower body that is easy.")
+                Text(services.todayCard.title.nilIfBlank ?? "Today's shoot")
                     .font(MCOType.bodySmall)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
             }
@@ -323,7 +327,10 @@ private enum SceneGuidance {
         return timelineText?.onScreenText?.nilIfBlank
             ?? timelineText?.title.nilIfBlank
             ?? card.onScreenText?[safe: index]?.nilIfBlank
-            ?? card.onScreenText?.first?.nilIfBlank
+        // Deliberately NOT falling back to onScreenText.first: that would make
+        // multiple scenes render the SAME first on-screen text and look like the
+        // card is internally mismatched. A scene without its own on-screen text
+        // shows nothing rather than borrowing another scene's text.
     }
 
     static func contextExample(for scene: ShotScene, in card: DailyCard) -> String {
@@ -336,8 +343,8 @@ private enum SceneGuidance {
             .compactMap { $0?.lowercased() }
             .joined(separator: " ")
         let location = context.contains("bombay") || context.contains("mumbai")
-            ? "In Bombay, Mamta can shoot this at home, in the society garden, or in the gym"
-            : "Mamta can shoot this at home, in the society garden, or in the gym"
+            ? "In Bombay, the creator can shoot this at home, in the society garden, or in the gym"
+            : "The creator can shoot this at home, in the society garden, or in the gym"
         return "\(location), choosing the place that makes \(scene.title.lowercased()) easiest to capture clearly and safely."
     }
 }

@@ -367,7 +367,7 @@ struct GrowthReferenceDetailView: View {
                         .foregroundStyle(MCOTheme.Color.ink)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                ReferenceDetailLine(title: "Mamta idea", value: reference.sampleMamtaIdea)
+                ReferenceDetailLine(title: "Creator idea", value: reference.sampleCreatorIdea)
             }
         }
     }

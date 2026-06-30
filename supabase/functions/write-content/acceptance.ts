@@ -690,7 +690,7 @@ async function assertCreatorProfileUpdateBoundary() {
     creatorProfileBody({
       positioning: "Owner updated creator positioning",
       voice_rules: ["Warm but direct", "No hype"],
-      content_pillars: "routine\nfitness\nfamily",
+      content_pillars: "gym\nlifestyle\neating\nrecovery",
       caption_style: "Owner updated caption style",
       never_say: ["weight talk", "politics"],
       recurring_formats: "shoe check\ncaption-only backup",
@@ -703,7 +703,7 @@ async function assertCreatorProfileUpdateBoundary() {
   );
   await assertCreatorProfileValue(
     "content_pillars",
-    ["routine", "fitness", "family"],
+    ["gym", "lifestyle", "eating", "recovery"],
   );
   await assertCreatorProfileValue(
     "recurring_formats",

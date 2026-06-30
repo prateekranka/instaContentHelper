@@ -7,6 +7,7 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
     case updateWeeklySetup(sections: [WeeklySetupSection], plan: WeeklyPlan, context: WorkspaceContext)
     case updateWeeklyBrief(text: String, plan: WeeklyPlan, context: WorkspaceContext)
     case updateCreatorProfile(CreatorProfileUpdate, context: WorkspaceContext)
+    case updateDailyCardReviewState(dailyCardID: UUID, reviewState: String, context: WorkspaceContext)
 
     private enum CodingKeys: String, CodingKey {
         case action
@@ -28,6 +29,7 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
         case captionStyle = "caption_style"
         case neverSay = "never_say"
         case recurringFormats = "recurring_formats"
+        case reviewState = "review_state"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -85,6 +87,12 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
             try container.encode(update.captionStyle, forKey: .captionStyle)
             try container.encode(update.noGoTopics, forKey: .neverSay)
             try container.encode(update.recurringFormats, forKey: .recurringFormats)
+
+        case .updateDailyCardReviewState(let dailyCardID, let reviewState, let context):
+            try container.encode("update_daily_card_review_state", forKey: .action)
+            try container.encode(context.creatorID, forKey: .creatorID)
+            try container.encode(dailyCardID, forKey: .dailyCardID)
+            try container.encode(reviewState, forKey: .reviewState)
         }
     }
 

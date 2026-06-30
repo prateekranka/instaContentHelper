@@ -17,7 +17,7 @@ Deno.test("draft publish payload preserves rich generated daily card fields", ()
     title: "Generated Monday reset",
     why_today: "Start with a calm routine.",
     growth_job: "Build consistency.",
-    content_pillar: "routine",
+    content_pillar: "lifestyle",
     shootability: "easy",
     estimated_shoot_minutes: 11,
     energy_required: "medium",
@@ -74,11 +74,44 @@ Deno.test("draft publish payload rejects missing scheduled date or title", () =>
   );
 });
 
+Deno.test("draft publish payload includes review_state with build-19 fallback to ready", () => {
+  const withReviewState = normalizeDraftCard({
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+    scheduled_date: "2026-06-08",
+    title: "Reviewed Monday",
+    review_state: "backup",
+  });
+  assert(withReviewState !== null);
+  assertEquals(withReviewState.review_state, "backup");
+
+  const withoutReviewState = normalizeDraftCard({
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+    scheduled_date: "2026-06-09",
+    title: "Default review",
+  });
+  assert(withoutReviewState !== null);
+  assertEquals(withoutReviewState.review_state, "ready",
+    "missing review_state defaults to ready for build-19 compat");
+
+  const invalidReviewState = normalizeDraftCard({
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
+    scheduled_date: "2026-06-10",
+    title: "Invalid review",
+    review_state: "unknown",
+  });
+  assert(invalidReviewState !== null);
+  assertEquals(invalidReviewState.review_state, "ready",
+    "invalid review_state defaults to ready");
+});
+
 Deno.test("published week replacement archives old published daily cards", async () => {
   const updates: UpdateCapture[] = [];
   const admin = {
     from(table: string) {
       return new FakePublishQuery(table, updates);
+    },
+    rpc(_fn: string, _args?: Record<string, unknown>): Promise<{ data: unknown; error: null }> {
+      return Promise.resolve({ data: null, error: null });
     },
   };
 
@@ -160,6 +193,144 @@ Deno.test("idempotent existing published draft publish returns original publishe
   assertEquals(body.published_at, publishedAt);
 });
 
+Deno.test("publishing an existing draft calls publish_week_atomic RPC with full payload", async () => {
+  let rpcCalled = false;
+  let rpcPayload: Record<string, unknown> | null = null;
+
+  const response = await handlePublishWeekRequest(
+    new Request("http://localhost/publish-week", {
+      method: "POST",
+      headers: { "x-mco-device-token": "device-token" },
+      body: JSON.stringify({
+        creator_id: creatorID,
+        weekly_plan_id: weeklyPlanID,
+        draft_daily_cards: reviewedDraftCards("2026-06-08"),
+      }),
+    }),
+    {
+      env: {
+        get(name: string) {
+          return {
+            SUPABASE_URL: "http://127.0.0.1:54321",
+            SUPABASE_SERVICE_ROLE_KEY: "local-service-role",
+          }[name];
+        },
+      },
+      createAdminClient: () => ({
+        from(table: string) {
+          return new FakePublishHandlerQuery(table, {
+            existingDraftPlan: {
+              id: weeklyPlanID,
+              workspace_id: workspaceID,
+              creator_id: creatorID,
+              week_start_date: "2026-06-08",
+              status: "draft",
+              is_soft_locked: false,
+              published_at: null,
+            },
+            existingDraftCards: existingDraftCardIdentities("2026-06-08"),
+          });
+        },
+        rpc(
+          fn: string,
+          args: Record<string, unknown>,
+        ): Promise<{ data: unknown; error: null }> {
+          if (fn === "publish_week_atomic") {
+            rpcCalled = true;
+            rpcPayload = args.payload as Record<string, unknown>;
+            return Promise.resolve({
+              data: {
+                weekly_plan_id: weeklyPlanID,
+                daily_card_count: 7,
+                is_soft_locked: true,
+                published_at: new Date().toISOString(),
+              },
+              error: null,
+            });
+          }
+          return Promise.resolve({ data: null, error: null });
+        },
+      }),
+    },
+  );
+
+  assertEquals(response.status, 200);
+  assert(rpcCalled, "expected publish_week_atomic RPC to be called");
+
+  const payload = rpcPayload!;
+  assertEquals(payload.workspace_id, workspaceID);
+  assertEquals(payload.creator_id, creatorID);
+  assertEquals(payload.weekly_plan_id, weeklyPlanID);
+  assert(Array.isArray(payload.draft_daily_cards), "draft_daily_cards should be an array");
+  assertEquals((payload.draft_daily_cards as unknown[]).length, 7);
+
+  const body = await response.json();
+  assertEquals(body.weekly_plan_id, weeklyPlanID);
+  assertEquals(body.daily_card_count, 7);
+  assertEquals(body.is_soft_locked, true);
+});
+
+Deno.test("publish_week_atomic RPC errors are mapped to stable error responses", async () => {
+  const errorCases = [
+    { rpcError: "weekly_plan_not_found", expectedStatus: 404 },
+    { rpcError: "existing_published_week_locked", expectedStatus: 409 },
+    { rpcError: "invalid_day_payload", expectedStatus: 400 },
+    { rpcError: "cross_workspace_forbidden", expectedStatus: 403 },
+  ];
+
+  for (const { rpcError, expectedStatus } of errorCases) {
+    const response = await handlePublishWeekRequest(
+      new Request("http://localhost/publish-week", {
+        method: "POST",
+        headers: { "x-mco-device-token": "device-token" },
+        body: JSON.stringify({
+          creator_id: creatorID,
+          weekly_plan_id: weeklyPlanID,
+          draft_daily_cards: reviewedDraftCards("2026-06-08"),
+        }),
+      }),
+      {
+        env: {
+          get(name: string) {
+            return {
+              SUPABASE_URL: "http://127.0.0.1:54321",
+              SUPABASE_SERVICE_ROLE_KEY: "local-service-role",
+            }[name];
+          },
+        },
+        createAdminClient: () => ({
+          from(table: string) {
+            return new FakePublishHandlerQuery(table, {
+              existingDraftPlan: {
+                id: weeklyPlanID,
+                workspace_id: workspaceID,
+                creator_id: creatorID,
+                week_start_date: "2026-06-08",
+                status: "draft",
+                is_soft_locked: false,
+                published_at: null,
+              },
+              existingDraftCards: existingDraftCardIdentities("2026-06-08"),
+            });
+          },
+          rpc(): Promise<{ data: unknown; error: null }> {
+            return Promise.resolve({
+              data: { error: rpcError, status: expectedStatus },
+              error: null,
+            });
+          },
+        }),
+      },
+    );
+
+    assertEquals(response.status, expectedStatus,
+      `expected status ${expectedStatus} for ${rpcError}`);
+    const body = await response.json();
+    assertEquals(body.error, rpcError,
+      `expected error "${rpcError}"`);
+  }
+});
+
 type UpdateCapture = {
   table: string;
   values: Record<string, unknown>;
@@ -176,6 +347,7 @@ type HandlerCapture = {
 type HandlerState = {
   captures?: HandlerCapture[];
   existingDraftPlan?: Record<string, unknown> | null;
+  existingDraftCards?: Record<string, unknown>[];
 };
 
 async function callPublishHandler(
@@ -201,6 +373,23 @@ async function callPublishHandler(
         from(table: string) {
           return new FakePublishHandlerQuery(table, state);
         },
+        rpc(
+          _fn: string,
+          _args?: Record<string, unknown>,
+        ): Promise<{ data: unknown; error: null }> {
+          if (_fn === "publish_week_atomic") {
+            return Promise.resolve({
+              data: {
+                weekly_plan_id: weeklyPlanID,
+                daily_card_count: 7,
+                is_soft_locked: true,
+                published_at: new Date().toISOString(),
+              },
+              error: null,
+            });
+          }
+          return Promise.resolve({ data: null, error: null });
+        },
       }),
     },
   );
@@ -221,6 +410,61 @@ function legacySevenDays(weekStartDate: string): Record<string, unknown>[] {
       shootability: "easy",
       estimated_shoot_minutes: 12,
       scene_list: [],
+    };
+  });
+}
+
+function reviewedDraftCards(
+  weekStartDate: string,
+): Record<string, unknown>[] {
+  const [year, month, day] = weekStartDate.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day));
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    return {
+      id: `reviewed-card-${index + 1}`,
+      scheduled_date: date.toISOString().slice(0, 10),
+      title: index === 0 ? "Edited Monday concept" : `Reviewed day ${index + 1}`,
+      why_today: "Prepared for this day.",
+      growth_job: "Build consistency.",
+      content_pillar: "lifestyle",
+      shootability: "easy",
+      estimated_shoot_minutes: 12,
+      energy_required: "medium",
+      language_mode: "English",
+      scene_list: [],
+      script: index === 0 ? "Edited script." : "Script.",
+      no_voiceover_version: "No VO.",
+      on_screen_text: ["Edited text"],
+      caption: index === 0
+        ? "Edited caption that should survive publish."
+        : "Caption.",
+      cta: "Save this.",
+      hashtags: ["lifestylecreator"],
+      cover_text: "Edited cover",
+      post_instructions: index === 0 ? "Use the edited publish notes." : "Use notes.",
+      backup_story: "Edited backup story.",
+      backup_caption_only: "Edited caption-only backup.",
+      creator_fit_score: 92,
+      risk_notes: [],
+      assumptions: [],
+      source_note: "Reviewed in app.",
+    };
+  });
+}
+
+function existingDraftCardIdentities(
+  weekStartDate: string,
+): Record<string, unknown>[] {
+  const [year, month, day] = weekStartDate.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day));
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    return {
+      id: `existing-card-${index + 1}`,
+      scheduled_date: date.toISOString().slice(0, 10),
     };
   });
 }
@@ -347,7 +591,10 @@ class FakePublishHandlerQuery {
         }
         return { data: this.state.existingDraftPlan ?? null, error: null };
       case "daily_cards":
-        return { data: [{ id: "daily-card-id" }], error: null };
+        return {
+          data: this.state.existingDraftCards ?? [{ id: "daily-card-id" }],
+          error: null,
+        };
       default:
         return { data: null, error: null };
     }

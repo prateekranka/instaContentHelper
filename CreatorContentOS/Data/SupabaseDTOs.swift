@@ -172,6 +172,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     var assumptions: [SupabaseJSONValue]?
     var sourceNote: String?
     var decisionAt: String?
+    var reviewState: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -221,6 +222,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         case assumptions
         case sourceNote = "source_note"
         case decisionAt = "decision_at"
+        case reviewState = "review_state"
     }
 
     init(from decoder: Decoder) throws {
@@ -297,6 +299,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         assumptions = try container.decodeIfPresent([SupabaseJSONValue].self, forKey: .assumptions)
         sourceNote = try container.decodeIfPresent(String.self, forKey: .sourceNote)
         decisionAt = try container.decodeIfPresent(String.self, forKey: .decisionAt)
+        reviewState = try container.decodeIfPresent(String.self, forKey: .reviewState)
     }
 
     func domainCard() -> DailyCard {
@@ -309,6 +312,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
                 minutes: estimatedShootMinutes
             ),
             whyToday: whyToday ?? growthJob ?? "Prepared for today.",
+            hook: hook?.nilIfBlank,
             sourceNote: sourceNote ?? contentPillar,
             scheduledDate: scheduledDate,
             scenes: sceneList.enumerated().map { index, scene in
@@ -382,14 +386,18 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     }
 
     func weeklyDay() -> WeeklyDay {
-        WeeklyDay(
+        let reviewBasedState: WeeklyDayState? = {
+            guard status == "draft", let reviewState = reviewState?.nilIfBlank else { return nil }
+            return WeeklyDayState(reviewState: reviewState)
+        }()
+        return WeeklyDay(
             weekday: SupabaseDateFormatting.weekdayAbbreviation(for: scheduledDate),
             date: SupabaseDateFormatting.dayNumber(for: scheduledDate),
             scheduledDate: scheduledDate,
             title: title,
             reason: whyToday ?? sourceNote ?? "Prepared for this day.",
             source: WeeklySourceReason(sourceNote: sourceNote, contentPillar: contentPillar),
-            state: WeeklyDayState(dailyCardStatus: status),
+            state: reviewBasedState ?? WeeklyDayState(dailyCardStatus: status),
             isSoftLocked: status != "draft"
         )
     }
@@ -1108,6 +1116,13 @@ enum SupabaseDateFormatting {
         return formatter.string(from: Date())
     }
 
+    /// Compares normalized yyyy-MM-dd prefixes lexically — valid because ISO-8601 date strings sort correctly.
+    static func isDatePast(_ dateString: String, todayString: String) -> Bool {
+        let normalized = String(dateString.prefix(10))
+        let normalizedToday = String(todayString.prefix(10))
+        return normalized < normalizedToday
+    }
+
     static func isoTimestampString() -> String {
         ISO8601DateFormatter().string(from: Date())
     }
@@ -1191,6 +1206,17 @@ extension WeeklyDayState {
             self = .backup
         default:
             self = .planned
+        }
+    }
+
+    init(reviewState: String) {
+        switch reviewState.lowercased() {
+        case "ready", "planned":
+            self = .planned
+        case "backup":
+            self = .backup
+        default:
+            self = .open
         }
     }
 }

@@ -2,6 +2,7 @@ import XCTest
 
 final class InstalledContentHelperUITests: XCTestCase {
     private let bundleIdentifier = "com.prateekranka.creatorcontenthelper"
+    private let generationActionLabels = ["Generate", "Regenerate", "Generate draft week again", "Regenerate draft week"]
 
     @MainActor
     func testInstalledSessionExposesManagerAccess() throws {
@@ -101,20 +102,113 @@ final class InstalledContentHelperUITests: XCTestCase {
     }
 
     @MainActor
+    func testInstalledManagerGenerateReviewSurfaceWithoutPublishing() throws {
+        // Guard: this proof must never run with fixture or mock environment.
+        // These checks read the XCTest process environment only - they do not
+        // pass any secrets into the app under test.
+        let blockedEnvVars = ["MCO_FORCE_FIXTURE_UI", "MCO_QA_GENERATE_MOCK", "MCO_AI_MOCK"]
+        for key in blockedEnvVars {
+            if ProcessInfo.processInfo.environment[key] != nil {
+                XCTFail("MANAGER_GENERATION_PROOF_BLOCKED: \(key) is set in the XCTest process environment. This proof requires live backend generation and must not run under fixture or mock flags.")
+                return
+            }
+        }
+
+        let startedAt = Date()
+        let app = launchInstalledApp()
+        waitForCreatorRuntime(in: app)
+        openProfile(in: app)
+        openManagerWeekly(in: app)
+
+        // Wait for live weekly data to finish loading before looking for Generate.
+        // This avoids the known failure where the test proceeds while "Loading week"
+        // is still visible and no Generate / Regenerate button exists.
+        let dataLoaded = waitForWeeklyDataToLoad(in: app, timeout: 45)
+        print("MANAGER_GENERATION_PROOF_WEEKLY_DATA_LOADED=\(dataLoaded)")
+        if !dataLoaded {
+            maybeRefreshWeekly(in: app)
+            XCTAssertTrue(
+                waitForWeeklyDataToLoad(in: app, timeout: 60),
+                diagnostics("Manager Weekly data did not finish loading", app: app)
+            )
+        }
+        selectCurrentWeekStart(in: app)
+        attachScreenshot(named: "59-manager-week-start-selected", app: app)
+        if waitForReviewButton(in: app, timeout: 3) == nil,
+           firstExistingButton(in: app, labels: generationActionLabels, timeout: 3) == nil {
+            ensureWeeklyBriefAllowsGeneration(in: app)
+        }
+        attachScreenshot(named: "60-manager-weekly-before-generation", app: app)
+
+        let generateButton = firstExistingButton(in: app, labels: generationActionLabels, timeout: 30)
+        XCTAssertNotNil(
+            generateButton,
+            diagnostics("No Generate or Regenerate action is available on manager Weekly. A fresh generation is required for this proof - pre-existing drafts must not satisfy it.", app: app)
+        )
+        let generationActionLabel = generateButton?.label ?? "Generate"
+        tapWhenHittableOrVisibleCenter(generateButton, in: app, timeout: 5)
+        print("MANAGER_GENERATION_PROOF_FRESH_DRAFT: tapped \(generationActionLabel), starting fresh generation")
+
+        XCTAssertTrue(
+            app.staticTexts["Generation Status"].waitForExistence(timeout: 30),
+            diagnostics("Generation status panel did not appear", app: app)
+        )
+        XCTAssertTrue(
+            app.staticTexts["Day progress"].waitForExistence(timeout: 90),
+            diagnostics("Live day progress did not appear", app: app)
+        )
+        attachScreenshot(named: "61-manager-day-progress-started", app: app)
+
+        var reviewButton = waitForReviewButton(in: app, timeout: 900)
+        if reviewButton == nil {
+            reviewButton = retryVisibleFailedDayAndWaitForReview(in: app)
+        }
+        XCTAssertNotNil(reviewButton, diagnostics("Generated week did not become reviewable before timeout or failed-day retry", app: app))
+        let elapsed = Date().timeIntervalSince(startedAt)
+        print("MANAGER_GENERATION_REVIEW_READY_SECONDS=\(String(format: "%.1f", elapsed))")
+        attachScreenshot(named: "62-manager-generation-ready-for-review", app: app)
+
+        reviewButton?.tap()
+        XCTAssertTrue(
+            app.staticTexts["Generated week"].waitForExistence(timeout: 15) ||
+                app.staticTexts["Generated Week"].waitForExistence(timeout: 15) ||
+                app.staticTexts["Review"].waitForExistence(timeout: 15) ||
+                app.staticTexts["Draft week generated"].waitForExistence(timeout: 15),
+            diagnostics("Generated review surface did not open", app: app)
+        )
+        attachScreenshot(named: "63-manager-review-surface", app: app)
+
+        print("MANAGER_GENERATION_REVIEW_TEXT_BEGIN")
+        printReviewSurfaceContent(in: app)
+        print("MANAGER_GENERATION_REVIEW_TEXT_END")
+
+        let publishDraftButton = app.buttons["weekly.generatedReview.publishDraft"]
+        let publishWeekButton = app.buttons["Publish week"]
+        if publishDraftButton.exists || publishWeekButton.exists {
+            print("MANAGER_GENERATION_PROOF_PUBLISH_PRESENT: Publish draft is available (publishing intentionally skipped - proof test only)")
+        }
+
+        dismissPresentedSurfaceIfNeeded(in: app)
+        attachScreenshot(named: "64-manager-review-dismissed", app: app)
+    }
+
+    @MainActor
     func testInstalledManagerRetriesFailedDay() throws {
         let app = launchInstalledApp()
         waitForCreatorRuntime(in: app)
         openProfile(in: app)
         openManagerWeekly(in: app)
 
-        XCTAssertTrue(app.staticTexts["Generation Status"].waitForExistence(timeout: 30), diagnostics("Generation status panel did not appear", app: app))
-        XCTAssertTrue(app.staticTexts["Day progress"].waitForExistence(timeout: 30), diagnostics("Live day progress did not appear", app: app))
+        XCTAssertTrue(
+            app.staticTexts["Generation Status"].waitForExistence(timeout: 30) ||
+                app.buttons["weekly.reviewGenerated"].waitForExistence(timeout: 5),
+            diagnostics("Generation or generated draft panel did not appear", app: app)
+        )
         attachScreenshot(named: "30-manager-day-progress-before-retry", app: app)
 
-        let retryButton = waitForFirstButtonMatchingPrefix(in: app, prefix: "Retry ", timeout: 30)
-        XCTAssertNotNil(retryButton, diagnostics("No failed-day retry action is visible on the manager Weekly progress screen", app: app))
-        retryButton?.tap()
-        attachScreenshot(named: "31-manager-day-retry-tapped", app: app)
+        let reviewButton = retryVisibleFailedDayAndWaitForReview(in: app)
+        XCTAssertNotNil(reviewButton, diagnostics("Retried failed day did not make the generated week reviewable", app: app))
+        attachScreenshot(named: "32-manager-day-retry-review-ready", app: app)
     }
 
     @MainActor
@@ -238,6 +332,167 @@ final class InstalledContentHelperUITests: XCTestCase {
         attachScreenshot(named: "05-fallback-sheet", app: app)
     }
 
+    @MainActor
+    func testCreatorBackupDecisionAppearsInArchiveInInstalledApp() throws {
+        let app = launchInstalledApp()
+        waitForCreatorRuntime(in: app)
+        openTodayIfNeeded(in: app)
+
+        let fallbackButton = app.buttons["Give me other ideas"]
+        XCTAssertTrue(fallbackButton.waitForExistence(timeout: 10), diagnostics("Fallback entry point is missing", app: app))
+        fallbackButton.tap()
+
+        XCTAssertTrue(app.staticTexts["Other ideas"].waitForExistence(timeout: 10), diagnostics("Fallback sheet did not open", app: app))
+
+        let backupOption = app.buttons["10-second story"]
+        if !backupOption.exists {
+            let backupStatic = app.staticTexts["10-second story"]
+            if backupStatic.exists {
+                tapWhenHittableOrVisibleCenter(backupStatic, in: app, timeout: 3)
+            }
+        } else {
+            tapWhenHittableOrVisibleCenter(backupOption, in: app, timeout: 3)
+        }
+
+        let detailTitle = app.staticTexts["10-second story"]
+        XCTAssertTrue(
+            detailTitle.waitForExistence(timeout: 10),
+            diagnostics("Backup detail sheet did not open for 10-second story", app: app)
+        )
+
+        let useBackupButton = app.buttons["Use backup"]
+        XCTAssertTrue(
+            useBackupButton.waitForExistence(timeout: 5) || useBackupButton.exists,
+            diagnostics("Backup detail missing 'Use backup' action button", app: app)
+        )
+
+        // App renders these section headers in uppercase
+        XCTAssertTrue(
+            app.staticTexts["BACKUP STORY"].waitForExistence(timeout: 5) ||
+                app.staticTexts["BACKUP STORY"].exists,
+            diagnostics("Backup detail missing 'BACKUP STORY' content label", app: app)
+        )
+        XCTAssertTrue(
+            app.staticTexts["VISUAL DIRECTION"].waitForExistence(timeout: 5) ||
+                app.staticTexts["VISUAL DIRECTION"].exists,
+            diagnostics("Backup detail missing 'VISUAL DIRECTION' content label", app: app)
+        )
+        attachScreenshot(named: "06-backup-detail-sheet", app: app)
+
+        XCTAssertTrue(
+            useBackupButton.waitForExistence(timeout: 5),
+            diagnostics("'Use backup' button did not become available", app: app)
+        )
+        useBackupButton.tap()
+
+        // The detail sheet must dismiss after tapping Use backup.
+        // If Cancel is still visible, the backup action did not complete.
+        let cancelInSheet = app.buttons["Cancel"]
+        XCTAssertFalse(
+            cancelInSheet.waitForExistence(timeout: 5),
+            diagnostics("Backup detail sheet did not dismiss after tapping 'Use backup'; Cancel is still visible", app: app)
+        )
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        attachScreenshot(named: "07-after-tap-use-backup", app: app)
+
+        openProfile(in: app)
+        attachScreenshot(named: "07b-profile-after-backup", app: app)
+
+        //    ArchiveSection is embedded inline in Profile; an explicit Archive button
+        //    may not exist. Tap it if present, otherwise proceed to Backups directly.
+        let archiveButton = app.buttons["Archive"]
+        if archiveButton.waitForExistence(timeout: 10) {
+            archiveButton.tap()
+            _ = app.staticTexts["Archive"].waitForExistence(timeout: 10)
+        }
+
+        let backupsFilter = app.buttons["Backups"]
+        XCTAssertTrue(backupsFilter.waitForExistence(timeout: 10), diagnostics("Backups filter not found", app: app))
+        backupsFilter.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+
+        let usedBackupLine = app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS[c] %@", "Used backup")
+        ).firstMatch
+        XCTAssertTrue(
+            usedBackupLine.waitForExistence(timeout: 10),
+            diagnostics("Archive Backups does not show any 'Used backup' outcome", app: app)
+        )
+        attachScreenshot(named: "08-archive-backups-result", app: app)
+    }
+
+    @MainActor
+    func testManagerWeekStartMenuExcludesPastDates() throws {
+        let app = launchInstalledApp()
+        waitForCreatorRuntime(in: app)
+        openProfile(in: app)
+        openManagerWeekly(in: app)
+
+        let dataLoaded = waitForWeeklyDataToLoad(in: app, timeout: 45)
+        print("WEEK_START_MENU_PROOF_WEEKLY_DATA_LOADED=\(dataLoaded)")
+        if !dataLoaded {
+            maybeRefreshWeekly(in: app)
+            XCTAssertTrue(
+                waitForWeeklyDataToLoad(in: app, timeout: 60),
+                diagnostics("Manager Weekly data did not finish loading", app: app)
+            )
+        }
+        attachScreenshot(named: "70-week-start-menu-before", app: app)
+
+        let weekStartSelector = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Week starts ")
+        ).firstMatch
+        XCTAssertTrue(
+            weekStartSelector.waitForExistence(timeout: 10),
+            diagnostics("Week-start selector ('Week starts …') is not visible on manager Weekly", app: app)
+        )
+        let menuTrigger = weekStartSelector.buttons.firstMatch
+        XCTAssertTrue(
+            menuTrigger.exists,
+            diagnostics("Week-start selector does not expose its nested date menu button", app: app)
+        )
+        menuTrigger.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "dd MMM"
+        let todayLabel = fmt.string(from: Date())
+        let yesterdayLabel = fmt.string(
+            from: Calendar.current.date(byAdding: .day, value: -1, to: Date())!
+        )
+
+        // Menu options use identifier "calendar"; the selector trigger can reuse
+        // the same date label for the currently selected week.
+        let todayPred = NSPredicate(
+            format: "label == %@ AND identifier == %@ AND NOT label BEGINSWITH %@",
+            todayLabel, "calendar", "Week starts "
+        )
+        let yesterdayPred = NSPredicate(
+            format: "label == %@ AND identifier == %@ AND NOT label BEGINSWITH %@",
+            yesterdayLabel, "calendar", "Week starts "
+        )
+
+        let todayOption = app.buttons.matching(todayPred).firstMatch
+        let yesterdayOption = app.buttons.matching(yesterdayPred).firstMatch
+
+        XCTAssertTrue(
+            todayOption.waitForExistence(timeout: 5),
+            diagnostics("Week-start menu should include today (\(todayLabel))", app: app)
+        )
+        XCTAssertFalse(
+            yesterdayOption.exists,
+            diagnostics("Week-start menu should exclude yesterday (\(yesterdayLabel))", app: app)
+        )
+
+        attachScreenshot(named: "71-week-start-menu-open", app: app)
+
+        // Dismiss without selecting a date — tap near the top of the screen
+        // to close the popup menu.
+        let topCoord = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+        topCoord.tap()
+    }
+
     // MARK: - App Launch
 
     @MainActor
@@ -250,6 +505,8 @@ final class InstalledContentHelperUITests: XCTestCase {
             app.launchEnvironment[key] = value
         }
 
+        app.terminate()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         addUIInterruptionMonitor(withDescription: "System alerts") { alert in
             let allow = alert.buttons["Allow"]
             if allow.exists {
@@ -375,6 +632,31 @@ final class InstalledContentHelperUITests: XCTestCase {
         return nil
     }
 
+    @MainActor
+    private func scrollToFirstButtonMatchingPrefix(
+        in app: XCUIApplication,
+        prefix: String,
+        maxSwipes: Int = 8
+    ) -> XCUIElement? {
+        for _ in 0..<maxSwipes {
+            if let match = app.buttons.allElementsBoundByIndex.first(where: { $0.exists && $0.label.hasPrefix(prefix) }) {
+                return match
+            }
+            app.swipeUp()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+
+        for _ in 0..<maxSwipes {
+            if let match = app.buttons.allElementsBoundByIndex.first(where: { $0.exists && $0.label.hasPrefix(prefix) }) {
+                return match
+            }
+            app.swipeDown()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+
+        return nil
+    }
+
     // MARK: - Identifier-based helpers
 
     /// Waits for an element with the given accessibility identifier to exist.
@@ -405,10 +687,6 @@ final class InstalledContentHelperUITests: XCTestCase {
         guard let element else { return }
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            if element.exists && element.isHittable {
-                element.tap()
-                return
-            }
             if element.exists {
                 let frame = element.frame
                 let visibleBottom = app.frame.maxY - 110
@@ -620,12 +898,12 @@ final class InstalledContentHelperUITests: XCTestCase {
     private func waitForReviewButton(in app: XCUIApplication, timeout: TimeInterval) -> XCUIElement? {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            // Primary: identifier
+            // Primary: identifier (full-week review)
             let reviewById = app.buttons["weekly.reviewGenerated"]
             if reviewById.exists {
                 return reviewById
             }
-            // Fallback: label-based lookup
+            // Fallback: label-based lookup for full-week review
             for label in ["Review generated day cards", "Review"] {
                 let button = app.buttons[label]
                 if button.exists {
@@ -633,6 +911,85 @@ final class InstalledContentHelperUITests: XCTestCase {
                 }
             }
             RunLoop.current.run(until: Date().addingTimeInterval(1))
+        } while Date() < deadline
+
+        // On timeout: print visible generation-status labels/buttons for diagnostics
+        print("MANAGER_GENERATION_PROOF_TIMEOUT: No review button found after \(timeout)s")
+        for button in app.buttons.allElementsBoundByIndex where button.exists {
+            if button.label.contains("Review") || button.label.contains("generated") || button.label.contains("Generation") {
+                print("MANAGER_GENERATION_PROOF_VISIBLE_BUTTON=\(button.label)")
+            }
+        }
+        for text in app.staticTexts.allElementsBoundByIndex where text.exists {
+            if text.label.contains("generation") || text.label.contains("Generation") || text.label.contains("Status") {
+                print("MANAGER_GENERATION_PROOF_VISIBLE_LABEL=\(text.label)")
+            }
+        }
+        return nil
+    }
+
+    @MainActor
+    private func retryVisibleFailedDayAndWaitForReview(in app: XCUIApplication) -> XCUIElement? {
+        guard let retryButton = waitForFirstButtonMatchingPrefix(in: app, prefix: "Retry ", timeout: 30) ??
+            scrollToFirstButtonMatchingPrefix(in: app, prefix: "Retry ", maxSwipes: 8) else {
+            print("MANAGER_GENERATION_PROOF_RETRY_AVAILABLE=false")
+            return nil
+        }
+
+        let retryLabel = retryButton.label
+        let shortDay = retryLabel
+            .replacingOccurrences(of: "Retry ", with: "")
+            .replacingOccurrences(of: " generation", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        print("MANAGER_GENERATION_PROOF_RETRY_AVAILABLE=true")
+        print("MANAGER_GENERATION_PROOF_RETRY_LABEL=\(retryLabel)")
+        print("MANAGER_GENERATION_PROOF_RETRY_SHORT_DAY=\(shortDay)")
+
+        guard !shortDay.isEmpty else {
+            XCTFail("Could not derive the failed weekday from '\(retryLabel)'")
+            return nil
+        }
+
+        tapWhenHittableOrVisibleCenter(retryButton, in: app, timeout: 5)
+        attachScreenshot(named: "62b-manager-retry-day-tapped", app: app)
+
+        let generatedLabel = "\(shortDay): Generated"
+        let retryingLabel = "\(shortDay): Retrying"
+        let retryingOrGenerated = waitForAnyStaticText(
+            in: app,
+            labels: [retryingLabel, generatedLabel],
+            timeout: 10
+        )
+        print("MANAGER_GENERATION_PROOF_DAY_RETRYING_OR_GENERATED=\(retryingOrGenerated ?? "none")")
+        XCTAssertNotNil(
+            retryingOrGenerated,
+            diagnostics("Retried day '\(shortDay)' did not show '\(retryingLabel)' or '\(generatedLabel)' within 10s", app: app)
+        )
+        attachScreenshot(named: "62bb-manager-retry-day-retrying", app: app)
+
+        let dayGenerated = app.staticTexts[generatedLabel].waitForExistence(timeout: 600)
+        print("MANAGER_GENERATION_PROOF_DAY_GENERATED=\(dayGenerated)")
+        XCTAssertTrue(dayGenerated, diagnostics("Retried day '\(shortDay)' did not show '\(generatedLabel)' within 600s", app: app))
+        attachScreenshot(named: "62c-manager-retry-day-generated", app: app)
+
+        let reviewButton = waitForReviewButton(in: app, timeout: 900)
+        print("MANAGER_GENERATION_PROOF_REVIEW_AFTER_RETRY=\(reviewButton != nil)")
+        return reviewButton
+    }
+
+    @MainActor
+    private func waitForAnyStaticText(
+        in app: XCUIApplication,
+        labels: [String],
+        timeout: TimeInterval
+    ) -> String? {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            for label in labels where app.staticTexts[label].exists {
+                return label
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         } while Date() < deadline
         return nil
     }
@@ -701,7 +1058,7 @@ final class InstalledContentHelperUITests: XCTestCase {
                     button.tap()
                 } else if label == "Save edits" {
                     // The editor surface dismissed but the button reference
-                    // still resolves — treat as a clean dismissal.
+            // still resolves - treat as a clean dismissal.
                     return true
                 } else {
                     tapWhenHittableOrVisibleCenter(button, in: app, timeout: 3)
@@ -710,6 +1067,261 @@ final class InstalledContentHelperUITests: XCTestCase {
             }
         }
         return false
+    }
+
+    // MARK: - Generation proof helpers
+
+    /// Waits for the manager Weekly screen to finish loading live data.
+    /// Returns true when "Loading week" is gone and actionable UI is present,
+    /// or when weekly day rows / generate / review controls are visible.
+    @MainActor
+    private func waitForWeeklyDataToLoad(in app: XCUIApplication, timeout: TimeInterval = 30) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            let loadingLabel = app.staticTexts["Loading week"]
+            if !loadingLabel.exists {
+                if app.buttons["Generate"].exists || app.buttons["Regenerate"].exists ||
+                    app.buttons["weekly.reviewGenerated"].exists || app.buttons["Review"].exists ||
+                    app.buttons["weekly.day.MON"].exists {
+                    return true
+                }
+                let monFallback = app.buttons.matching(
+                    NSPredicate(format: "label BEGINSWITH %@", "MON")
+                ).firstMatch
+                if monFallback.exists {
+                    return true
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+        } while Date() < deadline
+
+        if app.staticTexts["Loading week"].exists {
+            print("MANAGER_GENERATION_PROOF_WARNING: Loading week still visible after \(timeout)s")
+        }
+        return false
+    }
+
+    /// Opens the Weekly options menu and taps Refresh, then waits briefly.
+    @MainActor
+    private func maybeRefreshWeekly(in app: XCUIApplication) {
+        let optionsButton = app.buttons["Weekly options"]
+        guard optionsButton.exists, optionsButton.isHittable else { return }
+        optionsButton.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+
+        let refreshButton = app.buttons["Refresh"]
+        if refreshButton.exists, refreshButton.isHittable {
+            refreshButton.tap()
+            print("MANAGER_GENERATION_PROOF_INFO: Tapped Refresh in Weekly options menu")
+            RunLoop.current.run(until: Date().addingTimeInterval(2))
+        }
+    }
+
+    /// Reuses the nested week-start Menu targeting from testManagerWeekStartMenuExcludesPastDates.
+    /// Opens the week-start popup, selects today's date, and waits for weekly data to reload.
+    @MainActor
+    private func selectCurrentWeekStart(in app: XCUIApplication) {
+        let weekStartSelector = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Week starts ")
+        ).firstMatch
+        guard weekStartSelector.waitForExistence(timeout: 10) else {
+            XCTFail(diagnostics("Week-start selector is required before live generation", app: app))
+            return
+        }
+        let menuTrigger = weekStartSelector.buttons.firstMatch
+        guard menuTrigger.exists else {
+            XCTFail(diagnostics("Week-start selector does not expose its date menu button", app: app))
+            return
+        }
+        menuTrigger.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "dd MMM"
+        let todayLabel = fmt.string(from: Date())
+
+        let todayPred = NSPredicate(
+            format: "label == %@ AND NOT label BEGINSWITH %@",
+            todayLabel, "Week starts "
+        )
+        let todayOption = app.buttons.matching(todayPred).firstMatch
+        guard todayOption.waitForExistence(timeout: 5) else {
+            XCTFail(diagnostics("Today (\(todayLabel)) is missing from the week-start menu", app: app))
+            return
+        }
+        todayOption.tap()
+        print("MANAGER_GENERATION_PROOF_INFO: Selected today's week (\(todayLabel)) as generation week start")
+        XCTAssertTrue(
+            waitForWeeklyDataToLoad(in: app, timeout: 30),
+            diagnostics("Weekly data did not reload after selecting today", app: app)
+        )
+    }
+
+    @MainActor
+    private func ensureWeeklyBriefAllowsGeneration(in app: XCUIApplication) {
+        print("MANAGER_GENERATION_PROOF_INFO: Generate unavailable; setting a short weekly brief for proof run")
+        let openBrief = app.buttons["Open Weekly Brief editor"]
+        if openBrief.exists {
+            tapWhenHittableOrVisibleCenter(openBrief, in: app, timeout: 5)
+        }
+
+        let textView = app.textViews.firstMatch
+        if textView.waitForExistence(timeout: 10) {
+            tapWhenHittableOrVisibleCenter(textView, in: app, timeout: 5)
+            textView.typeText(
+                "Weekly routine: proof run for creator generation. Focus on real training, food, recovery, family life, and warm witty voice."
+            )
+        } else {
+            for label in ["Weekly routine", "Coming up", "Family"] {
+                let suggestion = app.buttons[label]
+                if suggestion.exists && suggestion.isHittable {
+                    suggestion.tap()
+                }
+            }
+        }
+
+        dismissKeyboardIfPresent(in: app)
+        let generationAction = saveWeeklyBriefAndWaitForGenerationAction(in: app, below: textView)
+        XCTAssertNotNil(
+            generationAction,
+            diagnostics("Generate did not become available after saving a weekly brief", app: app)
+        )
+    }
+
+    @MainActor
+    private func dismissKeyboardIfPresent(in app: XCUIApplication) {
+        for label in ["Done", "Return"] {
+            let button = app.buttons[label]
+            if button.exists && button.isHittable {
+                button.tap()
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+                return
+            }
+        }
+    }
+
+    @MainActor
+    private func tapWeeklyBriefSave(in app: XCUIApplication, below textView: XCUIElement) -> Bool {
+        let deadline = Date().addingTimeInterval(10)
+        repeat {
+            let saveButtons = app.buttons.matching(NSPredicate(format: "label == %@", "Save"))
+            for index in 0..<saveButtons.count {
+                let button = saveButtons.element(boundBy: index)
+                guard button.exists else { continue }
+                if button.frame.minY > textView.frame.maxY - 4 {
+                    tapWhenHittableOrVisibleCenter(button, in: app, timeout: 3)
+                    RunLoop.current.run(until: Date().addingTimeInterval(1))
+                    return true
+                }
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        } while Date() < deadline
+        return false
+    }
+
+    @MainActor
+    private func saveWeeklyBriefAndWaitForGenerationAction(
+        in app: XCUIApplication,
+        below textView: XCUIElement
+    ) -> XCUIElement? {
+        for attempt in 1...3 {
+            let saved = tapWeeklyBriefSave(in: app, below: textView)
+            if !saved {
+                return nil
+            }
+
+            if let action = firstExistingButton(in: app, labels: generationActionLabels, timeout: 15) {
+                return action
+            }
+
+            let networkLost = app.staticTexts.containing(
+                NSPredicate(format: "label CONTAINS[c] %@", "network connection was lost")
+            ).firstMatch
+            if networkLost.exists, attempt < 3 {
+                print("MANAGER_GENERATION_PROOF_WEEKLY_BRIEF_SAVE_RETRY=\(attempt)")
+                RunLoop.current.run(until: Date().addingTimeInterval(Double(attempt)))
+                continue
+            }
+        }
+
+        return firstExistingButton(in: app, labels: generationActionLabels, timeout: 5)
+    }
+
+    /// Prints visible static text, text field values, and text view values from the
+    /// generated review surface for human verification. Expands ONE "Full generated card"
+    /// DisclosureGroup — the live app then exposes all 7 day cards' content at once
+    /// (21 text fields: 7 cards × title/why/effort) plus 28 text views.
+    /// Emits one observed/expected count marker without asserting exact counts
+    /// (accessibility versions vary). Stops without selecting Publish.
+    @MainActor
+    private func printReviewSurfaceContent(in app: XCUIApplication) {
+        printVisibleStaticTexts(in: app, prefix: "MANAGER_GENERATION_REVIEW_LABEL")
+        printVisibleTextFieldAndTextViewValues(in: app, prefix: "MANAGER_GENERATION_REVIEW_FIELD")
+
+        // Expand exactly one "Full generated card" DisclosureGroup.
+        // Live evidence: expanding one card reveals all 7 day cards —
+        // 21 text fields (7 × title/why/effort) and 28 text views (7 × script/backup/caption/cta).
+        let matchingCards = app.buttons.matching(
+            NSPredicate(format: "label ==[c] %@", "Full generated card")
+        )
+        var fullCard: XCUIElement?
+        for i in 0..<matchingCards.count {
+            let btn = matchingCards.element(boundBy: i)
+            if btn.exists && btn.isHittable {
+                fullCard = btn
+                break
+            }
+        }
+        if fullCard == nil, matchingCards.firstMatch.exists {
+            fullCard = matchingCards.firstMatch
+        }
+        if let card = fullCard {
+            tapWhenHittableOrVisibleCenter(card, in: app, timeout: 5)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+            print("MANAGER_GENERATION_REVIEW_FULL_CARD_EXPANDED")
+        }
+
+        // Let expanded content settle, then print the collection once.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        printVisibleStaticTexts(in: app, prefix: "MANAGER_GENERATION_REVIEW_EXPANDED_LABEL")
+        printVisibleTextFieldAndTextViewValues(in: app, prefix: "MANAGER_GENERATION_REVIEW_EXPANDED_FIELD")
+
+        // Emit observed vs expected counts. Do NOT assert exact values —
+        // accessibility element representation varies across OS and device versions.
+        let observedTextFieldCount = app.textFields.allElementsBoundByIndex.count
+        let observedTextViewCount = app.textViews.allElementsBoundByIndex.count
+        print("MANAGER_GENERATION_REVIEW_COUNT_MARKER text-fields(observed)=\(observedTextFieldCount) text-fields(expected)=21 text-views(observed)=\(observedTextViewCount) text-views(expected)=28")
+
+        let keyLabels = ["Generated Week", "Draft week generated", "MANAGER AI REVIEW"]
+        for label in keyLabels {
+            let element = app.staticTexts[label]
+            if element.exists {
+                print("MANAGER_GENERATION_REVIEW_KEY_LABEL[\(label)]=\(element.label)")
+            }
+        }
+    }
+
+    @MainActor
+    private func printVisibleStaticTexts(in app: XCUIApplication, prefix: String) {
+        for (index, text) in app.staticTexts.allElementsBoundByIndex.enumerated()
+            where text.exists && !text.label.isEmpty {
+            print("\(prefix)[\(index)]=\(text.label)")
+        }
+    }
+
+    @MainActor
+    private func printVisibleTextFieldAndTextViewValues(in app: XCUIApplication, prefix: String) {
+        for (index, field) in app.textFields.allElementsBoundByIndex.enumerated() where field.exists {
+            let value = field.value as? String ?? ""
+            guard !field.label.isEmpty || !value.isEmpty else { continue }
+            print("\(prefix)_TEXTFIELD[\(index)] label=\(field.label) value=\(value)")
+        }
+        for (index, view) in app.textViews.allElementsBoundByIndex.enumerated() where view.exists {
+            let value = view.value as? String ?? ""
+            guard !view.label.isEmpty || !value.isEmpty else { continue }
+            print("\(prefix)_TEXTVIEW[\(index)] label=\(view.label) value=\(value)")
+        }
     }
 
     // MARK: - Screenshot / Diagnostics

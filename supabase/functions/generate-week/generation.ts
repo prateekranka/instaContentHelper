@@ -1,6 +1,208 @@
 export type GenerateWeekMode = "generate_draft" | "regenerate_draft";
 export type GenerateWeekResponseMode = "sync" | "async";
 
+/**
+ * Creator content pillars. The creator is a lifestyle creator documenting a
+ * rounded healthy life, NOT a gym instructor. Gym is one of four pillars, not
+ * the whole identity. Each generated day must map to exactly one of these.
+ */
+export const CONTENT_PILLARS = [
+  "gym",
+  "lifestyle",
+  "eating",
+  "recovery",
+] as const;
+export type ContentPillar = (typeof CONTENT_PILLARS)[number];
+
+/** Maximum gym-primary days in a 7-day week unless the brief explicitly narrows scope. */
+export const GYM_PRIMARY_DAY_CAP = 2;
+
+export function normalizeContentPillar(value: unknown): ContentPillar | null {
+  const normalized = stringValue(value)?.trim().toLowerCase() ?? "";
+  if (CONTENT_PILLARS.includes(normalized as ContentPillar)) {
+    return normalized as ContentPillar;
+  }
+  // Lenient aliases so legacy values still map to the four-pillar model.
+  if (
+    normalized === "fitness" || normalized === "training" ||
+    normalized === "strength" || normalized === "workout"
+  ) {
+    return "gym";
+  }
+  if (
+    normalized === "healthy lifestyle" || normalized === "wellness" ||
+    normalized === "habit" || normalized === "habits" || normalized === "family"
+  ) {
+    return "lifestyle";
+  }
+  if (
+    normalized === "food" || normalized === "nutrition" ||
+    normalized === "meal" || normalized === "healthy eating"
+  ) {
+    return "eating";
+  }
+  if (
+    normalized === "rest" || normalized === "sleep" ||
+    normalized === "mobility" || normalized === "stretch"
+  ) {
+    return "recovery";
+  }
+  return null;
+}
+
+/**
+ * Phrases that make the creator sound like a coach/instructor rather than a
+ * creator documenting her own life. These must not appear as the main angle.
+ */
+export const INSTRUCTOR_ISH_PHRASES = [
+  "do this exercise",
+  "fix your form",
+  "your client",
+  "my clients",
+  "training clients",
+  "upper body cue",
+  "training angle",
+  "do this workout",
+  "try this workout",
+  "here's how to train",
+  "here is how to train",
+];
+
+/**
+ * Instructor endings observed in live output that must be rejected.
+ * These turn the creator into a coach delivering a closing instruction
+ * rather than a human ending with an observation, punchline, or question.
+ */
+export const BANNED_INSTRUCTOR_ENDINGS = [
+  "just start",
+  "one set, then the next",
+  "if you needed a reminder",
+  "the real win",
+  "you can do this",
+  "you got this",
+  "no excuses",
+  "start today",
+  "you're stronger than you think",
+];
+
+/**
+ * Banned CTA templates that make every script end the same way.
+ * No more than 2 explicit save CTAs across a 7-day week.
+ */
+export const BANNED_CTA_TEMPLATES = [
+  "save this for",
+  "save this reel",
+  "save this post",
+  "save this to",
+  "tell me in the comments",
+  "tell me what you think",
+  "send this to a friend",
+  "send to a friend who",
+  "tag someone who",
+  "share this with",
+  "comment below",
+  "follow for more",
+  "like and save",
+  "dm me",
+];
+
+export const CREATOR_NO_GO_PHRASES = [
+  "age is just a number",
+  "no excuses",
+  "crush it",
+  "beast mode",
+  "discipline beats motivation",
+  "strong women rise",
+  "queen energy",
+  "unstoppable",
+  "fitness is my therapy",
+  "this is your sign",
+];
+
+const CREATOR_SIGNATURE_SERIES = [
+  "Today's Hyrox Homework",
+  "The Set I Did Not Ask For",
+  "Things I Do When My Gym Is Missing Equipment",
+  "Rich In Life Because...",
+  "What's In My Gym Bag",
+  "Food That Supports Training",
+  "Stop Telling Your Kids...",
+  "Things I Did Not Expect To Do In My 60s",
+  "Training While Life Is Still Happening",
+  "Brand In My Real Routine",
+];
+
+const CREATOR_REALISTIC_CAPTURE_BANK = [
+  "walking into gym",
+  "mirror shot",
+  "warm-up",
+  "sled push or pull",
+  "battle ropes",
+  "wall balls",
+  "lunges",
+  "strength sets",
+  "coach instructions",
+  "sweat close-up",
+  "tired smile",
+  "gym bag",
+  "shoes",
+  "bottle",
+  "salts or hydration",
+  "breakfast",
+  "haldi jeera water",
+  "kanji",
+  "chia pudding",
+  "lunch",
+  "dinner prep",
+  "cooking for husband",
+  "plants",
+  "rest",
+  "evening wind-down",
+  "daughter voice note",
+  "race registration",
+  "walking outside",
+  "errands",
+];
+
+export function containsInstructorPhrasing(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return INSTRUCTOR_ISH_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+export function containsInstructorEnding(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return BANNED_INSTRUCTOR_ENDINGS.some((phrase) =>
+    normalized.includes(phrase)
+  );
+}
+
+/**
+ * Count cards that carry an explicit save CTA across any audience-facing
+ * text field. Each card is counted at most once regardless of how many
+ * fields contain the pattern. Ordinary uses of "save" (save time, saved
+ * my breakfast, I save this kind of energy) are not counted — the pattern
+ * requires "save this" followed by for/reel/post/to, sentence-ending
+ * punctuation, or end-of-text.
+ */
+export function countExplicitSaveCTAs(
+  cards: GeneratedDailyCard[],
+): number {
+  const saveCTAPattern = /\bsave this\b\s*(?:for|reel|post|to|[.!?,;]|$)/i;
+
+  return cards.filter((card) => {
+    const texts = [
+      card.cta,
+      card.script,
+      card.caption,
+      card.backup_story,
+      card.backup_caption_only,
+      card.caption_backup_detail,
+      ...card.on_screen_text,
+    ];
+    return texts.some((text) => saveCTAPattern.test(text));
+  }).length;
+}
+
 export type RegenerateDayRequest = {
   action: "regenerate_day";
   creator_id: string;
@@ -40,7 +242,7 @@ export type GenerationInputSnapshot = {
   existing_week_cards?: Record<string, unknown>[];
 };
 
-const DEFAULT_AI_REQUEST_TIMEOUT_MS = 150_000;
+const DEFAULT_AI_REQUEST_TIMEOUT_MS = 240_000;
 
 export type GeneratedScene = {
   number: number;
@@ -147,6 +349,104 @@ export type AIProviderConfig = {
   model: string;
   apiKey: string;
   baseURL?: string;
+};
+
+export type AIGenerationPhase =
+  | "full_week_generation"
+  | "split_week_day_generation"
+  | "async_day_generation"
+  | "parallel_day_generation"
+  | "regenerate_day_generation";
+
+export type AIGenerationScope = "week" | "day";
+
+export type AIGenerationAttemptLog = {
+  event: "generation_ai_attempt";
+  generation_id: string | null;
+  generation_scope: AIGenerationScope;
+  phase: AIGenerationPhase;
+  week_start_date: string;
+  scheduled_date: string | null;
+  day_index: number | null;
+  provider: AIProviderName;
+  model: string;
+  provider_attempt: number;
+  started_at: string;
+  ended_at: string;
+  duration_ms: number;
+  status: "success" | "failure";
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  finish_reason: string | null;
+  quality_score: number | null;
+  quality_version: "instagram_content_quality_v2" | null;
+  quality_metrics: AIOutputQualityMetrics | null;
+  error_category: string | null;
+  error_message: string | null;
+};
+
+export type AIGenerationAttemptLogger = (
+  log: AIGenerationAttemptLog,
+) => void;
+
+export type AIGenerationInstrumentation = {
+  generationID?: string;
+  generationScope: AIGenerationScope;
+  phase: AIGenerationPhase;
+  logger: AIGenerationAttemptLogger;
+};
+
+type AIGenerationProviderAttemptContext = AIGenerationInstrumentation & {
+  provider: AIProviderName;
+  model: string;
+  providerAttempt: number;
+  weekStartDate: string;
+  scheduledDate?: string;
+  dayIndex?: number;
+};
+
+type AIResponseMetadata = {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  finishReason: string | null;
+};
+
+export type AIOutputQualityMetrics = {
+  version: "instagram_content_quality_v2";
+  score: number;
+  pillar_count: number;
+  instructor_phrase_count: number;
+  instructor_ending_count: number;
+  source_reference_link_count: number;
+  cards_with_source_reference_count: number;
+  hook_first_3s_present: boolean;
+  first_frame_text_hook_present: boolean;
+  opening_visual_motion_present: boolean;
+  clear_payoff_or_curiosity_gap_present: boolean;
+  watch_without_sound_ready: boolean;
+  on_screen_text_present: boolean;
+  caption_or_subtitle_support_present: boolean;
+  on_screen_text_density_ok: boolean;
+  duration_fit: "ideal" | "acceptable" | "too_short" | "too_long" | "not_applicable";
+  scene_variety_count: number;
+  visual_variety_present: boolean;
+  audio_or_silent_strategy_present: boolean;
+  shareability_reason_present: boolean;
+  save_or_share_value_present: boolean;
+  clear_cta_present: boolean;
+  cta_type: "save" | "share" | "reply" | "comment" | "profile" | "none";
+  creator_lived_detail_present: boolean;
+  specific_context_anchor_present: boolean;
+  generic_template_risk_count: number;
+  story_interactive_sticker_present: boolean | null;
+  story_reply_prompt_present: boolean | null;
+  story_slide_count_fit: boolean | null;
+  post_first_slide_promise_present: boolean | null;
+  post_one_clear_idea_present: boolean | null;
+  post_final_cta_present: boolean | null;
+  post_saveable_value_present: boolean | null;
 };
 
 export function preserveManualDailyCardEdits(
@@ -305,10 +605,19 @@ export function buildPromptMessages(input: GenerationInputSnapshot): {
   return {
     system: [
       "You generate Creator Content OS weekly content as strict JSON.",
+      "The creator is a lifestyle creator documenting her own rounded healthy life, NOT a gym instructor or online coach. Gym is one of four pillars (gym, lifestyle, eating, recovery), not her whole identity.",
+      "Stable creator brief: Indian mother, wife, and HYROX athlete building a second-half-of-life fitness brand; age is context, not the whole personality.",
       "Use only the provided creator profile, weekly setup, confirmed references and extractions, brand obligations, key moments, archive feedback, and idea bank.",
       "Apply the generation guidance silently; resolve source conflicts by precedence without asking the admin.",
       "Generate exactly seven daily cards for the requested week.",
-      "Prioritize shootability, calm practical tone, and creator safety over trend chasing.",
+      "Each day must set content_pillar to one of gym, lifestyle, eating, or recovery, and the week must represent at least 3 of the 4 pillars unless the weekly brief explicitly narrows scope. Default to exactly 2 training/HYROX-led concepts unless the brief explicitly asks for a gym-focused week. Day routines may anchor non-training lifestyle, eating, or recovery concepts.",
+      "Frame everything in first person as what the creator is doing, noticing, or trying — never as instruction for followers. Ban coach language like 'do this exercise', 'fix your form', 'my clients', 'your clients', 'training clients', 'upper body cue' as the main angle, or generic 'training angle'.",
+      "Prioritize shootability, retention-first hooks, and creator safety. Creative stakes win over trend chasing.",
+      "Use only supplied profile, brief, and confirmed reference facts. Never invent biography, quotes, family reactions, exact durations, locations not in the brief, history, equipment failures, or dialogue. Place any uncertainty in assumptions or risk_notes.",
+      "Use at most 2 explicit save CTAs across the week. Do not end every script by instructing the audience — use punchlines, observations, or genuinely earned questions. Ban 'save this/tell me/send to a friend' templates.",
+      "Reject instructor endings: 'just start', 'one set, then the next', 'if you needed a reminder', 'the real win', and follower-directed workout permission sentences.",
+      "Mention age in at most one card per ordinary week unless the brief explicitly centers age or milestones.",
+      "Every non-training card must have a genuinely non-training center — never relabel a gym script as lifestyle, eating, or recovery.",
       "Avoid all no-go topics and surface assumptions or risks instead of inventing facts.",
     ].join(" "),
     user: JSON.stringify({
@@ -387,11 +696,21 @@ function buildDayPromptMessages(
   return {
     system: [
       "You generate Creator Content OS daily content as strict JSON.",
+      "The creator is a lifestyle creator documenting her own rounded healthy life, NOT a gym instructor or online coach. Gym is one of four pillars (gym, lifestyle, eating, recovery), not her whole identity.",
+      "Stable creator brief: Indian mother, wife, and HYROX athlete building a second-half-of-life fitness brand; age is context, not the whole personality.",
       "Use only the provided creator profile, weekly setup, confirmed references and extractions, brand obligations, key moments, archive feedback, and idea bank.",
       "Apply the generation guidance silently; resolve source conflicts by precedence without asking the admin.",
       "Generate exactly one daily card for the requested scheduled_date.",
+      "Set content_pillar to one of gym, lifestyle, eating, or recovery. Frame the card in first person as what the creator is doing/noticing/trying — never as instruction for followers.",
+      "Ban coach language: 'do this exercise', 'fix your form', 'my clients', 'your clients', 'training clients', 'upper body cue' as the main angle, generic 'training angle', and coach-like imperatives.",
       "All day-of-week language must match the requested scheduled_date.",
-      "Prioritize shootability, calm practical tone, and creator safety over trend chasing.",
+      "Prioritize shootability, retention-first hooks, and creator safety. Creative stakes win over trend chasing.",
+      "Use only supplied profile, brief, and confirmed reference facts. Never invent biography, quotes, family reactions, exact durations, locations not in the brief, history, equipment failures, or dialogue. Place any uncertainty in assumptions or risk_notes.",
+      "Follow the day_intent guidance: the target weekday's role determines whether this card is training-led, recovery/eating/lifestyle, or experimental. End cards with a punchline, observation, or genuinely earned question — do NOT end every script with a save CTA.",
+      "Explicit save CTA (save this, save this for, save this reel) is eligible on at most two named weekdays. On all other days end with punchline, observation, or earned question. The day_intent tells you whether this day is eligible.",
+      "Mention age on at most one named weekday per week and only when the weekly brief or day_intent explicitly supports it. Never default to age as a hook.",
+      "Every non-training card (lifestyle, eating, recovery) must have a genuinely non-training center. Never relabel a gym script as lifestyle, eating, or recovery.",
+      "Reject instructor endings: 'just start', 'one set, then the next', 'if you needed a reminder', 'the real win', 'you can do this', 'you got this', 'no excuses', 'start today', and follower-directed workout permission sentences.",
       "Avoid all no-go topics and surface assumptions or risks instead of inventing facts.",
     ].join(" "),
     user: JSON.stringify({
@@ -422,6 +741,13 @@ function buildGenerationGuidance(
     ? dayIntentForScheduledDate(input, scheduledDate, dayIndex)
     : undefined;
 
+  const creatorDisplayName =
+    stringValue(
+      isRecord(input.creator_profile)
+        ? input.creator_profile.display_name
+        : undefined,
+    ) ?? "the creator";
+
   return {
     precedence: [
       "Weekly brief and weekly setup notes win for this week's situational facts, including current city, travel, training status, energy, events, and podcast/admin focus.",
@@ -434,20 +760,298 @@ function buildGenerationGuidance(
       "When uncertain, choose the fact from the weekly brief/setup notes and mention only real output risks, not internal source conflicts.",
     ],
     inferred_exclusions: inferStaleContextExclusions(input),
+    creator_positioning: {
+      identity:
+        "The creator is an Indian mother, wife, and HYROX athlete in her early 60s building a second-half-of-life fitness brand. She is a rounded lifestyle creator documenting her own healthy life - NOT a gym instructor or online coach. Gym is one of four production pillars, not her whole identity.",
+      brand_essence:
+        "Proof that life does not shrink with age - it gets stronger, fuller, and more intentional.",
+      positioning_rule:
+        "Show women that the second half of life can be strong, funny, feminine, ambitious, and deeply alive. She is not trying to look younger; she is making 60 feel like something to look forward to.",
+      audience: [
+        "Women 35+",
+        "Indian women and mothers",
+        "Women restarting fitness later",
+        "People who want fitness to feel real",
+        "Fitness, activewear, wellness, hydration, recovery, food, and lifestyle brands",
+      ],
+      voice_rules: [
+        "Conversational, warm, witty, slightly sarcastic, self-aware.",
+        "Indian but not caricatured; strong but not intimidating.",
+        "Proud but not show-offy; wise without preaching.",
+        "Sounds like a woman who has lived enough life to know what matters and is still curious enough to try hard things.",
+      ],
+      age_rule: [
+        "Do not mention the creator's age in every post.",
+        "Mention age in at most one card per ordinary week. Use age only when the weekly brief explicitly centers age, milestones, or a milestone event (birthday, HYROX age group, decade reflection).",
+        "Use age only when it adds emotional weight, contrast, or context: restarting fitness later, HYROX in her 60s, women ageing well, mother/children contrast, or major milestones.",
+        "Avoid age as a default hook for ordinary workouts, meals, brand integrations, captions, or daily routine posts.",
+      ],
+      never_sound_like: [
+        "a 25-year-old fitness influencer",
+        "a gym bro",
+        "a motivational speaker",
+        "a preachy parent",
+        "a generic brand ambassador",
+        "a luxury wellness cliche",
+        "a look-at-me-I-am-62 account",
+      ],
+      pillars: CONTENT_PILLARS,
+      four_pillar_contract:
+        "Output content_pillar must remain one of gym, lifestyle, eating, or recovery. The broader creator brand model is guidance only and must be mapped back into those four production values.",
+      six_pillar_brand_lens: [
+        {
+          brand_pillar: "HYROX and serious training",
+          production_pillar: "gym",
+        },
+        {
+          brand_pillar: "Strength for the second half of life",
+          production_pillar: "gym or lifestyle",
+        },
+        {
+          brand_pillar: "Real routine: food, hydration, recovery, home",
+          production_pillar: "eating, recovery, or lifestyle",
+        },
+        {
+          brand_pillar: "Family and Indian home life",
+          production_pillar: "lifestyle",
+        },
+        {
+          brand_pillar: "Funny gym realities",
+          production_pillar: "gym or lifestyle",
+        },
+        {
+          brand_pillar: "Brand-friendly lifestyle",
+          production_pillar:
+            "lifestyle, eating, recovery, or gym depending on the real routine moment",
+        },
+      ],
+      pillar_guidance: {
+        gym:
+          "Frame as what the creator is doing, noticing, or trying herself - never 'here is how to train'. First-person observation, not instruction. HYROX/serious training belongs here only when current-week context supports it.",
+        lifestyle:
+          "Routines, habits, mindset, family rhythm, Indian home life, travel, humour, and real life. This is the connective tissue of the week.",
+        eating:
+          "Healthy eating as part of a real life - meals that make gym days easier, recovery food, hydration, simple everyday choices, not a diet plan.",
+        recovery:
+          "Recovery is not a background state; it is content with a point of view. Show one specific recovery choice with a sharp angle — a comic observation about what rest actually looks like, a surprising truth about soreness, a mobility move that solved a specific problem, or a reset ritual with emotional stakes. Never produce a generic 'rest day' montage or a passive 'here is what I do on recovery days' post. Every recovery Reel must carry the same creative ambition as a gym Reel.",
+      },
+      weekly_balance: [
+        `Set content_pillar for every day to one of: ${
+          CONTENT_PILLARS.join(", ")
+        }.`,
+        `Represent at least 3 of the 4 pillars across a 7-day week unless the weekly brief explicitly narrows scope.`,
+        `Default cap: no more than ${GYM_PRIMARY_DAY_CAP} gym-primary days unless the brief explicitly asks for a gym-focused week. Default to exactly 2 training/HYROX-led concepts; day routines may anchor non-training lifestyle, eating, or recovery concepts.`,
+        `Every non-training card (lifestyle, eating, recovery) must have a genuinely non-training center. Never relabel a gym script as lifestyle — the content must earn its pillar. A lifestyle card about an 'upper body cue' or a recovery card built around a gym workout is invalid.`,
+      ],
+      banned_instructor_phrasing: INSTRUCTOR_ISH_PHRASES,
+      banned_instructor_endings: BANNED_INSTRUCTOR_ENDINGS,
+      banned_framing:
+        "Do NOT write like a coach. Ban: 'do this exercise', 'fix your form', 'my clients', 'your clients', 'training clients', 'upper body cue' as the main angle, generic 'training angle', and coach-like imperatives. Also ban instructor endings like 'just start', 'one set, then the next', 'if you needed a reminder', 'the real win', and follower-directed workout permission. Never end a script by instructing the audience what to do. No teaching followers how to train.",
+      banned_creator_framing:
+        "Avoid phrases like age is just a number, no excuses, crush it, beast mode, discipline beats motivation, queen energy, unstoppable, fitness is my therapy, and this is your sign.",
+      banned_creator_phrases: CREATOR_NO_GO_PHRASES,
+      creator_native_hooks: [
+        "The tiny thing I changed today…",
+        "What I'm doing when I don't want a full workout…",
+        "My recovery reset after a heavy week…",
+        "The meal that makes gym days easier…",
+        "One habit I keep coming back to…",
+      ],
+      creator_style_lines: [
+        "I came to the gym for strength. I did not come to negotiate with a sled, but here we are.",
+        "My friends think my breakfast sounds sad. My gut disagrees.",
+        "Warm-up is not optional. It is a legal requirement.",
+        "Everything hurts, but in a very successful way.",
+        "I don't train to look young. I train so getting up from the floor is not a family event.",
+        "The set I did not ask for, did not want, and will still do again next week.",
+        "No wall ball station? Fine. We improvise.",
+      ],
+      signature_series: CREATOR_SIGNATURE_SERIES,
+    },
+    creator_voice: {
+      title: "Creator Voice",
+      voice_essence:
+        "The creator sounds like a woman who has lived enough life to know what matters and is still curious enough to try hard things. Warm, witty, slightly sarcastic, self-aware. Indian but not caricatured; strong but not intimidating. Proud but not show-offy; wise without preaching. Conversational tone that feels like a voice note from a friend, not a caption from a brand.",
+      point_of_view:
+        "She is not trying to look younger; she is making 60 feel like something to look forward to. She documents her own healthy life — gym, food, family, rest — as lived experience, never as instruction. Her point of view is: 'This is what I'm doing, noticing, or trying. Take what works for you.' Show women that the second half of life can be strong, funny, feminine, ambitious, and deeply alive.",
+      sounds_like_creator: [
+        "I came to the gym for strength. I did not come to negotiate with a sled, but here we are.",
+        "My friends think my breakfast sounds sad. My gut disagrees.",
+        "Warm-up is not optional. It is a legal requirement.",
+        "Everything hurts, but in a very successful way.",
+        "I don't train to look young. I train so getting up from the floor is not a family event.",
+        "The set I did not ask for, did not want, and will still do again next week.",
+        "No wall ball station? Fine. We improvise.",
+        "The tiny thing I changed today…",
+        "What I'm doing when I don't want a full workout…",
+        "The meal that makes gym days easier…",
+        "One habit I keep coming back to…",
+      ],
+      never_sounds_like: [
+        "a 25-year-old fitness influencer",
+        "a gym bro",
+        "a motivational speaker",
+        "a preachy parent",
+        "a generic brand ambassador",
+        "a luxury wellness cliché",
+        "a look-at-me-I-am-62 account",
+        "a coach teaching followers how to train",
+        "age is just a number",
+        "no excuses",
+        "crush it",
+        "beast mode",
+        "discipline beats motivation",
+        "strong women rise",
+        "queen energy",
+        "unstoppable",
+        "fitness is my therapy",
+        "this is your sign",
+      ],
+      banned_trainer_wording: [
+        "one useful cue",
+        "one simple cue",
+        "restart your routine",
+        "protect your joints",
+        "save this reel",
+        "try this at home",
+        "here's what you need to know",
+        "the one exercise you should",
+        "fix your form",
+        "do this exercise",
+        "do this workout",
+        "try this workout",
+        "here's how to train",
+        "upper body cue",
+        "training angle",
+        "my clients",
+        "your client",
+        "training clients",
+      ],
+      age_rule: [
+        "Do not mention the creator's age in every post.",
+        "Mention age in at most one card per ordinary week unless the weekly brief explicitly centers age, milestones, or a milestone event.",
+        "Use age only when it adds emotional weight, contrast, or context: restarting fitness later, HYROX in her 60s, women ageing well, mother/children contrast, or major milestones.",
+        "Avoid age as a default hook for ordinary workouts, meals, brand integrations, captions, or daily routine posts.",
+        "Age is context, not the whole personality. Do not lead with it unless the moment earns it.",
+      ],
+      writing_test:
+        `Before finalizing any line, ask: could another creator say this unchanged? If yes, rewrite it with ${creatorDisplayName}'s lived detail, opinion, family/home context, or dry humour. Generic creator lines fail. Specific, first-person moments pass. If a line would work identically on another creator's account, it has not earned the ${creatorDisplayName} voice.`,
+      prefer_instead:
+        `First-person lived moments, observations, opinions, dry humour, family/home texture, and specific real situations. Show what ${creatorDisplayName} is doing, noticing, or trying — never instruct the viewer. Replace follower-directed teaching ('you should', 'try this', 'here's how') with personal narration ('I noticed', 'I tried', 'this worked for me', 'my body felt'). Use ordinary detail from Indian home life, kitchen, cooking for family, gym-bag chaos, daughter moments, society garden, or building-gym realities.`,
+    },
+    retention_first_rules: {
+      summary:
+        "Every one of the seven Reels must be built for high retention and sharing. These are non-negotiable craft requirements for every Reel, regardless of pillar.",
+      "0:00-0:02_hook":
+        "The first two seconds must create immediate tension, curiosity, contradiction, or recognition — never a slow fade-in, generic setup, or calm disclaimer. Start with the surprising fact, the joke setup, the confession, or the most visually arresting frame.",
+      creator_moment:
+        `Each Reel must contain at least one unmistakable creator moment: a personal opinion, contradiction, confession, or comic observation that only ${creatorDisplayName} could make. This is the spine of the Reel — without it the script is generic.`,
+      lived_detail:
+        `Every script must include at least one ${creatorDisplayName}-specific lived detail drawn from the creator profile and current brief: a food preference, relationship moment, gym-bag reality, location quirk, kitchen scene, home texture, or other real-world detail.`,
+      turn_or_payoff:
+        "Every Reel needs a satisfying turn or payoff: a joke that lands, a revelation, a contradiction that resolves, or a shift in perspective. Scripts that end with a generic summary line or 'that's it' have not earned their runtime.",
+      trigger:
+        "End with a natural comment, share, or save trigger that feels organic to the story. The CTA must be the logical next sentence after the payoff — not a tacked-on 'save this' or 'share with a friend.'",
+    },
+    no_chill_days_rule: {
+      summary:
+        "No chill days. Every day in the seven-day plan must carry real creative weight. A 'chill day' is any of the following — actively avoid all of them.",
+      banned_fillers: [
+        "Low-stakes filler concepts with no specific angle, tension, or point of view.",
+        "Generic reset/reminder posts ('Monday reset', 'gentle reminder to move').",
+        "Passive recovery montages with no opinion ('here's what rest looks like').",
+        "Repeated 'one tiny thing I changed' across multiple days of the same week.",
+        "Repeated recovery ritual cards that differ only in time-of-day framing.",
+        "Generic 'save this for later' endings with no prior narrative reason to save.",
+        "Product-led concepts where the brand sits at the centre of the Reel.",
+      ],
+      recovery_eating_family_rule:
+        "Recovery, eating, and family days stay in the four-pillar mix. They must earn their place with sharp creative stakes: a comic observation about recovery, a surprising meal truth, an unexpected family moment with tension, or a recovery story that lands on a real realisation. Do not prescribe intense workouts or compromise safety. Do not default to 'gentle' or 'calm' as an excuse for low creative ambition.",
+      litmus_test:
+        `If a concept could be any creator's calm Monday, it has not earned ${creatorDisplayName}'s schedule. If a recovery Reel could be posted by anyone who owns a foam roller, rewrite it with a specific ${creatorDisplayName} observation.`,
+    },
+    virality_stance:
+      "Treat virality as an ambition embedded in craft — never a guarantee, never a claim. Do not use words like viral, trending, algorithm-friendly, or guaranteed to blow up. Build retention and sharing into the concept through tension, specificity, and emotional truth, not through format-chasing language.",
+    cta_diversity_rules: {
+      summary:
+        "CTA diversity across the week is non-negotiable. No more than 2 explicit save CTAs across all seven cards.",
+      rules: [
+        `Use at most 2 explicit save CTAs across the seven-day week.`,
+        "Do not end every script by instructing the audience. Include endings such as punchline, natural observation, or a genuinely earned question.",
+        "Share or send-to-a-friend CTAs must be earned by the content — never use them as a template filler.",
+        "Do NOT lead or end every card with save-this. The CTA must be the logical next sentence after the payoff, not a generic save-this/share-this/tag-someone tack-on.",
+        "Use natural, content-earned CTAs: a question the viewer actually wants to answer, a quiet observation that lands, or a punchline that stands on its own.",
+      ],
+      banned_cta_templates: BANNED_CTA_TEMPLATES,
+    },
+    factual_discipline_rules: {
+      summary:
+        "All facts must come from supplied profile, weekly brief, or confirmed references. Invented facts poison trust.",
+      rules: [
+        "Use only supplied profile, weekly brief, confirmed reference facts, and known capture-bank scenarios.",
+        "Never invent: biography details, exact quotes the creator never said, family reactions, exact durations/times, locations not in the brief, personal history, equipment failures, or dialogue.",
+        "Capture-bank examples (walking into gym, mirror shot, warm-up, etc.) are real possibilities — not permission to claim they happened.",
+        "Place any uncertainty in assumptions or risk_notes. Do not fabricate facts to fill gaps.",
+        "If a needed detail is absent from the brief or profile, surface the gap in risk_notes rather than inventing it.",
+      ],
+    },
     weekly_diversity: {
       avoid_repetition:
-        "Do not repeat the same walk, gentle recovery, or low-effort card across the week unless the weekly brief explicitly asks for that repetition.",
+        "Do not repeat the same walk, gentle recovery, or low-effort card across the week unless the weekly brief explicitly asks for that repetition. Spread the four pillars across the week.",
+      seven_day_mix_rule:
+        "For a full seven-day plan, aim for the creator operational mix: exactly 2 training/HYROX reels (unless the brief explicitly asks for more gym), 1 family/home humour reel, 1 food/routine reel, 1 brand-friendly reel, 1 recovery/consistency reel, and 1 experimental/trend-inspired reel. Map each idea back to the four production content_pillar values.",
+      seven_day_distinctiveness:
+        "Each of the seven days must use a different hook mechanism from the others. Options include: surprise/contradiction, comic observation, confession, useful detail with tension, emotional reflection, aspirational framing, and unexpected opinion. Each day must also draw from a different comic or emotional engine: wry observation, self-deprecation, quiet pride, curiosity, defiance, warmth, or deadpan humour. Brand obligations must not make all seven scripts product-centered. The seven-day arc should feel like a variety show, not a monotone wellness feed.",
+      not_every_post:
+        "Do not make every post inspirational. Balance humour, utility, routine, emotion, and ordinary real-life specificity.",
       preferred_arc: weekDates(input.week_start_date).map((date, index) =>
         `${weekdayName(date)} ${date}: ${
           dayIntentForScheduledDate(input, date, index)
         }`
       ),
     },
+    content_package_rules: {
+      shoot_first_rule:
+        "Shoot-first: decide what the creator can realistically capture today from the day-of-week routine and current weekly brief before writing the script.",
+      routine_override_rule:
+        "The day-of-week routine is only the default. If the weekly brief or user input gives a different workout, location, injury, family constraint, brand deliverable, or shoot window, that current input wins.",
+      daily_8am_package_expectations: [
+        "Write the exact message/content package the creator should receive, but never claim it was sent unless messaging or scheduling is actually connected.",
+        "Include today's idea, series, format, why it works, five hooks, exact videos to shoot, VO or text-only script, on-screen text, caption, CTA, editing notes, and a backup idea.",
+      ],
+      reel_package_shape: [
+        "Reel concept",
+        "Series",
+        "5 hooks",
+        "Recommended format",
+        "VO or text-only script",
+        "Shot list",
+        "On-screen text",
+        "Caption",
+        "CTA",
+        "Filming notes",
+        "Editing notes",
+        "Why this fits the creator's brand",
+      ],
+      format_guidance: [
+        "Use VO when there is a story, emotional context, brand integration, transformation, or trust-building moment.",
+        "Use text-only/no VO when the visual is strong, it is a gym hack, trend-style Reel, workout movement, or fast shareable post.",
+        "Use direct-to-camera when the creator is sharing a personal hook, opinion, motherhood/family point, or ageing reflection.",
+      ],
+      realistic_capture_bank: CREATOR_REALISTIC_CAPTURE_BANK,
+    },
+    brand_collab_rules: [
+      "Brand integrations should feel like part of the creator's real routine, not an ad pasted onto a Reel.",
+      "Use this structure: real-life moment -> training/routine problem -> product naturally appears -> proof/use moment -> the creator continues with her day.",
+      "Never lead with the product unless the weekly brief explicitly asks for that.",
+      "For brand content include product/problem angle, natural creator-style VO, shot list, brand-safe caption, disclosure reminder, softer version, and funnier version when the contract fields allow.",
+    ],
     instagram_defaults: [
       "Plan each day as Instagram-first content. Default to format Reel and primary_surface Instagram Reels for growth unless the weekly brief explicitly requests Post or Story.",
       "State the planned format as Reel, Post, or Story. For Reels, include duration_seconds and timestamped production guidance for shots, voiceover, on-screen text, and the silent version.",
-      "Make every scene and timeline item specific enough to shoot: location/detail, action, camera framing, useful fitness cue, and the exact video portion the voiceover belongs to.",
-      "Scene titles must stay short, but shot_timeline.detail must be production-ready: include where Mamta can shoot it, what the frame contains, the movement/action, and why that location fits the creator context.",
+      "Make every scene and timeline item specific enough to shoot: location/detail, action, camera framing, and the exact video portion the voiceover belongs to.",
+      "Every scene, timeline, script line, caption, hook, and backup must align to the SAME content_pillar and the same single idea for that day. Do not mix pillars within one card.",
+      "Scene titles must stay short, but shot_timeline.detail must be production-ready: include where the creator can shoot it, what the frame contains, the movement/action, and why that location fits the creator context.",
       "When context includes Bombay/Mumbai, gym return, home rhythm, society garden, or family routine, give context-specific capture examples such as home, society garden, building gym, or nearby gym; do not leave scenes as generic labels.",
       "Scripts must be long enough to record as usable voiceover, usually 45-90 words for a short Reel, with a clear opening, practical middle, and grounded close.",
       "Captions must be longer than a stub, usually 80-140 words, with the creator's context, a useful takeaway, and one natural CTA.",
@@ -455,8 +1059,9 @@ function buildGenerationGuidance(
       "When the weekly brief says Bombay, Mumbai, India, travel, gym return, or podcast, make that current context visible where relevant and let it outrank stale stored setup or archive context.",
       "Avoid weight-loss, transformation, punishment, extreme intensity, medical, or guaranteed outcome claims.",
       "Do not output placeholder text, TBD, lorem ipsum, generic assumptions, or fabricated details. If needed details are absent, surface the limitation in risk_notes or assumptions using the provided facts only.",
+      "Never claim live Instagram data was pulled unless metrics or live data are explicitly provided in the input.",
     ],
-    growth_references: mamtaFitnessGrowthReferences(),
+    growth_references: creatorLifestyleGrowthReferences(),
     brief_evidence_rubric: [
       "Every daily card must prove it used the current weekly brief, not just evergreen fitness advice.",
       "Set weekly_brief_anchor to one concrete fact from the weekly setup/brief, such as current city, gym-return routine, family rhythm, brand/collab note, podcast ask, travel status, or explicit avoid list.",
@@ -486,26 +1091,36 @@ function dayIntentForScheduledDate(
   const podcastLine = /\bpodcast\b/.test(setupText)
     ? " Leave room for one reflective podcast-adjacent line only when it fits the day naturally."
     : "";
+  const gymFocusWeek =
+    /\b(gym week|training block|gym focus|gym-focus|all gym|gym-only|gym focused week)\b/
+      .test(setupText);
   const weekday = weekdayName(scheduledDate).toLowerCase();
   const fallbackDay = typeof dayIndex === "number"
     ? `Day ${dayIndex + 1}`
     : "This day";
 
+  // Deterministic normal-week role mix. A weekly brief that explicitly asks
+  // for a gym-focused week overrides the non-training roles (training-led days
+  // stay training-led but Tuesday/Thursday/Friday/Saturday/Sunday may shift).
   const weekdayIntents: Record<string, string> = {
     monday:
-      "Monday: upper-body or re-entry routine, kept low-pressure and shootable; if the brief mentions returning after travel, make this the calm restart.",
-    tuesday:
-      "Tuesday: lower-body strength or legs with one practical form cue; keep it useful without turning it into a full workout tutorial.",
+      "Monday: training-led. Default routine: upper body. Use walking into the gym, warm-up, mirror shot, and one upper-body strength set as likely footage. Content pillar: gym. Ending rule: save CTA eligible — you may use one explicit save CTA (save this for, save this reel) if the content earns it; otherwise end with a punchline or earned question. Age eligible if the weekly brief supports it (HYROX age group, decade reflection, restarting fitness later); never required.",
+    tuesday: gymFocusWeek
+      ? "Tuesday: training-led. Default routine: legs. Use lunges, sled work, leg strength sets, tired smile as likely footage. Content pillar: gym. Ending rule: save CTA NOT eligible — end with punchline, observation, or earned question. Age NOT eligible on this day."
+      : "Tuesday: recovery/eating/lifestyle around leg-day context. Default routine: legs recovery framing. Use recovery-food setup, hydration, a comic observation about sore legs, or a practical meal that supports training. Content pillar: recovery, eating, or lifestyle — NOT gym. Ending rule: save CTA NOT eligible — end with punchline, observation, or earned question. Age NOT eligible on this day.",
     wednesday:
-      "Wednesday: floor work, abs, mobility, or HYROX-simulation only when the weekly brief supports that intensity; otherwise make it a gentle midweek reset.",
-    thursday:
-      "Thursday: compound or full-body strength with one beginner-friendly cue and easy camera setup.",
-    friday:
-      "Friday: shoulders/back, posture, pulling strength, or a short conditioning cue; keep the effort controlled and creator-safe.",
-    saturday:
-      "Saturday: running, abs, hydration, friends, errands, or relaxed movement; make it feel like weekend life rather than a staged workout.",
+      "Wednesday: training-led. Default routine: floor exercises, abs, and HYROX simulation. Use floor work, wall balls, battle ropes, sled push/pull, or improvising when equipment is missing. Content pillar: gym. Ending rule: save CTA eligible — you may use one explicit save CTA if the content earns it; otherwise end with a punchline or earned question. Age NOT eligible on this day.",
+    thursday: gymFocusWeek
+      ? "Thursday: training-led. Default routine: compound exercises. Content pillar: gym. Ending rule: save CTA NOT eligible — end with punchline, observation, or earned question. Age NOT eligible on this day."
+      : "Thursday: eating. Default routine: compound-day meal, hydration, or food routine. Use real meal prep, plating, ingredient close-ups, or a food observation tied to the training rhythm. Content pillar: eating — NOT gym. Ending rule: save CTA NOT eligible — end with punchline, observation, or earned question. Age NOT eligible on this day.",
+    friday: gymFocusWeek
+      ? "Friday: training-led. Default routine: shoulder and back. Content pillar: gym. Ending rule: save CTA NOT eligible. Age NOT eligible."
+      : "Friday: lifestyle / funny gym reality. Default routine: shoulder and back footage is visual backdrop only; the center is a gym-bag/end-of-week/home/family comic observation. Use gym bag chaos, warm-up reality, end-of-week exhaustion, or a dry observation about gym life as the real creative center. Never relabel a workout script as lifestyle — the content must earn the lifestyle pillar through genuine comic observation. Content pillar: lifestyle. Ending rule: save CTA NOT eligible — end with punchline, comic observation, or earned question. Age NOT eligible on this day.",
+    saturday: gymFocusWeek
+      ? "Saturday: training-led. Default routine: running and abs. Content pillar: gym. Ending rule: save CTA NOT eligible. Age NOT eligible."
+      : "Saturday: experimental lifestyle. Default routine: running footage is visual backdrop only; the center is a weekend/family/hydration/routine angle or an unexpected activity. A run clip is only a backdrop — never make the run the topic. Use walking outside, shoes, hydration, family/weekend rhythm, or an unexpected activity as the real creative center. Content pillar: lifestyle or recovery — NOT gym. Never relabel a run tutorial as lifestyle. Ending rule: save CTA NOT eligible — end with punchline, observation, or earned question. Age NOT eligible on this day.",
     sunday:
-      "Sunday: recovery, family, food, friends, errands, reflection, or weekly reset; do not force Monday gym-start language onto this day.",
+      "Sunday: recovery/family. Default routine: recovery, family, food, errands, reflection, or weekly recap. Use home, plants, cooking, rest, evening wind-down, or gym-bag prep. Content pillar: recovery or lifestyle — NOT gym. Ending rule: save CTA NOT eligible — end with a quiet observation, reflection, or earned question. Age NOT eligible on this day. Do not force Monday gym-start language onto this day.",
   };
 
   return `${
@@ -514,85 +1129,85 @@ function dayIntentForScheduledDate(
   }${contextLine}${injuryLine}${podcastLine}`;
 }
 
-function mamtaFitnessGrowthReferences(): Record<string, unknown>[] {
+function creatorLifestyleGrowthReferences(): Record<string, unknown>[] {
   return [
     {
-      id: "mamta-age-myth-reversal",
-      name: "Age Myth Reversal",
+      id: "creator-tiny-change-hook",
+      name: "Tiny Thing I Changed Hook",
       use_for:
-        "Belief-shift Reels that challenge the idea women should slow down after 60.",
+        "First-person lifestyle Reels about one small change the creator is trying or noticing across any of the four pillars.",
       hook_patterns: [
-        "They told women my age to slow down. I started lifting.",
-        "At 62, this is what I refuse to give up.",
-        "Fitness after 60 is not about looking young.",
+        "The tiny thing I changed today…",
+        "One habit I keep coming back to…",
+        "What I'm doing when I don't want a full workout…",
       ],
       production_rule:
-        "Open with real movement proof before advice: lifting, shoes, gym entry, HYROX/race proof, or a sweaty post-set reset.",
-      mamta_fit:
-        "Highest fit when the weekly brief includes strength, race proof, confidence, gym return, or discipline.",
+        "Open on the small real action (a meal, a stretch, a habit), then one honest line about why it stuck. Never frame it as advice for the viewer.",
+      creator_fit:
+        "Core lifestyle voice. Works for any pillar; keeps the creator as observer, not instructor.",
     },
     {
-      id: "mamta-real-life-contradiction-hook",
+      id: "creator-real-life-contradiction-hook",
       name: "Real-Life Contradiction Hook",
       use_for:
         "Relatable Reels about eating out, travel, family rhythm, missed workouts, and staying consistent without guilt.",
       hook_patterns: [
-        "I eat out. I drink sometimes. I still stay fit at 62.",
-        "I missed the perfect routine, so I did this instead.",
+        "I eat out. I drink sometimes. I still keep my routine.",
+        "I missed the perfect plan, so I did this instead.",
         "This is how I restart after travel without guilt.",
       ],
       production_rule:
-        "Show one normal-life clip, one fitness/recovery clip, and one practical consistency rule.",
-      mamta_fit:
-        "High fit for Bombay routine, travel return, family plans, brand/collab weeks, and low-pressure gym weeks.",
+        "Show one normal-life clip, one recovery/movement clip, and one practical consistency rule.",
+      creator_fit:
+        "High fit for lifestyle and recovery pillars, family rhythm, travel return, and brand/collab weeks.",
     },
     {
-      id: "mamta-proof-before-advice",
-      name: "Proof Before Advice",
+      id: "creator-doing-not-teaching",
+      name: "What I'm Doing, Not How To Train",
       use_for:
-        "Reels where the viewer sees Mamta doing the work before hearing the lesson.",
+        "Gym-pillar Reels that show the creator doing/noticing her own training without becoming a tutorial.",
       hook_patterns: [
-        "One thing I learned after showing up for years...",
-        "This is why you do the boring work.",
-        "Before I give advice, let me show you the part nobody sees.",
+        "One thing I'm noticing in my own training right now…",
+        "The lift I keep coming back to this week…",
+        "What I do on a gym day when I'm short on energy…",
       ],
       production_rule:
-        "The first 0:00-0:03 must be a visual action, not a talking-head explanation.",
-      mamta_fit:
-        "High fit for gym, mobility, HYROX, run, walk, routine reset, and recovery cards.",
+        "The first 0:00-0:03 must be the creator in motion, not a talking-head explanation. Never 'do this exercise' or 'fix your form'.",
+      creator_fit:
+        "Gym pillar only. Keeps gym as one part of a rounded life, never as coaching.",
     },
     {
-      id: "mamta-saveable-practical-cue",
-      name: "Saveable Practical Cue",
+      id: "creator-recovery-reset",
+      name: "Recovery Reset Hook",
       use_for:
-        "Utility Reels designed for saves/shares with exactly one movement cue or recovery action.",
+        "Recovery-pillar Reels about rest, sleep, mobility, and resets after a heavy week.",
       hook_patterns: [
-        "Save this before your next lower-body day.",
-        "One warm-up I do before lifting.",
-        "If your back feels stiff, try this first.",
+        "My recovery reset after a heavy week…",
+        "The 10 minutes that change how tomorrow feels…",
+        "What rest actually looks like for me…",
       ],
       production_rule:
-        "Keep the Reel to one cue. Include exact shot timing, on-screen cue text, and a save/share CTA.",
-      mamta_fit:
-        "High fit for strength, mobility, stiffness relief, recovery, and gym-return cards.",
+        "Show the recovery action (stretch, stillness, food, sleep setup) with one grounding line. Position recovery as active and visible.",
+      creator_fit:
+        "Recovery pillar. Balances gym-heavy weeks and prevents the all-gym instructor drift.",
     },
     {
-      id: "mamta-hyrox-hybrid-proof",
-      name: "HYROX / Hybrid Proof",
+      id: "creator-meal-that-helps",
+      name: "The Meal That Helps Hook",
       use_for:
-        "Authority-building Reels that connect HYROX/running/strength proof back to everyday routine.",
+        "Healthy-eating-pillar Reels that connect food to the rest of the lifestyle (gym energy, recovery, routine).",
       hook_patterns: [
-        "HYROX taught me this, but it applies to regular gym days.",
-        "You do not train for events. You train for the life you want.",
-        "The race is over. The routine is the real win.",
+        "The meal that makes gym days easier…",
+        "What I actually eat on a recovery day…",
+        "One simple swap I keep making…",
       ],
       production_rule:
-        "Use HYROX only when the weekly brief supports it; do not override a current non-race week with stale race context.",
-      mamta_fit:
-        "Conditional fit for race reflection, hybrid conditioning, event proof, and confidence arcs.",
+        "Show the real meal and one honest reason it fits the day. Keep it ordinary and repeatable, not a diet plan.",
+      creator_fit:
+        "Eating pillar. Connects nutrition to gym/recovery without preaching a diet.",
     },
     {
-      id: "mamta-instagram-reels-default",
+      id: "creator-instagram-reels-default",
       name: "Instagram Reels Default",
       use_for:
         "Default growth format: short, original, retention-first Reels with one idea and a clear CTA.",
@@ -603,7 +1218,7 @@ function mamtaFitnessGrowthReferences(): Record<string, unknown>[] {
       ],
       production_rule:
         "For growth cards, default to 15-45 second Reels, one idea, timestamped shot/voiceover/on-screen text, and save/share CTA.",
-      mamta_fit:
+      creator_fit:
         "System rule for weekly generation unless the brief explicitly asks for Post or Story.",
     },
   ];
@@ -813,7 +1428,7 @@ function generatedWeekOutputContract(
         scene_list:
           "non-empty array of objects with number, title, duration, symbol. duration should be a string such as '5 sec'.",
         shot_timeline:
-          "non-empty array of { timestamp, detail } using timestamp ranges like 0:00-0:03; detail must say exactly what to shoot with context-specific examples, such as Mamta's home, society garden, building gym, or gym when supported by the brief.",
+          "non-empty array of { timestamp, detail } using timestamp ranges like 0:00-0:03; detail must say exactly what to shoot with context-specific examples, such as the creator's home, society garden, building gym, or gym when supported by the brief.",
         voiceover_timeline:
           "non-empty array of { timestamp, video_portion, voiceover } using timestamp ranges like 0:00-0:03.",
         on_screen_text: "non-empty string array",
@@ -902,7 +1517,7 @@ function generatedDailyCardCompactTemplate(
     why_today: "Why this idea fits the selected day of the week.",
     growth_job: "The Instagram growth job this Reel performs.",
     save_share_reason: "Why a viewer would save or share this practical cue.",
-    content_pillar: "routine",
+    content_pillar: "lifestyle",
     shootability: "easy",
     estimated_shoot_minutes: 12,
     energy_required: "medium",
@@ -932,7 +1547,7 @@ function generatedDailyCardCompactTemplate(
       detail:
         "Specific silent edit direction with readable timed text and the same footage.",
     }],
-    on_screen_text: ["Back in routine", "One steady cue", "Save this"],
+    on_screen_text: ["Back in routine", "One steady cue", "Your next session"],
     on_screen_text_timeline: [{
       timestamp: "0:00-0:03",
       text: "Back in routine",
@@ -940,7 +1555,7 @@ function generatedDailyCardCompactTemplate(
     }],
     caption:
       "An 80-140 word caption with context, practical takeaway, and natural CTA.",
-    cta: "Save this for your next low-pressure gym day.",
+    cta: "Save this for your next practical gym day.",
     hashtags: ["fitnessover60", "gymroutine", "consistency"],
     cover_text: "Simple gym reset",
     post_instructions:
@@ -958,7 +1573,7 @@ function generatedDailyCardCompactTemplate(
     caption_backup_detail:
       "If no video is usable, post a short caption about the same day-specific cue and ask a question.",
     audio_option_notes:
-      "Use calm low-volume audio only if it does not fight the voiceover.",
+      "Use clean low-volume audio only if it does not fight the voiceover.",
     creator_fit_score: 88,
     risk_notes: [],
     assumptions: ["No extra shoot support available."],
@@ -979,13 +1594,13 @@ function generatedDailyCardExample(
     hook: "First day back? Start smaller than your ego wants.",
     weekly_brief_anchor: "back in Bombay and returning to the gym routine",
     brief_alignment:
-      "The Reel turns the weekly brief's Bombay gym-return context into a low-pressure Monday reset.",
+      "The Reel turns the weekly brief's Bombay gym-return context into an energy-conscious Monday reset.",
     brief_context_tags: ["Bombay", "back to gym", "regular routine"],
     why_today: "A practical start to the week that is easy to shoot.",
     growth_job: "Build consistency with useful, low-drama fitness content.",
     save_share_reason:
       "Saveable restart cue for anyone easing back into training after travel or a busy week.",
-    content_pillar: "routine",
+    content_pillar: "lifestyle",
     shootability: "easy",
     estimated_shoot_minutes: 12,
     energy_required: "medium",
@@ -1092,7 +1707,7 @@ function generatedDailyCardExample(
       "Text/caption backup: keeping the routine steady with one small reset cue today.",
     caption_backup_detail:
       "If no video is usable, publish a caption-only note about restarting with one light cue and ask followers what helps them restart after travel.",
-    audio_option_notes: "Use calm audio only if it fits.",
+    audio_option_notes: "Use clean audio only if it fits.",
     creator_fit_score: 88,
     risk_notes: [],
     assumptions: ["No extra shoot support available."],
@@ -1107,12 +1722,18 @@ export async function callAIProviders(
   invokeProvider: (
     input: GenerationInputSnapshot,
     provider: AIProviderConfig,
+    attempt?: AIGenerationProviderAttemptContext,
   ) => Promise<GeneratedWeekOutput> = callAIProvider,
+  instrumentation?: AIGenerationInstrumentation,
 ): Promise<GeneratedWeekOutput> {
   let lastError: unknown = new Error("ai_provider_request_failed");
   for (const provider of providers) {
     try {
-      return await invokeProvider(input, provider);
+      return await invokeProvider(
+        input,
+        provider,
+        makeAIProviderAttemptContext(input, provider, 1, instrumentation),
+      );
     } catch (error) {
       lastError = error;
     }
@@ -1128,7 +1749,9 @@ export async function callAIProvidersForSplitWeek(
     provider: AIProviderConfig,
     scheduledDate: string,
     dayIndex: number,
+    attempt?: AIGenerationProviderAttemptContext,
   ) => Promise<GeneratedDayOutput> = callAIProviderForDay,
+  instrumentation?: AIGenerationInstrumentation,
 ): Promise<GeneratedWeekOutput> {
   const dates = weekDates(input.week_start_date);
   const dayOutputs: GeneratedDayOutput[] = [];
@@ -1143,6 +1766,7 @@ export async function callAIProvidersForSplitWeek(
           scheduledDate,
           start + offset,
           invokeProvider,
+          instrumentation,
         )
       ),
     );
@@ -1169,7 +1793,7 @@ export function combineGeneratedDayOutputs(
   return validateGeneratedWeek({
     strategy_summary: combineText(
       dayOutputs.map((output) => output.strategy_note),
-      "A calm, shootable recovery week with one practical daily content card.",
+      "A sharp, shootable recovery week with one practical daily content card.",
     ),
     warnings: uniqueStrings(dayOutputs.flatMap((output) => output.warnings)),
     assumptions: uniqueStrings(
@@ -1194,13 +1818,28 @@ export async function callAIProvidersForDay(
     provider: AIProviderConfig,
     scheduledDate: string,
     dayIndex: number,
+    attempt?: AIGenerationProviderAttemptContext,
   ) => Promise<GeneratedDayOutput> = callAIProviderForDay,
+  instrumentation?: AIGenerationInstrumentation,
 ): Promise<GeneratedDayOutput> {
   let lastError: unknown = new Error("ai_provider_request_failed");
   for (const provider of providers) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        return await invokeProvider(input, provider, scheduledDate, dayIndex);
+        return await invokeProvider(
+          input,
+          provider,
+          scheduledDate,
+          dayIndex,
+          makeAIProviderAttemptContext(
+            input,
+            provider,
+            attempt + 1,
+            instrumentation,
+            scheduledDate,
+            dayIndex,
+          ),
+        );
       } catch (error) {
         lastError = error;
         if (!isRetryableGeneratedJSONError(error)) {
@@ -1215,6 +1854,7 @@ export async function callAIProvidersForDay(
 export async function callAIProvider(
   input: GenerationInputSnapshot,
   provider: AIProviderConfig,
+  attempt?: AIGenerationProviderAttemptContext,
 ): Promise<GeneratedWeekOutput> {
   if (provider.provider === "deepseek") {
     return await callDeepSeekChatCompletions(
@@ -1222,9 +1862,15 @@ export async function callAIProvider(
       provider.model,
       provider.apiKey,
       provider.baseURL,
+      attempt,
     );
   }
-  return await callOpenAIResponses(input, provider.model, provider.apiKey);
+  return await callOpenAIResponses(
+    input,
+    provider.model,
+    provider.apiKey,
+    attempt,
+  );
 }
 
 export async function callAIProviderForDay(
@@ -1232,6 +1878,7 @@ export async function callAIProviderForDay(
   provider: AIProviderConfig,
   scheduledDate: string,
   dayIndex: number,
+  attempt?: AIGenerationProviderAttemptContext,
 ): Promise<GeneratedDayOutput> {
   if (provider.provider === "deepseek") {
     return await callDeepSeekDayChatCompletions(
@@ -1241,6 +1888,7 @@ export async function callAIProviderForDay(
       scheduledDate,
       dayIndex,
       provider.baseURL,
+      attempt,
     );
   }
   return await callOpenAIDayResponses(
@@ -1249,6 +1897,7 @@ export async function callAIProviderForDay(
     provider.apiKey,
     scheduledDate,
     dayIndex,
+    attempt,
   );
 }
 
@@ -1257,33 +1906,42 @@ export async function callDeepSeekChatCompletions(
   model: string,
   apiKey: string,
   baseURL = "https://api.deepseek.com",
+  attempt?: AIGenerationProviderAttemptContext,
 ): Promise<GeneratedWeekOutput> {
-  const response = await fetchWithAIRequestTimeout(
-    `${baseURL.replace(/\/+$/, "")}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(buildDeepSeekChatRequest(input, model)),
+  return await runInstrumentedAIRequest(
+    attempt,
+    async (recordMetadata, recordQuality) => {
+      const response = await fetchWithAIRequestTimeout(
+        `${baseURL.replace(/\/+$/, "")}/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(buildDeepSeekChatRequest(input, model)),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`deepseek_request_failed:${response.status}`);
+      }
+
+      const json = await response.json();
+      const rawJSON = extractChatCompletionOutputText(json);
+      if (!rawJSON) {
+        throw new GenerateWeekValidationError(
+          "invalid_ai_json",
+          "DeepSeek response did not include output JSON.",
+        );
+      }
+
+      recordMetadata(extractChatCompletionResponseMetadata(json));
+      const output = parseGeneratedWeekJSON(rawJSON, input.week_start_date);
+      recordQuality(scoreGeneratedWeekOutputQuality(input, output));
+      return output;
     },
   );
-
-  if (!response.ok) {
-    throw new Error(`deepseek_request_failed:${response.status}`);
-  }
-
-  const json = await response.json();
-  const rawJSON = extractChatCompletionOutputText(json);
-  if (!rawJSON) {
-    throw new GenerateWeekValidationError(
-      "invalid_ai_json",
-      "DeepSeek response did not include output JSON.",
-    );
-  }
-
-  return parseGeneratedWeekJSON(rawJSON, input.week_start_date);
 }
 
 async function callDeepSeekDayChatCompletions(
@@ -1293,68 +1951,88 @@ async function callDeepSeekDayChatCompletions(
   scheduledDate: string,
   dayIndex: number,
   baseURL = "https://api.deepseek.com",
+  attempt?: AIGenerationProviderAttemptContext,
 ): Promise<GeneratedDayOutput> {
-  const response = await fetchWithAIRequestTimeout(
-    `${baseURL.replace(/\/+$/, "")}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(
-        buildDeepSeekDayChatRequest(input, model, scheduledDate, dayIndex),
-      ),
+  return await runInstrumentedAIRequest(
+    attempt,
+    async (recordMetadata, recordQuality) => {
+      const response = await fetchWithAIRequestTimeout(
+        `${baseURL.replace(/\/+$/, "")}/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            buildDeepSeekDayChatRequest(input, model, scheduledDate, dayIndex),
+          ),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`deepseek_request_failed:${response.status}`);
+      }
+
+      const json = await response.json();
+      const rawJSON = extractChatCompletionOutputText(json);
+      if (!rawJSON) {
+        throw new GenerateWeekValidationError(
+          "invalid_ai_json",
+          "DeepSeek response did not include output JSON.",
+        );
+      }
+
+      recordMetadata(extractChatCompletionResponseMetadata(json));
+      const output = parseGeneratedDayJSON(rawJSON, scheduledDate, dayIndex);
+      recordQuality(
+        scoreGeneratedDayOutputQuality(input, output, scheduledDate),
+      );
+      return output;
     },
   );
-
-  if (!response.ok) {
-    throw new Error(`deepseek_request_failed:${response.status}`);
-  }
-
-  const json = await response.json();
-  const rawJSON = extractChatCompletionOutputText(json);
-  if (!rawJSON) {
-    throw new GenerateWeekValidationError(
-      "invalid_ai_json",
-      "DeepSeek response did not include output JSON.",
-    );
-  }
-
-  return parseGeneratedDayJSON(rawJSON, scheduledDate, dayIndex);
 }
 
 export async function callOpenAIResponses(
   input: GenerationInputSnapshot,
   model: string,
   apiKey: string,
+  attempt?: AIGenerationProviderAttemptContext,
 ): Promise<GeneratedWeekOutput> {
-  const response = await fetchWithAIRequestTimeout(
-    "https://api.openai.com/v1/responses",
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(buildOpenAIResponsesRequest(input, model)),
+  return await runInstrumentedAIRequest(
+    attempt,
+    async (recordMetadata, recordQuality) => {
+      const response = await fetchWithAIRequestTimeout(
+        "https://api.openai.com/v1/responses",
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(buildOpenAIResponsesRequest(input, model)),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`openai_request_failed:${response.status}`);
+      }
+
+      const json = await response.json();
+      const rawJSON = extractOpenAIOutputText(json);
+      if (!rawJSON) {
+        throw new GenerateWeekValidationError(
+          "invalid_ai_json",
+          "OpenAI response did not include output JSON.",
+        );
+      }
+
+      recordMetadata(extractOpenAIResponseMetadata(json));
+      const output = parseGeneratedWeekJSON(rawJSON, input.week_start_date);
+      recordQuality(scoreGeneratedWeekOutputQuality(input, output));
+      return output;
     },
   );
-
-  if (!response.ok) {
-    throw new Error(`openai_request_failed:${response.status}`);
-  }
-
-  const json = await response.json();
-  const rawJSON = extractOpenAIOutputText(json);
-  if (!rawJSON) {
-    throw new GenerateWeekValidationError(
-      "invalid_ai_json",
-      "OpenAI response did not include output JSON.",
-    );
-  }
-
-  return parseGeneratedWeekJSON(rawJSON, input.week_start_date);
 }
 
 async function callOpenAIDayResponses(
@@ -1363,35 +2041,837 @@ async function callOpenAIDayResponses(
   apiKey: string,
   scheduledDate: string,
   dayIndex: number,
+  attempt?: AIGenerationProviderAttemptContext,
 ): Promise<GeneratedDayOutput> {
-  const response = await fetchWithAIRequestTimeout(
-    "https://api.openai.com/v1/responses",
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(
-        buildOpenAIDayResponsesRequest(input, model, scheduledDate, dayIndex),
-      ),
+  return await runInstrumentedAIRequest(
+    attempt,
+    async (recordMetadata, recordQuality) => {
+      const response = await fetchWithAIRequestTimeout(
+        "https://api.openai.com/v1/responses",
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            buildOpenAIDayResponsesRequest(
+              input,
+              model,
+              scheduledDate,
+              dayIndex,
+            ),
+          ),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`openai_request_failed:${response.status}`);
+      }
+
+      const json = await response.json();
+      const rawJSON = extractOpenAIOutputText(json);
+      if (!rawJSON) {
+        throw new GenerateWeekValidationError(
+          "invalid_ai_json",
+          "OpenAI response did not include output JSON.",
+        );
+      }
+
+      recordMetadata(extractOpenAIResponseMetadata(json));
+      const output = parseGeneratedDayJSON(rawJSON, scheduledDate, dayIndex);
+      recordQuality(
+        scoreGeneratedDayOutputQuality(input, output, scheduledDate),
+      );
+      return output;
     },
   );
+}
 
-  if (!response.ok) {
-    throw new Error(`openai_request_failed:${response.status}`);
+function makeAIProviderAttemptContext(
+  input: GenerationInputSnapshot,
+  provider: AIProviderConfig,
+  providerAttempt: number,
+  instrumentation?: AIGenerationInstrumentation,
+  scheduledDate?: string,
+  dayIndex?: number,
+): AIGenerationProviderAttemptContext | undefined {
+  if (!instrumentation) {
+    return undefined;
   }
 
-  const json = await response.json();
-  const rawJSON = extractOpenAIOutputText(json);
-  if (!rawJSON) {
-    throw new GenerateWeekValidationError(
-      "invalid_ai_json",
-      "OpenAI response did not include output JSON.",
+  return {
+    ...instrumentation,
+    provider: provider.provider,
+    model: provider.model,
+    providerAttempt,
+    weekStartDate: input.week_start_date,
+    scheduledDate,
+    dayIndex,
+  };
+}
+
+async function runInstrumentedAIRequest<T>(
+  attempt: AIGenerationProviderAttemptContext | undefined,
+  invoke: (
+    recordMetadata: (metadata: AIResponseMetadata) => void,
+    recordQuality: (quality: AIOutputQualityMetrics) => void,
+  ) => Promise<T>,
+): Promise<T> {
+  const startedAt = new Date();
+  const startedAtMS = performance.now();
+  let metadata = emptyAIResponseMetadata();
+  let quality: AIOutputQualityMetrics | null = null;
+
+  try {
+    const output = await invoke(
+      (responseMetadata) => {
+        metadata = responseMetadata;
+      },
+      (outputQuality) => {
+        quality = outputQuality;
+      },
     );
+    emitAIGenerationAttemptLog(
+      attempt,
+      startedAt,
+      startedAtMS,
+      "success",
+      metadata,
+      quality,
+    );
+    return output;
+  } catch (error) {
+    emitAIGenerationAttemptLog(
+      attempt,
+      startedAt,
+      startedAtMS,
+      "failure",
+      metadata,
+      quality,
+      error,
+    );
+    throw error;
+  }
+}
+
+function emitAIGenerationAttemptLog(
+  attempt: AIGenerationProviderAttemptContext | undefined,
+  startedAt: Date,
+  startedAtMS: number,
+  status: "success" | "failure",
+  metadata: AIResponseMetadata,
+  quality: AIOutputQualityMetrics | null,
+  error?: unknown,
+): void {
+  if (!attempt) {
+    return;
   }
 
-  return parseGeneratedDayJSON(rawJSON, scheduledDate, dayIndex);
+  const endedAt = new Date();
+  const sanitizedError = error === undefined
+    ? { category: null, message: null }
+    : sanitizeAIGenerationError(error);
+  attempt.logger({
+    event: "generation_ai_attempt",
+    generation_id: attempt.generationID ?? null,
+    generation_scope: attempt.generationScope,
+    phase: attempt.phase,
+    week_start_date: attempt.weekStartDate,
+    scheduled_date: attempt.scheduledDate ?? null,
+    day_index: attempt.dayIndex ?? null,
+    provider: attempt.provider,
+    model: attempt.model,
+    provider_attempt: attempt.providerAttempt,
+    started_at: startedAt.toISOString(),
+    ended_at: endedAt.toISOString(),
+    duration_ms: Math.max(0, Math.round(performance.now() - startedAtMS)),
+    status,
+    input_tokens: metadata.inputTokens,
+    output_tokens: metadata.outputTokens,
+    total_tokens: metadata.totalTokens,
+    finish_reason: metadata.finishReason,
+    quality_score: quality?.score ?? null,
+    quality_version: quality?.version ?? null,
+    quality_metrics: quality,
+    error_category: sanitizedError.category,
+    error_message: sanitizedError.message,
+  });
+}
+
+function sanitizeAIGenerationError(
+  error: unknown,
+): { category: string; message: string } {
+  if (error instanceof GenerateWeekValidationError) {
+    return {
+      category: error.code,
+      message: error.message.slice(0, 240),
+    };
+  }
+
+  if (error instanceof Error) {
+    if (error.message.startsWith("openai_request_failed:")) {
+      return {
+        category: "openai_request_failed",
+        message: sanitizeStableErrorMessage(error.message),
+      };
+    }
+    if (error.message.startsWith("deepseek_request_failed:")) {
+      return {
+        category: "deepseek_request_failed",
+        message: sanitizeStableErrorMessage(error.message),
+      };
+    }
+    if (error.message.startsWith("ai_provider_request_failed:")) {
+      return {
+        category: "ai_provider_request_failed",
+        message: sanitizeStableErrorMessage(error.message),
+      };
+    }
+    return {
+      category: error.name || "error",
+      message: "generation_attempt_failed",
+    };
+  }
+
+  if (typeof error === "string") {
+    return {
+      category: "error",
+      message: sanitizeStableErrorMessage(error),
+    };
+  }
+
+  return {
+    category: "unknown_error",
+    message: "generation_attempt_failed",
+  };
+}
+
+function sanitizeStableErrorMessage(message: string): string {
+  return message.replace(/[^a-zA-Z0-9_:\-.]/g, "_").slice(0, 240);
+}
+
+function extractOpenAIResponseMetadata(response: unknown): AIResponseMetadata {
+  if (!isRecord(response)) {
+    return emptyAIResponseMetadata();
+  }
+
+  const usage = isRecord(response.usage) ? response.usage : undefined;
+  const incompleteDetails = isRecord(response.incomplete_details)
+    ? response.incomplete_details
+    : undefined;
+  return {
+    inputTokens: optionalTokenCount(usage?.input_tokens),
+    outputTokens: optionalTokenCount(usage?.output_tokens),
+    totalTokens: optionalTokenCount(usage?.total_tokens),
+    finishReason: stringValue(incompleteDetails?.reason) ??
+      findOpenAIFinishReason(response.output),
+  };
+}
+
+function extractChatCompletionResponseMetadata(
+  response: unknown,
+): AIResponseMetadata {
+  if (!isRecord(response)) {
+    return emptyAIResponseMetadata();
+  }
+
+  const usage = isRecord(response.usage) ? response.usage : undefined;
+  return {
+    inputTokens: optionalTokenCount(usage?.prompt_tokens),
+    outputTokens: optionalTokenCount(usage?.completion_tokens),
+    totalTokens: optionalTokenCount(usage?.total_tokens),
+    finishReason: firstChatCompletionFinishReason(response.choices),
+  };
+}
+
+function emptyAIResponseMetadata(): AIResponseMetadata {
+  return {
+    inputTokens: null,
+    outputTokens: null,
+    totalTokens: null,
+    finishReason: null,
+  };
+}
+
+function optionalTokenCount(value: unknown): number | null {
+  const parsed = numberValue(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function firstChatCompletionFinishReason(choices: unknown): string | null {
+  if (!Array.isArray(choices)) {
+    return null;
+  }
+
+  for (const choice of choices) {
+    if (!isRecord(choice)) {
+      continue;
+    }
+    const finishReason = stringValue(choice.finish_reason);
+    if (finishReason) {
+      return finishReason;
+    }
+  }
+  return null;
+}
+
+function findOpenAIFinishReason(output: unknown): string | null {
+  if (!Array.isArray(output)) {
+    return null;
+  }
+
+  for (const outputItem of output) {
+    if (!isRecord(outputItem)) {
+      continue;
+    }
+    const finishReason = stringValue(outputItem.finish_reason) ??
+      stringValue(outputItem.stop_reason);
+    if (finishReason) {
+      return finishReason;
+    }
+  }
+  return null;
+}
+
+function scoreGeneratedWeekOutputQuality(
+  input: GenerationInputSnapshot,
+  output: GeneratedWeekOutput,
+): AIOutputQualityMetrics {
+  return scoreGeneratedCardsQuality(input, output.daily_cards);
+}
+
+function scoreGeneratedDayOutputQuality(
+  input: GenerationInputSnapshot,
+  output: GeneratedDayOutput,
+  scheduledDate: string,
+): AIOutputQualityMetrics {
+  return scoreGeneratedCardsQuality(input, [output.daily_card]);
+}
+
+function scoreGeneratedCardsQuality(
+  _input: GenerationInputSnapshot,
+  cards: GeneratedDailyCard[],
+): AIOutputQualityMetrics {
+  const snapshots = cards.map(cardQualitySnapshot);
+  const pillarCount = new Set(
+    cards.map((card) => card.content_pillar).filter((pillar) =>
+      pillar.length > 0
+    ),
+  ).size;
+  const storySnapshots = snapshots.filter((snapshot) => snapshot.isStory);
+  const postSnapshots = snapshots.filter((snapshot) => snapshot.isPost);
+  const metricsWithoutScore = {
+    version: "instagram_content_quality_v2" as const,
+    pillar_count: pillarCount,
+    instructor_phrase_count: cards.filter((card) =>
+      containsInstructorPhrasing(generatedCardQualityText(card))
+    ).length,
+    instructor_ending_count: cards.filter((card) =>
+      containsInstructorEnding(generatedCardQualityText(card))
+    ).length,
+    source_reference_link_count: cards.reduce(
+      (sum, card) => sum + card.source_reference_ids.length,
+      0,
+    ),
+    cards_with_source_reference_count: cards.filter((card) =>
+      card.source_reference_ids.length > 0
+    ).length,
+    hook_first_3s_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.hookFirst3SPresent,
+    ),
+    first_frame_text_hook_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.firstFrameTextHookPresent,
+    ),
+    opening_visual_motion_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.openingVisualMotionPresent,
+    ),
+    clear_payoff_or_curiosity_gap_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.clearPayoffOrCuriosityGapPresent,
+    ),
+    watch_without_sound_ready: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.watchWithoutSoundReady,
+    ),
+    on_screen_text_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.onScreenTextPresent,
+    ),
+    caption_or_subtitle_support_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.captionOrSubtitleSupportPresent,
+    ),
+    on_screen_text_density_ok: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.onScreenTextDensityOK,
+    ),
+    duration_fit: combinedDurationFit(snapshots),
+    scene_variety_count: averageSceneVarietyCount(snapshots),
+    visual_variety_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.visualVarietyPresent,
+    ),
+    audio_or_silent_strategy_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.audioOrSilentStrategyPresent,
+    ),
+    shareability_reason_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.shareabilityReasonPresent,
+    ),
+    save_or_share_value_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.saveOrShareValuePresent,
+    ),
+    clear_cta_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.clearCTAPresent,
+    ),
+    cta_type: dominantCTAType(snapshots),
+    creator_lived_detail_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.creatorLivedDetailPresent,
+    ),
+    specific_context_anchor_present: allSnapshotsPass(
+      snapshots,
+      (snapshot) => snapshot.specificContextAnchorPresent,
+    ),
+    generic_template_risk_count: snapshots.filter((snapshot) =>
+      snapshot.genericTemplateRiskPresent
+    ).length,
+    story_interactive_sticker_present: nullableAllSnapshotsPass(
+      storySnapshots,
+      (snapshot) => snapshot.storyInteractiveStickerPresent,
+    ),
+    story_reply_prompt_present: nullableAllSnapshotsPass(
+      storySnapshots,
+      (snapshot) => snapshot.storyReplyPromptPresent,
+    ),
+    story_slide_count_fit: nullableAllSnapshotsPass(
+      storySnapshots,
+      (snapshot) => snapshot.storySlideCountFit,
+    ),
+    post_first_slide_promise_present: nullableAllSnapshotsPass(
+      postSnapshots,
+      (snapshot) => snapshot.postFirstSlidePromisePresent,
+    ),
+    post_one_clear_idea_present: nullableAllSnapshotsPass(
+      postSnapshots,
+      (snapshot) => snapshot.postOneClearIdeaPresent,
+    ),
+    post_final_cta_present: nullableAllSnapshotsPass(
+      postSnapshots,
+      (snapshot) => snapshot.clearCTAPresent,
+    ),
+    post_saveable_value_present: nullableAllSnapshotsPass(
+      postSnapshots,
+      (snapshot) => snapshot.saveOrShareValuePresent,
+    ),
+  };
+
+  return {
+    ...metricsWithoutScore,
+    score: generationQualityScore(metricsWithoutScore),
+  };
+}
+
+function generationQualityScore(
+  metrics: Omit<AIOutputQualityMetrics, "score">,
+): number {
+  const retentionScore = averageScore([
+    metrics.hook_first_3s_present,
+    metrics.first_frame_text_hook_present,
+    metrics.opening_visual_motion_present,
+    metrics.clear_payoff_or_curiosity_gap_present,
+  ]) * 30;
+  const formatFitScore = averageScore([
+    durationFitScore(metrics.duration_fit),
+    metrics.visual_variety_present,
+    metrics.audio_or_silent_strategy_present,
+  ]) * 20;
+  const accessibilityScore = averageScore([
+    metrics.watch_without_sound_ready,
+    metrics.on_screen_text_present,
+    metrics.caption_or_subtitle_support_present,
+    metrics.on_screen_text_density_ok,
+  ]) * 15;
+  const saveShareScore = averageScore([
+    metrics.shareability_reason_present,
+    metrics.save_or_share_value_present,
+    metrics.clear_cta_present,
+  ]) * 15;
+  const authenticityScore = Math.max(
+    0,
+    averageScore([
+      metrics.creator_lived_detail_present,
+      metrics.specific_context_anchor_present,
+    ]) * 10 - Math.min(metrics.generic_template_risk_count * 3, 6),
+  );
+  const safetyScore = Math.max(
+    0,
+    averageScore([
+      metrics.pillar_count >= 3 || metrics.pillar_count === 1,
+      metrics.instructor_phrase_count === 0,
+      metrics.instructor_ending_count === 0,
+      metrics.source_reference_link_count > 0 ||
+      metrics.cards_with_source_reference_count === 0,
+    ]) * 10,
+  );
+  const score = retentionScore + formatFitScore + accessibilityScore +
+    saveShareScore + authenticityScore + safetyScore;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+type CardQualitySnapshot = {
+  hookFirst3SPresent: boolean;
+  firstFrameTextHookPresent: boolean;
+  openingVisualMotionPresent: boolean;
+  clearPayoffOrCuriosityGapPresent: boolean;
+  watchWithoutSoundReady: boolean;
+  onScreenTextPresent: boolean;
+  captionOrSubtitleSupportPresent: boolean;
+  onScreenTextDensityOK: boolean;
+  durationFit: AIOutputQualityMetrics["duration_fit"];
+  sceneVarietyCount: number;
+  visualVarietyPresent: boolean;
+  audioOrSilentStrategyPresent: boolean;
+  shareabilityReasonPresent: boolean;
+  saveOrShareValuePresent: boolean;
+  clearCTAPresent: boolean;
+  ctaType: AIOutputQualityMetrics["cta_type"];
+  creatorLivedDetailPresent: boolean;
+  specificContextAnchorPresent: boolean;
+  genericTemplateRiskPresent: boolean;
+  isStory: boolean;
+  isPost: boolean;
+  storyInteractiveStickerPresent: boolean;
+  storyReplyPromptPresent: boolean;
+  storySlideCountFit: boolean;
+  postFirstSlidePromisePresent: boolean;
+  postOneClearIdeaPresent: boolean;
+};
+
+function cardQualitySnapshot(card: GeneratedDailyCard): CardQualitySnapshot {
+  const allText = generatedCardQualityText(card);
+  const firstFrameText = firstNonBlank([
+    card.on_screen_text[0],
+    card.on_screen_text_timeline[0]?.text,
+    card.cover_text,
+  ]);
+  const openingText = [
+    card.hook,
+    card.title,
+    firstFrameText,
+    card.shot_timeline[0]?.detail,
+    card.scene_list[0]?.title,
+  ].filter(Boolean).join(" ");
+  const ctaType = classifyCTA(card.cta);
+  const isStory = card.format === "Story" ||
+    /story/i.test(card.primary_surface);
+  const isPost = card.format === "Post" ||
+    /post|carousel/i.test(card.primary_surface);
+  const storyText = [
+    card.backup_story,
+    card.backup_caption_only,
+    card.caption_backup_detail,
+    ...card.backup_story_detail.map((item) => item.detail),
+  ].join(" ");
+  const postText = [card.title, card.hook, card.cover_text, card.caption].join(
+    " ",
+  );
+
+  return {
+    hookFirst3SPresent: hasHookInOpening(openingText),
+    firstFrameTextHookPresent: hasHookInOpening(firstFrameText),
+    openingVisualMotionPresent: hasOpeningVisualMotion(card),
+    clearPayoffOrCuriosityGapPresent: hasPayoffOrCuriosityGap(openingText),
+    watchWithoutSoundReady: card.on_screen_text.length > 0 &&
+      card.silent_version_timeline.length > 0 &&
+      card.no_voiceover_version.trim().length > 0,
+    onScreenTextPresent: card.on_screen_text.length > 0 ||
+      card.on_screen_text_timeline.length > 0,
+    captionOrSubtitleSupportPresent: card.caption.trim().length > 0 ||
+      card.voiceover_timeline.length > 0,
+    onScreenTextDensityOK: onScreenTextDensityOK(card),
+    durationFit: durationFit(card),
+    sceneVarietyCount: sceneVarietyCount(card),
+    visualVarietyPresent: sceneVarietyCount(card) >= 3,
+    audioOrSilentStrategyPresent: card.audio_option_notes.trim().length > 0 ||
+      card.no_voiceover_version.trim().length > 0 ||
+      card.silent_version_timeline.length > 0,
+    shareabilityReasonPresent: card.save_share_reason.trim().length > 0,
+    saveOrShareValuePresent: hasSaveOrShareValue(card),
+    clearCTAPresent: ctaType !== "none",
+    ctaType,
+    creatorLivedDetailPresent: hasCreatorLivedDetail(allText),
+    specificContextAnchorPresent: hasSpecificContextAnchor(card),
+    genericTemplateRiskPresent: hasGenericTemplateRisk(allText),
+    isStory,
+    isPost,
+    storyInteractiveStickerPresent: /poll|quiz|question|reply|sticker|tap/i
+      .test(storyText),
+    storyReplyPromptPresent: /reply|question|tell me|dm|tap/i.test(storyText),
+    storySlideCountFit: card.backup_story_detail.length >= 1 &&
+      card.backup_story_detail.length <= 5,
+    postFirstSlidePromisePresent: hasHookInOpening(postText),
+    postOneClearIdeaPresent: hasOneClearIdea(card),
+  };
+}
+
+function allSnapshotsPass(
+  snapshots: CardQualitySnapshot[],
+  predicate: (snapshot: CardQualitySnapshot) => boolean,
+): boolean {
+  return snapshots.length > 0 && snapshots.every(predicate);
+}
+
+function nullableAllSnapshotsPass(
+  snapshots: CardQualitySnapshot[],
+  predicate: (snapshot: CardQualitySnapshot) => boolean,
+): boolean | null {
+  return snapshots.length === 0 ? null : snapshots.every(predicate);
+}
+
+function averageSceneVarietyCount(snapshots: CardQualitySnapshot[]): number {
+  if (snapshots.length === 0) {
+    return 0;
+  }
+  const total = snapshots.reduce(
+    (sum, snapshot) => sum + snapshot.sceneVarietyCount,
+    0,
+  );
+  return Math.round(total / snapshots.length);
+}
+
+function combinedDurationFit(
+  snapshots: CardQualitySnapshot[],
+): AIOutputQualityMetrics["duration_fit"] {
+  if (snapshots.length === 0) {
+    return "not_applicable";
+  }
+  const fits = snapshots.map((snapshot) => snapshot.durationFit);
+  if (fits.includes("too_long")) {
+    return "too_long";
+  }
+  if (fits.includes("too_short")) {
+    return "too_short";
+  }
+  if (fits.includes("acceptable")) {
+    return "acceptable";
+  }
+  if (fits.every((fit) => fit === "not_applicable")) {
+    return "not_applicable";
+  }
+  return "ideal";
+}
+
+function dominantCTAType(
+  snapshots: CardQualitySnapshot[],
+): AIOutputQualityMetrics["cta_type"] {
+  const counts: Record<AIOutputQualityMetrics["cta_type"], number> = {
+    save: 0,
+    share: 0,
+    reply: 0,
+    comment: 0,
+    profile: 0,
+    none: 0,
+  };
+  for (const snapshot of snapshots) {
+    counts[snapshot.ctaType] += 1;
+  }
+  return (Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ??
+    "none") as AIOutputQualityMetrics["cta_type"];
+}
+
+function averageScore(values: Array<boolean | number>): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const total = values.reduce((sum: number, value) => {
+    const score = typeof value === "number" ? value : value ? 1 : 0;
+    return sum + score;
+  }, 0);
+  return total / values.length;
+}
+
+function durationFitScore(
+  fit: AIOutputQualityMetrics["duration_fit"],
+): number {
+  switch (fit) {
+    case "ideal":
+      return 1;
+    case "acceptable":
+      return 0.7;
+    case "not_applicable":
+      return 0.8;
+    case "too_short":
+    case "too_long":
+      return 0;
+  }
+}
+
+function durationFit(
+  card: GeneratedDailyCard,
+): AIOutputQualityMetrics["duration_fit"] {
+  if (card.format !== "Reel" && !/reel/i.test(card.primary_surface)) {
+    return "not_applicable";
+  }
+  if (card.duration_seconds < 3) {
+    return "too_short";
+  }
+  if (card.duration_seconds <= 6) {
+    return "acceptable";
+  }
+  if (card.duration_seconds <= 45) {
+    return "ideal";
+  }
+  if (card.duration_seconds <= 90) {
+    return "acceptable";
+  }
+  return "too_long";
+}
+
+function sceneVarietyCount(card: GeneratedDailyCard): number {
+  return Math.max(
+    card.scene_list.length,
+    card.shot_timeline.length,
+    card.on_screen_text_timeline.length,
+  );
+}
+
+function hasHookInOpening(text: string | undefined): boolean {
+  const normalized = text?.trim() ?? "";
+  if (normalized.length === 0) {
+    return false;
+  }
+  return /\?|why\b|what\b|how\b|before\b|after\b|mistake\b|thing\b|changed\b|truth\b|stop\b|start\b|simple\b|tiny\b|today\b|first\b|reset\b|unexpected\b/i
+    .test(normalized);
+}
+
+function hasPayoffOrCuriosityGap(text: string): boolean {
+  return /\?|why\b|what\b|how\b|because\b|but\b|instead\b|thing\b|changed\b|truth\b|mistake\b|reason\b|learned\b|worth\b|useful\b/i
+    .test(text);
+}
+
+function hasOpeningVisualMotion(card: GeneratedDailyCard): boolean {
+  const openingVisual = [
+    card.scene_list[0]?.title,
+    card.shot_timeline[0]?.detail,
+    card.voiceover_timeline[0]?.video_portion,
+  ].filter(Boolean).join(" ");
+  return /walk|push|pull|lift|move|open|enter|show|clip|shot|close|cut|transition|mirror|bag|set|rep|text over|camera/i
+    .test(openingVisual);
+}
+
+function onScreenTextDensityOK(card: GeneratedDailyCard): boolean {
+  const textItems = [
+    ...card.on_screen_text,
+    ...card.on_screen_text_timeline.map((item) => item.text),
+  ];
+  return textItems.length > 0 &&
+    textItems.every((text) => text.trim().length <= 90);
+}
+
+function classifyCTA(
+  cta: string,
+): AIOutputQualityMetrics["cta_type"] {
+  if (/\bsave\b/i.test(cta)) {
+    return "save";
+  }
+  if (/\bshare|send|tag\b/i.test(cta)) {
+    return "share";
+  }
+  if (/\breply|dm\b/i.test(cta)) {
+    return "reply";
+  }
+  if (/\bcomment|tell me\b/i.test(cta)) {
+    return "comment";
+  }
+  if (/\blink|profile|bio\b/i.test(cta)) {
+    return "profile";
+  }
+  return cta.trim().length > 0 ? "comment" : "none";
+}
+
+function hasSaveOrShareValue(card: GeneratedDailyCard): boolean {
+  const valueText = [
+    card.save_share_reason,
+    card.cta,
+    card.caption,
+    card.backup_caption_only,
+  ].join(" ");
+  return /save|share|send|useful|later|next time|routine|reset|checklist|reminder|reference|try/i
+    .test(valueText);
+}
+
+function hasCreatorLivedDetail(text: string): boolean {
+  return /\bI\b|\bmy\b|\bme\b|\bfamily\b|\bdaughter\b|\bhusband\b|\bhome\b|\bIndian\b|\bHYROX\b|\bgym\b|\broutine\b|\btoday\b/i
+    .test(text);
+}
+
+function hasSpecificContextAnchor(card: GeneratedDailyCard): boolean {
+  return card.weekly_brief_anchor.trim().length > 0 ||
+    card.brief_alignment.trim().length > 0 ||
+    card.brief_context_tags.length > 0 ||
+    card.source_note.trim().length > 0 ||
+    card.source_reference_ids.length > 0;
+}
+
+function hasGenericTemplateRisk(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return CREATOR_NO_GO_PHRASES.some((phrase) =>
+    normalized.includes(phrase.toLowerCase())
+  ) ||
+    BANNED_CTA_TEMPLATES.filter((phrase) =>
+      normalized.includes(phrase.toLowerCase())
+    ).length > 1;
+}
+
+function hasOneClearIdea(card: GeneratedDailyCard): boolean {
+  const anchors = [
+    card.title,
+    card.hook,
+    card.weekly_brief_anchor,
+    card.why_today,
+    card.growth_job,
+  ].filter((value) => value.trim().length > 0);
+  return anchors.length >= 3 && new Set([
+    card.content_pillar,
+    card.growth_job,
+  ]).size >= 1;
+}
+
+function firstNonBlank(values: Array<string | undefined>): string {
+  return values.find((value) => value && value.trim().length > 0) ?? "";
+}
+
+function generatedCardQualityText(card: GeneratedDailyCard): string {
+  return [
+    card.title,
+    card.hook,
+    card.weekly_brief_anchor,
+    card.brief_alignment,
+    card.why_today,
+    card.growth_job,
+    card.save_share_reason,
+    card.script,
+    card.no_voiceover_version,
+    ...card.on_screen_text,
+    card.caption,
+    card.cta,
+    card.cover_text,
+    card.post_instructions,
+    card.brand_event_notes,
+    card.backup_story,
+    card.backup_caption_only,
+    card.caption_backup_detail,
+    card.audio_option_notes,
+    card.source_note,
+  ].join(" ");
 }
 
 async function fetchWithAIRequestTimeout(
@@ -1416,8 +2896,9 @@ async function fetchWithAIRequestTimeout(
   }
 }
 
-function aiRequestTimeoutMS(): number {
-  const configured = Deno.env.get("MCO_AI_REQUEST_TIMEOUT_MS")?.trim();
+export function resolveAIRequestTimeoutMs(
+  configured: string | undefined,
+): number {
   if (!configured) {
     return DEFAULT_AI_REQUEST_TIMEOUT_MS;
   }
@@ -1426,7 +2907,13 @@ function aiRequestTimeoutMS(): number {
   if (!Number.isFinite(parsed) || parsed < 5_000) {
     return DEFAULT_AI_REQUEST_TIMEOUT_MS;
   }
-  return Math.min(parsed, 180_000);
+  return Math.min(parsed, 240_000);
+}
+
+function aiRequestTimeoutMS(): number {
+  return resolveAIRequestTimeoutMs(
+    Deno.env.get("MCO_AI_REQUEST_TIMEOUT_MS")?.trim(),
+  );
 }
 
 export function extractChatCompletionOutputText(
@@ -1559,6 +3046,17 @@ export function validateGeneratedWeek(
   }
   const ideaBank = value.idea_bank.map(validateGeneratedIdea);
 
+  assertWeekPillarBalance(dailyCards, value);
+
+  const saveCTACount = countExplicitSaveCTAs(dailyCards);
+  if (saveCTACount > 2) {
+    throw invalidWeek(
+      `Week contains ${saveCTACount} explicit save CTAs; at most 2 are allowed across the seven-day week.`,
+    );
+  }
+
+  dailyCards.forEach((card) => assertCreatorNotInstructor(card));
+
   return {
     strategy_summary: strategySummary,
     warnings,
@@ -1640,6 +3138,115 @@ function assertNoConflictingWeekdayLanguage(
   }
 }
 
+/**
+ * Enforces creator positioning across the week: gym is one pillar among four,
+ * not the whole identity. Unless the weekly brief explicitly narrows scope, a
+ * seven-day week must touch at least three of the four pillars and must not
+ * exceed the gym-primary day cap.
+ */
+function assertWeekPillarBalance(
+  dailyCards: GeneratedDailyCard[],
+  weekValue: unknown,
+) {
+  const pillarCounts = new Map<ContentPillar, number>();
+  for (const card of dailyCards) {
+    const pillar = normalizeContentPillar(card.content_pillar) ?? "gym";
+    pillarCounts.set(pillar, (pillarCounts.get(pillar) ?? 0) + 1);
+  }
+
+  const distinctPillars = pillarCounts.size;
+  const gymDays = pillarCounts.get("gym") ?? 0;
+
+  // The brief can explicitly narrow scope (e.g. a gym-heavy week). Detect that
+  // signal from the strategy summary and weekly setup notes ONLY — not from
+  // card copy, which legitimately mentions "gym" throughout.
+  const briefText = extractBriefScopeText(weekValue);
+  const briefNarrowsScope = briefText.includes("gym week") ||
+    briefText.includes("training block") ||
+    briefText.includes("gym focus") ||
+    briefText.includes("gym-focus") ||
+    briefText.includes("all gym") ||
+    briefText.includes("gym-only") ||
+    briefText.includes("gym focused week");
+
+  if (dailyCards.length >= 7 && distinctPillars < 3 && !briefNarrowsScope) {
+    throw invalidWeek(
+      `Week must represent at least 3 of 4 content pillars; found ${distinctPillars}.`,
+    );
+  }
+
+  if (
+    dailyCards.length >= 7 && gymDays > GYM_PRIMARY_DAY_CAP &&
+    !briefNarrowsScope
+  ) {
+    throw invalidWeek(
+      `No more than ${GYM_PRIMARY_DAY_CAP} gym-primary days in a 7-day week unless the brief explicitly narrows scope; found ${gymDays}.`,
+    );
+  }
+}
+
+/** Extracts only the brief-level scope text (strategy summary + setup notes),
+ * excluding per-card copy, so narrow-scope detection is not fooled by routine
+ * mentions of "gym" inside card bodies. */
+function extractBriefScopeText(weekValue: unknown): string {
+  if (!isRecord(weekValue)) {
+    return "";
+  }
+  const parts: string[] = [];
+  const strategySummary = stringValue(weekValue.strategy_summary);
+  if (strategySummary) {
+    parts.push(strategySummary);
+  }
+  // Weekly setup notes can be nested under input/weekly_setup in the prompt
+  // payload, but validateGeneratedWeek receives the top-level output object.
+  const notes = stringValue(weekValue.weekly_brief) ??
+    stringValue(weekValue.brief);
+  if (notes) {
+    parts.push(notes);
+  }
+  return parts.join(" ").toLowerCase();
+}
+
+/**
+ * Rejects instructor/coach framing. The creator documents her own lifestyle —
+ * she does not train clients or teach people how to lift. Catches banned
+ * phrases like "upper body cue", "training angle", "clients", "fix your form".
+ */
+function assertCreatorNotInstructor(card: GeneratedDailyCard) {
+  const text = JSON.stringify({
+    title: card.title,
+    hook: card.hook,
+    why_today: card.why_today,
+    growth_job: card.growth_job,
+    save_share_reason: card.save_share_reason,
+    cover_text: card.cover_text,
+    source_note: card.source_note,
+    caption: card.caption,
+    script: card.script,
+    no_voiceover_version: card.no_voiceover_version,
+    scene_list: card.scene_list,
+    shot_timeline: card.shot_timeline,
+    voiceover_timeline: card.voiceover_timeline,
+    on_screen_text: card.on_screen_text,
+    on_screen_text_timeline: card.on_screen_text_timeline,
+    post_instructions: card.post_instructions,
+    backup_story: card.backup_story,
+    backup_story_detail: card.backup_story_detail,
+    backup_caption_only: card.backup_caption_only,
+    caption_backup_detail: card.caption_backup_detail,
+  });
+  if (containsInstructorPhrasing(text)) {
+    throw invalidWeek(
+      `Generated card for ${card.scheduled_date} uses coach/instructor framing. The creator documents her own life; she does not train clients.`,
+    );
+  }
+  if (containsInstructorEnding(text)) {
+    throw invalidWeek(
+      `Generated card for ${card.scheduled_date} uses a banned instructor ending. End with punchline, observation, or earned question — never 'just start', 'one set, then the next', 'the real win', or follower-directed workout permission.`,
+    );
+  }
+}
+
 function weekdayName(dateString: string): string {
   const date = new Date(`${dateString}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) {
@@ -1671,7 +3278,7 @@ export function makeMockGeneratedWeek(
 
   return {
     strategy_summary:
-      `${profileName} gets a calm, shootable week anchored in ${setupLocation}, one practical reel per day, and backup paths for low-energy days.`,
+      `${profileName} gets a sharp, shootable week anchored in ${setupLocation}, one practical reel per day, and backup paths for low-energy days.`,
     warnings: input.confirmed_references.length === 0
       ? [
         "No confirmed Inspiration references were available; mock used fixture-safe routine angles.",
@@ -1693,7 +3300,7 @@ export function makeMockGeneratedWeek(
     ),
     idea_bank: [
       {
-        title: "Caption-only calm reset",
+        title: "Caption-only sharp reset",
         summary: "A saved backup for days when shooting is not possible.",
         suggested_use: "Use as a low-effort backup story or caption.",
         shootability: "easy",
@@ -1793,7 +3400,7 @@ function mockCard(
         timestamp: "0:00-0:03",
         detail: `${
           plan.scene_titles[0]
-        }: open with the clearest context detail in Mamta's home, society garden, building gym, or gym, using a steady vertical frame that explains where the day is happening.`,
+        }: open with the clearest context detail in the creator's home, society garden, building gym, or gym, using a steady vertical frame that explains where the day is happening.`,
       },
       {
         timestamp: "0:03-0:12",
@@ -1805,7 +3412,7 @@ function mockCard(
         timestamp: "0:12-0:18",
         detail: `${
           plan.scene_titles[2]
-        }: finish with a calm close-up, cover-safe framing, and no extreme claim.`,
+        }: finish with an intentional close-up, cover-safe framing, and no extreme claim.`,
       },
     ],
     script: plan.script,
@@ -1868,7 +3475,7 @@ function mockCard(
     hashtags: plan.hashtags,
     cover_text: title,
     post_instructions:
-      "Use calm audio if available. Keep cover text large and readable.",
+      "Use clean audio if available. Keep cover text large and readable.",
     brand_event_notes: "",
     backup_story:
       "Story backup: one vertical clip, one useful cue sticker, and one tap-to-reply prompt.",
@@ -1889,7 +3496,7 @@ function mockCard(
     caption_backup_detail:
       "If the Reel cannot be shot, publish the caption as a text-first update with the same useful cue, no fabricated footage, and a reply question.",
     audio_option_notes:
-      "Use a confirmed calm audio option if it fits; otherwise post without audio dependence.",
+      "Use a confirmed clean audio option if it fits; otherwise post without audio dependence.",
     creator_fit_score: 88,
     risk_notes: [],
     assumptions: [],
@@ -1944,12 +3551,12 @@ function fallbackDayPlan(
         : "This Reel uses the weekly brief's routine context to keep Monday specific and shootable.",
       brief_context_tags: contextTags,
       why_today:
-        `Start the week by showing the return to regular life and a low-pressure ${gymPhrase}.`,
+        `Start the week by showing the return to regular life and a practical ${gymPhrase}.`,
       growth_job:
         "Rebuild trust around consistency without making the reset feel intense.",
       save_share_reason:
-        "Followers can save it as a simple first-day-back gym reset after travel.",
-      content_pillar: "routine",
+        "Followers can save it as a simple first-day-back lifestyle reset after travel.",
+      content_pillar: "gym",
       scene_titles: [
         "Gym bag or shoes",
         "Light full-body reset",
@@ -1963,7 +3570,7 @@ function fallbackDayPlan(
         "The win is getting the rhythm back without overdoing it.",
       ] as [string, string, string],
       no_voiceover_version:
-        "Silent Reel version: show shoes or gym bag, one light movement, and a calm post-workout clip with timed text overlays.",
+        "Silent Reel version: show shoes or gym bag, one light movement, and a clean post-workout clip with timed text overlays.",
       on_screen_text: [
         "Back to routine",
         "Light reset",
@@ -1986,8 +3593,8 @@ function fallbackDayPlan(
       growth_job:
         "Make training advice practical enough for busy women to use immediately.",
       save_share_reason:
-        "A saveable form cue viewers can try in their next lower-body session.",
-      content_pillar: "training",
+        "A saveable note viewers can use in their next lower-body session.",
+      content_pillar: "gym",
       scene_titles: [
         "Set up the movement",
         "Show the cue",
@@ -2027,7 +3634,7 @@ function fallbackDayPlan(
         "Position recovery as part of regular training, not a fallback.",
       save_share_reason:
         "A short mobility reset viewers can save for a stiff midweek day.",
-      content_pillar: "mobility",
+      content_pillar: "recovery",
       scene_titles: [
         "Stiff spot check",
         "Three gentle moves",
@@ -2049,79 +3656,82 @@ function fallbackDayPlan(
       hashtags: ["mobility", "activerecovery", "movewell"],
     },
     {
-      title: "Upper-body strength: one useful pull",
-      hook: "One pulling cue that makes the set cleaner.",
+      title: "The meal that makes gym days easier",
+      hook: "The meal that makes gym days easier to repeat.",
       weekly_brief_anchor: gymFrame
-        ? "back to the gym routine"
-        : "upper-body routine",
+        ? "fuel the gym routine"
+        : "easy weekday meal",
       brief_alignment:
-        "This Reel keeps the gym week moving with a distinct upper-body cue from the brief's routine arc.",
+        "This Reel uses the week's training rhythm to show one ordinary meal that supports gym and recovery days.",
       brief_context_tags: contextTags,
       why_today:
-        "A beginner-friendly upper-body cue gives the week a clear training progression.",
+        "Thursday is a good point in the week to show food as part of the routine, not as a separate diet identity.",
       growth_job:
-        "Offer strength content that feels doable and technically useful.",
+        "Make healthy eating feel ordinary, repeatable, and tied to real life.",
       save_share_reason:
-        "A simple upper-body cue viewers can save before their next pull day.",
-      content_pillar: "training",
+        "A simple meal idea viewers can save for a busy gym-or-recovery day.",
+      content_pillar: "eating",
       scene_titles: [
-        "Pick the movement",
-        "Pull with control",
-        "Posture note",
+        "Prep the meal",
+        "Plate it simply",
+        "Why it fits today",
       ] as [string, string, string],
       script:
-        "Upper-body day: choose one pulling movement and keep it clean. Pull toward the hip, pause for a second, and avoid rushing the set.",
+        "Today is about one simple meal that makes the rest of the week easier. I am keeping it ordinary: protein, something green, and a carb that actually fuels the next session. This is not a diet plan. It is just the food I keep coming back to because it is easy and it works for a training or recovery day. Make it once, repeat it, and let the routine carry you.",
       voiceover_lines: [
-        "For upper body today, keep one pulling movement clean.",
-        "Pull toward the hip and pause for a second before you reset.",
-        "That small pause can make the set more useful.",
+        "One meal I keep coming back to on busy weeks.",
+        "Protein, something green, and a carb that fuels the next session.",
+        "Ordinary and repeatable beats complicated every time.",
       ] as [string, string, string],
       no_voiceover_version:
-        "Silent Reel version: film the dumbbell or cable setup, one controlled rep, and a timed text cue over the pause.",
+        "Silent Reel version: film the prep, the plated meal, and one close-up of the ingredients as timed text.",
       on_screen_text: [
-        "Upper-body day",
-        "Pull to the hip",
-        "Pause, then reset",
+        "Easy gym-day meal",
+        "Protein + green + carb",
+        "Repeat it all week",
       ],
       caption:
-        "One upper-body reminder I like: don't rush the pull. A tiny pause can make the whole set more useful.",
-      cta: "Send this to someone restarting strength training.",
-      hashtags: ["upperbodyworkout", "strengthcue", "fitafter40"],
+        "The meal that makes gym days easier does not need to be fancy. Protein, something green, and a carb that actually fuels the next session is the combo I keep returning to. It is ordinary, it repeats, and it takes the decision load off a busy week. If you are also juggling training, recovery, and regular life, keep one meal like this in rotation. What meal keeps your training week going?",
+      cta: "What meal keeps your training week going?",
+      hashtags: ["easymealprep", "healthyeating", "fuelyourweek"],
     },
     {
-      title: "Short core finisher, not a punishment",
-      hook: "Core work can be short without becoming punishment.",
-      weekly_brief_anchor: gymFrame
-        ? "Friday core and conditioning"
-        : "busy-day routine",
+      title: "One habit I keep coming back to on busy Fridays",
+      hook: "One habit I keep coming back to when the week feels full.",
+      weekly_brief_anchor: gymFrame ? "Friday rhythm" : "busy-day routine",
       brief_alignment:
-        "This Reel uses the brief's short, doable Friday conditioning idea without pushing extreme intensity.",
+        "This Reel uses the brief's busy-Friday reality to show one repeatable habit that keeps the week together.",
       brief_context_tags: contextTags,
       why_today:
-        "Friday needs a contained effort that fits a busy routine and avoids extreme framing.",
-      growth_job: "Separate core training from guilt-based fitness language.",
+        "Friday should feel like real life: one small habit that keeps the routine steady without adding pressure.",
+      growth_job:
+        "Make consistency feel grounded in lifestyle rhythm rather than perfect execution.",
       save_share_reason:
-        "A repeatable core framing viewers can save for busy gym days.",
-      content_pillar: "training",
+        "A repeatable Friday habit viewers can save for busy weeks.",
+      content_pillar: "lifestyle",
       scene_titles: [
-        "Set a short timer",
-        "One core move",
-        "Stop while form is good",
+        "End-of-week reality",
+        "One small reset habit",
+        "Leave it easy to repeat",
       ] as [string, string, string],
       script:
-        "Core today, but short and controlled. Pick one move, set a small timer, and stop before your form starts falling apart.",
+        "By Friday I do not need a big reset. I need one small habit that helps the week end cleanly and makes Monday easier. For me that can be laying out the next gym set, prepping one simple meal, or taking ten quiet minutes before the evening gets busy. Tiny habits are easier to repeat than dramatic promises.",
       voiceover_lines: [
-        "Core today, but keep it short and controlled.",
-        "Pick one move and stop before your form starts falling apart.",
-        "Useful beats punishing every time.",
+        "By Friday I look for one small habit that still fits real life.",
+        "Lay out the next step, prep one easy thing, or take ten quiet minutes.",
+        "Small and repeatable works better than dramatic.",
       ] as [string, string, string],
       no_voiceover_version:
-        "Silent Reel version: show timer, one clean core movement, and a final water/rest clip with timed text.",
-      on_screen_text: ["Short core", "Good form only", "Stop before sloppy"],
+        "Silent Reel version: show one end-of-week habit, one prep detail, and a clean closing clip with timed text.",
+      on_screen_text: [
+        "Friday habit",
+        "Keep it small",
+        "Make Monday easier",
+      ],
       caption:
-        "Core does not have to mean punishment. Keep it short, controlled, and useful enough to repeat next week.",
-      cta: "Save this for a busy gym day.",
-      hashtags: ["coreworkout", "busyroutine", "sustainablefitness"],
+        "The end of the week does not need a dramatic reset. One small habit can do more for consistency than a big promise you cannot repeat. On busy Fridays I come back to the simplest things: set up tomorrow, prep one easy meal, leave ten quiet minutes, and keep the rhythm going. What is one thing you keep coming back to on busy weeks?",
+      cta: "What is one thing you keep coming back to on busy weeks?",
+      hashtags: ["busyroutine", "lifestylerhythm", "sustainablewellness"],
     },
     {
       title: "Saturday recovery at home",
@@ -2139,7 +3749,7 @@ function fallbackDayPlan(
         "Make recovery feel like part of life, not a separate wellness performance.",
       save_share_reason:
         "A realistic recovery reminder viewers can share with someone who overcomplicates rest days.",
-      content_pillar: "family",
+      content_pillar: "recovery",
       scene_titles: ["Home rhythm", "One recovery habit", "Keep it real"] as [
         string,
         string,
@@ -2180,7 +3790,7 @@ function fallbackDayPlan(
         "Invite reflective engagement while keeping the content easy to film.",
       save_share_reason:
         "A planning checklist viewers can save before the next week starts.",
-      content_pillar: "reflection",
+      content_pillar: "lifestyle",
       scene_titles: [
         "Open notes",
         "Pick next week's anchors",
@@ -2310,7 +3920,7 @@ function validateGeneratedDailyCard(
       value.save_share_reason,
       "save_share_reason",
     ),
-    content_pillar: requiredString(value.content_pillar, "content_pillar"),
+    content_pillar: requiredContentPillar(value.content_pillar),
     shootability: requiredString(value.shootability, "shootability"),
     estimated_shoot_minutes: minutes,
     energy_required: requiredString(value.energy_required, "energy_required"),
@@ -2403,6 +4013,16 @@ function requiredFormat(value: unknown): "Reel" | "Post" | "Story" {
     throw invalidWeek("format must be Reel, Post, or Story.");
   }
   return normalized;
+}
+
+function requiredContentPillar(value: unknown): ContentPillar {
+  const pillar = normalizeContentPillar(value);
+  if (!pillar) {
+    throw invalidWeek(
+      `content_pillar must be one of: ${CONTENT_PILLARS.join(", ")}.`,
+    );
+  }
+  return pillar;
 }
 
 function requiredDate(value: unknown, field: string): string {
@@ -2791,7 +4411,12 @@ const generatedCardJSONSchema = {
     why_today: { type: "string" },
     growth_job: { type: "string" },
     save_share_reason: { type: "string" },
-    content_pillar: { type: "string" },
+    content_pillar: {
+      type: "string",
+      enum: [...CONTENT_PILLARS],
+      description:
+        "One of the four creator pillars: gym, lifestyle, eating, or recovery. Gym is one pillar, not the whole identity.",
+    },
     shootability: { type: "string" },
     estimated_shoot_minutes: { type: "integer", minimum: 0 },
     energy_required: { type: "string" },

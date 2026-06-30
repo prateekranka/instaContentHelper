@@ -14,23 +14,6 @@ struct AdminShellView: View {
                 IntelligenceHomeView()
             }
             .tabItem { Label("References", systemImage: "bookmark") }
-
-            NavigationStack {
-                AIRunwayView()
-            }
-            .tabItem { Label("Runway", systemImage: "sparkles") }
-
-            NavigationStack {
-                LiveQAView()
-            }
-            .tabItem { Label("QA", systemImage: "checkmark.seal") }
-
-            if services.canManageTesterAccess {
-                NavigationStack {
-                    TesterAccessView()
-                }
-                .tabItem { Label("Testers", systemImage: "person.2.badge.key") }
-            }
         }
         .tint(MCOTheme.Color.oxblood)
     }
@@ -163,9 +146,33 @@ struct CreatorProfileAdminView: View {
 
     private var profileEditor: some View {
         VStack(alignment: .leading, spacing: MCOSpace.s) {
+            creatorVoiceSection
+            CreatorProfileTextEditor(
+                title: "Content Pillars",
+                systemImage: "square.grid.2x2",
+                placeholder: "gym\nlifestyle\neating\nrecovery",
+                text: $contentPillarsText
+            )
+            CreatorProfileTextEditor(
+                title: "Recurring Formats",
+                systemImage: "rectangle.stack",
+                placeholder: "one practical detail\ncaption-only backup",
+                text: $recurringFormatsText
+            )
+            saveProfileButton
+        }
+    }
+
+    private var creatorVoiceSection: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            WeeklySectionTitle(
+                title: "Creator voice",
+                subtitle: "Shape how this creator sounds, feels, and never sounds."
+            )
+
             JournalBlock {
                 VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                    Label("Positioning", systemImage: "scope")
+                    Label("Point of view", systemImage: "scope")
                         .font(MCOType.caption)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                     TextField("Creator positioning", text: $positioning, axis: .vertical)
@@ -181,40 +188,56 @@ struct CreatorProfileAdminView: View {
                         }
                 }
             }
+            .accessibilityLabel("Point of view, using positioning")
 
             CreatorProfileTextEditor(
-                title: "Voice Rules",
+                title: "Voice essence",
                 systemImage: "quote.bubble",
                 placeholder: "Warm\nPrecise\nLight Hinglish when natural",
                 text: $voiceRulesText
             )
+
             CreatorProfileTextEditor(
-                title: "Content Pillars",
-                systemImage: "square.grid.2x2",
-                placeholder: "routine\nrecovery\nfamily",
-                text: $contentPillarsText
-            )
-            CreatorProfileTextEditor(
-                title: "Caption Style",
+                title: "Sounds like this creator",
                 systemImage: "text.quote",
                 placeholder: "Short, useful, and human.",
                 text: $captionStyle,
                 minimumLines: 2,
                 maximumLines: 8
             )
+
             CreatorProfileTextEditor(
-                title: "No-Go Topics",
+                title: "Never sounds like",
                 systemImage: "nosign",
                 placeholder: "Politics\nWeight talk\nNegativity",
                 text: $noGoTopicsText
             )
-            CreatorProfileTextEditor(
-                title: "Recurring Formats",
-                systemImage: "rectangle.stack",
-                placeholder: "one practical detail\ncaption-only backup",
-                text: $recurringFormatsText
-            )
-            saveProfileButton
+
+            JournalBlock {
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    Label("Identity context", systemImage: "person.text.rectangle")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                    Text("Age or identity details should only be used when they add emotional weight or context, not in every post.")
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityLabel("Identity context rule, read-only")
+
+            JournalBlock {
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    Label("Writing test", systemImage: "pencil.and.scribble")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                    Text("If another creator could say a line unchanged, rewrite it with this creator's lived detail, opinion, relationships, home context, or humour.")
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityLabel("Writing test rule, read-only")
         }
     }
 

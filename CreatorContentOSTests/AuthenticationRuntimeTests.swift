@@ -191,6 +191,10 @@ final class AuthenticationRuntimeTests: XCTestCase {
             in: state,
             toBecome: TodayContentState.missingPublishedCard(date: "2026-06-14")
         )
+        await waitForRepositoryError(
+            in: state,
+            toBecome: "No published daily card exists for 2026-06-14."
+        )
 
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.live(session))
@@ -387,7 +391,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: FixtureWeeklyGenerationRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository(),
@@ -424,6 +428,21 @@ final class AuthenticationRuntimeTests: XCTestCase {
         var elapsedNanoseconds: UInt64 = 0
 
         while state.runtime.services.todayContentState != expectedState,
+              elapsedNanoseconds < timeoutNanoseconds {
+            try? await Task.sleep(nanoseconds: intervalNanoseconds)
+            elapsedNanoseconds += intervalNanoseconds
+        }
+    }
+
+    private func waitForRepositoryError(
+        in state: AppState,
+        toBecome expectedError: String,
+        timeoutNanoseconds: UInt64 = 1_000_000_000
+    ) async {
+        let intervalNanoseconds: UInt64 = 20_000_000
+        var elapsedNanoseconds: UInt64 = 0
+
+        while state.runtime.services.lastRepositoryError != expectedError,
               elapsedNanoseconds < timeoutNanoseconds {
             try? await Task.sleep(nanoseconds: intervalNanoseconds)
             elapsedNanoseconds += intervalNanoseconds

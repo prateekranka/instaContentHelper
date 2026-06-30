@@ -7,6 +7,9 @@ import {
   verifyDeviceSession,
 } from "../_shared/device-auth.ts";
 import {
+  AIGenerationAttemptLog,
+  AIGenerationInstrumentation,
+  AIGenerationPhase,
   AIProviderConfig,
   callAIProviders,
   callAIProvidersForDay,
@@ -42,12 +45,14 @@ type GenerateWeekDependencies = {
   generateAI?: (
     input: GenerationInputSnapshot,
     providers: AIProviderConfig[],
+    instrumentation?: AIGenerationInstrumentation,
   ) => Promise<GeneratedWeekOutput>;
   generateDayAI?: (
     input: GenerationInputSnapshot,
     providers: AIProviderConfig[],
     scheduledDate: string,
     dayIndex: number,
+    instrumentation?: AIGenerationInstrumentation,
   ) => Promise<GeneratedDayOutput>;
   runInBackground?: (promise: Promise<void>) => void;
 };
@@ -90,6 +95,23 @@ type PreparedGeneration = {
   model: string;
   mockEnabled: boolean;
 };
+
+function generationAIInstrumentation(
+  generationID: string,
+  phase: AIGenerationPhase,
+  generationScope: "week" | "day",
+): AIGenerationInstrumentation {
+  return {
+    generationID,
+    generationScope,
+    phase,
+    logger: logAIGenerationAttempt,
+  };
+}
+
+function logAIGenerationAttempt(log: AIGenerationAttemptLog): void {
+  console.log(JSON.stringify(log));
+}
 
 type DayGenerationStatus = "pending" | "running" | "completed" | "failed";
 type GenerationOverallStatus = "running" | "completed" | "partial" | "failed";
@@ -212,6 +234,10 @@ type CardIdentityRecord = {
   scheduled_date: string;
 } & Record<string, unknown>;
 
+type SavedDailyCard = GeneratedDailyCard & {
+  updated_at?: string;
+};
+
 type PreparedDayGeneration = {
   request: RegenerateDayRequest;
   session: VerifiedDeviceSession;
@@ -240,8 +266,23 @@ type CreatorRecord = Record<string, unknown> & {
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const PROMPT_VERSION = "creator-weekly-generation-v1";
-const DEFAULT_RUNNING_DAY_STALE_MS = 240_000;
+const DEFAULT_RUNNING_DAY_STALE_MS = 300_000;
 const DEFAULT_DAY_GENERATION_MAX_ATTEMPTS = 2;
+
+let todayISOProvider: () => string = () =>
+  new Date().toISOString().slice(0, 10);
+
+export function overrideTodayISO(provider: () => string): void {
+  todayISOProvider = provider;
+}
+
+function isDateBeforeToday(dateStr: string): boolean {
+  return dateStr < todayISOProvider();
+}
+
+function pastDateNotAllowedResponse(): Response {
+  return jsonResponse({ error: "past_generation_date_not_allowed" }, 400);
+}
 
 export async function handleGenerateWeekRequest(
   request: Request,
@@ -300,7 +341,7 @@ export async function handleGenerateWeekRequest(
   }
 
   if (isCancelGenerationAction(rawBody)) {
-    return await cancelQueuedGeneration(admin, session, rawBody);
+    return await cancelGeneration(admin, session, rawBody);
   }
 
   if (isRegenerateDayAction(rawBody)) {
@@ -657,7 +698,7 @@ async function readSavedDailyCards(
   workspaceID: string,
   creatorID: string,
   weeklyPlanID: string,
-): Promise<{ dailyCards: GeneratedDailyCard[] } | { response: Response }> {
+): Promise<{ dailyCards: SavedDailyCard[] } | { response: Response }> {
   const { data, error } = await admin
     .from("daily_cards")
     .select(dayGenerationCardSelect())
@@ -677,7 +718,7 @@ async function readSavedDailyCards(
 
 function storedDailyCardToGenerated(
   card: CardIdentityRecord,
-): GeneratedDailyCard {
+): SavedDailyCard {
   const postInstructions = isRecord(card.post_instructions)
     ? card.post_instructions
     : {};
@@ -742,21 +783,86 @@ function storedDailyCardToGenerated(
     assumptions: stringArray(card.assumptions),
     source_note: stringValue(card.source_note) ?? "",
     source_reference_ids: [],
+    updated_at: stringValue(card.updated_at) ?? undefined,
   };
 }
 
 function savedDailyCardsForProgress(
-  savedCards: GeneratedDailyCard[],
+  savedCards: SavedDailyCard[],
   progress: PerDayGenerationSnapshot,
-): GeneratedDailyCard[] {
-  const completedCardIDs = new Set(
-    progress.days
-      .filter((day) => day.status === "completed" && isUUID(day.daily_card_id))
-      .map((day) => day.daily_card_id as string),
-  );
+): SavedDailyCard[] {
   return savedCards.filter((card) =>
-    isUUID(card.id) && completedCardIDs.has(card.id)
+    progress.days.some((day) => savedDailyCardMatchesProgressDay(card, day))
   );
+}
+
+function mergeSavedDailyCardsIntoProgress(
+  progress: PerDayGenerationSnapshot,
+  savedCards: SavedDailyCard[],
+): PerDayGenerationSnapshot {
+  let changed = false;
+  const days = progress.days.map((day) => {
+    const saved = savedCards.find((card) =>
+      savedDailyCardMatchesProgressDay(card, day)
+    );
+    if (!saved) {
+      return day;
+    }
+    if (
+      day.status === "completed" &&
+      day.daily_card_id === saved.id &&
+      !day.error_code
+    ) {
+      return day;
+    }
+    changed = true;
+    return {
+      ...day,
+      status: "completed" as const,
+      daily_card_id: saved.id,
+      completed_at: day.completed_at ?? saved.updated_at ??
+        new Date().toISOString(),
+      error_code: undefined,
+    };
+  });
+  return changed
+    ? { ...progress, days, updated_at: new Date().toISOString() }
+    : progress;
+}
+
+function savedDailyCardMatchesProgressDay(
+  card: SavedDailyCard,
+  day: DayGenerationState,
+): boolean {
+  if (!isUUID(card.id) || card.scheduled_date !== day.scheduled_date) {
+    return false;
+  }
+  if (isUUID(day.daily_card_id) && card.id === day.daily_card_id) {
+    return true;
+  }
+  if (!isAttemptedDayGenerationState(day)) {
+    return false;
+  }
+  return savedDailyCardUpdatedAfterDayStarted(card, day);
+}
+
+function isAttemptedDayGenerationState(day: DayGenerationState): boolean {
+  return day.attempts > 0 ||
+    day.status === "running" ||
+    day.status === "completed" ||
+    day.status === "failed" ||
+    Boolean(day.output);
+}
+
+function savedDailyCardUpdatedAfterDayStarted(
+  card: SavedDailyCard,
+  day: DayGenerationState,
+): boolean {
+  const updatedAt = Date.parse(card.updated_at ?? "");
+  const startedAt = Date.parse(day.started_at ?? "");
+  return Number.isFinite(updatedAt) &&
+    Number.isFinite(startedAt) &&
+    updatedAt >= startedAt;
 }
 
 function storedBackupText(value: unknown): string {
@@ -823,6 +929,7 @@ function dayGenerationCardSelect(): string {
     "risk_notes",
     "assumptions",
     "source_note",
+    "updated_at",
   ].join(",");
 }
 
@@ -842,6 +949,10 @@ async function prepareGeneration(
     return {
       response: jsonResponse({ error: "invalid_generation_payload" }, 400),
     };
+  }
+
+  if (isDateBeforeToday(body.week_start_date)) {
+    return { response: pastDateNotAllowedResponse() };
   }
 
   const creatorResult = await readCreator(
@@ -932,7 +1043,11 @@ async function runGenerationPipeline(
   try {
     const rawOutput = prepared.mockEnabled
       ? makeMockGeneratedWeek(prepared.inputSnapshot)
-      : await generateWeekOutputWithFallback(prepared, dependencies);
+      : await generateWeekOutputWithFallback(
+        prepared,
+        generationID,
+        dependencies,
+      );
     generated = validateGeneratedWeek(
       rawOutput,
       prepared.request.week_start_date,
@@ -996,29 +1111,41 @@ async function runGenerationPipeline(
 
 async function generateWeekOutputWithFallback(
   prepared: PreparedGeneration,
+  generationID: string,
   dependencies: GenerateWeekDependencies,
 ): Promise<GeneratedWeekOutput> {
   if (!dependencies.generateAI) {
-    return await generateSplitWeekOutput(prepared, dependencies);
+    return await generateSplitWeekOutput(prepared, generationID, dependencies);
   }
 
   try {
     return await dependencies.generateAI(
       prepared.inputSnapshot,
       prepared.providers,
+      generationAIInstrumentation(
+        generationID,
+        "full_week_generation",
+        "week",
+      ),
     );
   } catch (error) {
     if (!shouldRetryWeekAsSplitGeneration(error)) {
       throw error;
     }
-    return await generateSplitWeekOutput(prepared, dependencies);
+    return await generateSplitWeekOutput(prepared, generationID, dependencies);
   }
 }
 
 async function generateSplitWeekOutput(
   prepared: PreparedGeneration,
+  generationID: string,
   dependencies: GenerateWeekDependencies,
 ): Promise<GeneratedWeekOutput> {
+  const instrumentation = generationAIInstrumentation(
+    generationID,
+    "split_week_day_generation",
+    "day",
+  );
   if (dependencies.generateDayAI) {
     const dayOutputs = await runDayGenerationBatches(
       weekDates(prepared.inputSnapshot.week_start_date),
@@ -1028,6 +1155,7 @@ async function generateSplitWeekOutput(
           prepared.providers,
           scheduledDate,
           dayIndex,
+          instrumentation,
         ),
     );
     return combineGeneratedDayOutputs(prepared.inputSnapshot, dayOutputs);
@@ -1035,6 +1163,8 @@ async function generateSplitWeekOutput(
   return await callAIProvidersForSplitWeek(
     prepared.inputSnapshot,
     prepared.providers,
+    undefined,
+    instrumentation,
   );
 }
 
@@ -1522,19 +1652,35 @@ async function runParallelWeekGeneration(
 
   const concurrency = parallelWeekGenerationConcurrency();
   while (true) {
-    const pendingIndexes = latestProgress.days.flatMap((day, index) =>
-      shouldRunDayGeneration(day) ? [index] : []
-    );
-    if (pendingIndexes.length === 0) {
+    if (await isGenerationRunCancelled(admin, generationID)) {
       break;
     }
 
-    for (let start = 0; start < pendingIndexes.length; start += concurrency) {
-      const batch = pendingIndexes.slice(start, start + concurrency);
-      const startedAt = new Date().toISOString();
-      await recordDays(batch.map((dayIndex) => {
+    if (!latestProgress.days.some(shouldRunDayGeneration)) {
+      break;
+    }
+
+    // Sliding window pool: maintain up to `concurrency` in-flight day tasks.
+    // When any one finishes, immediately launch the next pending day.
+    const inFlight = new Map<
+      number,
+      Promise<{ dayIndex: number; state: DayGenerationState }>
+    >();
+
+    while (
+      latestProgress.days.some(shouldRunDayGeneration) || inFlight.size > 0
+    ) {
+      while (activeParallelDayGenerationCount(latestProgress) < concurrency) {
+        const dayIndex = nextParallelDayGenerationIndex(
+          latestProgress,
+          inFlight,
+        );
+        if (dayIndex < 0) {
+          break;
+        }
         const day = latestProgress.days[dayIndex];
-        return {
+        const startedAt = new Date().toISOString();
+        await recordDays([{
           dayIndex,
           state: {
             ...day,
@@ -1543,25 +1689,53 @@ async function runParallelWeekGeneration(
             started_at: startedAt,
             error_code: undefined,
           },
-        };
-      }));
-
-      await Promise.all(batch.map(async (dayIndex) => {
-        const state = await runParallelDayGenerationTask(
+        }]);
+        const taskPromise = runParallelDayGenerationTask(
           admin,
           prepared,
+          generationID,
           weeklyPlanID,
           latestProgress.days[dayIndex].scheduled_date,
           dayIndex,
           latestProgress.days[dayIndex].attempts,
           dependencies,
-        );
-        await recordDays([{ dayIndex, state }]);
-      }));
+        ).then((state) => ({ dayIndex, state }));
+        inFlight.set(dayIndex, taskPromise);
+      }
+
+      if (inFlight.size === 0) {
+        break;
+      }
+
+      const done = await Promise.race(inFlight.values());
+      inFlight.delete(done.dayIndex);
+      await recordDays([{ dayIndex: done.dayIndex, state: done.state }]);
+
+      if (await isGenerationRunCancelled(admin, generationID)) {
+        // Stop launching new tasks; let remaining in-flight tasks self-cancel
+        // via the cancellation check inside runParallelDayGenerationTask.
+        const remaining = await Promise.all(inFlight.values());
+        await recordDays(remaining);
+        break;
+      }
     }
   }
 
   await writeQueue;
+  if (hasActiveParallelDayGeneration(latestProgress)) {
+    const summary = weekGenerationStatusSummary(latestProgress, "running");
+    return {
+      payload: {
+        generation_id: generationID,
+        weekly_plan_id: weeklyPlanID,
+        status: summary.overall_status === "completed"
+          ? "draft"
+          : summary.overall_status,
+        ...summary,
+        poll_after_seconds: summary.overall_status === "running" ? 5 : null,
+      },
+    };
+  }
   return await finalizeParallelWeekGeneration(
     admin,
     prepared,
@@ -1569,6 +1743,29 @@ async function runParallelWeekGeneration(
     weeklyPlanID,
     latestProgress,
   );
+}
+
+function nextParallelDayGenerationIndex(
+  progress: PerDayGenerationSnapshot,
+  inFlight: Map<number, unknown>,
+): number {
+  return progress.days.findIndex((day, index) =>
+    !inFlight.has(index) && shouldRunDayGeneration(day)
+  );
+}
+
+function activeParallelDayGenerationCount(
+  progress: PerDayGenerationSnapshot,
+): number {
+  return progress.days.filter((day) =>
+    day.status === "running" && !isRunningDayStale(day)
+  ).length;
+}
+
+function hasActiveParallelDayGeneration(
+  progress: PerDayGenerationSnapshot,
+): boolean {
+  return activeParallelDayGenerationCount(progress) > 0;
 }
 
 function parallelWeekGenerationConcurrency(): number {
@@ -1584,6 +1781,7 @@ function parallelWeekGenerationConcurrency(): number {
 async function runParallelDayGenerationTask(
   admin: SupabaseAdminClient,
   prepared: PreparedGeneration,
+  generationID: string,
   weeklyPlanID: string,
   scheduledDate: string,
   dayIndex: number,
@@ -1591,12 +1789,24 @@ async function runParallelDayGenerationTask(
   dependencies: GenerateWeekDependencies,
 ): Promise<DayGenerationState> {
   const startedAt = new Date().toISOString();
+  if (await isGenerationRunCancelled(admin, generationID)) {
+    return {
+      scheduled_date: scheduledDate,
+      status: "failed",
+      attempts,
+      started_at: startedAt,
+      completed_at: new Date().toISOString(),
+      error_code: "generation_cancelled",
+    };
+  }
   try {
     const rawOutput = await generateDayOutput(
       prepared,
       scheduledDate,
       dayIndex,
       dependencies,
+      generationID,
+      "parallel_day_generation",
     );
     const output = validateGeneratedDayOutput(
       rawOutput,
@@ -1697,21 +1907,7 @@ async function finalizeParallelWeekGeneration(
   );
 
   const finalProgress = {
-    ...progress,
-    days: progress.days.map((day) => {
-      const saved = savedCardsForRun.find((card) =>
-        card.id === day.daily_card_id &&
-        card.scheduled_date === day.scheduled_date
-      );
-      return saved
-        ? {
-          ...day,
-          status: "completed" as const,
-          daily_card_id: saved.id,
-          completed_at: day.completed_at ?? completedAt,
-        }
-        : day;
-    }),
+    ...mergeSavedDailyCardsIntoProgress(progress, savedCardsForRun),
     updated_at: completedAt,
   };
   const summary = weekGenerationStatusSummary(
@@ -2013,6 +2209,10 @@ async function retryQueuedDayGeneration(
     return jsonResponse({ error: "invalid_generation_payload" }, 400);
   }
 
+  if (isDateBeforeToday(scheduledDate)) {
+    return pastDateNotAllowedResponse();
+  }
+
   const runResult = await readGenerationRunForQueuedAction(
     admin,
     session,
@@ -2056,6 +2256,89 @@ async function retryQueuedDayGeneration(
     ),
     message: "day_retry_queued",
     poll_after_seconds: 5,
+  });
+}
+
+async function cancelGeneration(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const generationID = stringValue(body.generation_id);
+  if (!isUUID(generationID)) {
+    return jsonResponse({ error: "invalid_generation_payload" }, 400);
+  }
+
+  const runResult = await readGenerationRunForQueuedAction(
+    admin,
+    session,
+    generationID,
+  );
+  if ("response" in runResult) {
+    return runResult.response;
+  }
+
+  // Determine mode: queued runs have day jobs, parallel runs do not.
+  const { data: dayJobsData, error: dayJobsError } = await admin
+    .from("weekly_generation_day_jobs")
+    .select("id")
+    .eq("generation_run_id", generationID)
+    .eq("workspace_id", session.workspaceID)
+    .eq("creator_id", runResult.run.creator_id)
+    .limit(1);
+
+  if (dayJobsError) {
+    return generationPersistFailure(
+      "cancel_generation_day_jobs_lookup",
+      dayJobsError,
+    ).response;
+  }
+
+  // Queued mode: delegate to existing queued cancel flow.
+  if (dayJobsData && dayJobsData.length > 0) {
+    return await cancelQueuedGeneration(admin, session, body);
+  }
+
+  // Parallel mode: mark the run as cancelled directly. In-flight day tasks
+  // will detect the cancelled status and return early.
+  const runStatus = stringValue(runResult.run.status);
+  if (runStatus === "cancelled") {
+    return jsonResponse({
+      generation_id: generationID,
+      weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ?? null,
+      status: "cancelled",
+      message: "generation_cancelled",
+    });
+  }
+  if (runStatus !== "running") {
+    return jsonResponse({
+      generation_id: generationID,
+      weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ?? null,
+      status: runStatus ?? "running",
+      message: "generation_not_cancellable",
+    }, 409);
+  }
+
+  const { error: updateError } = await admin
+    .from("weekly_generation_runs")
+    .update({
+      status: "cancelled",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", generationID);
+
+  if (updateError) {
+    return generationPersistFailure(
+      "cancel_generation_run",
+      updateError,
+    ).response;
+  }
+
+  return jsonResponse({
+    generation_id: generationID,
+    weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ?? null,
+    status: "cancelled",
+    message: "generation_cancelled",
   });
 }
 
@@ -2125,6 +2408,18 @@ async function readGenerationRunForQueuedAction(
     };
   }
   return { run: data as GenerationRunStatusRecord };
+}
+
+async function isGenerationRunCancelled(
+  admin: SupabaseAdminClient,
+  generationID: string,
+): Promise<boolean> {
+  const { data } = await admin
+    .from("weekly_generation_runs")
+    .select("status")
+    .eq("id", generationID)
+    .maybeSingle();
+  return stringValue(data?.status) === "cancelled";
 }
 
 async function readGenerationStatus(
@@ -2913,22 +3208,10 @@ async function readCompletedPerDayGenerationStatus(
   const dailyCards = savedCardsForRun.length > 0
     ? savedCardsForRun
     : outputCardsForRun;
-  const mergedProgress = {
-    ...progress,
-    days: progress.days.map((day) => {
-      const saved = savedCardsForRun.find((card) =>
-        card.id === day.daily_card_id &&
-        card.scheduled_date === day.scheduled_date
-      );
-      return saved
-        ? {
-          ...day,
-          status: "completed" as const,
-          daily_card_id: saved.id,
-        }
-        : day;
-    }),
-  };
+  const mergedProgress = mergeSavedDailyCardsIntoProgress(
+    progress,
+    savedCardsForRun,
+  );
   const summary = weekGenerationStatusSummary(
     mergedProgress,
     stringValue(run.status) ?? "completed",
@@ -2977,6 +3260,18 @@ async function readParallelGenerationStatus(
     }, 404);
   }
 
+  if (stringValue(run.status) === "cancelled") {
+    const summary = weekGenerationStatusSummary(progress, "cancelled");
+    return jsonResponse({
+      generation_id: generationID,
+      weekly_plan_id: weeklyPlanID,
+      status: "cancelled",
+      message: "generation_cancelled",
+      ...summary,
+      poll_after_seconds: null,
+    });
+  }
+
   if (stringValue(run.status) === "running") {
     const normalizedProgress = normalizeStaleRunningDays(progress);
     if (normalizedProgress !== progress) {
@@ -2990,6 +3285,36 @@ async function readParallelGenerationStatus(
       }
       progress = normalizedProgress;
     }
+  }
+
+  const savedCards = await readSavedDailyCards(
+    admin,
+    session.workspaceID,
+    run.creator_id,
+    weeklyPlanID,
+  );
+  if ("response" in savedCards) {
+    return savedCards.response;
+  }
+
+  const savedCardsForRun = savedDailyCardsForProgress(
+    savedCards.dailyCards,
+    progress,
+  );
+  const mergedProgress = mergeSavedDailyCardsIntoProgress(
+    progress,
+    savedCardsForRun,
+  );
+  if (mergedProgress !== progress) {
+    const updateResult = await updateGenerationProgress(
+      admin,
+      generationID,
+      mergedProgress,
+    );
+    if ("response" in updateResult) {
+      return updateResult.response;
+    }
+    progress = mergedProgress;
   }
 
   if (
@@ -3044,39 +3369,8 @@ async function readParallelGenerationStatus(
     );
   }
 
-  const savedCards = await readSavedDailyCards(
-    admin,
-    session.workspaceID,
-    run.creator_id,
-    weeklyPlanID,
-  );
-  if ("response" in savedCards) {
-    return savedCards.response;
-  }
-
-  const savedCardsForRun = savedDailyCardsForProgress(
-    savedCards.dailyCards,
-    progress,
-  );
-
-  const mergedProgress = {
-    ...progress,
-    days: progress.days.map((day) => {
-      const saved = savedCardsForRun.find((card) =>
-        card.id === day.daily_card_id &&
-        card.scheduled_date === day.scheduled_date
-      );
-      return saved
-        ? {
-          ...day,
-          status: "completed" as const,
-          daily_card_id: saved.id,
-        }
-        : day;
-    }),
-  };
   const summary = weekGenerationStatusSummary(
-    mergedProgress,
+    progress,
     stringValue(run.status) ?? "running",
   );
   const responseStatus = summary.overall_status === "completed"
@@ -3106,13 +3400,11 @@ async function readParallelGenerationStatus(
 function shouldResumeParallelWeekGeneration(
   progress: PerDayGenerationSnapshot,
 ): boolean {
-  const active = progress.days.some((day) =>
-    day.status === "running" && !isRunningDayStale(day)
-  );
-  if (active) {
+  if (!progress.days.some(shouldRunDayGeneration)) {
     return false;
   }
-  return progress.days.some(shouldRunDayGeneration);
+  return activeParallelDayGenerationCount(progress) <
+    parallelWeekGenerationConcurrency();
 }
 
 function isParallelWeekGenerationTerminal(
@@ -3335,6 +3627,8 @@ async function runSingleDayGenerationStep(
       day.scheduled_date,
       dayIndex,
       dependencies,
+      generationID,
+      dayGenerationPhase(progress),
     );
     const completedAt = new Date().toISOString();
     const completedProgress = {
@@ -3441,17 +3735,43 @@ async function generateDayOutput(
   scheduledDate: string,
   dayIndex: number,
   dependencies: GenerateWeekDependencies,
+  generationID: string,
+  phase: AIGenerationPhase,
 ): Promise<GeneratedDayOutput> {
   if (prepared.mockEnabled) {
     return mockGeneratedDayOutput(prepared.inputSnapshot, dayIndex);
   }
 
-  return await (dependencies.generateDayAI ?? callAIProvidersForDay)(
+  const instrumentation = generationAIInstrumentation(
+    generationID,
+    phase,
+    "day",
+  );
+  if (dependencies.generateDayAI) {
+    return await dependencies.generateDayAI(
+      prepared.inputSnapshot,
+      prepared.providers,
+      scheduledDate,
+      dayIndex,
+      instrumentation,
+    );
+  }
+  return await callAIProvidersForDay(
     prepared.inputSnapshot,
     prepared.providers,
     scheduledDate,
     dayIndex,
+    undefined,
+    instrumentation,
   );
+}
+
+function dayGenerationPhase(
+  progress: PerDayGenerationSnapshot,
+): AIGenerationPhase {
+  return progress.kind === "parallel_week_generation_v1"
+    ? "parallel_day_generation"
+    : "async_day_generation";
 }
 
 async function finalizePerDayGeneration(
@@ -4202,11 +4522,11 @@ async function runDayGenerationPipeline(
   try {
     const rawOutput = prepared.mockEnabled
       ? mockGeneratedDayOutput(prepared.inputSnapshot, dayIndex)
-      : await (dependencies.generateDayAI ?? callAIProvidersForDay)(
-        prepared.inputSnapshot,
-        prepared.providers,
-        prepared.request.scheduled_date,
+      : await generateRegeneratedDayOutput(
+        prepared,
+        generationID,
         dayIndex,
+        dependencies,
       );
     generated = validateGeneratedDayOutput(
       rawOutput,
@@ -4265,6 +4585,36 @@ async function runDayGenerationPipeline(
     return completedResult;
   }
   return { payload };
+}
+
+async function generateRegeneratedDayOutput(
+  prepared: PreparedDayGeneration,
+  generationID: string,
+  dayIndex: number,
+  dependencies: GenerateWeekDependencies,
+): Promise<GeneratedDayOutput> {
+  const instrumentation = generationAIInstrumentation(
+    generationID,
+    "regenerate_day_generation",
+    "day",
+  );
+  if (dependencies.generateDayAI) {
+    return await dependencies.generateDayAI(
+      prepared.inputSnapshot,
+      prepared.providers,
+      prepared.request.scheduled_date,
+      dayIndex,
+      instrumentation,
+    );
+  }
+  return await callAIProvidersForDay(
+    prepared.inputSnapshot,
+    prepared.providers,
+    prepared.request.scheduled_date,
+    dayIndex,
+    undefined,
+    instrumentation,
+  );
 }
 
 async function persistRegeneratedDay(
@@ -4470,6 +4820,7 @@ async function completeDayGenerationRun(
       warnings: payload.warnings,
       assumptions: payload.assumptions,
       completed_at: completedAt,
+      error_code: null,
     })
     .eq("id", generationID);
   if (error) {
@@ -4941,6 +5292,7 @@ async function completeGenerationRun(
       warnings: payload.warnings,
       assumptions: payload.assumptions,
       completed_at: completedAt,
+      error_code: null,
     })
     .eq("id", generationID);
 

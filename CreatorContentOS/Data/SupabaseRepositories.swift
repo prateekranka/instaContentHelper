@@ -107,36 +107,35 @@ struct SupabaseTesterAccessRepository: TesterAccessRepository {
 struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
     let client: SupabaseClient
 
-    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
         let response: SupabaseWeeklyReadResponse = try await client.readContent(.weekly, context: context)
+        return try makeWeeklyContent(from: response)
+    }
 
-        guard let planRow = response.weeklyPlan else {
-            throw RepositoryError.missingFixture("No published weekly plan exists.")
-        }
-        guard !response.dailyCards.isEmpty else {
-            throw RepositoryError.edgeFunction("weekly_plan_has_no_daily_cards")
-        }
-
-        return makeWeeklyPlan(
-            row: planRow,
-            cardRows: response.dailyCards,
-            setupSections: response.weeklySetup?.setupSections ?? [],
-            weeklyBriefText: response.weeklySetup?.weeklyBriefText ?? ""
-        )
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
+        try await currentWeeklyContent(for: context).publishedPlan
     }
 
     func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
-        let response: SupabaseWeeklyReadResponse = try await client.readContent(.weekly, context: context)
-        guard response.weeklyPlan != nil, !response.dailyCards.isEmpty else {
-            return nil
-        }
-
-        return response.generatedDraft()
+        try await currentWeeklyContent(for: context).generatedDraft
     }
 
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
-        let response: SupabaseWeeklyReadResponse = try await client.readContent(.weekly, context: context)
-        return response.ideaBank.map { $0.domainIdea() }
+        try await currentWeeklyContent(for: context).ideaBank
+    }
+
+    func updateDailyCardReviewState(
+        dailyCardID: UUID,
+        reviewState: String,
+        context: WorkspaceContext
+    ) async throws {
+        try await client.writeContent(
+            .updateDailyCardReviewState(
+                dailyCardID: dailyCardID,
+                reviewState: reviewState,
+                context: context
+            )
+        )
     }
 
     func publishWeek(
@@ -236,6 +235,52 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         return updatedPlan
     }
 
+    private func makeWeeklyContent(from response: SupabaseWeeklyReadResponse) throws -> WeeklyRepositoryContent {
+        guard let planRow = response.publishedWeeklyPlan ?? response.weeklyPlan else {
+            throw RepositoryError.missingFixture("No published weekly plan exists.")
+        }
+
+        let publishedCardRows = response.publishedDailyCards.isEmpty
+            ? response.dailyCards
+            : response.publishedDailyCards
+        guard !publishedCardRows.isEmpty else {
+            throw RepositoryError.edgeFunction("weekly_plan_has_no_daily_cards")
+        }
+
+        let publishedSetupSections = (response.publishedWeeklySetup ?? response.weeklySetup)?.setupSections ?? []
+        let publishedBriefText = (response.publishedWeeklySetup ?? response.weeklySetup)?.weeklyBriefText ?? ""
+
+        let publishedPlan = makeWeeklyPlan(
+            row: planRow,
+            cardRows: publishedCardRows,
+            setupSections: publishedSetupSections,
+            weeklyBriefText: publishedBriefText
+        )
+
+        let generatedDraft: GeneratedWeekDraft?
+        if response.weeklyPlan != nil, !response.dailyCards.isEmpty {
+            generatedDraft = response.generatedDraft()
+        } else {
+            generatedDraft = nil
+        }
+
+        let workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
+            from: generatedDraft,
+            weekStartDate: response.weeklyPlan?.weekStartDate,
+            setupSections: response.weeklySetup?.setupSections ?? [],
+            weeklyBriefText: response.weeklySetup?.weeklyBriefText ?? ""
+        )
+
+        let ideaBank = response.ideaBank.map { $0.domainIdea() }
+
+        return WeeklyRepositoryContent(
+            publishedPlan: publishedPlan,
+            workingPlan: workingPlan,
+            generatedDraft: generatedDraft,
+            ideaBank: ideaBank
+        )
+    }
+
     private func makeWeeklyPlan(
         row: SupabaseWeeklyPlanRow,
         cardRows: [SupabaseDailyCardRow],
@@ -283,7 +328,7 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
             preserveManualEdits: false,
             mock: nil,
             responseMode: .async,
-            featureFlags: ["queued_week_generation"]
+            featureFlags: ["parallel_week_generation"]
         )
         do {
             let initial = try await invokeInitialGenerateWeek(asyncRequest)
@@ -291,8 +336,12 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
             switch initial {
             case .draft(let response):
                 let draft = response.domainDraft()
-                await progress?(.savingDraftWeek(from: draft))
-                await progress?(.readyForReview(from: draft))
+                if response.status == "partial" || (response.failedDayCount ?? 0) > 0 {
+                    await progress?(response.weekProgress)
+                } else {
+                    await progress?(.savingDraftWeek(from: draft))
+                    await progress?(.readyForReview(from: draft))
+                }
                 return draft
             case .running(let status):
                 let currentProgress = status.weekProgress
@@ -470,6 +519,25 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
                 generationID: response.generationID,
                 creatorID: context.creatorID,
                 progress: progress
+            )
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
+    func cancelGeneration(
+        generationID: UUID,
+        context: WorkspaceContext
+    ) async throws {
+        do {
+            let _: SupabaseCancelGenerationResponse = try await client.functions.invoke(
+                "generate-week",
+                options: FunctionInvokeOptions(
+                    body: SupabaseCancelGenerationRequest(generationID: generationID)
+                )
             )
         } catch {
             if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
@@ -769,7 +837,7 @@ struct SupabaseArchiveRepository: ArchiveRepository {
 
 private enum SupabaseSelect {
     static let dailyCard = """
-        id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,creator_fit_score,risk_notes,assumptions,source_note,decision_at
+        id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,review_state,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,creator_fit_score,risk_notes,assumptions,source_note,decision_at
         """
 
     static let weeklyPlan = """
@@ -783,16 +851,26 @@ private extension SupabaseClient {
         context: WorkspaceContext,
         todayDate: String? = nil
     ) async throws -> Response {
-        try await functions.invoke(
-            "read-content",
-            options: FunctionInvokeOptions(
-                body: SupabaseReadContentRequest(
-                    action: action,
-                    creatorID: context.creatorID,
-                    todayDate: todayDate
-                )
-            )
+        let requestBody = SupabaseReadContentRequest(
+            action: action,
+            creatorID: context.creatorID,
+            todayDate: todayDate
         )
+        var attempts = 0
+        while true {
+            do {
+                return try await functions.invoke(
+                    "read-content",
+                    options: FunctionInvokeOptions(body: requestBody)
+                )
+            } catch {
+                attempts += 1
+                guard attempts < 3, SupabaseGenerationRetryPolicy.isTransientPollingError(error) else {
+                    throw error
+                }
+                try await Task.sleep(nanoseconds: UInt64(attempts) * 1_000_000_000)
+            }
+        }
     }
 
     func writeContent(_ request: SupabaseWriteContentRequest) async throws {

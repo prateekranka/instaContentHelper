@@ -57,6 +57,7 @@ type DraftDailyCardPublishPayload = {
   risk_notes?: unknown[];
   assumptions?: unknown[];
   source_note?: string;
+  review_state?: string;
 };
 
 type NormalizedPublishWeekDay = Required<PublishWeekDay>;
@@ -74,6 +75,16 @@ type WeeklyPlanRecord = {
 type CardIdentityRecord = {
   id: string;
   scheduled_date: string;
+};
+
+type PublishWeekAdminClient = SupabaseAdminClient & {
+  rpc: (
+    functionName: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
+    data: unknown;
+    error: { message?: string } | null;
+  }>;
 };
 
 type HandlerDependencies = {
@@ -114,11 +125,11 @@ export async function handlePublishWeekRequest(
     return jsonResponse({ error: "missing_function_secrets" }, 500);
   }
 
-  const admin = dependencies.createAdminClient
+  const admin = (dependencies.createAdminClient
     ? dependencies.createAdminClient(supabaseURL, serviceRoleKey)
     : createClient(supabaseURL, serviceRoleKey, {
       auth: { persistSession: false },
-    });
+    })) as SupabaseAdminClient;
 
   const authResult = await verifyDeviceSession(request, admin, [
     "owner",
@@ -222,81 +233,49 @@ async function publishExistingDraft(
     return jsonResponse({ error: "existing_published_week_locked" }, 409);
   }
 
-  if (Array.isArray(body.draft_daily_cards)) {
-    const updateResult = await upsertDraftCardPayloads(
-      admin,
-      workspaceID,
-      creatorID,
-      weeklyPlanID,
-      draftPlan.week_start_date,
-      body.draft_daily_cards,
-    );
-    if (updateResult) {
-      return updateResult;
-    }
+  if (!Array.isArray(body.draft_daily_cards) || body.draft_daily_cards.length !== 7) {
+    return jsonResponse({ error: "invalid_day_payload" }, 400);
   }
 
-  const replaceResult = await replaceExistingPublishedWeek(
-    admin,
-    workspaceID,
-    creatorID,
-    draftPlan.week_start_date,
-    weeklyPlanID,
-  );
-  if (replaceResult) {
-    return replaceResult;
-  }
-
-  const nowISO = new Date().toISOString();
-  const planUpdate: Record<string, unknown> = {
-    status: "published",
-    is_soft_locked: true,
-    published_at: nowISO,
-  };
-  if (body.strategy_summary?.trim()) {
-    planUpdate.strategy_summary = body.strategy_summary.trim();
-  }
-
-  const { error: planPublishError } = await admin
-    .from("weekly_plans")
-    .update(planUpdate)
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", creatorID)
-    .eq("id", weeklyPlanID);
-
-  if (planPublishError) {
-    return jsonResponse({ error: "weekly_plan_publish_failed" }, 500);
-  }
-
-  const { data: updatedCards, error: cardsPublishError } = await admin
-    .from("daily_cards")
-    .update({ status: "published" })
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", creatorID)
-    .eq("weekly_plan_id", weeklyPlanID)
-    .eq("status", "draft")
-    .select("id");
-
-  if (cardsPublishError) {
-    return jsonResponse({ error: "daily_cards_publish_failed" }, 500);
-  }
-
-  const { data: allCards, error: countError } = await admin
-    .from("daily_cards")
-    .select("id")
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", creatorID)
-    .eq("weekly_plan_id", weeklyPlanID);
-
-  if (countError) {
-    return jsonResponse({ error: "daily_cards_publish_failed" }, 500);
-  }
-
-  return jsonResponse({
+  const rpcPayload = {
+    workspace_id: workspaceID,
+    creator_id: creatorID,
     weekly_plan_id: weeklyPlanID,
-    daily_card_count: allCards?.length ?? updatedCards?.length ?? 0,
+    strategy_summary: body.strategy_summary?.trim() || null,
+    draft_daily_cards: body.draft_daily_cards,
+  };
+
+  const { data: rpcData, error: rpcCallError } =
+    await (admin as PublishWeekAdminClient).rpc(
+    "publish_week_atomic",
+    { payload: rpcPayload },
+  );
+
+  if (rpcCallError) {
+    return jsonResponse({ error: "daily_cards_publish_failed" }, 500);
+  }
+
+  const data = rpcData as Record<string, unknown> | null;
+  if (data?.error) {
+    const status = typeof data.status === "number" ? data.status : 500;
+    const rpcError = data.error as string;
+    if (
+      rpcError === "weekly_plan_not_found" ||
+      rpcError === "existing_published_week_locked" ||
+      rpcError === "invalid_day_payload" ||
+      rpcError === "daily_cards_publish_failed" ||
+      rpcError === "cross_workspace_forbidden"
+    ) {
+      return jsonResponse({ error: rpcError }, status);
+    }
+    return jsonResponse({ error: "daily_cards_publish_failed" }, 500);
+  }
+
+  return jsonResponse(data ?? {
+    weekly_plan_id: weeklyPlanID,
+    daily_card_count: 7,
     is_soft_locked: true,
-    published_at: nowISO,
+    published_at: new Date().toISOString(),
   });
 }
 
@@ -529,6 +508,9 @@ export function normalizeDraftCard(
     risk_notes: Array.isArray(card.risk_notes) ? card.risk_notes : [],
     assumptions: Array.isArray(card.assumptions) ? card.assumptions : [],
     source_note: card.source_note?.trim() || null,
+    review_state: isReviewState(card.review_state)
+      ? card.review_state
+      : "ready",
   };
 }
 
@@ -678,6 +660,10 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value
     : undefined;
+}
+
+function isReviewState(value: string | undefined): value is string {
+  return value === "open" || value === "ready" || value === "backup";
 }
 
 if (import.meta.main) {

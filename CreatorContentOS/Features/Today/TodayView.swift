@@ -15,6 +15,9 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
                 ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
+                if let repositoryError = services.lastRepositoryError?.nilIfBlank {
+                    ActionFeedbackBanner(message: "Couldn't save your decision — \(repositoryError)", tone: .danger)
+                }
                 switch services.todayContentState {
                 case .ready:
                     NavigationLink(value: CreatorRoute.shootFolio) {
@@ -33,22 +36,7 @@ struct TodayView: View {
                     )
                 }
 
-                if case .ready = services.todayContentState,
-                   let completion = services.todayCard.completionState {
-                    JournalBlock {
-                        HStack {
-                            Image(systemName: "checkmark.seal")
-                                .foregroundStyle(MCOTheme.Color.sageDeep)
-                            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                                Text("Decision made")
-                                    .font(MCOType.headline)
-                                Text(completion.archiveLabel)
-                                    .font(MCOType.bodySmall)
-                                    .foregroundStyle(MCOTheme.Color.inkMuted)
-                            }
-                        }
-                    }
-                }
+
             }
         } bottomBar: {
             if case .ready = services.todayContentState {
@@ -266,37 +254,39 @@ struct TodayHeroCard: View {
                     .lineLimit(3)
                     .minimumScaleFactor(0.85)
 
-                Text(card.whyToday)
-                    .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.82))
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(3)
+                if let hook = card.effectiveHook?.nilIfBlank {
+                    HStack(alignment: .top, spacing: MCOSpace.xs) {
+                        Text("Hook")
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.6))
+                            .padding(.top, 2)
+                        Text(hook)
+                            .font(.system(size: 17, weight: .regular, design: .serif))
+                            .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.9))
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(3)
+                    }
+                }
 
-                if !scenePreviewLines.isEmpty {
+                if !scenePlanLines.isEmpty {
                     VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                        ForEach(scenePreviewLines, id: \.self) { sceneLine in
-                            HStack(spacing: MCOSpace.xs) {
-                                Image(systemName: "checkmark.circle")
-                                    .font(.system(size: 12, weight: .medium))
-                                Text(sceneLine)
+                        ForEach(Array(scenePlanLines.enumerated()), id: \.offset) { _, sceneLine in
+                            HStack(alignment: .top, spacing: MCOSpace.xs) {
+                            Text("\(sceneLine.number)")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.5))
+                                    .frame(width: 16, alignment: .leading)
+                                Text(sceneLine.text)
                                     .font(MCOType.caption)
-                                    .lineLimit(1)
+                                    .lineLimit(2)
+                                    .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.78))
                             }
-                            .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.74))
                         }
                     }
                     .padding(.top, MCOSpace.xs)
                 }
 
                 Spacer(minLength: 0)
-
-                HStack(spacing: MCOSpace.xs) {
-                    Text("Open Shoot Folio")
-                        .font(MCOType.caption)
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.82))
             }
             .padding(MCOSpace.l)
         }
@@ -304,10 +294,26 @@ struct TodayHeroCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private var scenePreviewLines: [String] {
-        card.scenes.prefix(2).map { scene in
-            "\(scene.number). \(scene.title)"
+    /// Ordered scene plan shown on the Today card: every meaningful scene as an
+    /// action line (not just the first two), so the creator sees the full shape
+    /// of the shoot before opening the folio.
+    private var scenePlanLines: [(number: Int, text: String)] {
+        card.scenes.map { scene in
+            (scene.number, scene.title.nilIfBlank ?? "Scene \(scene.number)")
         }
+    }
+}
+
+extension DailyCard {
+    /// The hook shown on the Today card. Prefers the generated `hook` (the
+    /// answer to "what are we enticing people to stop for?"). When the source
+    /// card has no hook, derive a fallback from the richest available copy so
+    /// the card stays useful without simply repeating the title.
+    var effectiveHook: String? {
+        if let hook { return hook }
+        return caption?.nilIfBlank
+            ?? script?.nilIfBlank
+            ?? title.nilIfBlank
     }
 }
 

@@ -23,13 +23,14 @@ type ReadContentRequest = {
 type WeeklyPlanRecord = Record<string, unknown> & {
   id: string;
   weekly_setup_id?: string | null;
+  status?: string;
 };
 
 const ALL_DEVICE_ROLES = ["owner", "editor", "creator", "scout"];
 const ADMIN_ACTIONS = new Set<ReadAction>(["weekly", "intelligence"]);
 
 const DAILY_CARD_SELECT =
-  "id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,risk_notes,assumptions,source_note,decision_at";
+  "id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,review_state,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,risk_notes,assumptions,source_note,decision_at";
 const WEEKLY_PLAN_SELECT =
   "id,workspace_id,creator_id,weekly_setup_id,creator_profile_id,week_start_date,status,strategy_summary,warnings,assumptions,is_soft_locked,published_at";
 const WEEKLY_SETUP_SELECT =
@@ -188,7 +189,7 @@ async function readToday(
   });
 }
 
-async function readWeekly(
+export async function readWeekly(
   admin: SupabaseAdminClient,
   session: VerifiedDeviceSession,
   creatorID: string,
@@ -211,59 +212,103 @@ async function readWeekly(
     return jsonResponse({ error: "weekly_plan_lookup_failed" }, 500);
   }
 
-  const weeklyPlan = chooseWeeklyPlan(planRows ?? []);
-  if (!weeklyPlan) {
-    return jsonResponse({
-      weekly_plan: null,
-      daily_cards: [],
-      weekly_setup: null,
-      idea_bank: ideaBank.rows,
-    });
+  const typedRows = (planRows ?? []) as WeeklyPlanRecord[];
+  const publishedPlan = typedRows.find((row) => row.status === "published") ??
+    null;
+  const workingPlan =
+    typedRows.find((row) =>
+      row.status === "draft" || row.status === "reviewed"
+    ) ?? null;
+
+  // Fetch published daily cards when a published plan exists.
+  let publishedDailyCards: unknown[] = [];
+  if (publishedPlan) {
+    const { data: pubCards, error: pubCardsError } = await admin
+      .from("daily_cards")
+      .select(DAILY_CARD_SELECT)
+      .eq("workspace_id", session.workspaceID)
+      .eq("creator_id", creatorID)
+      .eq("weekly_plan_id", publishedPlan.id)
+      .order("scheduled_date", { ascending: true });
+
+    if (pubCardsError) {
+      return jsonResponse({ error: "weekly_cards_lookup_failed" }, 500);
+    }
+    publishedDailyCards = pubCards ?? [];
   }
 
-  const { data: cardRows, error: cardError } = await admin
-    .from("daily_cards")
-    .select(DAILY_CARD_SELECT)
-    .eq("workspace_id", session.workspaceID)
-    .eq("creator_id", creatorID)
-    .eq("weekly_plan_id", weeklyPlan.id)
-    .order("scheduled_date", { ascending: true });
-
-  if (cardError) {
-    return jsonResponse({ error: "weekly_cards_lookup_failed" }, 500);
-  }
-
-  let weeklySetup = null;
-  if (weeklyPlan.weekly_setup_id) {
+  let publishedWeeklySetup = null;
+  if (publishedPlan?.weekly_setup_id) {
     const { data: setup, error: setupError } = await admin
       .from("weekly_setups")
       .select(WEEKLY_SETUP_SELECT)
       .eq("workspace_id", session.workspaceID)
       .eq("creator_id", creatorID)
-      .eq("id", weeklyPlan.weekly_setup_id)
+      .eq("id", publishedPlan.weekly_setup_id)
       .maybeSingle();
 
     if (setupError) {
       return jsonResponse({ error: "weekly_setup_lookup_failed" }, 500);
     }
+    publishedWeeklySetup = setup ?? null;
+  }
 
+  // Fetch working draft cards.
+  let workingCards: unknown[] = [];
+  if (workingPlan) {
+    const { data: wkCards, error: wkCardsError } = await admin
+      .from("daily_cards")
+      .select(DAILY_CARD_SELECT)
+      .eq("workspace_id", session.workspaceID)
+      .eq("creator_id", creatorID)
+      .eq("weekly_plan_id", workingPlan.id)
+      .order("scheduled_date", { ascending: true });
+
+    if (wkCardsError) {
+      return jsonResponse({ error: "weekly_cards_lookup_failed" }, 500);
+    }
+    workingCards = wkCards ?? [];
+  }
+
+  // No plan at all → empty response.
+  if (!publishedPlan && !workingPlan) {
+    return jsonResponse({
+      weekly_plan: null,
+      daily_cards: [],
+      published_weekly_plan: null,
+      published_daily_cards: [],
+      weekly_setup: null,
+      published_weekly_setup: null,
+      idea_bank: ideaBank.rows,
+    });
+  }
+
+  // Weekly setup is linked from the working plan (draft/reviewed).
+  let weeklySetup = null;
+  if (workingPlan?.weekly_setup_id) {
+    const { data: setup, error: setupError } = await admin
+      .from("weekly_setups")
+      .select(WEEKLY_SETUP_SELECT)
+      .eq("workspace_id", session.workspaceID)
+      .eq("creator_id", creatorID)
+      .eq("id", workingPlan.weekly_setup_id)
+      .maybeSingle();
+
+    if (setupError) {
+      return jsonResponse({ error: "weekly_setup_lookup_failed" }, 500);
+    }
     weeklySetup = setup ?? null;
   }
 
   return jsonResponse({
-    weekly_plan: weeklyPlan,
-    daily_cards: cardRows ?? [],
+    weekly_plan: workingPlan,
+    daily_cards: workingCards,
+    published_weekly_plan: publishedPlan,
+    published_daily_cards: publishedDailyCards,
     weekly_setup: weeklySetup,
+    published_weekly_setup: publishedWeeklySetup,
     idea_bank: ideaBank.rows,
   });
-}
-
-function chooseWeeklyPlan(rows: unknown[]): WeeklyPlanRecord | null {
-  const typedRows = rows as (WeeklyPlanRecord & { status?: string })[];
-  return typedRows.find((row) => row.status === "draft") ??
-    typedRows.find((row) => row.status === "reviewed") ??
-    typedRows.find((row) => row.status === "published") ??
-    null;
 }
 
 async function readArchive(
