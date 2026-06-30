@@ -1,6 +1,4 @@
--- publish_week_atomic referenced daily_cards columns that do not exist
--- (format, shot_timeline, etc.). Pack those fields into post_instructions
--- and backup JSON columns, matching generate-week persistence.
+-- Cast text scheduled_date payloads when comparing/inserting into daily_cards.date.
 
 create or replace function public.publish_week_atomic(payload jsonb)
 returns jsonb
