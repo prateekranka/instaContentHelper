@@ -360,6 +360,53 @@ export type AIGenerationPhase =
 
 export type AIGenerationScope = "week" | "day";
 
+export type AIGenerationRequestSizeMetrics = {
+  prompt_system_chars: number;
+  prompt_user_chars: number;
+  prompt_total_chars: number;
+  prompt_total_bytes: number;
+  prompt_estimated_tokens: number;
+  provider_request_body_chars: number;
+  provider_request_body_bytes: number;
+  input_snapshot_chars: number;
+  input_snapshot_bytes: number;
+  input_snapshot_estimated_tokens: number;
+  reference_context_chars: number;
+  reference_context_bytes: number;
+  reference_context_estimated_tokens: number;
+  creator_profile_chars: number;
+  weekly_setup_chars: number;
+  confirmed_reference_count: number;
+  confirmed_reference_chars: number;
+  reference_extraction_count: number;
+  reference_extraction_chars: number;
+  recent_archive_count: number;
+  recent_archive_chars: number;
+  idea_bank_count: number;
+  idea_bank_chars: number;
+  pattern_count: number;
+  pattern_chars: number;
+  trend_count: number;
+  trend_chars: number;
+  audio_option_count: number;
+  audio_option_chars: number;
+  brand_brief_count: number;
+  brand_brief_chars: number;
+  key_moment_count: number;
+  key_moment_chars: number;
+  existing_week_card_count: number;
+  existing_week_card_chars: number;
+};
+
+export type AIGenerationValidationFailureDetail = {
+  code: string;
+  stage: "request_validation" | "json_parse" | "output_validation";
+  rule: string;
+  path: string | null;
+  retryable: boolean;
+  message: string;
+};
+
 export type AIGenerationAttemptLog = {
   event: "generation_ai_attempt";
   generation_id: string | null;
@@ -379,11 +426,15 @@ export type AIGenerationAttemptLog = {
   output_tokens: number | null;
   total_tokens: number | null;
   finish_reason: string | null;
+  output_text_chars: number | null;
+  output_text_bytes: number | null;
+  request_metrics: AIGenerationRequestSizeMetrics | null;
   quality_score: number | null;
   quality_version: "instagram_content_quality_v2" | null;
   quality_metrics: AIOutputQualityMetrics | null;
   error_category: string | null;
   error_message: string | null;
+  validation_error: AIGenerationValidationFailureDetail | null;
 };
 
 export type AIGenerationAttemptLogger = (
@@ -411,6 +462,8 @@ type AIResponseMetadata = {
   outputTokens: number | null;
   totalTokens: number | null;
   finishReason: string | null;
+  outputTextChars: number | null;
+  outputTextBytes: number | null;
 };
 
 export type AIOutputQualityMetrics = {
@@ -1910,7 +1963,12 @@ export async function callDeepSeekChatCompletions(
 ): Promise<GeneratedWeekOutput> {
   return await runInstrumentedAIRequest(
     attempt,
-    async (recordMetadata, recordQuality) => {
+    async (recordMetadata, recordQuality, recordRequestMetrics) => {
+      const request = buildDeepSeekChatRequest(input, model);
+      const requestBody = JSON.stringify(request);
+      recordRequestMetrics(
+        aiGenerationRequestSizeMetrics(input, request, requestBody),
+      );
       const response = await fetchWithAIRequestTimeout(
         `${baseURL.replace(/\/+$/, "")}/chat/completions`,
         {
@@ -1919,7 +1977,7 @@ export async function callDeepSeekChatCompletions(
             "Authorization": `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(buildDeepSeekChatRequest(input, model)),
+          body: requestBody,
         },
       );
 
@@ -1936,7 +1994,12 @@ export async function callDeepSeekChatCompletions(
         );
       }
 
-      recordMetadata(extractChatCompletionResponseMetadata(json));
+      recordMetadata(
+        withAIOutputTextSize(
+          extractChatCompletionResponseMetadata(json),
+          rawJSON,
+        ),
+      );
       const output = parseGeneratedWeekJSON(rawJSON, input.week_start_date);
       recordQuality(scoreGeneratedWeekOutputQuality(input, output));
       return output;
@@ -1955,7 +2018,17 @@ async function callDeepSeekDayChatCompletions(
 ): Promise<GeneratedDayOutput> {
   return await runInstrumentedAIRequest(
     attempt,
-    async (recordMetadata, recordQuality) => {
+    async (recordMetadata, recordQuality, recordRequestMetrics) => {
+      const request = buildDeepSeekDayChatRequest(
+        input,
+        model,
+        scheduledDate,
+        dayIndex,
+      );
+      const requestBody = JSON.stringify(request);
+      recordRequestMetrics(
+        aiGenerationRequestSizeMetrics(input, request, requestBody),
+      );
       const response = await fetchWithAIRequestTimeout(
         `${baseURL.replace(/\/+$/, "")}/chat/completions`,
         {
@@ -1964,9 +2037,7 @@ async function callDeepSeekDayChatCompletions(
             "Authorization": `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(
-            buildDeepSeekDayChatRequest(input, model, scheduledDate, dayIndex),
-          ),
+          body: requestBody,
         },
       );
 
@@ -1983,7 +2054,12 @@ async function callDeepSeekDayChatCompletions(
         );
       }
 
-      recordMetadata(extractChatCompletionResponseMetadata(json));
+      recordMetadata(
+        withAIOutputTextSize(
+          extractChatCompletionResponseMetadata(json),
+          rawJSON,
+        ),
+      );
       const output = parseGeneratedDayJSON(rawJSON, scheduledDate, dayIndex);
       recordQuality(
         scoreGeneratedDayOutputQuality(input, output, scheduledDate),
@@ -2001,7 +2077,12 @@ export async function callOpenAIResponses(
 ): Promise<GeneratedWeekOutput> {
   return await runInstrumentedAIRequest(
     attempt,
-    async (recordMetadata, recordQuality) => {
+    async (recordMetadata, recordQuality, recordRequestMetrics) => {
+      const request = buildOpenAIResponsesRequest(input, model);
+      const requestBody = JSON.stringify(request);
+      recordRequestMetrics(
+        aiGenerationRequestSizeMetrics(input, request, requestBody),
+      );
       const response = await fetchWithAIRequestTimeout(
         "https://api.openai.com/v1/responses",
         {
@@ -2010,7 +2091,7 @@ export async function callOpenAIResponses(
             "Authorization": `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(buildOpenAIResponsesRequest(input, model)),
+          body: requestBody,
         },
       );
 
@@ -2027,7 +2108,9 @@ export async function callOpenAIResponses(
         );
       }
 
-      recordMetadata(extractOpenAIResponseMetadata(json));
+      recordMetadata(
+        withAIOutputTextSize(extractOpenAIResponseMetadata(json), rawJSON),
+      );
       const output = parseGeneratedWeekJSON(rawJSON, input.week_start_date);
       recordQuality(scoreGeneratedWeekOutputQuality(input, output));
       return output;
@@ -2045,7 +2128,17 @@ async function callOpenAIDayResponses(
 ): Promise<GeneratedDayOutput> {
   return await runInstrumentedAIRequest(
     attempt,
-    async (recordMetadata, recordQuality) => {
+    async (recordMetadata, recordQuality, recordRequestMetrics) => {
+      const request = buildOpenAIDayResponsesRequest(
+        input,
+        model,
+        scheduledDate,
+        dayIndex,
+      );
+      const requestBody = JSON.stringify(request);
+      recordRequestMetrics(
+        aiGenerationRequestSizeMetrics(input, request, requestBody),
+      );
       const response = await fetchWithAIRequestTimeout(
         "https://api.openai.com/v1/responses",
         {
@@ -2054,14 +2147,7 @@ async function callOpenAIDayResponses(
             "Authorization": `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(
-            buildOpenAIDayResponsesRequest(
-              input,
-              model,
-              scheduledDate,
-              dayIndex,
-            ),
-          ),
+          body: requestBody,
         },
       );
 
@@ -2078,7 +2164,9 @@ async function callOpenAIDayResponses(
         );
       }
 
-      recordMetadata(extractOpenAIResponseMetadata(json));
+      recordMetadata(
+        withAIOutputTextSize(extractOpenAIResponseMetadata(json), rawJSON),
+      );
       const output = parseGeneratedDayJSON(rawJSON, scheduledDate, dayIndex);
       recordQuality(
         scoreGeneratedDayOutputQuality(input, output, scheduledDate),
@@ -2116,12 +2204,14 @@ async function runInstrumentedAIRequest<T>(
   invoke: (
     recordMetadata: (metadata: AIResponseMetadata) => void,
     recordQuality: (quality: AIOutputQualityMetrics) => void,
+    recordRequestMetrics: (metrics: AIGenerationRequestSizeMetrics) => void,
   ) => Promise<T>,
 ): Promise<T> {
   const startedAt = new Date();
   const startedAtMS = performance.now();
   let metadata = emptyAIResponseMetadata();
   let quality: AIOutputQualityMetrics | null = null;
+  let requestMetrics: AIGenerationRequestSizeMetrics | null = null;
 
   try {
     const output = await invoke(
@@ -2131,6 +2221,9 @@ async function runInstrumentedAIRequest<T>(
       (outputQuality) => {
         quality = outputQuality;
       },
+      (metrics) => {
+        requestMetrics = metrics;
+      },
     );
     emitAIGenerationAttemptLog(
       attempt,
@@ -2138,6 +2231,7 @@ async function runInstrumentedAIRequest<T>(
       startedAtMS,
       "success",
       metadata,
+      requestMetrics,
       quality,
     );
     return output;
@@ -2148,6 +2242,7 @@ async function runInstrumentedAIRequest<T>(
       startedAtMS,
       "failure",
       metadata,
+      requestMetrics,
       quality,
       error,
     );
@@ -2161,6 +2256,7 @@ function emitAIGenerationAttemptLog(
   startedAtMS: number,
   status: "success" | "failure",
   metadata: AIResponseMetadata,
+  requestMetrics: AIGenerationRequestSizeMetrics | null,
   quality: AIOutputQualityMetrics | null,
   error?: unknown,
 ): void {
@@ -2170,7 +2266,7 @@ function emitAIGenerationAttemptLog(
 
   const endedAt = new Date();
   const sanitizedError = error === undefined
-    ? { category: null, message: null }
+    ? { category: null, message: null, validationError: null }
     : sanitizeAIGenerationError(error);
   attempt.logger({
     event: "generation_ai_attempt",
@@ -2191,21 +2287,30 @@ function emitAIGenerationAttemptLog(
     output_tokens: metadata.outputTokens,
     total_tokens: metadata.totalTokens,
     finish_reason: metadata.finishReason,
+    output_text_chars: metadata.outputTextChars,
+    output_text_bytes: metadata.outputTextBytes,
+    request_metrics: requestMetrics,
     quality_score: quality?.score ?? null,
     quality_version: quality?.version ?? null,
     quality_metrics: quality,
     error_category: sanitizedError.category,
     error_message: sanitizedError.message,
+    validation_error: sanitizedError.validationError,
   });
 }
 
 function sanitizeAIGenerationError(
   error: unknown,
-): { category: string; message: string } {
+): {
+  category: string;
+  message: string;
+  validationError: AIGenerationValidationFailureDetail | null;
+} {
   if (error instanceof GenerateWeekValidationError) {
     return {
       category: error.code,
       message: error.message.slice(0, 240),
+      validationError: validationFailureDetail(error),
     };
   }
 
@@ -2214,23 +2319,27 @@ function sanitizeAIGenerationError(
       return {
         category: "openai_request_failed",
         message: sanitizeStableErrorMessage(error.message),
+        validationError: null,
       };
     }
     if (error.message.startsWith("deepseek_request_failed:")) {
       return {
         category: "deepseek_request_failed",
         message: sanitizeStableErrorMessage(error.message),
+        validationError: null,
       };
     }
     if (error.message.startsWith("ai_provider_request_failed:")) {
       return {
         category: "ai_provider_request_failed",
         message: sanitizeStableErrorMessage(error.message),
+        validationError: null,
       };
     }
     return {
       category: error.name || "error",
       message: "generation_attempt_failed",
+      validationError: null,
     };
   }
 
@@ -2238,17 +2347,261 @@ function sanitizeAIGenerationError(
     return {
       category: "error",
       message: sanitizeStableErrorMessage(error),
+      validationError: null,
     };
   }
 
   return {
     category: "unknown_error",
     message: "generation_attempt_failed",
+    validationError: null,
   };
 }
 
 function sanitizeStableErrorMessage(message: string): string {
   return message.replace(/[^a-zA-Z0-9_:\-.]/g, "_").slice(0, 240);
+}
+
+function validationFailureDetail(
+  error: GenerateWeekValidationError,
+): AIGenerationValidationFailureDetail {
+  return {
+    code: error.code,
+    stage: validationFailureStage(error.code),
+    rule: validationFailureRule(error.message),
+    path: validationFailurePath(error.message),
+    retryable: isRetryableGeneratedJSONError(error),
+    message: error.message.slice(0, 240),
+  };
+}
+
+function validationFailureStage(
+  code: GenerateWeekValidationCode,
+): AIGenerationValidationFailureDetail["stage"] {
+  if (code === "invalid_generation_payload") {
+    return "request_validation";
+  }
+  if (code === "invalid_ai_json") {
+    return "json_parse";
+  }
+  return "output_validation";
+}
+
+function validationFailureRule(message: string): string {
+  if (message.includes("not valid JSON")) {
+    return "invalid_json";
+  }
+  if (message.includes("did not include output JSON")) {
+    return "missing_output_json";
+  }
+  if (message.includes("must contain exactly seven daily cards")) {
+    return "daily_card_count";
+  }
+  if (message.includes("outside the requested week")) {
+    return "scheduled_date_outside_week";
+  }
+  if (message.includes("outside the requested day")) {
+    return "scheduled_date_outside_day";
+  }
+  if (message.includes("Generated card dates must be unique")) {
+    return "duplicate_scheduled_date";
+  }
+  if (message.includes("explicit save CTAs")) {
+    return "save_cta_cap";
+  }
+  if (message.includes("must be a non-empty timeline array")) {
+    return "required_timeline";
+  }
+  if (message.includes("at least one scene")) {
+    return "scene_count";
+  }
+  if (message.includes("must use a timestamp range")) {
+    return "timestamp_format";
+  }
+  if (message.includes("must contain at least one non-empty string")) {
+    return "required_non_empty_string_array";
+  }
+  if (message.includes("must contain only strings")) {
+    return "string_array_items";
+  }
+  if (message.includes("must be an array")) {
+    return "array_type";
+  }
+  if (message.includes("is required")) {
+    return "required_string";
+  }
+  if (message.includes("placeholder content")) {
+    return "placeholder_content";
+  }
+  if (message.includes("content_pillar must be one of")) {
+    return "content_pillar_enum";
+  }
+  if (message.includes("format must be Reel, Post, or Story")) {
+    return "format_enum";
+  }
+  if (message.includes("creator_fit_score must be between")) {
+    return "creator_fit_score_range";
+  }
+  if (message.includes("duration_seconds must be")) {
+    return "duration_seconds_range";
+  }
+  if (message.includes("estimated_shoot_minutes must be")) {
+    return "estimated_shoot_minutes_range";
+  }
+  if (message.includes("must be an object")) {
+    return "object_type";
+  }
+  return "validation_failed";
+}
+
+function validationFailurePath(message: string): string | null {
+  const bracketPath = message.match(/^([a-zA-Z0-9_.\[\]]+)/)?.[1];
+  if (
+    bracketPath &&
+    (message.includes(" must ") ||
+      message.includes(" is required") ||
+      message.includes(" contains placeholder"))
+  ) {
+    return bracketPath;
+  }
+
+  const requiredField = message.match(/^([a-zA-Z0-9_.]+) is required\./)?.[1];
+  if (requiredField) {
+    return requiredField;
+  }
+
+  const placeholderField = message.match(/^([a-zA-Z0-9_.]+) contains placeholder/)
+    ?.[1];
+  if (placeholderField) {
+    return placeholderField;
+  }
+
+  if (message.includes("daily cards")) {
+    return "daily_cards";
+  }
+  if (message.includes("idea_bank")) {
+    return "idea_bank";
+  }
+  if (message.includes("scene")) {
+    return "scene_list";
+  }
+  if (message.includes("scheduled_date") || message.includes("date")) {
+    return "scheduled_date";
+  }
+  return null;
+}
+
+function aiGenerationRequestSizeMetrics(
+  input: GenerationInputSnapshot,
+  request: Record<string, unknown>,
+  requestBody: string,
+): AIGenerationRequestSizeMetrics {
+  const prompts = providerPromptText(request);
+  const inputSnapshot = safeJSONStringify(input);
+  const confirmedReferences = safeJSONStringify(input.confirmed_references);
+  const referenceExtractions = safeJSONStringify(input.reference_extractions);
+  const referenceContext = safeJSONStringify({
+    confirmed_references: input.confirmed_references,
+    reference_extractions: input.reference_extractions,
+  });
+
+  return {
+    prompt_system_chars: prompts.system.length,
+    prompt_user_chars: prompts.user.length,
+    prompt_total_chars: prompts.total.length,
+    prompt_total_bytes: utf8ByteLength(prompts.total),
+    prompt_estimated_tokens: estimatedTokenCount(prompts.total),
+    provider_request_body_chars: requestBody.length,
+    provider_request_body_bytes: utf8ByteLength(requestBody),
+    input_snapshot_chars: inputSnapshot.length,
+    input_snapshot_bytes: utf8ByteLength(inputSnapshot),
+    input_snapshot_estimated_tokens: estimatedTokenCount(inputSnapshot),
+    reference_context_chars: referenceContext.length,
+    reference_context_bytes: utf8ByteLength(referenceContext),
+    reference_context_estimated_tokens: estimatedTokenCount(referenceContext),
+    creator_profile_chars: safeJSONStringify(input.creator_profile).length,
+    weekly_setup_chars: safeJSONStringify(input.weekly_setup).length,
+    confirmed_reference_count: input.confirmed_references.length,
+    confirmed_reference_chars: confirmedReferences.length,
+    reference_extraction_count: input.reference_extractions.length,
+    reference_extraction_chars: referenceExtractions.length,
+    recent_archive_count: input.recent_archive.length,
+    recent_archive_chars: safeJSONStringify(input.recent_archive).length,
+    idea_bank_count: input.idea_bank.length,
+    idea_bank_chars: safeJSONStringify(input.idea_bank).length,
+    pattern_count: input.patterns.length,
+    pattern_chars: safeJSONStringify(input.patterns).length,
+    trend_count: input.trends.length,
+    trend_chars: safeJSONStringify(input.trends).length,
+    audio_option_count: input.audio_options.length,
+    audio_option_chars: safeJSONStringify(input.audio_options).length,
+    brand_brief_count: input.brand_briefs.length,
+    brand_brief_chars: safeJSONStringify(input.brand_briefs).length,
+    key_moment_count: input.key_moments.length,
+    key_moment_chars: safeJSONStringify(input.key_moments).length,
+    existing_week_card_count: input.existing_week_cards?.length ?? 0,
+    existing_week_card_chars: safeJSONStringify(input.existing_week_cards ?? [])
+      .length,
+  };
+}
+
+function providerPromptText(
+  request: Record<string, unknown>,
+): { system: string; user: string; total: string } {
+  const messages = Array.isArray(request.messages)
+    ? request.messages
+    : Array.isArray(request.input)
+    ? request.input
+    : [];
+  const system: string[] = [];
+  const user: string[] = [];
+
+  for (const message of messages) {
+    if (!isRecord(message)) {
+      continue;
+    }
+    const content = stringValue(message.content) ?? "";
+    if (message.role === "system") {
+      system.push(content);
+    } else if (message.role === "user") {
+      user.push(content);
+    }
+  }
+
+  const systemText = system.join("\n");
+  const userText = user.join("\n");
+  return {
+    system: systemText,
+    user: userText,
+    total: [systemText, userText].filter((value) => value.length > 0).join("\n"),
+  };
+}
+
+function withAIOutputTextSize(
+  metadata: AIResponseMetadata,
+  outputText: string,
+): AIResponseMetadata {
+  return {
+    ...metadata,
+    outputTextChars: outputText.length,
+    outputTextBytes: utf8ByteLength(outputText),
+  };
+}
+
+function safeJSONStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+function estimatedTokenCount(value: string): number {
+  return Math.ceil(value.length / 4);
 }
 
 function extractOpenAIResponseMetadata(response: unknown): AIResponseMetadata {
@@ -2266,6 +2619,8 @@ function extractOpenAIResponseMetadata(response: unknown): AIResponseMetadata {
     totalTokens: optionalTokenCount(usage?.total_tokens),
     finishReason: stringValue(incompleteDetails?.reason) ??
       findOpenAIFinishReason(response.output),
+    outputTextChars: null,
+    outputTextBytes: null,
   };
 }
 
@@ -2282,6 +2637,8 @@ function extractChatCompletionResponseMetadata(
     outputTokens: optionalTokenCount(usage?.completion_tokens),
     totalTokens: optionalTokenCount(usage?.total_tokens),
     finishReason: firstChatCompletionFinishReason(response.choices),
+    outputTextChars: null,
+    outputTextBytes: null,
   };
 }
 
@@ -2291,6 +2648,8 @@ function emptyAIResponseMetadata(): AIResponseMetadata {
     outputTokens: null,
     totalTokens: null,
     finishReason: null,
+    outputTextChars: null,
+    outputTextBytes: null,
   };
 }
 

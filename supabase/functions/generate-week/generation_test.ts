@@ -743,14 +743,42 @@ Deno.test("daily OpenAI provider instrumentation logs retries, usage, finish rea
   assertEquals(logs[0].output_tokens, 31);
   assertEquals(logs[0].total_tokens, 132);
   assertEquals(logs[0].finish_reason, "stop");
+  assertEquals(
+    logs[0].output_text_chars,
+    JSON.stringify({ daily_card: {} }).length,
+  );
+  assertEquals(logs[0].request_metrics?.confirmed_reference_count, 1);
+  assertEquals(logs[0].request_metrics?.reference_extraction_count, 1);
+  assert(
+    (logs[0].request_metrics?.prompt_total_chars ?? 0) > 0,
+    "prompt size metrics should be logged",
+  );
+  assert(
+    (logs[0].request_metrics?.reference_context_chars ?? 0) > 0,
+    "reference context size metrics should be logged",
+  );
   assertEquals(logs[0].quality_score, null);
   assertEquals(logs[0].error_category, "invalid_generated_week");
+  assertEquals(logs[0].validation_error?.stage, "output_validation");
+  assertEquals(logs[0].validation_error?.rule, "scene_count");
+  assertEquals(logs[0].validation_error?.path, "scene_list");
+  assertEquals(logs[0].validation_error?.retryable, true);
 
   assertEquals(logs[1].provider_attempt, 2);
   assertEquals(logs[1].status, "success");
   assertEquals(logs[1].input_tokens, 201);
   assertEquals(logs[1].output_tokens, 73);
   assertEquals(logs[1].total_tokens, 274);
+  assertEquals(
+    logs[1].output_text_chars,
+    JSON.stringify(validDayOutput).length,
+  );
+  assertEquals(logs[1].request_metrics?.confirmed_reference_count, 1);
+  assertEquals(logs[1].request_metrics?.reference_extraction_count, 1);
+  assertEquals(
+    logs[1].request_metrics?.provider_request_body_chars,
+    logs[0].request_metrics?.provider_request_body_chars,
+  );
   assertEquals(logs[1].quality_version, "instagram_content_quality_v2");
   assertEquals(logs[1].quality_metrics?.pillar_count, 1);
   assertEquals(logs[1].quality_metrics?.instructor_phrase_count, 0);
@@ -767,6 +795,7 @@ Deno.test("daily OpenAI provider instrumentation logs retries, usage, finish rea
   );
   assertEquals(logs[1].error_category, null);
   assertEquals(logs[1].error_message, null);
+  assertEquals(logs[1].validation_error, null);
 });
 
 Deno.test("split-week AI caller combines seven valid daily card outputs", async () => {

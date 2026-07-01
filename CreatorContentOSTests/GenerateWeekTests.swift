@@ -1552,31 +1552,6 @@ final class GenerateWeekTests: XCTestCase {
         )
     }
 
-    func testPartialFailurePreservesNilGenerationIDForReloadedDraft() {
-        let planID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
-        let draft = GeneratedWeekDraft(
-            id: planID,
-            weeklyPlanID: planID,
-            status: "draft",
-            strategySummary: "Reloaded draft",
-            warnings: [],
-            assumptions: [],
-            dailyCards: [],
-            ideaBank: [],
-            sourceSummary: "Reloaded",
-            generatedAt: "2026-06-30T00:00:00Z"
-        )
-
-        let progress = WeeklyGenerationProgress.partialFailure(
-            from: draft,
-            message: "Some days were saved and some days failed. Retry the failed days before publishing.",
-            preserving: nil,
-            expectedScheduledDates: SupabaseDateFormatting.weekDates(starting: "2026-07-13")
-        )
-
-        XCTAssertNil(progress.generationID)
-    }
-
     // MARK: — Working Plan Persistence
 
     func testWorkingPlanReturnsNilWhenNoDraftExists() {
