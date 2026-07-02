@@ -355,6 +355,38 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(response.weekProgress.effectiveSavedDayCount, 7)
     }
 
+    func testRegenerateDayRequestEncodesDayGuidanceWhenPresent() throws {
+        let request = SupabaseRegenerateDayRequest(
+            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            weeklyPlanID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
+            scheduledDate: "2026-06-10",
+            preserveManualEdits: false,
+            mock: true,
+            dayGuidance: "Make it about recovery and family life in New Jersey."
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(object["action"] as? String, "regenerate_day")
+        XCTAssertEqual(object["day_guidance"] as? String, "Make it about recovery and family life in New Jersey.")
+    }
+
+    func testRegenerateDayRequestOmitsDayGuidanceWhenNil() throws {
+        let request = SupabaseRegenerateDayRequest(
+            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            weeklyPlanID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
+            scheduledDate: "2026-06-10",
+            preserveManualEdits: false,
+            mock: true,
+            dayGuidance: nil
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(object["day_guidance"])
+    }
+
     func testRegenerateDayRequestEncodesEdgeFunctionContract() throws {
         let request = SupabaseRegenerateDayRequest(
             creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
@@ -2580,6 +2612,7 @@ private struct RetryPastDateFallbackRepository: WeeklyGenerationRepository {
         weeklyPlanID: UUID,
         scheduledDate: String,
         preserveManualEdits: Bool,
+        dayGuidance: String?,
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult {
         RegeneratedDayResult(
@@ -2657,6 +2690,7 @@ private struct PastDateRegenerateDayOnlyRepository: WeeklyGenerationRepository {
         weeklyPlanID: UUID,
         scheduledDate: String,
         preserveManualEdits: Bool,
+        dayGuidance: String?,
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult {
         RegeneratedDayResult(

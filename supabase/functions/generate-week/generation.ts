@@ -212,6 +212,7 @@ export type RegenerateDayRequest = {
   mock: boolean;
   response_mode: GenerateWeekResponseMode;
   input_overrides?: Record<string, unknown>;
+  day_guidance?: string;
 };
 
 export type GenerateWeekRequest = {
@@ -240,6 +241,7 @@ export type GenerationInputSnapshot = {
   brand_briefs: Record<string, unknown>[];
   key_moments: Record<string, unknown>[];
   existing_week_cards?: Record<string, unknown>[];
+  day_guidance?: string;
 };
 
 const DEFAULT_AI_REQUEST_TIMEOUT_MS = 240_000;
@@ -605,6 +607,8 @@ export function normalizeGenerateWeekRequest(
   };
 }
 
+const MAX_DAY_GUIDANCE_LENGTH = 500;
+
 export function normalizeRegenerateDayRequest(
   body: unknown,
 ): RegenerateDayRequest {
@@ -619,6 +623,10 @@ export function normalizeRegenerateDayRequest(
   const weeklyPlanID = stringValue(body.weekly_plan_id);
   const scheduledDate = stringValue(body.scheduled_date);
   const responseMode = stringValue(body.response_mode) ?? "sync";
+  const rawGuidance = stringValue(body.day_guidance) ?? undefined;
+  const dayGuidance = rawGuidance
+    ? rawGuidance.trim().slice(0, MAX_DAY_GUIDANCE_LENGTH)
+    : undefined;
 
   if (
     !isUUID(creatorID) || !isUUID(weeklyPlanID) ||
@@ -647,6 +655,7 @@ export function normalizeRegenerateDayRequest(
     input_overrides: isRecord(body.input_overrides)
       ? body.input_overrides
       : undefined,
+    day_guidance: dayGuidance,
   };
 }
 
@@ -746,6 +755,9 @@ function buildDayPromptMessages(
     dayIndex,
   );
   const targetWeekday = weekdayName(scheduledDate);
+  const dayGuidanceNote = input.day_guidance
+    ? `\nCreator/admin instruction for ${scheduledDate} ONLY (not week-wide): ${input.day_guidance}`
+    : "";
   return {
     system: [
       "You generate Creator Content OS daily content as strict JSON.",
@@ -765,6 +777,7 @@ function buildDayPromptMessages(
       "Every non-training card (lifestyle, eating, recovery) must have a genuinely non-training center. Never relabel a gym script as lifestyle, eating, or recovery.",
       "Reject instructor endings: 'just start', 'one set, then the next', 'if you needed a reminder', 'the real win', 'you can do this', 'you got this', 'no excuses', 'start today', and follower-directed workout permission sentences.",
       "Avoid all no-go topics and surface assumptions or risks instead of inventing facts.",
+      "Write a concise Instagram caption — roughly 40-70 words, tight and scannable. Capture the creator's context, one practical takeaway, and a natural CTA. Do not produce captions longer than needed; half the length of a long-form caption is the target.",
     ].join(" "),
     user: JSON.stringify({
       task:
@@ -781,7 +794,7 @@ function buildDayPromptMessages(
       required_contract: generatedDayOutputContract(scheduledDate),
       generation_guidance: generationGuidance,
       input,
-    }),
+    }) + dayGuidanceNote,
   };
 }
 
@@ -1107,7 +1120,7 @@ function buildGenerationGuidance(
       "Scene titles must stay short, but shot_timeline.detail must be production-ready: include where the creator can shoot it, what the frame contains, the movement/action, and why that location fits the creator context.",
       "When context includes Bombay/Mumbai, gym return, home rhythm, society garden, or family routine, give context-specific capture examples such as home, society garden, building gym, or nearby gym; do not leave scenes as generic labels.",
       "Scripts must be long enough to record as usable voiceover, usually 45-90 words for a short Reel, with a clear opening, practical middle, and grounded close.",
-      "Captions must be longer than a stub, usually 80-140 words, with the creator's context, a useful takeaway, and one natural CTA.",
+      "Captions must be concise Instagram captions, usually 40-70 words, with the creator's context, one useful takeaway, and one natural CTA. Keep them tight, scannable, and about half the length of the previous long-form caption target.",
       "Do not include vague support/supports language. Use what_to_capture style guidance in shot_timeline and exact text in on_screen_text_timeline.",
       "When the weekly brief says Bombay, Mumbai, India, travel, gym return, or podcast, make that current context visible where relevant and let it outrank stale stored setup or archive context.",
       "Avoid weight-loss, transformation, punishment, extreme intensity, medical, or guaranteed outcome claims.",
@@ -1607,7 +1620,7 @@ function generatedDailyCardCompactTemplate(
       placement: "Upper third over motion",
     }],
     caption:
-      "An 80-140 word caption with context, practical takeaway, and natural CTA.",
+      "A concise 40-70 word Instagram caption with the creator's context, one practical takeaway, and a natural CTA.",
     cta: "Save this for your next practical gym day.",
     hashtags: ["fitnessover60", "gymroutine", "consistency"],
     cover_text: "Simple gym reset",

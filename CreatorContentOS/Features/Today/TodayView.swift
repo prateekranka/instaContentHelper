@@ -85,10 +85,12 @@ struct TodayView: View {
             return Self.formattedHeadingDate(from: date) ?? date
         }
 
+        let todayDateString = services.currentTodayDateString
         guard let scheduledDate = services.todayCard.scheduledDate,
-              let date = Self.apiDateFormatter.date(from: scheduledDate)
+              let date = Self.apiDateFormatter.date(from: scheduledDate),
+              !SupabaseDateFormatting.isDatePast(scheduledDate, todayString: todayDateString)
         else {
-            return services.todayCard.context
+            return Self.formattedHeadingDate(from: todayDateString) ?? todayDateString
         }
 
         return Self.headingDateString(from: date)

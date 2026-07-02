@@ -120,6 +120,10 @@ final class AppServices {
         isLiveSupabaseRuntime && memberRole == "owner"
     }
 
+    var currentTodayDateString: String {
+        todayDate()
+    }
+
     static var preview: AppServices {
         fixtureBacked(repositories: .fixture)
     }
@@ -694,7 +698,8 @@ final class AppServices {
 
     func regeneratedDailyCard(
         scheduledDate: String,
-        preserveManualEdits: Bool
+        preserveManualEdits: Bool,
+        dayGuidance: String? = nil
     ) async throws -> GeneratedDailyCardDraft {
         guard !SupabaseDateFormatting.isDatePast(scheduledDate, todayString: todayDate()) ||
             isRetryableFailedGenerationDate(scheduledDate) else {
@@ -734,6 +739,7 @@ final class AppServices {
                 weeklyPlanID: weeklyPlan.id,
                 scheduledDate: scheduledDate,
                 preserveManualEdits: preserveManualEdits,
+                dayGuidance: dayGuidance,
                 context: context
             )
             applyRegeneratedDay(result.dailyCard)

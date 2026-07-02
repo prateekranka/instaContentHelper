@@ -619,6 +619,7 @@ async function prepareDayGeneration(
   let inputSnapshot: GenerationInputSnapshot = {
     ...inputResult.input,
     existing_week_cards: cardsResult.cards,
+    day_guidance: request.day_guidance,
   };
   if (
     request.input_overrides &&

@@ -268,6 +268,7 @@ protocol WeeklyGenerationRepository: Sendable {
         weeklyPlanID: UUID,
         scheduledDate: String,
         preserveManualEdits: Bool,
+        dayGuidance: String?,
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult
 
@@ -351,6 +352,7 @@ extension WeeklyGenerationRepository {
         weeklyPlanID: UUID,
         scheduledDate: String,
         preserveManualEdits: Bool,
+        dayGuidance: String?,
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult {
         throw RepositoryError.notConfigured("regenerate_day_not_configured")

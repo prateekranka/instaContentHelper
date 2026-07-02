@@ -1698,6 +1698,164 @@ Deno.test("validator continues to enforce four-pillar contract after all correct
   assert(gymDays <= 2, `gym days (${gymDays}) must not exceed cap of 2`);
 });
 
+// ── Regenerate-day guidance + short-caption contract ──
+
+Deno.test("per-day prompt includes concise 40-70 word caption rule", () => {
+  const request = buildDeepSeekDayChatRequest(
+    fixtureInput(),
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const messages = request.messages as Record<string, string>[];
+  const systemPrompt = messages[0].content as string;
+  const userContent = messages[1].content as string;
+
+  assert(
+    systemPrompt.includes("40-70 words"),
+    "system prompt should include 40-70 word caption target",
+  );
+  assert(
+    systemPrompt.includes("concise Instagram caption"),
+    "system prompt should instruct for concise caption",
+  );
+
+  const userPayload = JSON.parse(userContent.split("\n")[0]);
+  const template = recordValue(userPayload.required_contract)
+    .daily_card_template as Record<string, unknown>;
+  assert(
+    (template.caption as string).includes("40-70 word"),
+    "template caption should specify 40-70 word target",
+  );
+});
+
+Deno.test("per-day prompt includes day_guidance scoped to target scheduled date", () => {
+  const input = {
+    ...fixtureInput(),
+    day_guidance: "Thursday brand brief: highlight the new recovery product launch.",
+  };
+  const request = buildDeepSeekDayChatRequest(
+    input,
+    "deepseek-v4-pro",
+    "2026-06-11",
+    3,
+  );
+  const messages = request.messages as Record<string, string>[];
+  const userContent = messages[1].content as string;
+
+  assert(
+    userContent.includes("Thursday brand brief: highlight the new recovery product launch."),
+    "per-day prompt should include day_guidance text",
+  );
+  assert(
+    userContent.includes("Creator/admin instruction for 2026-06-11 ONLY (not week-wide)"),
+    "day_guidance should be labeled as scoped to the target date only",
+  );
+  assert(
+    userContent.includes("not week-wide"),
+    "day_guidance should explicitly state it is NOT week-wide",
+  );
+});
+
+Deno.test("per-day prompt guidance does not become week-wide instruction", () => {
+  const input = {
+    ...fixtureInput(),
+    day_guidance: "Brand collab: feature the hydration brand.",
+  };
+  const wednesdayRequest = buildDeepSeekDayChatRequest(
+    input,
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const wednesdayContent = (wednesdayRequest.messages as Record<string, string>[])[1].content as string;
+
+  assert(
+    wednesdayContent.includes("Brand collab: feature the hydration brand."),
+    "Wednesday should have the day_guidance",
+  );
+
+  const fridayRequest = buildDeepSeekDayChatRequest(
+    input,
+    "deepseek-v4-pro",
+    "2026-06-12",
+    4,
+  );
+  const fridayContent = (fridayRequest.messages as Record<string, string>[])[1].content as string;
+
+  assert(
+    fridayContent.includes("Creator/admin instruction for 2026-06-12 ONLY (not week-wide)"),
+    "Friday scoping label should reference Friday's date, not inherit Wednesday's",
+  );
+});
+
+Deno.test("week-wide prompt does not include day_guidance", () => {
+  const input = {
+    ...fixtureInput(),
+    day_guidance: "This should not appear in week-wide prompts.",
+  };
+  const prompt = buildPromptMessages(input);
+
+  assert(
+    !prompt.user.includes("Creator/admin instruction"),
+    "week-wide prompt must not include day_guidance instruction labels",
+  );
+  assert(
+    !prompt.system.includes("day_guidance"),
+    "week-wide system prompt must not include day_guidance references",
+  );
+});
+
+Deno.test("per-day prompt without day_guidance omits the instruction block", () => {
+  const request = buildDeepSeekDayChatRequest(
+    fixtureInput(),
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const messages = request.messages as Record<string, string>[];
+  const userContent = messages[1].content as string;
+
+  assert(
+    !userContent.includes("Creator/admin instruction for"),
+    "prompt without day_guidance should not include the instruction block",
+  );
+});
+
+Deno.test("daily card template caption is 40-70 words, not 80-140", () => {
+  const request = buildDeepSeekDayChatRequest(
+    fixtureInput(),
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const requestText = JSON.stringify(request);
+
+  assert(
+    requestText.includes("40-70 word"),
+    "template caption should specify 40-70 words",
+  );
+  assert(
+    !requestText.includes("80-140"),
+    "daily card prompt must not reference the old 80-140 word range",
+  );
+});
+
+Deno.test("instagram_defaults guidance uses concise 40-70 caption target", () => {
+  const prompt = buildPromptMessages(fixtureInput());
+  const guidance = `${prompt.system}\n${prompt.user}`;
+
+  assertIncludesAll(guidance, [
+    "40-70 words",
+    "half the length",
+    "one natural CTA",
+  ]);
+  assert(
+    !guidance.includes("80-140"),
+    "generation guidance must not reference the old 80-140 word range",
+  );
+});
+
 function dayIntentFromPrompt(
   input: GenerationInputSnapshot,
   scheduledDate: string,

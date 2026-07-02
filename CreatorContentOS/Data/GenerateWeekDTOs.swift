@@ -387,6 +387,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
     var responseMode: GenerateWeekResponseMode = .sync
     var mock: Bool?
     var action = "regenerate_day"
+    var dayGuidance: String?
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
@@ -396,6 +397,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
         case responseMode = "response_mode"
         case mock
         case action
+        case dayGuidance = "day_guidance"
     }
 }
 

@@ -191,6 +191,48 @@ final class TodayCardAndPostedFlowTests: XCTestCase {
         XCTAssertNil(services.lastRepositoryError)
     }
 
+    // MARK: - Stale today date & week normalization
+
+    func testTodayDateLineUsesCurrentDateWhenCardHasStaleScheduledDate() {
+        let services = AppServices.fixtureBacked(
+            todayCache: MemoryCacheStore(),
+            todayDate: { "2026-07-02" }
+        )
+        services.todayCard.scheduledDate = "2026-06-28"
+        services.todayContentState = .ready
+
+        XCTAssertTrue(services.todayCard.scheduledDate == "2026-06-28")
+        XCTAssertTrue(SupabaseDateFormatting.isDatePast("2026-06-28", todayString: "2026-07-02"))
+    }
+
+    func testNormalizeManagerWeekStartReplacesStaleDateWhenNoDraft() async throws {
+        let services = AppServices.fixtureBacked(
+            todayCache: MemoryCacheStore(),
+            todayDate: { "2026-07-02" }
+        )
+        services.latestGenerationSummary = nil
+        services.weeklyPlan.weekStartDate = "2026-06-28"
+
+        services.normalizeManagerWeekStartIfStale()
+
+        XCTAssertEqual(services.weeklyPlan.weekStartDate, "2026-07-02",
+                       "Stale week start should be replaced with today's date")
+        XCTAssertEqual(services.weeklyPlan.days.count, 7)
+        XCTAssertFalse(services.weeklyPlan.isSoftLocked)
+    }
+
+    func testWeekStartCanBeSetToToday() async throws {
+        let services = AppServices.fixtureBacked(
+            todayCache: MemoryCacheStore(),
+            todayDate: { "2026-07-02" }
+        )
+
+        services.updateWeeklyStartDate("2026-07-02")
+
+        XCTAssertEqual(services.weeklyPlan.weekStartDate, "2026-07-02")
+        XCTAssertNil(services.generationError)
+    }
+
     // MARK: - Helpers
 
     private func repositories(today: any TodayCardRepository) -> AppRepositories {

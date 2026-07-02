@@ -1972,6 +1972,74 @@ Deno.test("retry_day accepts today or future scheduled_date", async () => {
   }
 });
 
+Deno.test("regenerate_day accepts and bounds day_guidance", async () => {
+  let capturedGuidance: string | undefined;
+  const state = dayGenerationState();
+  const deps = {
+    env: fakeEnv("openai-key"),
+    createAdminClient: () => fakeAdmin(state),
+    generateDayAI: async (
+      input: GenerationInputSnapshot,
+      _providers: AIProviderConfig[],
+      _scheduledDate: string,
+      _dayIndex: number,
+    ) => {
+      capturedGuidance = input.day_guidance;
+      const card = makeMockGeneratedWeek(input).daily_cards[2];
+      return {
+        strategy_note: "Guidance test",
+        warnings: [],
+        assumptions: [],
+        daily_card: { ...card, scheduled_date: "2026-06-10" },
+        idea_bank: [],
+        source_summary: "test",
+      };
+    },
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "regenerate_day",
+      creator_id: creatorID,
+      weekly_plan_id: weeklyPlanID,
+      scheduled_date: "2026-06-10",
+      preserve_manual_edits: false,
+      day_guidance: "  Focus on the Thursday brand brief for recovery products.  ",
+    }),
+    deps,
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    capturedGuidance,
+    "Focus on the Thursday brand brief for recovery products.",
+  );
+
+  const longGuidance = "x".repeat(600);
+  const longResponse = await handleGenerateWeekRequest(
+    requestFor({
+      action: "regenerate_day",
+      creator_id: creatorID,
+      weekly_plan_id: weeklyPlanID,
+      scheduled_date: "2026-06-10",
+      preserve_manual_edits: false,
+      day_guidance: longGuidance,
+    }),
+    deps,
+  );
+
+  assertEquals(longResponse.status, 200);
+  assertEquals(
+    capturedGuidance?.length,
+    500,
+    `day_guidance should be bounded to 500 chars, got ${capturedGuidance?.length}`,
+  );
+  assertEquals(
+    capturedGuidance,
+    longGuidance.slice(0, 500),
+  );
+});
+
 function requestFor(body: Record<string, unknown>): Request {
   return new Request("http://localhost/generate-week", {
     method: "POST",

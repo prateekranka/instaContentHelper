@@ -217,6 +217,16 @@ struct ProfileModeView: View {
                             }
                         }
                     }
+
+                    NavigationLink {
+                        CreatorProfileAdminView()
+                    } label: {
+                        Text("Edit profile")
+                            .font(MCOType.caption)
+                            .foregroundStyle(MCOTheme.Color.oxblood)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit creator profile")
                 }
                 .padding(.bottom, MCOSpace.s)
                 .transition(.opacity.combined(with: .move(edge: .top)))

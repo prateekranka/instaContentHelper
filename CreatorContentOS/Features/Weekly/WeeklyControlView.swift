@@ -384,8 +384,11 @@ struct WeeklyGenerationStatusPanel: View {
     let onRegenerateDay: RegenerateDayAction?
     let onRetryQueuedDay: RetryQueuedDayAction?
     let onCancel: (() -> Void)?
-    @State private var regeneratingFailedDay: String?
+    @State private var activeRetries: Set<String> = []
+    @State private var retryQueue: [String] = []
     @State private var failedDayRegenerationErrors: [String: String] = [:]
+
+    private static let maxActiveRetries = 4
 
     private var isReady: Bool {
         progress.phase == .readyForReview && draft != nil
@@ -443,7 +446,8 @@ struct WeeklyGenerationStatusPanel: View {
                         dayStatuses: progress.dayStatuses,
                         draft: draft,
                         canRegenerateDay: canRegenerateDay && onRegenerateDay != nil,
-                        regeneratingFailedDay: regeneratingFailedDay,
+                        activeRetries: activeRetries,
+                        retryQueue: retryQueue,
                         errorMessages: failedDayRegenerationErrors,
                         onReviewGeneratedDay: onReview,
                         onRetryDay: retryFailedDay
@@ -642,24 +646,49 @@ struct WeeklyGenerationStatusPanel: View {
     }
 
     private func retryFailedDay(_ dayStatus: WeeklyDayGenerationStatus) {
-        guard let scheduledDate = dayStatus.scheduledDate,
-              regeneratingFailedDay == nil
-        else { return }
+        guard let scheduledDate = dayStatus.scheduledDate else { return }
 
-        regeneratingFailedDay = scheduledDate
+        if activeRetries.contains(scheduledDate) || retryQueue.contains(scheduledDate) {
+            return
+        }
+
         failedDayRegenerationErrors[scheduledDate] = nil
+
+        if activeRetries.count < Self.maxActiveRetries {
+            activeRetries.insert(scheduledDate)
+            startRetry(for: scheduledDate, dayStatus: dayStatus)
+        } else {
+            retryQueue.append(scheduledDate)
+        }
+    }
+
+    private func startRetry(for scheduledDate: String, dayStatus: WeeklyDayGenerationStatus) {
         Task {
             do {
                 if dayStatus.retryAction == "retry_day", let onRetryQueuedDay {
                     try await onRetryQueuedDay(scheduledDate)
                 } else if let onRegenerateDay {
-                    _ = try await onRegenerateDay(scheduledDate, false)
+                    _ = try await onRegenerateDay(scheduledDate, false, nil)
                 }
             } catch {
                 failedDayRegenerationErrors[scheduledDate] = error.localizedDescription
             }
-            regeneratingFailedDay = nil
+            await MainActor.run {
+                activeRetries.remove(scheduledDate)
+                dequeueNextRetryIfAvailable()
+            }
         }
+    }
+
+    private func dequeueNextRetryIfAvailable() {
+        guard activeRetries.count < Self.maxActiveRetries, !retryQueue.isEmpty else { return }
+        let nextDate = retryQueue.removeFirst()
+        activeRetries.insert(nextDate)
+        guard let dayStatus = progress.dayStatuses.first(where: { $0.scheduledDate == nextDate }) else {
+            activeRetries.remove(nextDate)
+            return
+        }
+        startRetry(for: nextDate, dayStatus: dayStatus)
     }
 }
 
@@ -667,7 +696,8 @@ struct WeeklyGenerationDayProgressList: View {
     let dayStatuses: [WeeklyDayGenerationStatus]
     let draft: GeneratedWeekDraft?
     let canRegenerateDay: Bool
-    let regeneratingFailedDay: String?
+    let activeRetries: Set<String>
+    let retryQueue: [String]
     let errorMessages: [String: String]
     let onReviewGeneratedDay: () -> Void
     let onRetryDay: (WeeklyDayGenerationStatus) -> Void
@@ -691,7 +721,8 @@ struct WeeklyGenerationDayProgressList: View {
                 WeeklyGenerationDayProgressRow(
                     dayStatus: dayStatus,
                     generatedCard: generatedCard(for: dayStatus),
-                    isRegenerating: regeneratingFailedDay == dayStatus.scheduledDate,
+                    isActiveRetry: activeRetries.contains(dayStatus.scheduledDate ?? ""),
+                    queuedRetryPosition: queuedRetryPosition(for: dayStatus),
                     errorMessage: dayStatus.scheduledDate.flatMap { errorMessages[$0] },
                     canRegenerate: canRegenerateDay,
                     onReviewGeneratedDay: onReviewGeneratedDay,
@@ -708,16 +739,29 @@ struct WeeklyGenerationDayProgressList: View {
             $0.id == dayStatus.dailyCardID || $0.scheduledDate == dayStatus.scheduledDate
         }
     }
+
+    private func queuedRetryPosition(for dayStatus: WeeklyDayGenerationStatus) -> Int? {
+        guard let scheduledDate = dayStatus.scheduledDate,
+              let index = retryQueue.firstIndex(of: scheduledDate)
+        else {
+            return nil
+        }
+        return index + 1
+    }
 }
 
 struct WeeklyGenerationDayProgressRow: View {
     let dayStatus: WeeklyDayGenerationStatus
     let generatedCard: GeneratedDailyCardDraft?
-    let isRegenerating: Bool
+    let isActiveRetry: Bool
+    let queuedRetryPosition: Int?
     let errorMessage: String?
     let canRegenerate: Bool
     let onReviewGeneratedDay: () -> Void
     let onRetryDay: () -> Void
+
+    private var isQueuedRetry: Bool { queuedRetryPosition != nil }
+    private var isBusy: Bool { isActiveRetry || isQueuedRetry }
 
     var body: some View {
         VStack(alignment: .leading, spacing: MCOSpace.xxs) {
@@ -729,10 +773,14 @@ struct WeeklyGenerationDayProgressRow: View {
                     Text("\(dayStatus.displayName): \(displayStatusLabel)")
                         .font(MCOType.bodySmall)
                         .foregroundStyle(titleColor)
-                    if dayStatus.isFailed, !isRegenerating {
+                    if dayStatus.isFailed, !isBusy {
                         Text(dayStatus.failureDetail)
                             .font(MCOType.caption)
                             .foregroundStyle(MCOTheme.Color.inkMuted)
+                    } else if let queuedRetryPosition {
+                        Text("Queued — position \(queuedRetryPosition)")
+                            .font(MCOType.caption)
+                            .foregroundStyle(MCOTheme.Color.brass)
                     } else if let generatedCard {
                         Text(generatedCard.title)
                             .font(MCOType.caption)
@@ -760,14 +808,14 @@ struct WeeklyGenerationDayProgressRow: View {
                 } else if dayStatus.isFailed {
                     Button(action: onRetryDay) {
                         HStack(spacing: MCOSpace.xxs) {
-                            if isRegenerating {
+                            if isActiveRetry {
                                 ProgressView()
                                     .controlSize(.small)
                             } else {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.system(size: 11, weight: .semibold))
                             }
-                            Text(isRegenerating ? "Retrying" : "Retry")
+                            Text(isActiveRetry ? "Retrying" : (isQueuedRetry ? "Queued" : "Retry"))
                         }
                         .font(MCOType.caption)
                         .padding(.horizontal, MCOSpace.s)
@@ -776,8 +824,8 @@ struct WeeklyGenerationDayProgressRow: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(MCOTheme.Color.paper)
                     .background(MCOTheme.Color.oxblood, in: Capsule())
-                    .disabled(!canRegenerate || isRegenerating)
-                    .opacity(!canRegenerate || isRegenerating ? 0.55 : 1)
+                    .disabled(!canRegenerate || isBusy)
+                    .opacity(!canRegenerate || isBusy ? 0.55 : 1)
                     .accessibilityLabel("Retry \(dayStatus.displayName) generation")
                 }
             }
@@ -794,7 +842,7 @@ struct WeeklyGenerationDayProgressRow: View {
 
     @ViewBuilder
     private var statusIcon: some View {
-        if isRegenerating {
+        if isActiveRetry {
             ProgressView()
                 .controlSize(.mini)
                 .tint(MCOTheme.Color.oxblood)
@@ -818,6 +866,10 @@ struct WeeklyGenerationDayProgressRow: View {
             Image(systemName: "minus.circle")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(MCOTheme.Color.inkMuted)
+        } else if isQueuedRetry {
+            Image(systemName: "hourglass.circle")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(MCOTheme.Color.brass)
         } else {
             Image(systemName: "circle")
                 .font(.system(size: 12, weight: .medium))
@@ -826,7 +878,7 @@ struct WeeklyGenerationDayProgressRow: View {
     }
 
     private var titleColor: Color {
-        if isRegenerating {
+        if isActiveRetry || isQueuedRetry {
             return MCOTheme.Color.oxblood
         }
         if dayStatus.isFailed {
@@ -839,7 +891,9 @@ struct WeeklyGenerationDayProgressRow: View {
     }
 
     private var displayStatusLabel: String {
-        isRegenerating ? "Retrying" : dayStatus.displayStatusLabel
+        if isActiveRetry { return "Retrying" }
+        if isQueuedRetry { return "Queued" }
+        return dayStatus.displayStatusLabel
     }
 }
 
@@ -1221,7 +1275,7 @@ private struct WeeklyDayDetailSelection: Identifiable {
 }
 
 typealias RetryQueuedDayAction = (_ scheduledDate: String) async throws -> Void
-typealias RegenerateDayAction = (_ scheduledDate: String, _ preserveManualEdits: Bool) async throws -> GeneratedDailyCardDraft
+typealias RegenerateDayAction = (_ scheduledDate: String, _ preserveManualEdits: Bool, _ dayGuidance: String?) async throws -> GeneratedDailyCardDraft
 
 struct WeeklyInputsReviewSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -1858,7 +1912,7 @@ struct GeneratedDailyCardEditor: View {
         JournalBlock {
             VStack(alignment: .leading, spacing: MCOSpace.m) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(card.scheduledDate)
+                    Text(formattedScheduledDate)
                         .font(MCOType.tinyLabel)
                         .foregroundStyle(MCOTheme.Color.oxblood)
                     Spacer()
@@ -1891,7 +1945,9 @@ struct GeneratedDailyCardEditor: View {
                     isRegenerating: isRegenerating,
                     errorMessage: regenerationError,
                     isDisabled: !canRegenerate || onRegenerate == nil,
-                    onRegenerate: regenerate
+                    onRegenerate: { guidance in
+                        regenerate(dayGuidance: guidance)
+                    }
                 )
                 GeneratedCardInspectionBlock(
                     card: card,
@@ -1901,7 +1957,18 @@ struct GeneratedDailyCardEditor: View {
         }
     }
 
-    private func regenerate() {
+    private var formattedScheduledDate: String {
+        let dateParser = DateFormatter()
+        dateParser.locale = Locale(identifier: "en_US_POSIX")
+        dateParser.dateFormat = "yyyy-MM-dd"
+        guard let date = dateParser.date(from: card.scheduledDate) else { return card.scheduledDate }
+        let displayFormatter = DateFormatter()
+        displayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        displayFormatter.dateFormat = "EEE, d MMMM yyyy"
+        return displayFormatter.string(from: date)
+    }
+
+    private func regenerate(dayGuidance: String?) {
         guard let onRegenerate, !isRegenerating else { return }
         isRegenerating = true
         regenerationError = nil
@@ -1909,7 +1976,7 @@ struct GeneratedDailyCardEditor: View {
         Task {
             defer { isRegenerating = false }
             do {
-                card = try await onRegenerate(card.scheduledDate, preserveManualEdits)
+                card = try await onRegenerate(card.scheduledDate, preserveManualEdits, dayGuidance)
             } catch {
                 regenerationError = error.localizedDescription
             }
@@ -2051,7 +2118,9 @@ struct WeeklyDayDetailSheet: View {
                                 isRegenerating: isRegenerating,
                                 errorMessage: regenerationError,
                                 isDisabled: isLocked || !canRegenerateDay || onRegenerateDay == nil,
-                                onRegenerate: regenerate
+                                onRegenerate: { guidance in
+                                    regenerate(dayGuidance: guidance)
+                                }
                             )
                         }
                     }
@@ -2074,7 +2143,7 @@ struct WeeklyDayDetailSheet: View {
         .presentationDragIndicator(.visible)
     }
 
-    private func regenerate() {
+    private func regenerate(dayGuidance: String?) {
         guard
             let scheduledDate = generatedCard?.scheduledDate ?? day.scheduledDate,
             let onRegenerateDay,
@@ -2088,7 +2157,7 @@ struct WeeklyDayDetailSheet: View {
         Task {
             defer { isRegenerating = false }
             do {
-                generatedCard = try await onRegenerateDay(scheduledDate, preserveManualEdits)
+                generatedCard = try await onRegenerateDay(scheduledDate, preserveManualEdits, dayGuidance)
             } catch {
                 regenerationError = error.localizedDescription
             }
@@ -2192,7 +2261,9 @@ struct DayRegenerationControls: View {
     let isRegenerating: Bool
     let errorMessage: String?
     let isDisabled: Bool
-    let onRegenerate: () -> Void
+    let onRegenerate: (String?) -> Void
+    @State private var dayGuidance: String = ""
+    @State private var regenerationStartTime: Date?
 
     var body: some View {
         JournalBlock {
@@ -2214,7 +2285,25 @@ struct DayRegenerationControls: View {
                         .accessibilityLabel("Keep my edits")
                 }
 
-                Button(action: onRegenerate) {
+                VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                    Text("Regeneration guidance")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                    TextField("Describe what the regenerated content should contain", text: $dayGuidance, axis: .vertical)
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.plain)
+                        .padding(MCOSpace.s)
+                        .background(MCOTheme.Color.paperRaised.opacity(0.58))
+                        .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                        .disabled(isRegenerating || isDisabled)
+                }
+
+                Button(action: {
+                    regenerationStartTime = Date()
+                    onRegenerate(dayGuidance.nilIfBlank)
+                }) {
                     HStack(spacing: MCOSpace.s) {
                         if isRegenerating {
                             ProgressView()
@@ -2234,6 +2323,15 @@ struct DayRegenerationControls: View {
                 .disabled(isRegenerating || isDisabled)
                 .opacity(isRegenerating || isDisabled ? 0.5 : 1)
 
+                if isRegenerating, let startTime = regenerationStartTime {
+                    TimelineView(.periodic(from: startTime, by: 1)) { context in
+                        Text("Elapsed: \(formatElapsed(context.date.timeIntervalSince(startTime)))")
+                            .font(MCOType.caption)
+                            .foregroundStyle(MCOTheme.Color.brass)
+                            .monospacedDigit()
+                    }
+                }
+
                 if let errorMessage {
                     Text(errorMessage)
                         .font(MCOType.caption)
@@ -2242,6 +2340,13 @@ struct DayRegenerationControls: View {
                 }
             }
         }
+    }
+
+    private func formatElapsed(_ interval: TimeInterval) -> String {
+        let totalSeconds = Int(interval)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 
@@ -2304,7 +2409,6 @@ struct GeneratedDayPlannedContent: View {
                 onStoryboardAssetsChanged: onStoryboardAssetsChanged
             )
             InstagramCaptionPostBlock(card: card)
-            DayDecisionBlock(card: card)
         }
     }
 }
@@ -2841,55 +2945,28 @@ struct GeneratedStoryboardTip: View {
     }
 }
 
-struct DayDecisionBlock: View {
-    let card: GeneratedDailyCardDraft
-
-    var body: some View {
-        JournalBlock {
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
-                Text("Why this day")
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
-                ExecutionSummaryLine(title: "Reason", value: card.whyToday)
-                if let saveShareReason = card.saveShareReason?.nilIfBlank {
-                    ExecutionSummaryLine(title: "Why followers save/share it", value: saveShareReason)
-                }
-                if let sourceNote = card.sourceNote.nilIfBlank {
-                    ExecutionSummaryLine(title: "Reference signal", value: sourceNote)
-                }
-            }
-        }
-    }
-}
-
 struct InstagramExecutionSummary: View {
     let card: GeneratedDailyCardDraft
 
     var body: some View {
-        JournalBlock {
-            VStack(alignment: .leading, spacing: MCOSpace.m) {
-                HStack(alignment: .firstTextBaseline, spacing: MCOSpace.s) {
-                    Text("Shoot folio")
-                        .font(MCOType.tinyLabel)
-                        .foregroundStyle(MCOTheme.Color.oxblood)
-                    Spacer(minLength: MCOSpace.s)
-                    Text(formatLabel)
-                        .font(MCOType.tinyLabel)
-                        .foregroundStyle(MCOTheme.Color.paperRaised)
-                        .padding(.horizontal, MCOSpace.s)
-                        .frame(height: 26)
-                        .background(MCOTheme.Color.oxblood, in: Capsule())
-                    Text(durationLabel)
-                        .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
-                }
+        VStack(alignment: .leading, spacing: MCOSpace.m) {
+            HStack(alignment: .firstTextBaseline, spacing: MCOSpace.s) {
+                Text(formatLabel)
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.paperRaised)
+                    .padding(.horizontal, MCOSpace.s)
+                    .frame(height: 26)
+                    .background(MCOTheme.Color.oxblood, in: Capsule())
+                Text(durationLabel)
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                Spacer(minLength: MCOSpace.s)
+            }
 
-                VStack(alignment: .leading, spacing: MCOSpace.s) {
-                    ExecutionSummaryLine(title: "Hook", value: hook)
-                    ExecutionSummaryLine(title: "Shoot direction", value: premise)
-                    if let postInstructions = card.postInstructions.nilIfBlank {
-                        ExecutionSummaryLine(title: "Post instruction", value: postInstructions)
-                    }
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                ExecutionSummaryLine(title: "Hook", value: hook)
+                if let postInstructions = card.postInstructions.nilIfBlank {
+                    ExecutionSummaryLine(title: "Post instruction", value: postInstructions)
                 }
             }
         }
@@ -2911,10 +2988,6 @@ struct InstagramExecutionSummary: View {
 
     private var hook: String {
         card.hook?.nilIfBlank ?? card.title
-    }
-
-    private var premise: String {
-        card.saveShareReason?.nilIfBlank ?? card.whyToday
     }
 }
 
@@ -2966,7 +3039,7 @@ struct InstagramSceneChecklist: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: MCOSpace.xs) {
-            ProductionLabel(title: "Scenes to shoot", systemImage: "camera.viewfinder")
+            ProductionLabel(title: "Storyboard", systemImage: "camera.viewfinder")
             if !shotTimeline.isEmpty {
                 VStack(spacing: MCOSpace.xs) {
                     ForEach(shotTimeline) { item in
@@ -3229,9 +3302,6 @@ struct InstagramCaptionPostBlock: View {
     var body: some View {
         JournalBlock {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
-                Text("Caption + CTA + post instructions")
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
                 GeneratedReadOnlyField(title: "Caption", value: card.caption)
                 GeneratedReadOnlyField(title: "CTA", value: card.cta)
                 GeneratedReadOnlyField(title: "Cover text", value: card.coverText)
@@ -3714,7 +3784,7 @@ struct ProductionSceneChecklist: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: MCOSpace.xs) {
-            ProductionLabel(title: "Scenes to shoot", systemImage: "camera.viewfinder")
+            ProductionLabel(title: "Storyboard", systemImage: "camera.viewfinder")
 
             VStack(spacing: MCOSpace.xs) {
                 ForEach(visibleScenes) { scene in

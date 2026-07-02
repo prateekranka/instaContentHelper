@@ -475,6 +475,7 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         weeklyPlanID: UUID,
         scheduledDate: String,
         preserveManualEdits: Bool,
+        dayGuidance: String?,
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult {
         do {
@@ -484,7 +485,8 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
                     weeklyPlanID: weeklyPlanID,
                     scheduledDate: scheduledDate,
                     preserveManualEdits: preserveManualEdits,
-                    responseMode: .async
+                    responseMode: .async,
+                    dayGuidance: dayGuidance
                 )
             )
 
