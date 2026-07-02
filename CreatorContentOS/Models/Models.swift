@@ -184,17 +184,18 @@ struct ProductionTimelineItem: Identifiable, Codable, Hashable, Sendable {
         timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
             ?? container.decodeIfPresent(String.self, forKey: .time)
             ?? ""
-        title = decodedTitle ?? decodedVideoPortion ?? decodedPlacement ?? decodedText ?? ""
+        title = decodedTitle ?? decodedVideoPortion ?? decodedText ?? decodedPlacement ?? ""
         detail = try container.decodeIfPresent(String.self, forKey: .detail)
             ?? container.decodeIfPresent(String.self, forKey: .body)
             ?? decodedVoiceover
             ?? decodedOnScreenText
             ?? decodedShot
+            ?? decodedPlacement
             ?? (decodedTitle == nil ? "" : decodedText ?? "")
         shot = decodedShot
         videoPortion = decodedVideoPortion
         voiceover = decodedVoiceover
-        onScreenText = decodedOnScreenText
+        onScreenText = decodedOnScreenText ?? decodedText
         placement = decodedPlacement
         durationSeconds = try container.decodeIfPresent(Int.self, forKey: .durationSeconds)
     }
@@ -210,6 +211,50 @@ struct ProductionTimelineItem: Identifiable, Codable, Hashable, Sendable {
         try container.encodeIfPresent(onScreenText, forKey: .onScreenText)
         try container.encodeIfPresent(placement, forKey: .placement)
         try container.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+    }
+}
+
+struct StoryboardThumbnailAsset: Identifiable, Codable, Hashable, Sendable {
+    var rowIndex: Int
+    var promptHash: String
+    var storagePath: String?
+    var publicURL: String?
+    var model: String?
+    var promptVersion: String?
+    var status: String?
+    var generatedAt: String?
+
+    var id: Int { rowIndex }
+
+    enum CodingKeys: String, CodingKey {
+        case rowIndex = "row_index"
+        case promptHash = "prompt_hash"
+        case storagePath = "storage_path"
+        case publicURL = "public_url"
+        case model
+        case promptVersion = "prompt_version"
+        case status
+        case generatedAt = "generated_at"
+    }
+
+    init(
+        rowIndex: Int,
+        promptHash: String,
+        storagePath: String? = nil,
+        publicURL: String? = nil,
+        model: String? = nil,
+        promptVersion: String? = nil,
+        status: String? = nil,
+        generatedAt: String? = nil
+    ) {
+        self.rowIndex = rowIndex
+        self.promptHash = promptHash
+        self.storagePath = storagePath
+        self.publicURL = publicURL
+        self.model = model
+        self.promptVersion = promptVersion
+        self.status = status
+        self.generatedAt = generatedAt
     }
 }
 
@@ -767,6 +812,7 @@ struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
     var riskNotes: [String]
     var assumptions: [String]
     var sourceNote: String
+    var storyboardThumbnailAssets: [StoryboardThumbnailAsset]
 
     init(
         id: UUID,
@@ -807,7 +853,8 @@ struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
         creatorFitScore: Double,
         riskNotes: [String],
         assumptions: [String],
-        sourceNote: String
+        sourceNote: String,
+        storyboardThumbnailAssets: [StoryboardThumbnailAsset] = []
     ) {
         self.id = id
         self.scheduledDate = scheduledDate
@@ -848,6 +895,7 @@ struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
         self.riskNotes = riskNotes
         self.assumptions = assumptions
         self.sourceNote = sourceNote
+        self.storyboardThumbnailAssets = storyboardThumbnailAssets
     }
 }
 

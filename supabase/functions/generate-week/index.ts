@@ -236,6 +236,7 @@ type CardIdentityRecord = {
 
 type SavedDailyCard = GeneratedDailyCard & {
   updated_at?: string;
+  storyboard_thumbnail_assets?: Record<string, unknown>[];
 };
 
 type PreparedDayGeneration = {
@@ -783,6 +784,9 @@ function storedDailyCardToGenerated(
     assumptions: stringArray(card.assumptions),
     source_note: stringValue(card.source_note) ?? "",
     source_reference_ids: [],
+    storyboard_thumbnail_assets: Array.isArray(card.storyboard_thumbnail_assets)
+      ? card.storyboard_thumbnail_assets as Record<string, unknown>[]
+      : [],
     updated_at: stringValue(card.updated_at) ?? undefined,
   };
 }
@@ -929,6 +933,7 @@ function dayGenerationCardSelect(): string {
     "risk_notes",
     "assumptions",
     "source_note",
+    "storyboard_thumbnail_assets",
     "updated_at",
   ].join(",");
 }
@@ -4761,6 +4766,7 @@ function generatedDailyCardValues(
     risk_notes: card.risk_notes,
     assumptions: card.assumptions,
     source_note: card.source_note,
+    storyboard_thumbnail_assets: [],
   };
 }
 
@@ -5148,6 +5154,7 @@ async function upsertGeneratedDailyCards(
     risk_notes: card.risk_notes,
     assumptions: card.assumptions,
     source_note: card.source_note,
+    storyboard_thumbnail_assets: [],
   }));
 
   const writtenIDs = new Map<string, string>();

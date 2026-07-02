@@ -221,6 +221,56 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertEqual(services.weeklyPlan.weekRange, "13 Jul - 19 Jul")
     }
 
+    func testWeeklyStartDatePreservesOverlappingGeneratedCardsByScheduledDate() async throws {
+        let services = makeServices(todayDate: { "2026-07-02" })
+        let existingDraft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: "2026-06-30",
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
+        services.applyGeneratedDraft(existingDraft)
+
+        services.updateWeeklyStartDate("2026-07-02")
+
+        XCTAssertEqual(
+            services.weeklyPlan.days.compactMap(\.scheduledDate),
+            [
+                "2026-07-02",
+                "2026-07-03",
+                "2026-07-04",
+                "2026-07-05",
+                "2026-07-06",
+                "2026-07-07",
+                "2026-07-08"
+            ]
+        )
+        XCTAssertEqual(
+            services.latestGenerationSummary?.dailyCards.map(\.scheduledDate),
+            [
+                "2026-07-02",
+                "2026-07-03",
+                "2026-07-04",
+                "2026-07-05",
+                "2026-07-06"
+            ]
+        )
+
+        for date in ["2026-07-02", "2026-07-03", "2026-07-04", "2026-07-05", "2026-07-06"] {
+            let day = try XCTUnwrap(services.weeklyPlan.days.first { $0.scheduledDate == date })
+            XCTAssertNotEqual(day.title, "Open")
+            XCTAssertEqual(services.generatedDailyCard(for: day)?.scheduledDate, date)
+        }
+
+        for date in ["2026-07-07", "2026-07-08"] {
+            let day = try XCTUnwrap(services.weeklyPlan.days.first { $0.scheduledDate == date })
+            XCTAssertEqual(day.title, "Open")
+            XCTAssertNil(services.generatedDailyCard(for: day))
+        }
+    }
+
     func testUpdateWeeklyStartDateRejectsPastDate() async throws {
         let services = makeServices()
 

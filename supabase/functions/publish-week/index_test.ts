@@ -45,6 +45,13 @@ Deno.test("draft publish payload preserves rich generated daily card fields", ()
     risk_notes: ["Avoid hype."],
     assumptions: ["Low energy day."],
     source_note: "Confirmed reference.",
+    storyboard_thumbnail_assets: [
+      {
+        row_index: 0,
+        public_url:
+          "https://example.supabase.co/storage/v1/object/public/storyboard-thumbnails/thumb.jpg",
+      },
+    ],
   });
 
   assert(normalized !== null);
@@ -64,6 +71,10 @@ Deno.test("draft publish payload preserves rich generated daily card fields", ()
     "Use calm audio.",
   );
   assertEquals(normalized.creator_fit_score, 89);
+  assertEquals(
+    (normalized.storyboard_thumbnail_assets as unknown[]).length,
+    1,
+  );
 });
 
 Deno.test("draft publish payload rejects missing scheduled date or title", () => {
@@ -90,8 +101,11 @@ Deno.test("draft publish payload includes review_state with build-19 fallback to
     title: "Default review",
   });
   assert(withoutReviewState !== null);
-  assertEquals(withoutReviewState.review_state, "ready",
-    "missing review_state defaults to ready for build-19 compat");
+  assertEquals(
+    withoutReviewState.review_state,
+    "ready",
+    "missing review_state defaults to ready for build-19 compat",
+  );
 
   const invalidReviewState = normalizeDraftCard({
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
@@ -100,8 +114,11 @@ Deno.test("draft publish payload includes review_state with build-19 fallback to
     review_state: "unknown",
   });
   assert(invalidReviewState !== null);
-  assertEquals(invalidReviewState.review_state, "ready",
-    "invalid review_state defaults to ready");
+  assertEquals(
+    invalidReviewState.review_state,
+    "ready",
+    "invalid review_state defaults to ready",
+  );
 });
 
 Deno.test("published week replacement archives old published daily cards", async () => {
@@ -110,7 +127,10 @@ Deno.test("published week replacement archives old published daily cards", async
     from(table: string) {
       return new FakePublishQuery(table, updates);
     },
-    rpc(_fn: string, _args?: Record<string, unknown>): Promise<{ data: unknown; error: null }> {
+    rpc(
+      _fn: string,
+      _args?: Record<string, unknown>,
+    ): Promise<{ data: unknown; error: null }> {
       return Promise.resolve({ data: null, error: null });
     },
   };
@@ -261,8 +281,17 @@ Deno.test("publishing an existing draft calls publish_week_atomic RPC with full 
   assertEquals(payload.workspace_id, workspaceID);
   assertEquals(payload.creator_id, creatorID);
   assertEquals(payload.weekly_plan_id, weeklyPlanID);
-  assert(Array.isArray(payload.draft_daily_cards), "draft_daily_cards should be an array");
+  assert(
+    Array.isArray(payload.draft_daily_cards),
+    "draft_daily_cards should be an array",
+  );
   assertEquals((payload.draft_daily_cards as unknown[]).length, 7);
+  const firstDraftCard =
+    (payload.draft_daily_cards as Record<string, unknown>[])[0];
+  assertEquals(
+    (firstDraftCard.storyboard_thumbnail_assets as unknown[]).length,
+    1,
+  );
 
   const body = await response.json();
   assertEquals(body.weekly_plan_id, weeklyPlanID);
@@ -323,11 +352,13 @@ Deno.test("publish_week_atomic RPC errors are mapped to stable error responses",
       },
     );
 
-    assertEquals(response.status, expectedStatus,
-      `expected status ${expectedStatus} for ${rpcError}`);
+    assertEquals(
+      response.status,
+      expectedStatus,
+      `expected status ${expectedStatus} for ${rpcError}`,
+    );
     const body = await response.json();
-    assertEquals(body.error, rpcError,
-      `expected error "${rpcError}"`);
+    assertEquals(body.error, rpcError, `expected error "${rpcError}"`);
   }
 });
 
@@ -425,7 +456,9 @@ function reviewedDraftCards(
     return {
       id: `reviewed-card-${index + 1}`,
       scheduled_date: date.toISOString().slice(0, 10),
-      title: index === 0 ? "Edited Monday concept" : `Reviewed day ${index + 1}`,
+      title: index === 0
+        ? "Edited Monday concept"
+        : `Reviewed day ${index + 1}`,
       why_today: "Prepared for this day.",
       growth_job: "Build consistency.",
       content_pillar: "lifestyle",
@@ -443,13 +476,24 @@ function reviewedDraftCards(
       cta: "Save this.",
       hashtags: ["lifestylecreator"],
       cover_text: "Edited cover",
-      post_instructions: index === 0 ? "Use the edited publish notes." : "Use notes.",
+      post_instructions: index === 0
+        ? "Use the edited publish notes."
+        : "Use notes.",
       backup_story: "Edited backup story.",
       backup_caption_only: "Edited caption-only backup.",
       creator_fit_score: 92,
       risk_notes: [],
       assumptions: [],
       source_note: "Reviewed in app.",
+      storyboard_thumbnail_assets: index === 0
+        ? [
+          {
+            row_index: 0,
+            public_url:
+              "https://example.supabase.co/storage/v1/object/public/storyboard-thumbnails/thumb.jpg",
+          },
+        ]
+        : [],
     };
   });
 }

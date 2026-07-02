@@ -282,6 +282,23 @@ protocol WeeklyGenerationRepository: Sendable {
         generationID: UUID,
         context: WorkspaceContext
     ) async throws
+
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        rowIndexes: [Int]?,
+        force: Bool,
+        revisionInstructions: String?,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset]
+
+    func generateStoryboardThumbnailsForWeek(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        force: Bool,
+        maxRows: Int,
+        context: WorkspaceContext
+    ) async throws -> SupabaseGenerateStoryboardThumbnailsResponse
 }
 
 extension WeeklyPlanRepository {
@@ -353,6 +370,27 @@ extension WeeklyGenerationRepository {
         context: WorkspaceContext
     ) async throws {
         throw RepositoryError.notConfigured("cancel_generation_not_configured")
+    }
+
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        rowIndexes: [Int]? = nil,
+        force: Bool = false,
+        revisionInstructions: String? = nil,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset] {
+        throw RepositoryError.notConfigured("storyboard_thumbnail_generation_not_configured")
+    }
+
+    func generateStoryboardThumbnailsForWeek(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        force: Bool = false,
+        maxRows: Int = 6,
+        context: WorkspaceContext
+    ) async throws -> SupabaseGenerateStoryboardThumbnailsResponse {
+        throw RepositoryError.notConfigured("storyboard_week_thumbnail_generation_not_configured")
     }
 }
 

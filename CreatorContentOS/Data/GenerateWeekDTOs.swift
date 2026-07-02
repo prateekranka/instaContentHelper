@@ -494,6 +494,100 @@ struct RegeneratedDayResult: Hashable, Sendable {
     var generatedAt: String
 }
 
+struct SupabaseGenerateStoryboardThumbnailRequest: Encodable, Hashable, Sendable {
+    var creatorID: UUID
+    var dailyCardID: UUID
+    var rowIndexes: [Int]?
+    var force: Bool
+    var revisionInstructions: String?
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case dailyCardID = "daily_card_id"
+        case rowIndexes = "row_indexes"
+        case force
+        case revisionInstructions = "revision_instructions"
+    }
+}
+
+struct SupabaseGenerateStoryboardThumbnailResponse: Decodable, Hashable, Sendable {
+    var dailyCardID: UUID
+    var assets: [StoryboardThumbnailAsset]
+    var generatedCount: Int
+    var cachedCount: Int
+    var model: String
+    var promptVersion: String
+
+    enum CodingKeys: String, CodingKey {
+        case dailyCardID = "daily_card_id"
+        case assets
+        case generatedCount = "generated_count"
+        case cachedCount = "cached_count"
+        case model
+        case promptVersion = "prompt_version"
+    }
+}
+
+struct SupabaseGenerateStoryboardThumbnailsRequest: Encodable, Hashable, Sendable {
+    var creatorID: UUID
+    var weeklyPlanID: UUID
+    var force: Bool
+    var maxRows: Int
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case weeklyPlanID = "weekly_plan_id"
+        case force
+        case maxRows = "max_rows"
+    }
+}
+
+struct SupabaseGenerateStoryboardThumbnailsResponse: Decodable, Hashable, Sendable {
+    var weeklyPlanID: UUID
+    var cards: [SupabaseStoryboardThumbnailCardProgress]
+    var generatedCount: Int
+    var cachedCount: Int
+    var remainingCount: Int
+    var failedCount: Int
+    var complete: Bool
+    var model: String
+    var promptVersion: String
+    var lastError: String?
+
+    enum CodingKeys: String, CodingKey {
+        case weeklyPlanID = "weekly_plan_id"
+        case cards
+        case generatedCount = "generated_count"
+        case cachedCount = "cached_count"
+        case remainingCount = "remaining_count"
+        case failedCount = "failed_count"
+        case complete
+        case model
+        case promptVersion = "prompt_version"
+        case lastError = "last_error"
+    }
+}
+
+struct SupabaseStoryboardThumbnailCardProgress: Decodable, Hashable, Sendable {
+    var dailyCardID: UUID
+    var scheduledDate: String
+    var assets: [StoryboardThumbnailAsset]
+    var generatedCount: Int
+    var cachedCount: Int
+    var remainingCount: Int
+    var failedCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case dailyCardID = "daily_card_id"
+        case scheduledDate = "scheduled_date"
+        case assets
+        case generatedCount = "generated_count"
+        case cachedCount = "cached_count"
+        case remainingCount = "remaining_count"
+        case failedCount = "failed_count"
+    }
+}
+
 extension GeneratedWeekDraft {
     @discardableResult
     mutating func replaceDailyCard(_ regeneratedCard: GeneratedDailyCardDraft) -> Bool {
@@ -816,6 +910,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
     var assumptions: [String]
     var sourceNote: String
     var reviewState: String?
+    var storyboardThumbnailAssets: [StoryboardThumbnailAsset]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -858,6 +953,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
         case assumptions
         case sourceNote = "source_note"
         case reviewState = "review_state"
+        case storyboardThumbnailAssets = "storyboard_thumbnail_assets"
     }
 
     var domainCard: GeneratedDailyCardDraft {
@@ -902,7 +998,8 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
             creatorFitScore: creatorFitScore,
             riskNotes: riskNotes,
             assumptions: assumptions,
-            sourceNote: sourceNote
+            sourceNote: sourceNote,
+            storyboardThumbnailAssets: storyboardThumbnailAssets ?? []
         )
     }
 }
@@ -946,6 +1043,7 @@ struct SupabaseDraftDailyCardPublishRequest: Encodable, Sendable {
     var assumptions: [String]
     var sourceNote: String
     var reviewState: String
+    var storyboardThumbnailAssets: [StoryboardThumbnailAsset]
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -986,6 +1084,7 @@ struct SupabaseDraftDailyCardPublishRequest: Encodable, Sendable {
         case assumptions
         case sourceNote = "source_note"
         case reviewState = "review_state"
+        case storyboardThumbnailAssets = "storyboard_thumbnail_assets"
     }
 
     init(card: GeneratedDailyCardDraft) {
@@ -1056,6 +1155,7 @@ struct SupabaseDraftDailyCardPublishRequest: Encodable, Sendable {
         reviewState = card.status.lowercased() == "ready" ? "ready"
             : card.status.lowercased() == "backup" ? "backup"
             : "open"
+        storyboardThumbnailAssets = card.storyboardThumbnailAssets
     }
 }
 

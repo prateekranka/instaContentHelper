@@ -95,6 +95,7 @@ private extension AppState {
 #if DEBUG
 private enum DebugForcedScreen: String {
     case aiRunway = "ai-runway"
+    case storyboardCard = "storyboard-card"
     case testerAccess = "tester-access"
 
     static var current: DebugForcedScreen? {
@@ -112,8 +113,31 @@ private enum DebugForcedScreen: String {
         switch self {
         case .aiRunway:
             AIRunwayView()
+        case .storyboardCard:
+            DebugStoryboardCardScreen()
         case .testerAccess:
             TesterAccessView()
+        }
+    }
+}
+
+private struct DebugStoryboardCardScreen: View {
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                MCOTheme.Color.paper.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: MCOSpace.l) {
+                        Text("Storyboard card preview")
+                            .font(MCOType.screenTitle)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                        GeneratedDayPlannedContent(card: .storyboardBreakdownFixture)
+                    }
+                    .padding(.horizontal, MCOSpace.l)
+                    .padding(.top, MCOSpace.l)
+                    .padding(.bottom, MCOSpace.xl)
+                }
+            }
         }
     }
 }

@@ -173,6 +173,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     var sourceNote: String?
     var decisionAt: String?
     var reviewState: String?
+    var storyboardThumbnailAssets: [StoryboardThumbnailAsset]
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -223,6 +224,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         case sourceNote = "source_note"
         case decisionAt = "decision_at"
         case reviewState = "review_state"
+        case storyboardThumbnailAssets = "storyboard_thumbnail_assets"
     }
 
     init(from decoder: Decoder) throws {
@@ -300,6 +302,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         sourceNote = try container.decodeIfPresent(String.self, forKey: .sourceNote)
         decisionAt = try container.decodeIfPresent(String.self, forKey: .decisionAt)
         reviewState = try container.decodeIfPresent(String.self, forKey: .reviewState)
+        storyboardThumbnailAssets = (try? container.decode([StoryboardThumbnailAsset].self, forKey: .storyboardThumbnailAssets)) ?? []
     }
 
     func domainCard() -> DailyCard {
@@ -381,7 +384,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             creatorFitScore: creatorFitScore ?? 0,
             riskNotes: riskNotes?.compactMap(\.displayText) ?? [],
             assumptions: assumptions?.compactMap(\.displayText) ?? [],
-            sourceNote: sourceNote ?? ""
+            sourceNote: sourceNote ?? "",
+            storyboardThumbnailAssets: storyboardThumbnailAssets
         )
     }
 

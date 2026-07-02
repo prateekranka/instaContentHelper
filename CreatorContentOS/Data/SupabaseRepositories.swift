@@ -557,6 +557,63 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         }
     }
 
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        rowIndexes: [Int]?,
+        force: Bool,
+        revisionInstructions: String?,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset] {
+        do {
+            let response: SupabaseGenerateStoryboardThumbnailResponse = try await client.functions.invoke(
+                "generate-storyboard-thumbnail",
+                options: FunctionInvokeOptions(
+                    body: SupabaseGenerateStoryboardThumbnailRequest(
+                        creatorID: creatorID,
+                        dailyCardID: dailyCardID,
+                        rowIndexes: rowIndexes,
+                        force: force,
+                        revisionInstructions: revisionInstructions
+                    )
+                )
+            )
+            return response.assets
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
+    func generateStoryboardThumbnailsForWeek(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        force: Bool,
+        maxRows: Int,
+        context: WorkspaceContext
+    ) async throws -> SupabaseGenerateStoryboardThumbnailsResponse {
+        do {
+            return try await client.functions.invoke(
+                "generate-storyboard-thumbnails",
+                options: FunctionInvokeOptions(
+                    body: SupabaseGenerateStoryboardThumbnailsRequest(
+                        creatorID: creatorID,
+                        weeklyPlanID: weeklyPlanID,
+                        force: force,
+                        maxRows: maxRows
+                    )
+                )
+            )
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
     private func invokeGenerateWeek<Body: Encodable>(
         _ body: Body
     ) async throws -> SupabaseGenerateWeekInvocation {
@@ -845,9 +902,9 @@ struct SupabaseArchiveRepository: ArchiveRepository {
     }
 }
 
-private enum SupabaseSelect {
+enum SupabaseSelect {
     static let dailyCard = """
-        id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,review_state,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,creator_fit_score,risk_notes,assumptions,source_note,decision_at
+        id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,review_state,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,creator_fit_score,risk_notes,assumptions,source_note,decision_at,storyboard_thumbnail_assets
         """
 
     static let weeklyPlan = """

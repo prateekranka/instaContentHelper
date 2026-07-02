@@ -164,7 +164,48 @@ final class TodayCardAndPostedFlowTests: XCTestCase {
         XCTAssertNotNil(services.lastRepositoryRefreshError)
     }
 
+    func testRefreshTreatsMissingPublishedTodayCardAsEmptyStateWithoutError() async {
+        let services = AppServices.fixtureBacked(
+            repositories: repositories(today: MissingPublishedTodayCardRepository()),
+            todayCache: MemoryCacheStore()
+        )
+
+        await services.refreshFromRepositoriesImmediately()
+
+        XCTAssertEqual(services.todayContentState, .missingPublishedCard(date: "2026-07-02"))
+        XCTAssertNil(services.lastRepositoryError)
+        XCTAssertNil(services.lastRepositoryRefreshError)
+        XCTAssertNotNil(services.lastRepositoryRefreshSucceededAt)
+    }
+
+    func testDecisionSyncTreatsMissingPublishedTodayCardAsEmptyStateWithoutError() async {
+        let services = AppServices.fixtureBacked(
+            repositories: repositories(today: MissingPublishedTodayCardOnDecisionRepository()),
+            todayCache: MemoryCacheStore()
+        )
+        services.todayCard = makeCard(scenes: 1)
+
+        _ = await services.completeTodayImmediately(with: .posted)
+
+        XCTAssertEqual(services.todayContentState, .missingPublishedCard(date: "2026-07-02"))
+        XCTAssertNil(services.lastRepositoryError)
+    }
+
     // MARK: - Helpers
+
+    private func repositories(today: any TodayCardRepository) -> AppRepositories {
+        AppRepositories(
+            context: .creatorFixture,
+            today: today,
+            weeklyPlans: FixtureWeeklyPlanRepository(),
+            references: FixtureReferenceRepository(),
+            referenceImport: FixtureReferenceImportRepository(),
+            weeklyGeneration: TestWeeklyGenerationRepository(),
+            intelligence: FixtureIntelligenceRepository(),
+            creatorProfile: FixtureCreatorProfileRepository(),
+            archive: FixtureArchiveRepository()
+        )
+    }
 
     private func makeCard(scenes: Int) -> DailyCard {
         DailyCard(
@@ -190,6 +231,45 @@ final class TodayCardAndPostedFlowTests: XCTestCase {
         for _ in 0..<3 {
             await Task.yield()
         }
+    }
+}
+
+private struct MissingPublishedTodayCardRepository: TodayCardRepository {
+    func todayCard(for context: WorkspaceContext) async throws -> DailyCard {
+        throw RepositoryError.noPublishedTodayCard(date: "2026-07-02")
+    }
+    func weekCards(for context: WorkspaceContext) async throws -> [DailyCard] {
+        []
+    }
+    func completeToday(
+        card: DailyCard,
+        decision: DailyDecision,
+        context: WorkspaceContext
+    ) async throws -> ArchiveEntry {
+        throw RepositoryError.noPublishedTodayCard(date: "2026-07-02")
+    }
+}
+
+private struct MissingPublishedTodayCardOnDecisionRepository: TodayCardRepository {
+    func todayCard(for context: WorkspaceContext) async throws -> DailyCard {
+        DailyCard(
+            title: "Today's card",
+            context: "Thursday",
+            effortLabel: "Easy - 8 min",
+            whyToday: "Recovery reset.",
+            scheduledDate: "2026-07-02",
+            scenes: [ShotScene(number: 1, title: "Scene 1", duration: "3 sec", symbol: "circle")]
+        )
+    }
+    func weekCards(for context: WorkspaceContext) async throws -> [DailyCard] {
+        []
+    }
+    func completeToday(
+        card: DailyCard,
+        decision: DailyDecision,
+        context: WorkspaceContext
+    ) async throws -> ArchiveEntry {
+        throw RepositoryError.noPublishedTodayCard(date: "2026-07-02")
     }
 }
 

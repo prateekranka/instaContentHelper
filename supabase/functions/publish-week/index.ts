@@ -58,6 +58,7 @@ type DraftDailyCardPublishPayload = {
   assumptions?: unknown[];
   source_note?: string;
   review_state?: string;
+  storyboard_thumbnail_assets?: unknown[];
 };
 
 type NormalizedPublishWeekDay = Required<PublishWeekDay>;
@@ -125,11 +126,12 @@ export async function handlePublishWeekRequest(
     return jsonResponse({ error: "missing_function_secrets" }, 500);
   }
 
-  const admin = (dependencies.createAdminClient
-    ? dependencies.createAdminClient(supabaseURL, serviceRoleKey)
-    : createClient(supabaseURL, serviceRoleKey, {
-      auth: { persistSession: false },
-    })) as SupabaseAdminClient;
+  const admin =
+    (dependencies.createAdminClient
+      ? dependencies.createAdminClient(supabaseURL, serviceRoleKey)
+      : createClient(supabaseURL, serviceRoleKey, {
+        auth: { persistSession: false },
+      })) as SupabaseAdminClient;
 
   const authResult = await verifyDeviceSession(request, admin, [
     "owner",
@@ -233,7 +235,10 @@ async function publishExistingDraft(
     return jsonResponse({ error: "existing_published_week_locked" }, 409);
   }
 
-  if (!Array.isArray(body.draft_daily_cards) || body.draft_daily_cards.length !== 7) {
+  if (
+    !Array.isArray(body.draft_daily_cards) ||
+    body.draft_daily_cards.length !== 7
+  ) {
     return jsonResponse({ error: "invalid_day_payload" }, 400);
   }
 
@@ -247,9 +252,9 @@ async function publishExistingDraft(
 
   const { data: rpcData, error: rpcCallError } =
     await (admin as PublishWeekAdminClient).rpc(
-    "publish_week_atomic",
-    { payload: rpcPayload },
-  );
+      "publish_week_atomic",
+      { payload: rpcPayload },
+    );
 
   if (rpcCallError) {
     return jsonResponse({ error: "daily_cards_publish_failed" }, 500);
@@ -271,12 +276,14 @@ async function publishExistingDraft(
     return jsonResponse({ error: "daily_cards_publish_failed" }, 500);
   }
 
-  return jsonResponse(data ?? {
-    weekly_plan_id: weeklyPlanID,
-    daily_card_count: 7,
-    is_soft_locked: true,
-    published_at: new Date().toISOString(),
-  });
+  return jsonResponse(
+    data ?? {
+      weekly_plan_id: weeklyPlanID,
+      daily_card_count: 7,
+      is_soft_locked: true,
+      published_at: new Date().toISOString(),
+    },
+  );
 }
 
 async function publishCallerSuppliedDays(
@@ -511,6 +518,9 @@ export function normalizeDraftCard(
     review_state: isReviewState(card.review_state)
       ? card.review_state
       : "ready",
+    storyboard_thumbnail_assets: Array.isArray(card.storyboard_thumbnail_assets)
+      ? card.storyboard_thumbnail_assets
+      : [],
   };
 }
 

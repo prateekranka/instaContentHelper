@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
-FUNCTIONS="exchange-auth-session pair-device revoke-device-session send-auth-email manage-testers publish-week read-content write-content import-references review-reference generate-week"
+FUNCTIONS="exchange-auth-session pair-device revoke-device-session send-auth-email manage-testers publish-week read-content write-content import-references review-reference generate-week generate-storyboard-thumbnail generate-storyboard-thumbnails"
 
 require_env() {
   name="$1"
