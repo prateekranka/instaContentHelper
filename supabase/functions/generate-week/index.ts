@@ -27,6 +27,7 @@ import {
   normalizeRegenerateDayRequest,
   preserveManualDailyCardEdits,
   RegenerateDayRequest,
+  resolveAIDayRequestTimeoutMs,
   validateGeneratedDayOutput,
   validateGeneratedWeek,
   weekDates,
@@ -56,6 +57,9 @@ type GenerateWeekDependencies = {
   ) => Promise<GeneratedDayOutput>;
   runInBackground?: (promise: Promise<void>) => void;
   dayHeartbeatIntervalMS?: number;
+  // Test override for the worker boot timestamp used by the claim-window
+  // guard. Production always uses the module-scope boot time.
+  workerBootedAtMS?: number;
 };
 
 type RunRecord = {
@@ -346,6 +350,56 @@ const DEFAULT_RUNNING_DAY_STALE_MS = 135_000;
 const DAY_GENERATION_HEARTBEAT_MIN_MS = 1_000;
 const DAY_GENERATION_HEARTBEAT_MAX_MS = 60_000;
 const DEFAULT_DAY_GENERATION_MAX_ATTEMPTS = 3;
+
+// The hosted Edge runtime terminates a worker at a hard wall-clock limit
+// regardless of in-flight day jobs. Claims made too late in a worker's life
+// are orphaned by that termination: the work is lost, the job only recovers
+// after the stale threshold, and the reclaim burns one of the day's attempts.
+// The claim window stops a worker from claiming day jobs it cannot finish;
+// remaining work is picked up by the next poll-dispatched (younger) worker.
+const DEFAULT_WORKER_WALL_CLOCK_MS = 400_000;
+const WORKER_CLAIM_WINDOW_SAFETY_MS = 10_000;
+const MIN_WORKER_CLAIM_WINDOW_MS = 30_000;
+const MAX_WORKER_CLAIM_WINDOW_MS = 890_000;
+const workerBootedAtEpochMS = Date.now();
+
+export function resolveWorkerClaimWindowMS(
+  configuredWindow: string | undefined,
+  configuredWallClock: string | undefined,
+  dayRequestTimeoutMS: number,
+): number {
+  const explicitWindow = configuredWindow ? Number(configuredWindow) : NaN;
+  if (
+    Number.isFinite(explicitWindow) &&
+    explicitWindow >= MIN_WORKER_CLAIM_WINDOW_MS
+  ) {
+    return Math.min(Math.trunc(explicitWindow), MAX_WORKER_CLAIM_WINDOW_MS);
+  }
+
+  const configuredWallClockMS = configuredWallClock
+    ? Number(configuredWallClock)
+    : NaN;
+  const wallClockMS = Number.isFinite(configuredWallClockMS) &&
+      configuredWallClockMS >= 60_000
+    ? Math.min(Math.trunc(configuredWallClockMS), 900_000)
+    : DEFAULT_WORKER_WALL_CLOCK_MS;
+
+  return Math.max(
+    MIN_WORKER_CLAIM_WINDOW_MS,
+    wallClockMS - dayRequestTimeoutMS - WORKER_CLAIM_WINDOW_SAFETY_MS,
+  );
+}
+
+function workerClaimWindowMS(): number {
+  return resolveWorkerClaimWindowMS(
+    Deno.env.get("MCO_WORKER_CLAIM_WINDOW_MS")?.trim(),
+    Deno.env.get("MCO_WORKER_WALL_CLOCK_MS")?.trim(),
+    resolveAIDayRequestTimeoutMs(
+      Deno.env.get("MCO_AI_DAY_REQUEST_TIMEOUT_MS")?.trim(),
+      Deno.env.get("MCO_AI_REQUEST_TIMEOUT_MS")?.trim(),
+    ),
+  );
+}
 
 let todayISOProvider: () => string = () =>
   new Date().toISOString().slice(0, 10);
@@ -1924,10 +1978,15 @@ async function reclaimStaleDayJob(
   return job.id ? job : null;
 }
 
-async function releaseOverCapacityDayJob(
+// Releases a claimed-but-unfinished day job back to the queue and refunds the
+// attempt the claim consumed. Guarded by the lease token and generating
+// status, so a job that already completed, failed, or was reclaimed by a new
+// owner is left untouched.
+async function releaseClaimedDayJob(
   admin: SupabaseAdminClient,
   job: QueuedDayJobRecord,
   leaseToken: string,
+  reason: string,
 ): Promise<boolean> {
   const releasedAttempts = Math.max(0, (job.attempt_count ?? 1) - 1);
   const releasedStatus: QueuedDayJobStatus = releasedAttempts > 0
@@ -1952,10 +2011,11 @@ async function releaseOverCapacityDayJob(
     .maybeSingle();
 
   if (error) {
-    console.warn("generate-week day-job over-capacity release failed", {
+    console.warn("generate-week day-job release failed", {
       generation_id: job.generation_run_id,
       job_id: job.id,
       scheduled_date: job.scheduled_date,
+      reason,
       error: postgrestErrorMessage(error),
     });
   }
@@ -1976,7 +2036,7 @@ async function claimedDayJobFitsLiveCapacity(
     job.creator_id,
   );
   if ("response" in dayJobs) {
-    await releaseOverCapacityDayJob(admin, job, leaseToken);
+    await releaseClaimedDayJob(admin, job, leaseToken, "capacity_check_failed");
     return false;
   }
 
@@ -1988,7 +2048,12 @@ async function claimedDayJobFitsLiveCapacity(
     return true;
   }
 
-  const released = await releaseOverCapacityDayJob(admin, job, leaseToken);
+  const released = await releaseClaimedDayJob(
+    admin,
+    job,
+    leaseToken,
+    "over_capacity",
+  );
   console.warn("generate-week day-job claim released over capacity", {
     generation_id: job.generation_run_id,
     job_id: job.id,
@@ -2066,6 +2131,61 @@ async function failDayJob(
     .select("id")
     .maybeSingle();
   return isRecord(data) && Boolean(data.id);
+}
+
+// Error codes that describe a generation-level failure worth retrying with
+// the day's remaining attempt budget. Cancellations and persistence failures
+// are excluded: retrying them either fights an explicit user action or
+// repeats a non-generation fault.
+const RETRYABLE_DAY_JOB_ERROR_CODES: readonly string[] = [
+  "openai_request_failed",
+  "invalid_generated_week",
+  "invalid_ai_json",
+];
+
+function isRetryableFailedDayJob(
+  job: { status?: unknown; error_code?: unknown; attempt_count?: unknown },
+  maxAttempts: number,
+): boolean {
+  return job.status === "failed" &&
+    typeof job.error_code === "string" &&
+    RETRYABLE_DAY_JOB_ERROR_CODES.includes(job.error_code) &&
+    (numberValue(job.attempt_count) ?? 0) < maxAttempts;
+}
+
+// Requeue failed day jobs that still have attempt budget and a retryable
+// generation error. Previously a properly-failed job (validation error or
+// provider failure reported by a live worker) was terminal in the queued
+// lane — only stale reclaims retried — so a single bad provider response
+// permanently failed the day even with attempts to spare.
+async function requeueRetryableFailedDayJobs(
+  admin: SupabaseAdminClient,
+  generationID: string,
+): Promise<number> {
+  const { data, error } = await admin
+    .from("weekly_generation_day_jobs")
+    .update({
+      status: "retrying",
+      lease_token: null,
+      worker_boot_id: null,
+      heartbeat_at: null,
+      completed_at: null,
+      staged_output: null,
+    })
+    .eq("generation_run_id", generationID)
+    .eq("status", "failed")
+    .in("error_code", [...RETRYABLE_DAY_JOB_ERROR_CODES])
+    .lt("attempt_count", maxDayGenerationAttempts())
+    .select("id");
+
+  if (error) {
+    console.warn("generate-week retryable day-job requeue failed", {
+      generation_id: generationID,
+      error: postgrestErrorMessage(error),
+    });
+    return 0;
+  }
+  return Array.isArray(data) ? data.length : 0;
 }
 
 async function stageDayJobOutput(
@@ -2181,6 +2301,9 @@ async function runParallelWeekGeneration(
   const concurrency = parallelWeekGenerationConcurrency();
   const heartbeatIntervalMS = dayGenerationHeartbeatMS(dependencies);
   const staleThresholdMS = runningDayStaleMS();
+  const claimWindowMS = workerClaimWindowMS();
+  const bootedAtMS = dependencies.workerBootedAtMS ?? workerBootedAtEpochMS;
+  let claimWindowLogged = false;
   let cancelled = false;
 
   const inFlight = new Map<
@@ -2193,6 +2316,8 @@ async function runParallelWeekGeneration(
       cancelled = true;
       break;
     }
+
+    await requeueRetryableFailedDayJobs(admin, generationID);
 
     const dayJobs = await readQueuedDayJobsForRun(
       admin,
@@ -2228,7 +2353,20 @@ async function runParallelWeekGeneration(
       inFlight.set(job.id, taskPromise);
     }
 
-    for (let slot = 0; slot < slotsFree; slot++) {
+    const claimWindowExhausted = Date.now() - bootedAtMS >= claimWindowMS;
+    if (claimWindowExhausted && !claimWindowLogged) {
+      claimWindowLogged = true;
+      console.log("generate-week worker claim window exhausted", {
+        generation_id: generationID,
+        boot_id: bootID,
+        worker_age_ms: Date.now() - bootedAtMS,
+        claim_window_ms: claimWindowMS,
+        in_flight: inFlight.size,
+      });
+    }
+    const claimableSlots = claimWindowExhausted ? 0 : slotsFree;
+
+    for (let slot = 0; slot < claimableSlots; slot++) {
       const leaseToken = crypto.randomUUID();
       let claimed = await claimQueuedDayJob(
         admin,
@@ -2271,7 +2409,11 @@ async function runParallelWeekGeneration(
         attempt_count: job.attempt_count,
         concurrency,
       });
-      trackShutdownJob(generationID, job.id);
+      trackShutdownJob(
+        generationID,
+        job.id,
+        () => releaseClaimedDayJob(admin, job, leaseToken, "worker_shutdown"),
+      );
       const dayIndex = job.day_index;
       const snapshotDay = latestProgress.days[dayIndex];
       const retryContext = dayGenerationRetryContext(
@@ -2307,7 +2449,10 @@ async function runParallelWeekGeneration(
         if (state.status === "completed") dayJobsCompleted++;
         else dayJobsFailed++;
         return { job, state };
-      }).finally(() => clearInterval(heartbeatID));
+      }).finally(() => {
+        clearInterval(heartbeatID);
+        untrackShutdownJob(generationID, job.id);
+      });
 
       inFlight.set(job.id, taskPromise);
     }
@@ -2339,7 +2484,15 @@ async function runParallelWeekGeneration(
     prepared.session.workspaceID,
     prepared.request.creator_id,
   );
+  // Claimable work left behind (for example queued jobs this worker skipped
+  // because its claim window closed) must keep the run alive for the next
+  // poll-dispatched worker instead of being finalized as missing days.
+  let outstandingDayJobWork = false;
   if (!("response" in finalJobsResult)) {
+    outstandingDayJobWork = finalJobsResult.jobs.some((job) =>
+      job.status === "queued" || job.status === "retrying" ||
+      job.status === "generating" || job.status === "ready_to_persist"
+    );
     latestProgress = {
       ...progressReconciledWithDayJobs(
         latestProgress,
@@ -2365,7 +2518,10 @@ async function runParallelWeekGeneration(
   });
   deregisterShutdownTracking(generationID);
 
-  if (cancelled && hasActiveParallelDayGeneration(latestProgress)) {
+  const hasUnfinishedWork = outstandingDayJobWork ||
+    hasActiveParallelDayGeneration(latestProgress);
+
+  if (cancelled && hasUnfinishedWork) {
     const summary = weekGenerationStatusSummary(latestProgress, "running");
     return {
       payload: {
@@ -2379,7 +2535,7 @@ async function runParallelWeekGeneration(
     };
   }
 
-  if (hasActiveParallelDayGeneration(latestProgress)) {
+  if (hasUnfinishedWork) {
     const summary = weekGenerationStatusSummary(latestProgress, "running");
     return {
       payload: {
@@ -3355,12 +3511,31 @@ async function readGenerationStatus(
         poll_after_seconds: null,
       });
     }
+    let jobs = queuedJobsResult.jobs;
     if (stringValue(runRecord.status) === "running") {
+      // Flip retryable failed jobs back to retrying before summarizing so
+      // the client keeps polling instead of seeing a transient terminal
+      // partial state while the recovery loop re-runs the day.
+      const requeued = await requeueRetryableFailedDayJobs(
+        admin,
+        generationID,
+      );
+      if (requeued > 0) {
+        const refreshed = await readQueuedDayJobsForRun(
+          admin,
+          generationID,
+          session.workspaceID,
+          stringValue(data.creator_id) ?? "",
+        );
+        if (!("response" in refreshed)) {
+          jobs = refreshed.jobs;
+        }
+      }
       dispatchQueuedDayJobRecovery(
         admin,
         generationID,
         runRecord,
-        queuedJobsResult.jobs,
+        jobs,
         env,
         dependencies,
       );
@@ -3369,7 +3544,7 @@ async function readGenerationStatus(
       admin,
       generationID,
       runRecord,
-      queuedJobsResult.jobs,
+      jobs,
     );
   }
 
@@ -3655,10 +3830,12 @@ function shouldDispatchQueuedDayJobRecovery(
     return true;
   }
 
+  const maxAttempts = maxDayGenerationAttempts();
   const hasRunnableJob = jobs.some((job) =>
     job.status === "queued" || job.status === "retrying" ||
     (job.status === "generating" &&
-      isQueuedDayJobStale(job, staleThresholdMS))
+      isQueuedDayJobStale(job, staleThresholdMS)) ||
+    isRetryableFailedDayJob(job, maxAttempts)
   );
   if (!hasRunnableJob) {
     return false;
@@ -6739,6 +6916,7 @@ type ShutdownRecord = {
   generation_id: string;
   boot_id: string;
   job_ids: string[];
+  job_releases: Map<string, () => Promise<boolean>>;
   started_at: number;
 };
 
@@ -6750,6 +6928,10 @@ if (typeof globalThis.addEventListener === "function") {
     const shutdownReason = isRecord(event) && isRecord(event.detail)
       ? stringValue(event.detail.reason) ?? "unknown"
       : "unknown";
+    // Best-effort: hand in-flight claims back to the queue before the
+    // runtime kills this worker, so recovery does not have to wait for the
+    // stale threshold and the orphaned claim does not burn an attempt.
+    void releaseTrackedDayJobClaims();
     const entries = [...activeShutdownTrackers.values()];
     for (const entry of entries) {
       logShutdownTelemetry({
@@ -6768,7 +6950,24 @@ if (typeof globalThis.addEventListener === "function") {
   });
 }
 
-function registerShutdownTracking(
+export async function releaseTrackedDayJobClaims(): Promise<number> {
+  const releases: Array<() => Promise<boolean>> = [];
+  for (const tracker of activeShutdownTrackers.values()) {
+    releases.push(...tracker.job_releases.values());
+    tracker.job_releases = new Map();
+  }
+  if (releases.length === 0) {
+    return 0;
+  }
+  const results = await Promise.allSettled(
+    releases.map((release) => release()),
+  );
+  return results.filter((result) =>
+    result.status === "fulfilled" && result.value
+  ).length;
+}
+
+export function registerShutdownTracking(
   generationID: string,
   bootID: string,
   jobIDs: string[],
@@ -6777,16 +6976,33 @@ function registerShutdownTracking(
     generation_id: generationID,
     boot_id: bootID,
     job_ids: [...jobIDs],
+    job_releases: new Map(),
     started_at: Date.now(),
   });
 }
 
-function trackShutdownJob(generationID: string, jobID: string): void {
+export function trackShutdownJob(
+  generationID: string,
+  jobID: string,
+  release?: () => Promise<boolean>,
+): void {
   const tracker = activeShutdownTrackers.get(generationID);
-  if (!tracker || tracker.job_ids.includes(jobID)) return;
-  tracker.job_ids.push(jobID);
+  if (!tracker) return;
+  if (release) {
+    tracker.job_releases.set(jobID, release);
+  }
+  if (!tracker.job_ids.includes(jobID)) {
+    tracker.job_ids.push(jobID);
+  }
 }
 
-function deregisterShutdownTracking(generationID: string): void {
+function untrackShutdownJob(generationID: string, jobID: string): void {
+  const tracker = activeShutdownTrackers.get(generationID);
+  if (!tracker) return;
+  tracker.job_releases.delete(jobID);
+  tracker.job_ids = tracker.job_ids.filter((id) => id !== jobID);
+}
+
+export function deregisterShutdownTracking(generationID: string): void {
   activeShutdownTrackers.delete(generationID);
 }

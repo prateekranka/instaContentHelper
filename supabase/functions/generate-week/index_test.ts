@@ -1,7 +1,12 @@
 import {
   availableParallelDayJobSlots,
+  deregisterShutdownTracking,
   handleGenerateWeekRequest,
   overrideTodayISO,
+  registerShutdownTracking,
+  releaseTrackedDayJobClaims,
+  resolveWorkerClaimWindowMS,
+  trackShutdownJob,
 } from "./index.ts";
 import {
   AIProviderConfig,
@@ -274,6 +279,7 @@ Deno.test("generate-week queued mode creates seven durable day jobs", async () =
 });
 
 Deno.test("generate-week status returns queued day-job progress", async () => {
+  let scheduled: Promise<void> | undefined;
   const state = dayGenerationState();
   state.dayJobs = makeQueuedDayJobs([
     ["generated", dailyCardIDs[0]],
@@ -284,6 +290,9 @@ Deno.test("generate-week status returns queued day-job progress", async () => {
     ["failed", null],
     ["retrying", null],
   ]);
+  // At max attempts the failed day is terminal; a retryable failure below
+  // max attempts would be auto-requeued by the status poll instead.
+  state.dayJobs[5].attempt_count = 3;
   state.generationRun = {
     id: generationRunID,
     workspace_id: workspaceID,
@@ -302,6 +311,25 @@ Deno.test("generate-week status returns queued day-job progress", async () => {
     {
       env: fakeEnv("test-key"),
       createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (
+        input: GenerationInputSnapshot,
+        _providers: AIProviderConfig[],
+        scheduledDate: string,
+        dayIndex: number,
+      ) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `Recovery day ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: { ...card, scheduled_date: scheduledDate },
+          idea_bank: [],
+          source_summary: `Recovery day source ${dayIndex + 1}`,
+        };
+      },
+      runInBackground: (promise: Promise<void>) => {
+        scheduled = promise;
+      },
     },
   );
 
@@ -315,6 +343,11 @@ Deno.test("generate-week status returns queued day-job progress", async () => {
   assertEquals(days[0].status, "generated");
   assertEquals(days[2].status, "generating");
   assertEquals(days[5].retry_action, "retry_day");
+
+  // Drain the dispatched recovery loop so no work leaks past the test.
+  if (scheduled) {
+    await scheduled;
+  }
 });
 
 Deno.test("retry_day requeues only a failed durable day job", async () => {
@@ -1239,13 +1272,36 @@ Deno.test("parallel generate-week status ignores stale cards not recorded on the
     },
   };
 
-  const response = await callHandler(
-    {
+  let scheduled: Promise<void> | undefined;
+  const response = await handleGenerateWeekRequest(
+    requestFor({
       action: "status",
       generation_id: generationRunID,
       creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (
+        input: GenerationInputSnapshot,
+        _providers: AIProviderConfig[],
+        scheduledDate: string,
+        dayIndex: number,
+      ) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `Resume day ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: { ...card, scheduled_date: scheduledDate },
+          idea_bank: [],
+          source_summary: `Resume day source ${dayIndex + 1}`,
+        };
+      },
+      runInBackground: (promise: Promise<void>) => {
+        scheduled = promise;
+      },
     },
-    state,
   );
 
   assertEquals(response.status, 200);
@@ -1254,6 +1310,11 @@ Deno.test("parallel generate-week status ignores stale cards not recorded on the
   assertEquals(body.saved_day_count, 0);
   assertEquals(Array.isArray(body.daily_cards), true);
   assertEquals((body.daily_cards as unknown[]).length, 0);
+
+  // Drain the dispatched resume loop so no work leaks past the test.
+  if (scheduled) {
+    await scheduled;
+  }
 });
 
 Deno.test("parallel generate-week status finalizes terminal partial progress", async () => {
@@ -2725,6 +2786,11 @@ class FakeQuery {
     return this;
   }
 
+  lt(column: string, value: unknown): FakeQuery {
+    this.filters[`${column}.lt`] = value;
+    return this;
+  }
+
   order(_column: string, _options?: unknown): FakeQuery {
     return this;
   }
@@ -2807,7 +2873,14 @@ class FakeQuery {
             job.scheduled_date === this.filters.scheduled_date) &&
           (!this.filters.status || job.status === this.filters.status ||
             (Array.isArray(this.filters.status) &&
-              this.filters.status.includes(job.status)))
+              this.filters.status.includes(job.status))) &&
+          (!this.filters.error_code ||
+            (Array.isArray(this.filters.error_code)
+              ? this.filters.error_code.includes(job.error_code)
+              : job.error_code === this.filters.error_code)) &&
+          (this.filters["attempt_count.lt"] === undefined ||
+            ((job.attempt_count as number) ?? 0) <
+              (this.filters["attempt_count.lt"] as number))
         );
         const applied = rows.length;
         rows.forEach((row) => Object.assign(row, values));
@@ -2819,7 +2892,7 @@ class FakeQuery {
           });
         }
         return {
-          data: applied > 0 ? rows[0] : null,
+          data: applied > 0 ? rows.map((row) => ({ ...row })) : null,
           error: applied > 0 ? null : { message: "no rows matched" } as never,
         };
       }
@@ -4141,4 +4214,509 @@ Deno.test("generate-week parallel shutdown telemetry is emitted with boot_id", a
     !lastLog.includes("api_key") && !lastLog.includes("prompt"),
     "shutdown telemetry must not contain secrets",
   );
+});
+
+Deno.test("resolveWorkerClaimWindowMS defaults to wall clock minus day timeout minus safety", () => {
+  assertEquals(
+    resolveWorkerClaimWindowMS(undefined, undefined, 240_000),
+    150_000,
+  );
+});
+
+Deno.test("resolveWorkerClaimWindowMS honors explicit override and clamps invalid values", () => {
+  assertEquals(
+    resolveWorkerClaimWindowMS("200000", undefined, 240_000),
+    200_000,
+  );
+  // Below the minimum window: fall back to the computed default.
+  assertEquals(resolveWorkerClaimWindowMS("1000", undefined, 240_000), 150_000);
+  assertEquals(
+    resolveWorkerClaimWindowMS(undefined, "600000", 240_000),
+    350_000,
+  );
+  // Wall clock too small for the timeout: floor at the minimum window.
+  assertEquals(
+    resolveWorkerClaimWindowMS(undefined, "100000", 240_000),
+    30_000,
+  );
+});
+
+Deno.test("worker past its claim window claims no day jobs and leaves the run running", async () => {
+  let scheduled: Promise<void> | undefined;
+  const state = dayGenerationState();
+  state.dayJobs = makeQueuedDayJobs([
+    ["queued", null],
+    ["queued", null],
+    ["queued", null],
+    ["queued", null],
+    ["queued", null],
+    ["queued", null],
+    ["queued", null],
+  ]);
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+    output_snapshot: {
+      kind: "parallel_week_generation_v1",
+      week_start_date: "2026-06-08",
+      weekly_plan_id: weeklyPlanID,
+      strategy_created: true,
+      updated_at: new Date().toISOString(),
+      days: weekDatesForTest("2026-06-08").map((scheduledDate) => ({
+        scheduled_date: scheduledDate,
+        status: "pending",
+        attempts: 0,
+      })),
+    },
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      workerBootedAtMS: Date.now() - 3_600_000,
+      generateDayAI: () => {
+        throw new Error(
+          "a worker past its claim window must not start generation",
+        );
+      },
+      runInBackground: (promise: Promise<void>) => {
+        scheduled = promise;
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.status, "running");
+
+  if (!scheduled) {
+    throw new Error("Expected recovery loop to be scheduled.");
+  }
+  await scheduled;
+
+  assertEquals(state.dayJobRPCClaims.length, 0);
+  for (const job of state.dayJobs) {
+    assertEquals(job.status, "queued");
+  }
+  // The run must not be finalized as failed/partial while claimable
+  // work is left for the next worker.
+  assertEquals(
+    (state.generationRun as Record<string, unknown>).status,
+    "running",
+  );
+});
+
+Deno.test("worker inside its claim window claims and completes queued day jobs", async () => {
+  let scheduled: Promise<void> | undefined;
+  const state = dayGenerationState();
+  state.dailyCards = [];
+  state.dayJobs = makeQueuedDayJobs([
+    ["queued", null],
+    ["queued", null],
+    ["queued", null],
+    ["queued", null],
+    ["queued", null],
+    ["queued", null],
+    ["queued", null],
+  ]);
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+    output_snapshot: {
+      kind: "parallel_week_generation_v1",
+      week_start_date: "2026-06-08",
+      weekly_plan_id: weeklyPlanID,
+      strategy_created: true,
+      updated_at: new Date().toISOString(),
+      days: weekDatesForTest("2026-06-08").map((scheduledDate) => ({
+        scheduled_date: scheduledDate,
+        status: "pending",
+        attempts: 0,
+      })),
+    },
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      workerBootedAtMS: Date.now(),
+      generateDayAI: async (
+        input: GenerationInputSnapshot,
+        _providers: AIProviderConfig[],
+        scheduledDate: string,
+        dayIndex: number,
+      ) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `Claim window day ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: { ...card, scheduled_date: scheduledDate },
+          idea_bank: [],
+          source_summary: `Claim window source ${dayIndex + 1}`,
+        };
+      },
+      runInBackground: (promise: Promise<void>) => {
+        scheduled = promise;
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  if (!scheduled) {
+    throw new Error("Expected recovery loop to be scheduled.");
+  }
+  await scheduled;
+
+  assertEquals(state.dayJobRPCClaims.length, 7);
+  for (const job of state.dayJobs) {
+    assertEquals(job.status, "generated");
+  }
+});
+
+Deno.test("status poll requeues a retryable failed day job and the recovery loop completes it", async () => {
+  let scheduled: Promise<void> | undefined;
+  const state = dayGenerationState();
+  state.dayJobs = makeQueuedDayJobs([
+    ["failed", null],
+    ["generated", dailyCardIDs[1]],
+    ["generated", dailyCardIDs[2]],
+    ["generated", dailyCardIDs[3]],
+    ["generated", dailyCardIDs[4]],
+    ["generated", dailyCardIDs[5]],
+    ["generated", dailyCardIDs[6]],
+  ]);
+  state.dayJobs[0].error_code = "invalid_generated_week";
+  state.dayJobs[0].attempt_count = 1;
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+    output_snapshot: {
+      kind: "parallel_week_generation_v1",
+      week_start_date: "2026-06-08",
+      weekly_plan_id: weeklyPlanID,
+      strategy_created: true,
+      updated_at: new Date().toISOString(),
+      days: weekDatesForTest("2026-06-08").map((scheduledDate, index) => ({
+        scheduled_date: scheduledDate,
+        status: index === 0 ? "failed" : "completed",
+        attempts: 1,
+        daily_card_id: index > 0 ? dailyCardIDs[index] : undefined,
+        error_code: index === 0 ? "invalid_generated_week" : undefined,
+      })),
+    },
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      workerBootedAtMS: Date.now(),
+      generateDayAI: async (
+        input: GenerationInputSnapshot,
+        _providers: AIProviderConfig[],
+        scheduledDate: string,
+        dayIndex: number,
+      ) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `Repaired day ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: { ...card, scheduled_date: scheduledDate },
+          idea_bank: [],
+          source_summary: `Repaired day source ${dayIndex + 1}`,
+        };
+      },
+      runInBackground: (promise: Promise<void>) => {
+        scheduled = promise;
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  // The failed day is requeued before the summary is computed, so the
+  // client keeps polling instead of seeing a transient terminal partial.
+  assertEquals(body.status, "running");
+
+  if (!scheduled) {
+    throw new Error("Expected recovery loop to be scheduled.");
+  }
+  await scheduled;
+
+  assertEquals(state.dayJobs[0].status, "generated");
+  assertEquals(state.dayJobs[0].attempt_count, 2);
+});
+
+Deno.test("status poll does not requeue a non-retryable failed day job", async () => {
+  let scheduled: Promise<void> | undefined;
+  const state = dayGenerationState();
+  state.dayJobs = makeQueuedDayJobs([
+    ["failed", null],
+    ["generated", dailyCardIDs[1]],
+    ["generated", dailyCardIDs[2]],
+    ["generated", dailyCardIDs[3]],
+    ["generated", dailyCardIDs[4]],
+    ["generated", dailyCardIDs[5]],
+    ["generated", dailyCardIDs[6]],
+  ]);
+  state.dayJobs[0].error_code = "generation_cancelled";
+  state.dayJobs[0].attempt_count = 1;
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+    output_snapshot: null,
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: () => {
+        throw new Error("non-retryable failures must not regenerate");
+      },
+      runInBackground: (promise: Promise<void>) => {
+        scheduled = promise;
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.status, "partial");
+  assertEquals(Boolean(scheduled), false);
+  assertEquals(state.dayJobs[0].status, "failed");
+  assertEquals(state.dayJobRPCClaims.length, 0);
+});
+
+Deno.test("status poll does not requeue a retryable failed day job at max attempts", async () => {
+  let scheduled: Promise<void> | undefined;
+  const state = dayGenerationState();
+  state.dayJobs = makeQueuedDayJobs([
+    ["failed", null],
+    ["generated", dailyCardIDs[1]],
+    ["generated", dailyCardIDs[2]],
+    ["generated", dailyCardIDs[3]],
+    ["generated", dailyCardIDs[4]],
+    ["generated", dailyCardIDs[5]],
+    ["generated", dailyCardIDs[6]],
+  ]);
+  state.dayJobs[0].error_code = "invalid_generated_week";
+  state.dayJobs[0].attempt_count = 3;
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+    output_snapshot: null,
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: () => {
+        throw new Error("max-attempt failures must not regenerate");
+      },
+      runInBackground: (promise: Promise<void>) => {
+        scheduled = promise;
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.status, "partial");
+  assertEquals(Boolean(scheduled), false);
+  assertEquals(state.dayJobs[0].status, "failed");
+  assertEquals(state.dayJobs[0].attempt_count, 3);
+});
+
+Deno.test("releaseTrackedDayJobClaims runs each tracked release once and clears it", async () => {
+  let releases = 0;
+  registerShutdownTracking(generationRunID, "boot-release-test", []);
+  trackShutdownJob(generationRunID, "job-1", () => {
+    releases += 1;
+    return Promise.resolve(true);
+  });
+
+  try {
+    assertEquals(await releaseTrackedDayJobClaims(), 1);
+    assertEquals(releases, 1);
+    // Already-released claims are not released again.
+    assertEquals(await releaseTrackedDayJobClaims(), 0);
+    assertEquals(releases, 1);
+  } finally {
+    deregisterShutdownTracking(generationRunID);
+  }
+});
+
+Deno.test("worker shutdown release hands an in-flight day-job claim back to the queue", async () => {
+  let scheduled: Promise<void> | undefined;
+  let generationCalls = 0;
+  let claimObserved!: () => void;
+  const claimed = new Promise<void>((resolve) => {
+    claimObserved = resolve;
+  });
+  let releaseGate!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseGate = resolve;
+  });
+
+  const state = dayGenerationState();
+  state.dailyCards = state.dailyCards.slice(1);
+  state.dayJobs = makeQueuedDayJobs([
+    ["queued", null],
+    ["generated", dailyCardIDs[1]],
+    ["generated", dailyCardIDs[2]],
+    ["generated", dailyCardIDs[3]],
+    ["generated", dailyCardIDs[4]],
+    ["generated", dailyCardIDs[5]],
+    ["generated", dailyCardIDs[6]],
+  ]);
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+    output_snapshot: {
+      kind: "parallel_week_generation_v1",
+      week_start_date: "2026-06-08",
+      weekly_plan_id: weeklyPlanID,
+      strategy_created: true,
+      updated_at: new Date().toISOString(),
+      days: weekDatesForTest("2026-06-08").map((scheduledDate, index) => ({
+        scheduled_date: scheduledDate,
+        status: index === 0 ? "pending" : "completed",
+        attempts: index === 0 ? 0 : 1,
+        daily_card_id: index > 0 ? dailyCardIDs[index] : undefined,
+      })),
+    },
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      workerBootedAtMS: Date.now(),
+      generateDayAI: async (
+        input: GenerationInputSnapshot,
+        _providers: AIProviderConfig[],
+        scheduledDate: string,
+        dayIndex: number,
+      ) => {
+        generationCalls += 1;
+        if (generationCalls === 1) {
+          claimObserved();
+          await gate;
+          throw new GenerateWeekValidationError(
+            "invalid_generated_week",
+            "first attempt was interrupted by worker shutdown",
+          );
+        }
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: `Recovered day ${dayIndex + 1}`,
+          warnings: [],
+          assumptions: [],
+          daily_card: { ...card, scheduled_date: scheduledDate },
+          idea_bank: [],
+          source_summary: `Recovered day source ${dayIndex + 1}`,
+        };
+      },
+      runInBackground: (promise: Promise<void>) => {
+        scheduled = promise;
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  if (!scheduled) {
+    throw new Error("Expected recovery loop to be scheduled.");
+  }
+
+  await claimed;
+  assertEquals(state.dayJobs[0].status, "generating");
+  assertEquals(state.dayJobs[0].attempt_count, 1);
+
+  // Simulate the runtime shutting this worker down mid-generation.
+  const released = await releaseTrackedDayJobClaims();
+  assertEquals(released, 1);
+  assertEquals(state.dayJobs[0].status, "queued");
+  assertEquals(state.dayJobs[0].attempt_count, 0);
+  assertEquals(state.dayJobs[0].lease_token, null);
+
+  releaseGate();
+  await scheduled;
+
+  // The released claim was re-claimed and completed without burning the
+  // interrupted attempt.
+  assertEquals(state.dayJobs[0].status, "generated");
+  assertEquals(state.dayJobs[0].attempt_count, 1);
+  assertEquals(generationCalls, 2);
 });
