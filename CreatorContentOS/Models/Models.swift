@@ -588,6 +588,33 @@ struct WeeklyDay: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+extension WeeklyDay {
+    var detailHeaderDateText: String {
+        guard let scheduledDate,
+              let date = Self.parseAPIDate(scheduledDate)
+        else {
+            return [weekday.capitalized, date.nilIfBlank]
+                .compactMap { $0 }
+                .joined(separator: " ")
+        }
+        return Self.formatDetailHeaderDate(date)
+    }
+
+    private static func parseAPIDate(_ scheduledDate: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: scheduledDate)
+    }
+
+    private static func formatDetailHeaderDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEEE, dd MMMM yyyy"
+        return formatter.string(from: date)
+    }
+}
+
 enum WeeklyDayState: String, CaseIterable, Codable, Hashable, Sendable {
     case planned
     case backup

@@ -3,6 +3,21 @@ import XCTest
 
 @MainActor
 final class ManagerAdminUsageTests: XCTestCase {
+    func testWeeklyDayDetailHeaderDateUsesFullReadableFormat() {
+        let day = WeeklyDay(
+            weekday: "SUN",
+            date: "05",
+            scheduledDate: "2026-07-05",
+            title: "Sunday ritual",
+            reason: "This rationale is not shown in the detail header.",
+            source: .pattern,
+            state: .planned,
+            isSoftLocked: false
+        )
+
+        XCTAssertEqual(day.detailHeaderDateText, "Sunday, 05 July 2026")
+    }
+
     func testFixtureNeedsReviewRowsAreActionable() throws {
         let needsReview = IntelligenceHome.raceWeekLibrary.needsReview
 

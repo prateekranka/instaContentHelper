@@ -495,16 +495,19 @@ final class AppServices {
     @discardableResult
     func generateCurrentWeekImmediately() async -> GeneratedWeekDraft? {
         guard !isGeneratingWeek else {
+            logGeneration("generate_week ignored because another generation is already running")
             return latestGenerationSummary
         }
 
         guard memberRole == "owner" || memberRole == "editor" else {
             generationError = "role_not_allowed"
+            logGeneration("generate_week rejected role_not_allowed role=\(memberRole)")
             return nil
         }
 
         guard !weeklyPlan.isSoftLocked else {
             generationError = "existing_published_week_locked"
+            logGeneration("generate_week rejected existing_published_week_locked")
             return nil
         }
 
@@ -514,17 +517,21 @@ final class AppServices {
 
         guard !SupabaseDateFormatting.isDatePast(weekStartDate, todayString: todayDate()) else {
             generationError = "past_generation_date_not_allowed"
+            logGeneration("generate_week rejected past_generation_date week_start=\(weekStartDate)")
             return nil
         }
 
         if isWeeklyBriefDirty {
+            logGeneration("generate_week saving dirty weekly brief before generation")
             weeklyGenerationProgress = .savingWeeklyBrief
             let didSave = await updateWeeklyBriefImmediately(weeklyBriefDraftText)
             guard didSave else {
                 generationError = weeklyBriefEditError ?? "weekly_setup_update_failed"
                 weeklyGenerationProgress = .failed(generationError ?? "weekly_setup_update_failed")
+                logGeneration("generate_week stopped weekly_setup_update_failed error=\(generationError ?? "unknown")")
                 return nil
             }
+            logGeneration("generate_week weekly brief saved")
         }
 
         isGeneratingWeek = true
@@ -535,6 +542,7 @@ final class AppServices {
         let mode: GenerateWeekMode = latestGenerationSummary == nil ? .generateDraft : .regenerateDraft
         let previousDraft = latestGenerationSummary
         let previousPlan = weeklyPlan
+        logGeneration("generate_week started mode=\(mode.rawValue) week_start=\(weekStartDate)")
 
         do {
             if mode == .regenerateDraft {
@@ -550,6 +558,7 @@ final class AppServices {
                 context: context,
                 progress: { [weak self] progress in
                     self?.weeklyGenerationProgress = progress
+                    self?.logGeneration("generate_week progress \(Self.generationProgressSummary(progress))")
                 }
             )
             guard !draft.dailyCards.isEmpty else {
@@ -557,6 +566,7 @@ final class AppServices {
                     latestGenerationSummary = previousDraft
                     weeklyPlan = previousPlan
                 }
+                logGeneration("generate_week failed invalid_generated_week empty daily_cards")
                 throw RepositoryError.edgeFunction("invalid_generated_week")
             }
 
@@ -575,6 +585,9 @@ final class AppServices {
                     )
                 )
                 lastRepositoryError = nil
+                logGeneration(
+                    "generate_week completed partial saved=\(draft.dailyCards.count) week_start=\(weekStartDate)"
+                )
                 return draft
             }
 
@@ -582,6 +595,7 @@ final class AppServices {
             weeklyGenerationProgress = .readyForReview(from: draft)
             generationError = nil
             lastRepositoryError = nil
+            logGeneration("generate_week completed draft_cards=\(draft.dailyCards.count) week_start=\(weekStartDate)")
             return draft
         } catch {
             if latestGenerationSummary == nil,
@@ -593,6 +607,7 @@ final class AppServices {
             generationError = WeeklyGenerationErrorDisplay.message(for: error)
             let message = generationError ?? error.localizedDescription
             weeklyGenerationProgress = weeklyGenerationProgress?.failed(message) ?? .failed(message)
+            logGeneration("generate_week failed error=\(message)")
             return nil
         }
     }
@@ -705,27 +720,32 @@ final class AppServices {
             isRetryableFailedGenerationDate(scheduledDate) else {
             let error = "past_generation_date_not_allowed"
             regenerationDayErrors[scheduledDate] = error
+            logGeneration("regenerate_day rejected past_generation_date scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
 
         guard memberRole == "owner" || memberRole == "editor" else {
             let error = "role_not_allowed"
             regenerationDayErrors[scheduledDate] = error
+            logGeneration("regenerate_day rejected role_not_allowed scheduled_date=\(scheduledDate) role=\(memberRole)")
             throw RepositoryError.edgeFunction(error)
         }
 
         guard !weeklyPlan.isSoftLocked else {
             let error = "published_week_locked"
             regenerationDayErrors[scheduledDate] = error
+            logGeneration("regenerate_day rejected published_week_locked scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
 
         guard !regeneratingDayDates.contains(scheduledDate) else {
             if let existing = latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate }) {
+                logGeneration("regenerate_day ignored already_running returning_existing scheduled_date=\(scheduledDate)")
                 return existing
             }
             let error = "generation_already_running"
             regenerationDayErrors[scheduledDate] = error
+            logGeneration("regenerate_day rejected generation_already_running scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
 
@@ -734,6 +754,9 @@ final class AppServices {
         defer { regeneratingDayDates.remove(scheduledDate) }
 
         do {
+            logGeneration(
+                "regenerate_day started scheduled_date=\(scheduledDate) preserve_manual_edits=\(preserveManualEdits) guidance_chars=\(dayGuidance?.count ?? 0)"
+            )
             let result = try await repositories.weeklyGeneration.regenerateDay(
                 creatorID: context.creatorID,
                 weeklyPlanID: weeklyPlan.id,
@@ -747,11 +770,13 @@ final class AppServices {
             scheduleStoryboardThumbnailPrewarm(for: [result.dailyCard])
             generationError = nil
             lastRepositoryError = nil
+            logGeneration("regenerate_day completed scheduled_date=\(scheduledDate) daily_card_id=\(result.dailyCard.id)")
             return result.dailyCard
         } catch {
             let message = WeeklyGenerationErrorDisplay.message(for: error)
             regenerationDayErrors[scheduledDate] = message
             generationError = message
+            logGeneration("regenerate_day failed scheduled_date=\(scheduledDate) error=\(message)")
             throw RepositoryError.edgeFunction(message)
         }
     }
@@ -761,22 +786,26 @@ final class AppServices {
             isRetryableFailedGenerationDate(scheduledDate) else {
             let error = "past_generation_date_not_allowed"
             regenerationDayErrors[scheduledDate] = error
+            logGeneration("retry_day rejected past_generation_date scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
 
         guard memberRole == "owner" || memberRole == "editor" else {
             let error = "role_not_allowed"
             regenerationDayErrors[scheduledDate] = error
+            logGeneration("retry_day rejected role_not_allowed scheduled_date=\(scheduledDate) role=\(memberRole)")
             throw RepositoryError.edgeFunction(error)
         }
 
         guard !weeklyPlan.isSoftLocked else {
             let error = "published_week_locked"
             regenerationDayErrors[scheduledDate] = error
+            logGeneration("retry_day rejected published_week_locked scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
 
         if shouldRetryFailedDayViaRegeneration(scheduledDate: scheduledDate) {
+            logGeneration("retry_day using regenerate_day fallback scheduled_date=\(scheduledDate)")
             markQueuedDayRetrying(scheduledDate: scheduledDate)
             let regeneratedCard = try await regeneratedDailyCard(
                 scheduledDate: scheduledDate,
@@ -789,6 +818,7 @@ final class AppServices {
         guard let generationID = resolvedGenerationRunID() else {
             let error = "generation_not_found"
             regenerationDayErrors[scheduledDate] = error
+            logGeneration("retry_day rejected generation_not_found scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
 
@@ -798,6 +828,7 @@ final class AppServices {
         defer { regeneratingDayDates.remove(scheduledDate) }
 
         do {
+            logGeneration("retry_day started scheduled_date=\(scheduledDate) generation_id=\(generationID)")
             let preservedDayStates = reviewedDayStatesByDate()
             let expectedScheduledDates = Self.expectedGenerationScheduledDates(
                 weekStartDate: weeklyPlan.weekStartDate,
@@ -810,6 +841,7 @@ final class AppServices {
                 context: context,
                 progress: { [weak self] progress in
                     self?.weeklyGenerationProgress = progress
+                    self?.logGeneration("retry_day progress \(Self.generationProgressSummary(progress))")
                 }
             )
             applyGeneratedDraft(draft)
@@ -824,12 +856,14 @@ final class AppServices {
                 )
                 generationError = nil
                 lastRepositoryError = nil
+                logGeneration("retry_day completed partial scheduled_date=\(scheduledDate)")
                 return
             }
 
             weeklyGenerationProgress = .readyForReview(from: draft)
             generationError = nil
             lastRepositoryError = nil
+            logGeneration("retry_day completed scheduled_date=\(scheduledDate) draft_cards=\(draft.dailyCards.count)")
         } catch {
             if shouldFallbackToRegenerateDayAfterQueuedRetryFailure(
                 error,
@@ -837,6 +871,7 @@ final class AppServices {
             ) {
                 regeneratingDayDates.remove(scheduledDate)
                 regenerationDayErrors[scheduledDate] = nil
+                logGeneration("retry_day falling back to regenerate_day after error scheduled_date=\(scheduledDate)")
                 markQueuedDayRetrying(scheduledDate: scheduledDate)
                 let regeneratedCard = try await regeneratedDailyCard(
                     scheduledDate: scheduledDate,
@@ -848,6 +883,7 @@ final class AppServices {
             let message = WeeklyGenerationErrorDisplay.message(for: error)
             regenerationDayErrors[scheduledDate] = message
             generationError = message
+            logGeneration("retry_day failed scheduled_date=\(scheduledDate) error=\(message)")
             throw RepositoryError.edgeFunction(message)
         }
     }
@@ -937,6 +973,7 @@ final class AppServices {
         isGeneratingWeek = false
         weeklyGenerationProgress = nil
         generationError = nil
+        logGeneration("cancel_generation requested generation_id=\(generationID?.uuidString ?? "none")")
 
         guard let generationID else { return }
 
@@ -949,6 +986,7 @@ final class AppServices {
                 )
             } catch {
                 self?.lastRepositoryError = error.localizedDescription
+                self?.logGeneration("cancel_generation failed generation_id=\(generationID) error=\(error.localizedDescription)")
             }
         }
     }
@@ -977,6 +1015,38 @@ final class AppServices {
             draft.dailyCards[index].storyboardThumbnailAssets = assets
             latestGenerationSummary = draft
         }
+    }
+
+    private func logGeneration(_ message: String) {
+        print("[ContentHelperGeneration] \(Date()) \(message)")
+    }
+
+    private static func generationProgressSummary(_ progress: WeeklyGenerationProgress) -> String {
+        let runningDays = progress.dayStatuses.filter { $0.isRunning || $0.isRetrying }
+        let queuedDays = progress.dayStatuses.filter(\.isQueued)
+        let completed = progress.dayStatuses.filter(\.isCompleted).count
+        let failedDays = progress.dayStatuses.filter(\.isFailed).compactMap { status -> String? in
+            guard let date = status.scheduledDate else { return nil }
+            if let error = status.errorCode?.nilIfBlank {
+                return "\(date):\(error)"
+            }
+            return date
+        }
+        return [
+            "phase=\(progress.phase.rawValue)",
+            "generation_id=\(progress.generationID?.uuidString ?? "none")",
+            "weekly_plan_id=\(progress.weeklyPlanID?.uuidString ?? "none")",
+            "drafted=\(progress.draftedDayCount)/\(progress.totalDayCount)",
+            "saved=\(progress.savedDayCount.map(String.init) ?? "unknown")",
+            "failed=\(progress.failedDayCount.map(String.init) ?? "unknown")",
+            "running=\(runningDays.count)",
+            runningDays.isEmpty ? "" : "running_days=\(runningDays.compactMap(\.scheduledDate).joined(separator: ","))",
+            "queued=\(queuedDays.count)",
+            queuedDays.isEmpty ? "" : "queued_days=\(queuedDays.compactMap(\.scheduledDate).joined(separator: ","))",
+            "completed=\(completed)",
+            failedDays.isEmpty ? "" : "failed_days=\(failedDays.joined(separator: ","))",
+            progress.error.map { "error=\($0)" } ?? ""
+        ].filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     private func applyStoryboardThumbnailWeekProgress(

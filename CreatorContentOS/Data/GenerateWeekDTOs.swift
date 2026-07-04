@@ -1,5 +1,28 @@
 import Foundation
 
+/// Safe, non-sensitive client-side context encoded into generation requests
+/// for hosted log correlation. Only carries values useful for tracing which
+/// app surface and action produced a request — never tokens, auth headers,
+/// emails, API keys, or private profile text. Optional fields are omitted from
+/// the encoded payload when nil so requests stay backward-compatible.
+struct SupabaseGenerationClientContext: Encodable, Sendable, Equatable {
+    var uiSurface: String
+    var action: String
+    var selectedWeekStart: String?
+    var scheduledDate: String?
+    var dayGuidancePresent: Bool?
+    var dayGuidanceChars: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case uiSurface = "ui_surface"
+        case action
+        case selectedWeekStart = "selected_week_start"
+        case scheduledDate = "scheduled_date"
+        case dayGuidancePresent = "day_guidance_present"
+        case dayGuidanceChars = "day_guidance_chars"
+    }
+}
+
 struct SupabaseGenerateWeekRequest: Encodable, Sendable {
     var creatorID: UUID
     var weekStartDate: String
@@ -9,6 +32,7 @@ struct SupabaseGenerateWeekRequest: Encodable, Sendable {
     var mock: Bool?
     var responseMode: GenerateWeekResponseMode? = nil
     var featureFlags: [String]? = ["parallel_week_generation"]
+    var clientContext: SupabaseGenerationClientContext? = nil
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
@@ -19,6 +43,7 @@ struct SupabaseGenerateWeekRequest: Encodable, Sendable {
         case mock
         case responseMode = "response_mode"
         case featureFlags = "feature_flags"
+        case clientContext = "client_context"
     }
 }
 
@@ -388,6 +413,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
     var mock: Bool?
     var action = "regenerate_day"
     var dayGuidance: String?
+    var clientContext: SupabaseGenerationClientContext? = nil
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
@@ -398,6 +424,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
         case mock
         case action
         case dayGuidance = "day_guidance"
+        case clientContext = "client_context"
     }
 }
 

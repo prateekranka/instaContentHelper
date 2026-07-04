@@ -2166,16 +2166,12 @@ struct WeeklyDayDetailSheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: MCOSpace.xs) {
-            Text("\(day.weekday) \(day.date)")
+            Text(day.detailHeaderDateText)
                 .font(MCOType.tinyLabel)
                 .foregroundStyle(day.state.accent)
             Text(day.title)
                 .font(MCOType.screenTitle)
                 .foregroundStyle(MCOTheme.Color.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(day.reason)
-                .font(MCOType.bodySmall)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -2289,15 +2285,29 @@ struct DayRegenerationControls: View {
                     Text("Regeneration guidance")
                         .font(MCOType.caption)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
-                    TextField("Describe what the regenerated content should contain", text: $dayGuidance, axis: .vertical)
-                        .font(MCOType.bodySmall)
-                        .foregroundStyle(MCOTheme.Color.ink)
-                        .lineLimit(2...4)
-                        .textFieldStyle(.plain)
-                        .padding(MCOSpace.s)
-                        .background(MCOTheme.Color.paperRaised.opacity(0.58))
-                        .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
-                        .disabled(isRegenerating || isDisabled)
+                    ZStack(alignment: .topLeading) {
+                        if dayGuidance.isEmpty {
+                            Text("Describe what the regenerated content should contain")
+                                .font(MCOType.bodySmall)
+                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                        TextEditor(text: $dayGuidance)
+                            .font(MCOType.bodySmall)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                            .scrollContentBackground(.hidden)
+                            .disabled(isRegenerating || isDisabled)
+                            .accessibilityIdentifier("weekly.day.regenerationGuidance")
+                    }
+                    .padding(MCOSpace.s)
+                    .frame(minHeight: 82, alignment: .topLeading)
+                    .background(MCOTheme.Color.paperRaised.opacity(0.86))
+                    .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
+                            .stroke(MCOTheme.Color.hairlineStrong.opacity(0.8), lineWidth: 1)
+                    }
                 }
 
                 Button(action: {
@@ -2467,7 +2477,7 @@ struct GeneratedStoryboardBreakdownContent: View {
             HStack(spacing: MCOSpace.s) {
                 Image(systemName: "rectangle.stack.fill")
                     .font(.system(size: 13, weight: .semibold))
-                Text("Storyboard & shot breakdown")
+                Text("Storyboard")
                     .font(MCOType.tinyLabel)
                 Spacer(minLength: MCOSpace.s)
                 Text(durationLabel)

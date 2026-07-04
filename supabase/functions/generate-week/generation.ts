@@ -242,6 +242,7 @@ export type GenerationInputSnapshot = {
   key_moments: Record<string, unknown>[];
   existing_week_cards?: Record<string, unknown>[];
   day_guidance?: string;
+  day_retry_context?: Record<string, unknown>;
 };
 
 const DEFAULT_AI_REQUEST_TIMEOUT_MS = 240_000;
@@ -370,33 +371,60 @@ export type AIGenerationRequestSizeMetrics = {
   prompt_estimated_tokens: number;
   provider_request_body_chars: number;
   provider_request_body_bytes: number;
+  request_timeout_ms: number;
+  request_input_version: string | null;
   input_snapshot_chars: number;
   input_snapshot_bytes: number;
   input_snapshot_estimated_tokens: number;
+  raw_input_snapshot_chars: number;
+  raw_input_snapshot_bytes: number;
+  raw_input_snapshot_estimated_tokens: number;
   reference_context_chars: number;
   reference_context_bytes: number;
   reference_context_estimated_tokens: number;
+  raw_reference_context_chars: number;
+  dropped_reference_context_chars: number;
   creator_profile_chars: number;
   weekly_setup_chars: number;
   confirmed_reference_count: number;
+  raw_confirmed_reference_count: number;
+  dropped_confirmed_reference_count: number;
   confirmed_reference_chars: number;
   reference_extraction_count: number;
+  raw_reference_extraction_count: number;
+  dropped_reference_extraction_count: number;
   reference_extraction_chars: number;
   recent_archive_count: number;
+  raw_recent_archive_count: number;
+  dropped_recent_archive_count: number;
   recent_archive_chars: number;
   idea_bank_count: number;
+  raw_idea_bank_count: number;
+  dropped_idea_bank_count: number;
   idea_bank_chars: number;
   pattern_count: number;
+  raw_pattern_count: number;
+  dropped_pattern_count: number;
   pattern_chars: number;
   trend_count: number;
+  raw_trend_count: number;
+  dropped_trend_count: number;
   trend_chars: number;
   audio_option_count: number;
+  raw_audio_option_count: number;
+  dropped_audio_option_count: number;
   audio_option_chars: number;
   brand_brief_count: number;
+  raw_brand_brief_count: number;
+  dropped_brand_brief_count: number;
   brand_brief_chars: number;
   key_moment_count: number;
+  raw_key_moment_count: number;
+  dropped_key_moment_count: number;
   key_moment_chars: number;
   existing_week_card_count: number;
+  raw_existing_week_card_count: number;
+  dropped_existing_week_card_count: number;
   existing_week_card_chars: number;
 };
 
@@ -484,7 +512,12 @@ export type AIOutputQualityMetrics = {
   on_screen_text_present: boolean;
   caption_or_subtitle_support_present: boolean;
   on_screen_text_density_ok: boolean;
-  duration_fit: "ideal" | "acceptable" | "too_short" | "too_long" | "not_applicable";
+  duration_fit:
+    | "ideal"
+    | "acceptable"
+    | "too_short"
+    | "too_long"
+    | "not_applicable";
   scene_variety_count: number;
   visual_variety_present: boolean;
   audio_or_silent_strategy_present: boolean;
@@ -749,35 +782,38 @@ function buildDayPromptMessages(
   scheduledDate: string,
   dayIndex: number,
 ): { system: string; user: string } {
-  const generationGuidance = buildGenerationGuidance(
-    input,
+  const promptInput = scopeInputForDayPrompt(input, scheduledDate, dayIndex);
+  const compactPromptInput = compactDayPromptInput(
+    promptInput,
+    scheduledDate,
+    dayIndex,
+  );
+  const generationGuidance = buildDailyGenerationGuidance(
+    promptInput,
     scheduledDate,
     dayIndex,
   );
   const targetWeekday = weekdayName(scheduledDate);
-  const dayGuidanceNote = input.day_guidance
-    ? `\nCreator/admin instruction for ${scheduledDate} ONLY (not week-wide): ${input.day_guidance}`
+  const dayGuidanceNote = promptInput.day_guidance
+    ? `\nCreator/admin instruction for ${scheduledDate} ONLY (not week-wide): ${promptInput.day_guidance}`
     : "";
   return {
     system: [
       "You generate Creator Content OS daily content as strict JSON.",
-      "The creator is a lifestyle creator documenting her own rounded healthy life, NOT a gym instructor or online coach. Gym is one of four pillars (gym, lifestyle, eating, recovery), not her whole identity.",
-      "Stable creator brief: Indian mother, wife, and HYROX athlete building a second-half-of-life fitness brand; age is context, not the whole personality.",
-      "Use only the provided creator profile, weekly setup, confirmed references and extractions, brand obligations, key moments, archive feedback, and idea bank.",
-      "Apply the generation guidance silently; resolve source conflicts by precedence without asking the admin.",
+      "Creator: Indian mother, wife, HYROX athlete, and rounded lifestyle creator; not a gym instructor or online coach. Gym is one pillar beside lifestyle, eating, and recovery.",
+      "Use only supplied profile, weekly setup, day-scoped references, brand obligations, key moments, archive feedback, idea bank, and admin guidance.",
+      "Apply precedence silently: weekly brief > profile > day-scoped references > older context.",
       "Generate exactly one daily card for the requested scheduled_date.",
-      "Set content_pillar to one of gym, lifestyle, eating, or recovery. Frame the card in first person as what the creator is doing/noticing/trying — never as instruction for followers.",
+      "Set content_pillar to gym, lifestyle, eating, or recovery. Frame first-person lived observation, never follower instruction.",
       "Ban coach language: 'do this exercise', 'fix your form', 'my clients', 'your clients', 'training clients', 'upper body cue' as the main angle, generic 'training angle', and coach-like imperatives.",
       "All day-of-week language must match the requested scheduled_date.",
-      "Prioritize shootability, retention-first hooks, and creator safety. Creative stakes win over trend chasing.",
-      "Use only supplied profile, brief, and confirmed reference facts. Never invent biography, quotes, family reactions, exact durations, locations not in the brief, history, equipment failures, or dialogue. Place any uncertainty in assumptions or risk_notes.",
-      "Follow the day_intent guidance: the target weekday's role determines whether this card is training-led, recovery/eating/lifestyle, or experimental. End cards with a punchline, observation, or genuinely earned question — do NOT end every script with a save CTA.",
-      "Explicit save CTA (save this, save this for, save this reel) is eligible on at most two named weekdays. On all other days end with punchline, observation, or earned question. The day_intent tells you whether this day is eligible.",
-      "Mention age on at most one named weekday per week and only when the weekly brief or day_intent explicitly supports it. Never default to age as a hook.",
-      "Every non-training card (lifestyle, eating, recovery) must have a genuinely non-training center. Never relabel a gym script as lifestyle, eating, or recovery.",
+      "Prioritize shootability, retention-first hooks, creator safety, and one clear creative turn.",
+      "Never invent biography, quotes, family reactions, exact durations, locations, history, equipment failures, or dialogue. Place any uncertainty in assumptions or risk_notes.",
+      "Explicit save CTA is allowed on at most two named weekdays; do NOT end every script with a save CTA. Follow day_intent for pillar, footage, CTA eligibility, and age eligibility.",
+      "Mention age on at most one named weekday. Never default to age as a hook. end with punchline, observation, or earned question unless save CTA is explicitly eligible.",
+      "Every non-training card needs a genuinely non-training center. Never relabel a gym script as lifestyle, eating, or recovery.",
       "Reject instructor endings: 'just start', 'one set, then the next', 'if you needed a reminder', 'the real win', 'you can do this', 'you got this', 'no excuses', 'start today', and follower-directed workout permission sentences.",
-      "Avoid all no-go topics and surface assumptions or risks instead of inventing facts.",
-      "Write a concise Instagram caption — roughly 40-70 words, tight and scannable. Capture the creator's context, one practical takeaway, and a natural CTA. Do not produce captions longer than needed; half the length of a long-form caption is the target.",
+      "Write a concise Instagram caption: 40-70 words, tight and scannable, with context, one takeaway, and a natural CTA.",
     ].join(" "),
     user: JSON.stringify({
       task:
@@ -788,14 +824,566 @@ function buildDayPromptMessages(
         scheduled_date: scheduledDate,
         weekday: targetWeekday,
         day_index: dayIndex + 1,
-        week_start_date: input.week_start_date,
+        week_start_date: promptInput.week_start_date,
         day_intent: generationGuidance.day_specific_intent,
       },
+      repair_context: promptInput.day_retry_context ?? undefined,
       required_contract: generatedDayOutputContract(scheduledDate),
       generation_guidance: generationGuidance,
-      input,
+      input: compactPromptInput,
     }) + dayGuidanceNote,
   };
+}
+
+function buildDailyGenerationGuidance(
+  input: GenerationInputSnapshot,
+  scheduledDate: string,
+  dayIndex: number,
+): Record<string, unknown> {
+  const dayIntent = dayIntentForScheduledDate(input, scheduledDate, dayIndex);
+  const creatorDisplayName = stringValue(
+    isRecord(input.creator_profile)
+      ? input.creator_profile.display_name
+      : undefined,
+  ) ?? "the creator";
+
+  return {
+    compact_guidance_version: "creator_daily_generation_compact_v3",
+    precedence: [
+      "Weekly brief > creator profile > day-scoped references.",
+      "Use references only when they fit the target date and brief.",
+    ],
+    day_specific_intent: dayIntent,
+    creator_voice_compact: {
+      identity:
+        "Indian mother, wife, HYROX athlete in her early 60s; rounded lifestyle creator, not an instructor.",
+      tone:
+        "First-person, warm, witty, self-aware, Indian without caricature, strong without preaching.",
+      writing_test:
+        `If another creator could say a line unchanged, rewrite it with ${creatorDisplayName}'s lived detail, opinion, home/family texture, or dry humour.`,
+      never_sound_like: ["gym bro", "online coach", "generic brand ambassador"],
+    },
+    daily_quality_rules: [
+      "Open with tension, contradiction, recognition, joke setup, confession, or strongest visual.",
+      "Include one unmistakable opinion, contradiction, confession, or comic observation.",
+      "Include one current-brief/profile detail: food, family/home, gym bag, kitchen, location, routine, or brand constraint.",
+      "End with punchline, observation, or earned question; no generic advice ending.",
+      "Storyboard must be simple, specific, and realistic to film today.",
+    ],
+    quota_rules: {
+      content_pillar: CONTENT_PILLARS.join(", "),
+      cta:
+        "At most 2 explicit save CTAs/week; use save language only if day_intent allows it.",
+      age:
+        "Mention age at most once/week and only if day_intent or brief supports it.",
+      non_training:
+        "Lifestyle/eating/recovery cards need a genuinely non-training center.",
+    },
+    banned:
+      "No coach phrasing, follower workout commands, generic save-this endings, age cliches, or luxury-wellness cliches.",
+    weekly_diversity: input.day_retry_context ? undefined : {
+      target_day: `${
+        weekdayName(scheduledDate)
+      } ${scheduledDate}: ${dayIntent}`,
+      avoid:
+        "Do not repeat hook engines or generic reset/recovery/product-led concepts.",
+    },
+    factual_discipline:
+      "Use supplied profile, brief, and day-scoped facts only; put gaps in risk_notes.",
+    instagram_defaults: {
+      caption:
+        "40-70 word caption; tight, scannable, one takeaway, natural CTA.",
+      timelines: "Use timestamp ranges like 0:00-0:03 in every timeline field.",
+      storyboard:
+        "Storyboard rows pair time, visual/shot, what to show, dialogue/script, and caption placement.",
+    },
+    repair_instruction: input.day_retry_context
+      ? "This is a repair retry for the same scheduled_date. Do not broaden the idea. Fix the stated issue, simplify the concept if needed, and return one complete valid daily card."
+      : undefined,
+  };
+}
+
+function compactDayPromptInput(
+  input: GenerationInputSnapshot,
+  scheduledDate: string,
+  dayIndex: number,
+): Record<string, unknown> {
+  const isRepair = isRecord(input.day_retry_context);
+  const needsSourceContext = isRepair &&
+    repairNeedsSourceContext(input.day_retry_context);
+  const compactOptions = isRepair
+    ? DAY_REPAIR_COMPACT_OPTIONS
+    : DAY_COMPACT_OPTIONS;
+  const creatorProfileKeys = isRepair
+    ? [
+      "display_name",
+      "positioning",
+      "voice_rules",
+      "caption_style",
+      "never_say",
+      "language_preferences",
+    ]
+    : [
+      "display_name",
+      "positioning",
+      "voice_rules",
+      "caption_style",
+      "never_say",
+      "weekly_routine",
+      "family_race_travel_context",
+      "language_preferences",
+    ];
+  const weeklySetupKeys = isRepair
+    ? [
+      "location",
+      "workout_race_schedule",
+      "shooting_constraints",
+      "no_go_topics",
+      "notes",
+    ]
+    : [
+      "location",
+      "workout_race_schedule",
+      "family_travel_moments",
+      "energy_constraints",
+      "shooting_constraints",
+      "no_go_topics",
+      "notes",
+    ];
+  const base: Record<string, unknown> = {
+    compact_input_version: isRepair
+      ? "creator_day_prompt_repair_input_v2"
+      : "creator_day_prompt_input_v2",
+    creator_id: input.creator_id,
+    week_start_date: input.week_start_date,
+    target: {
+      scheduled_date: scheduledDate,
+      weekday: weekdayName(scheduledDate),
+      day_index: dayIndex + 1,
+    },
+    creator_profile: compactRecord(
+      input.creator_profile ?? {},
+      creatorProfileKeys,
+      compactOptions,
+    ),
+    weekly_setup: compactRecord(
+      input.weekly_setup ?? {},
+      weeklySetupKeys,
+      compactOptions,
+    ),
+    day_guidance: input.day_guidance,
+    existing_day_card: compactRecords(
+      input.existing_week_cards ?? [],
+      1,
+      compactOptions,
+    ),
+    confirmed_references: compactRecords(
+      input.confirmed_references,
+      isRepair ? (needsSourceContext ? 1 : 0) : 2,
+      compactOptions,
+    ),
+    reference_extractions: compactRecords(
+      input.reference_extractions,
+      isRepair ? (needsSourceContext ? 1 : 0) : 2,
+      compactOptions,
+    ),
+    brand_briefs: compactRecords(input.brand_briefs, isRepair ? 0 : 1),
+    key_moments: compactRecords(input.key_moments, isRepair ? 0 : 1),
+  };
+
+  if (isRepair) {
+    return {
+      ...base,
+      repair_mode: true,
+      repair_context: compactRecord(
+        input.day_retry_context ?? {},
+        [
+          "retry_kind",
+          "retry_reason",
+          "scheduled_date",
+          "day_index",
+          "provider_attempt",
+          "validation_error",
+          "error_message",
+          "instruction",
+        ],
+        compactOptions,
+      ),
+    };
+  }
+
+  return {
+    ...base,
+    recent_archive: compactRecords(input.recent_archive, 1),
+    idea_bank: compactRecords(input.idea_bank, 2),
+    patterns: compactRecords(input.patterns, 1),
+    trends: compactRecords(input.trends, 1),
+    audio_options: compactRecords(input.audio_options, 1),
+  };
+}
+
+function repairNeedsSourceContext(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const text = safeJSONStringify({
+    retry_reason: value.retry_reason,
+    validation_error: value.validation_error,
+    error_message: value.error_message,
+  }).toLowerCase();
+  return /source_reference|confirmed_reference|reference_extraction|source_note/
+    .test(text);
+}
+
+type CompactOptions = {
+  stringLimit: number;
+  arrayItemLimit: number;
+  objectKeyLimit: number;
+};
+
+const DAY_COMPACT_OPTIONS: CompactOptions = {
+  stringLimit: 280,
+  arrayItemLimit: 5,
+  objectKeyLimit: 8,
+};
+
+const DAY_REPAIR_COMPACT_OPTIONS: CompactOptions = {
+  stringLimit: 180,
+  arrayItemLimit: 3,
+  objectKeyLimit: 6,
+};
+
+function compactRecords(
+  records: Record<string, unknown>[],
+  max: number,
+  options: CompactOptions = DAY_COMPACT_OPTIONS,
+): Record<string, unknown>[] {
+  return records.slice(0, max).map((record) =>
+    compactRecord(record, [
+      "id",
+      "source_reference_id",
+      "source_type",
+      "source_url",
+      "title",
+      "name",
+      "label",
+      "brand_name",
+      "campaign_title",
+      "deliverable",
+      "post_date",
+      "due_date",
+      "review_deadline",
+      "moment_date",
+      "scheduled_date",
+      "content_pillar",
+      "format",
+      "summary",
+      "suggested_use",
+      "manual_notes",
+      "notes",
+      "extraction_kind",
+      "extracted_payload",
+      "required_scenes",
+      "mandatory_points",
+      "must_avoid",
+      "disclosure_requirement",
+      "status",
+      "decision",
+      "output_line",
+    ], options)
+  );
+}
+
+function compactRecord(
+  record: Record<string, unknown>,
+  allowedKeys: string[],
+  options: CompactOptions = DAY_COMPACT_OPTIONS,
+): Record<string, unknown> {
+  const compact: Record<string, unknown> = {};
+  for (const key of allowedKeys) {
+    const value = record[key];
+    if (value === undefined || value === null) continue;
+    compact[key] = compactValue(value, options);
+  }
+  return compact;
+}
+
+function compactValue(value: unknown, options: CompactOptions): unknown {
+  if (typeof value === "string") {
+    return value.length > options.stringLimit
+      ? `${value.slice(0, options.stringLimit - 3)}...`
+      : value;
+  }
+  if (Array.isArray(value)) {
+    return value.slice(0, options.arrayItemLimit).map((item) =>
+      compactValue(item, options)
+    );
+  }
+  if (isRecord(value)) {
+    const entries = Object.entries(value).slice(0, options.objectKeyLimit);
+    return Object.fromEntries(
+      entries.map((
+        [key, childValue],
+      ) => [key, compactValue(childValue, options)]),
+    );
+  }
+  return value;
+}
+
+export function scopeInputForDayPrompt(
+  input: GenerationInputSnapshot,
+  scheduledDate: string,
+  dayIndex: number,
+): GenerationInputSnapshot {
+  const dayIntent = dayIntentForScheduledDate(input, scheduledDate, dayIndex);
+  const tokens = dayScopeTokens(input, scheduledDate, dayIntent);
+  const isRepair = isRecord(input.day_retry_context);
+  const maxReferenceCount = isRepair ? 1 : 2;
+  const maxExtractionCount = isRepair ? 1 : 3;
+  const confirmedReferences = rankedRelevantRecords(
+    input.confirmed_references,
+    tokens,
+    { max: maxReferenceCount, fallback: 0 },
+  );
+  const selectedReferenceIDs = new Set(
+    confirmedReferences.flatMap((reference) => [
+      stringValue(reference.id) ?? "",
+      stringValue(reference.source_reference_id) ?? "",
+    ]).filter(Boolean),
+  );
+
+  const linkedExtractions = input.reference_extractions.filter((extraction) =>
+    selectedReferenceIDs.has(stringValue(extraction.source_reference_id) ?? "")
+  );
+  const rankedExtractions = rankedRelevantRecords(
+    input.reference_extractions.filter((extraction) =>
+      !linkedExtractions.includes(extraction)
+    ),
+    tokens,
+    { max: maxExtractionCount, fallback: 0 },
+  );
+
+  return {
+    ...input,
+    confirmed_references: confirmedReferences,
+    reference_extractions: uniqueRecordsByStableKey([
+      ...linkedExtractions,
+      ...rankedExtractions,
+    ]).slice(0, maxExtractionCount),
+    recent_archive: rankedRelevantRecords(input.recent_archive, tokens, {
+      max: isRepair ? 0 : 1,
+      fallback: 0,
+    }),
+    idea_bank: rankedRelevantRecords(input.idea_bank, tokens, {
+      max: isRepair ? 0 : 2,
+      fallback: 0,
+    }),
+    patterns: rankedRelevantRecords(input.patterns, tokens, {
+      max: isRepair ? 0 : 1,
+      fallback: 0,
+    }),
+    trends: rankedRelevantRecords(input.trends, tokens, {
+      max: isRepair ? 0 : 1,
+      fallback: 0,
+    }),
+    audio_options: rankedRelevantRecords(input.audio_options, tokens, {
+      max: 1,
+      fallback: 0,
+    }),
+    brand_briefs: rankedRelevantRecords(input.brand_briefs, tokens, {
+      max: 2,
+      fallback: 0,
+    }),
+    key_moments: rankedRelevantRecords(input.key_moments, tokens, {
+      max: 2,
+      fallback: 0,
+    }),
+    existing_week_cards: (input.existing_week_cards ?? []).filter((card) =>
+      stringValue(card.scheduled_date) === scheduledDate
+    ),
+  };
+}
+
+function dayScopeTokens(
+  input: GenerationInputSnapshot,
+  scheduledDate: string,
+  dayIntent: string,
+): string[] {
+  const tokens = new Set<string>();
+  const add = (value: unknown) => {
+    for (const token of textTokens(value)) {
+      tokens.add(token);
+    }
+  };
+
+  add(scheduledDate);
+  add(weekdayName(scheduledDate));
+  add(dayIntent);
+  add(weeklyBriefContextTags(input).join(" "));
+  add(input.day_guidance ?? "");
+
+  return [...tokens].filter((token) => token.length >= 3);
+}
+
+function rankedRelevantRecords(
+  records: Record<string, unknown>[],
+  tokens: string[],
+  options: { max: number; fallback: number },
+): Record<string, unknown>[] {
+  if (records.length === 0 || options.max <= 0) {
+    return [];
+  }
+
+  const targetDate = tokens.find((token) => /^\d{4}-\d{2}-\d{2}$/.test(token));
+  const ranked = records.map((record, index) => ({
+    record,
+    index,
+    score: dayRecordRelevanceScore(record, tokens, targetDate),
+  })).sort((left, right) =>
+    right.score - left.score || left.index - right.index
+  );
+  const relevant = ranked.filter((item) => item.score > 0);
+  const selected = relevant.length > 0
+    ? relevant.slice(0, options.max)
+    : ranked.slice(0, options.fallback);
+
+  return selected.map((item) => item.record);
+}
+
+function dayRecordRelevanceScore(
+  record: Record<string, unknown>,
+  tokens: string[],
+  targetDate?: string,
+): number {
+  const text = safeJSONStringify(record).toLowerCase();
+  const recordTokens = new Set(textTokens(text));
+  let score = dateRelevanceScore(record, targetDate);
+
+  for (const token of tokens) {
+    if (
+      recordTokens.has(token) ||
+      (/^\d{4}-\d{2}-\d{2}$/.test(token) && text.includes(token))
+    ) {
+      score += token.length > 8 ? 8 : 4;
+    }
+  }
+
+  return score;
+}
+
+function dateRelevanceScore(
+  record: Record<string, unknown>,
+  targetDate?: string,
+): number {
+  if (!targetDate) {
+    return 0;
+  }
+  const dateValues = [
+    "scheduled_date",
+    "post_date",
+    "due_date",
+    "review_deadline",
+    "moment_date",
+    "archive_date",
+  ].flatMap((key) => {
+    const value = stringValue(record[key]);
+    return value ? [value.slice(0, 10)] : [];
+  });
+  if (dateValues.length === 0) {
+    return 0;
+  }
+
+  return Math.max(
+    ...dateValues.map((value) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return 0;
+      }
+      const daysApart = Math.abs(daysBetweenISODates(targetDate, value));
+      if (daysApart === 0) {
+        return 40;
+      }
+      if (daysApart <= 1) {
+        return 20;
+      }
+      return 0;
+    }),
+  );
+}
+
+function daysBetweenISODates(left: string, right: string): number {
+  const leftMs = Date.parse(`${left}T00:00:00Z`);
+  const rightMs = Date.parse(`${right}T00:00:00Z`);
+  if (Number.isNaN(leftMs) || Number.isNaN(rightMs)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Math.round((rightMs - leftMs) / 86_400_000);
+}
+
+function textTokens(value: unknown): string[] {
+  const text = String(value ?? "").toLowerCase();
+  return Array.from(text.matchAll(/[a-z0-9][a-z0-9-]{2,}/g)).map((match) =>
+    match[0]
+  ).filter((token) => !DAY_SCOPE_STOPWORDS.has(token));
+}
+
+const DAY_SCOPE_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "this",
+  "that",
+  "only",
+  "not",
+  "use",
+  "uses",
+  "using",
+  "day",
+  "week",
+  "weekly",
+  "brief",
+  "content",
+  "pillar",
+  "ending",
+  "rule",
+  "eligible",
+  "routine",
+  "default",
+  "creator",
+  "card",
+  "reel",
+  "post",
+  "story",
+  "unless",
+  "explicitly",
+  "context",
+  "when",
+  "where",
+  "from",
+  "into",
+  "after",
+  "before",
+  "about",
+  "around",
+  "never",
+  "must",
+]);
+
+function uniqueRecordsByStableKey(
+  records: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const seen = new Set<string>();
+  return records.filter((record, index) => {
+    const key = stringValue(record.id) ??
+      stringValue(record.source_reference_id) ??
+      safeJSONStringify(record) ??
+      String(index);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function buildGenerationGuidance(
@@ -807,12 +1395,11 @@ function buildGenerationGuidance(
     ? dayIntentForScheduledDate(input, scheduledDate, dayIndex)
     : undefined;
 
-  const creatorDisplayName =
-    stringValue(
-      isRecord(input.creator_profile)
-        ? input.creator_profile.display_name
-        : undefined,
-    ) ?? "the creator";
+  const creatorDisplayName = stringValue(
+    isRecord(input.creator_profile)
+      ? input.creator_profile.display_name
+      : undefined,
+  ) ?? "the creator";
 
   return {
     precedence: [
@@ -1170,23 +1757,23 @@ function dayIntentForScheduledDate(
   // stay training-led but Tuesday/Thursday/Friday/Saturday/Sunday may shift).
   const weekdayIntents: Record<string, string> = {
     monday:
-      "Monday: training-led. Default routine: upper body. Use walking into the gym, warm-up, mirror shot, and one upper-body strength set as likely footage. Content pillar: gym. Ending rule: save CTA eligible — you may use one explicit save CTA (save this for, save this reel) if the content earns it; otherwise end with a punchline or earned question. Age eligible if the weekly brief supports it (HYROX age group, decade reflection, restarting fitness later); never required.",
+      "Monday: training-led upper body. Pillar gym. Likely footage: gym entry, warm-up, mirror, one strength set. save CTA eligible if earned. Age eligible if the weekly brief supports it; never required.",
     tuesday: gymFocusWeek
-      ? "Tuesday: training-led. Default routine: legs. Use lunges, sled work, leg strength sets, tired smile as likely footage. Content pillar: gym. Ending rule: save CTA NOT eligible — end with punchline, observation, or earned question. Age NOT eligible on this day."
-      : "Tuesday: recovery/eating/lifestyle around leg-day context. Default routine: legs recovery framing. Use recovery-food setup, hydration, a comic observation about sore legs, or a practical meal that supports training. Content pillar: recovery, eating, or lifestyle — NOT gym. Ending rule: save CTA NOT eligible — end with punchline, observation, or earned question. Age NOT eligible on this day.",
+      ? "Tuesday: training-led legs. Pillar gym. Likely footage: lunges, sled, leg set, tired smile. save CTA NOT eligible. Age NOT eligible on this day."
+      : "Tuesday: recovery/eating/lifestyle around leg-day context. Pillar recovery, eating, or lifestyle - NOT gym. Use recovery food, hydration, sore-leg humour, or practical meal. save CTA NOT eligible. Age NOT eligible on this day.",
     wednesday:
-      "Wednesday: training-led. Default routine: floor exercises, abs, and HYROX simulation. Use floor work, wall balls, battle ropes, sled push/pull, or improvising when equipment is missing. Content pillar: gym. Ending rule: save CTA eligible — you may use one explicit save CTA if the content earns it; otherwise end with a punchline or earned question. Age NOT eligible on this day.",
+      "Wednesday: training-led floor/abs/HYROX simulation. Pillar gym. Use floor work, wall balls, battle ropes, sled push/pull, or improvisation. save CTA eligible if earned. Age NOT eligible on this day.",
     thursday: gymFocusWeek
-      ? "Thursday: training-led. Default routine: compound exercises. Content pillar: gym. Ending rule: save CTA NOT eligible — end with punchline, observation, or earned question. Age NOT eligible on this day."
-      : "Thursday: eating. Default routine: compound-day meal, hydration, or food routine. Use real meal prep, plating, ingredient close-ups, or a food observation tied to the training rhythm. Content pillar: eating — NOT gym. Ending rule: save CTA NOT eligible — end with punchline, observation, or earned question. Age NOT eligible on this day.",
+      ? "Thursday: training-led compounds. Pillar gym. save CTA NOT eligible. Age NOT eligible on this day."
+      : "Thursday: eating. Pillar eating - NOT gym. Use meal prep, plating, ingredient close-ups, hydration, or food observation tied to training rhythm. save CTA NOT eligible. Age NOT eligible on this day.",
     friday: gymFocusWeek
-      ? "Friday: training-led. Default routine: shoulder and back. Content pillar: gym. Ending rule: save CTA NOT eligible. Age NOT eligible."
-      : "Friday: lifestyle / funny gym reality. Default routine: shoulder and back footage is visual backdrop only; the center is a gym-bag/end-of-week/home/family comic observation. Use gym bag chaos, warm-up reality, end-of-week exhaustion, or a dry observation about gym life as the real creative center. Never relabel a workout script as lifestyle — the content must earn the lifestyle pillar through genuine comic observation. Content pillar: lifestyle. Ending rule: save CTA NOT eligible — end with punchline, comic observation, or earned question. Age NOT eligible on this day.",
+      ? "Friday: training-led shoulder/back. Pillar gym. save CTA NOT eligible. Age NOT eligible on this day."
+      : "Friday: lifestyle / funny gym reality. Pillar lifestyle. Shoulder/back footage can be backdrop only; center gym-bag chaos, end-of-week home/family humour, or dry gym-life observation. save CTA NOT eligible. Age NOT eligible on this day.",
     saturday: gymFocusWeek
-      ? "Saturday: training-led. Default routine: running and abs. Content pillar: gym. Ending rule: save CTA NOT eligible. Age NOT eligible."
-      : "Saturday: experimental lifestyle. Default routine: running footage is visual backdrop only; the center is a weekend/family/hydration/routine angle or an unexpected activity. A run clip is only a backdrop — never make the run the topic. Use walking outside, shoes, hydration, family/weekend rhythm, or an unexpected activity as the real creative center. Content pillar: lifestyle or recovery — NOT gym. Never relabel a run tutorial as lifestyle. Ending rule: save CTA NOT eligible — end with punchline, observation, or earned question. Age NOT eligible on this day.",
+      ? "Saturday: training-led running/abs. Pillar gym. save CTA NOT eligible. Age NOT eligible on this day."
+      : "Saturday: experimental lifestyle. Pillar lifestyle or recovery - NOT gym. Run clip may be backdrop; center weekend, family, hydration, routine, walking, shoes, or unexpected activity. save CTA NOT eligible. Age NOT eligible on this day.",
     sunday:
-      "Sunday: recovery/family. Default routine: recovery, family, food, errands, reflection, or weekly recap. Use home, plants, cooking, rest, evening wind-down, or gym-bag prep. Content pillar: recovery or lifestyle — NOT gym. Ending rule: save CTA NOT eligible — end with a quiet observation, reflection, or earned question. Age NOT eligible on this day. Do not force Monday gym-start language onto this day.",
+      "Sunday: recovery/family. Pillar recovery or lifestyle - NOT gym. Use home, plants, cooking, rest, errands, reflection, wind-down, or gym-bag prep. save CTA NOT eligible. Age NOT eligible on this day. Do not force Monday gym-start language.",
   };
 
   return `${
@@ -1891,14 +2478,18 @@ export async function callAIProvidersForDay(
   let lastError: unknown = new Error("ai_provider_request_failed");
   for (const provider of providers) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      const attemptInput = attempt === 0 ? input : withDayRetryContext(
+        input,
+        dayRepairRetryContext(lastError, scheduledDate, dayIndex, attempt + 1),
+      );
       try {
         return await invokeProvider(
-          input,
+          attemptInput,
           provider,
           scheduledDate,
           dayIndex,
           makeAIProviderAttemptContext(
-            input,
+            attemptInput,
             provider,
             attempt + 1,
             instrumentation,
@@ -1915,6 +2506,39 @@ export async function callAIProvidersForDay(
     }
   }
   throw lastError;
+}
+
+function withDayRetryContext(
+  input: GenerationInputSnapshot,
+  retryContext: Record<string, unknown>,
+): GenerationInputSnapshot {
+  return {
+    ...input,
+    day_retry_context: {
+      ...(isRecord(input.day_retry_context) ? input.day_retry_context : {}),
+      ...retryContext,
+    },
+  };
+}
+
+function dayRepairRetryContext(
+  error: unknown,
+  scheduledDate: string,
+  dayIndex: number,
+  providerAttempt: number,
+): Record<string, unknown> {
+  const sanitized = sanitizeAIGenerationError(error);
+  return {
+    retry_kind: "validation_repair",
+    retry_reason: sanitized.category,
+    scheduled_date: scheduledDate,
+    day_index: dayIndex + 1,
+    provider_attempt: providerAttempt,
+    validation_error: sanitized.validationError,
+    error_message: sanitized.message,
+    instruction:
+      "Repair only the failed daily card for this scheduled_date. Keep the same idea if possible, fix the validation issue, and return the full daily-card JSON contract.",
+  };
 }
 
 export async function callAIProvider(
@@ -1979,8 +2603,9 @@ export async function callDeepSeekChatCompletions(
     async (recordMetadata, recordQuality, recordRequestMetrics) => {
       const request = buildDeepSeekChatRequest(input, model);
       const requestBody = JSON.stringify(request);
+      const timeoutMS = aiRequestTimeoutMS();
       recordRequestMetrics(
-        aiGenerationRequestSizeMetrics(input, request, requestBody),
+        aiGenerationRequestSizeMetrics(input, request, requestBody, timeoutMS),
       );
       const response = await fetchWithAIRequestTimeout(
         `${baseURL.replace(/\/+$/, "")}/chat/completions`,
@@ -1992,6 +2617,7 @@ export async function callDeepSeekChatCompletions(
           },
           body: requestBody,
         },
+        timeoutMS,
       );
 
       if (!response.ok) {
@@ -2039,8 +2665,9 @@ async function callDeepSeekDayChatCompletions(
         dayIndex,
       );
       const requestBody = JSON.stringify(request);
+      const timeoutMS = aiDayRequestTimeoutMS();
       recordRequestMetrics(
-        aiGenerationRequestSizeMetrics(input, request, requestBody),
+        aiGenerationRequestSizeMetrics(input, request, requestBody, timeoutMS),
       );
       const response = await fetchWithAIRequestTimeout(
         `${baseURL.replace(/\/+$/, "")}/chat/completions`,
@@ -2052,6 +2679,7 @@ async function callDeepSeekDayChatCompletions(
           },
           body: requestBody,
         },
+        timeoutMS,
       );
 
       if (!response.ok) {
@@ -2093,8 +2721,9 @@ export async function callOpenAIResponses(
     async (recordMetadata, recordQuality, recordRequestMetrics) => {
       const request = buildOpenAIResponsesRequest(input, model);
       const requestBody = JSON.stringify(request);
+      const timeoutMS = aiRequestTimeoutMS();
       recordRequestMetrics(
-        aiGenerationRequestSizeMetrics(input, request, requestBody),
+        aiGenerationRequestSizeMetrics(input, request, requestBody, timeoutMS),
       );
       const response = await fetchWithAIRequestTimeout(
         "https://api.openai.com/v1/responses",
@@ -2106,6 +2735,7 @@ export async function callOpenAIResponses(
           },
           body: requestBody,
         },
+        timeoutMS,
       );
 
       if (!response.ok) {
@@ -2149,8 +2779,9 @@ async function callOpenAIDayResponses(
         dayIndex,
       );
       const requestBody = JSON.stringify(request);
+      const timeoutMS = aiDayRequestTimeoutMS();
       recordRequestMetrics(
-        aiGenerationRequestSizeMetrics(input, request, requestBody),
+        aiGenerationRequestSizeMetrics(input, request, requestBody, timeoutMS),
       );
       const response = await fetchWithAIRequestTimeout(
         "https://api.openai.com/v1/responses",
@@ -2162,6 +2793,7 @@ async function callOpenAIDayResponses(
           },
           body: requestBody,
         },
+        timeoutMS,
       );
 
       if (!response.ok) {
@@ -2483,7 +3115,9 @@ function validationFailurePath(message: string): string | null {
     return requiredField;
   }
 
-  const placeholderField = message.match(/^([a-zA-Z0-9_.]+) contains placeholder/)
+  const placeholderField = message.match(
+    /^([a-zA-Z0-9_.]+) contains placeholder/,
+  )
     ?.[1];
   if (placeholderField) {
     return placeholderField;
@@ -2508,15 +3142,46 @@ function aiGenerationRequestSizeMetrics(
   input: GenerationInputSnapshot,
   request: Record<string, unknown>,
   requestBody: string,
+  requestTimeoutMS: number = aiRequestTimeoutMS(),
 ): AIGenerationRequestSizeMetrics {
   const prompts = providerPromptText(request);
-  const inputSnapshot = safeJSONStringify(input);
-  const confirmedReferences = safeJSONStringify(input.confirmed_references);
-  const referenceExtractions = safeJSONStringify(input.reference_extractions);
+  const requestInput = requestInputSnapshot(request) ?? input;
+  const inputSnapshot = safeJSONStringify(requestInput);
+  const rawInputSnapshot = safeJSONStringify(input);
+  const confirmedReferences = requestRecordArray(
+    requestInput,
+    "confirmed_references",
+  );
+  const rawConfirmedReferences = input.confirmed_references;
+  const referenceExtractions = requestRecordArray(
+    requestInput,
+    "reference_extractions",
+  );
+  const rawReferenceExtractions = input.reference_extractions;
+  const recentArchive = requestRecordArray(requestInput, "recent_archive");
+  const ideaBank = requestRecordArray(requestInput, "idea_bank");
+  const patterns = requestRecordArray(requestInput, "patterns");
+  const trends = requestRecordArray(requestInput, "trends");
+  const audioOptions = requestRecordArray(requestInput, "audio_options");
+  const brandBriefs = requestRecordArray(requestInput, "brand_briefs");
+  const keyMoments = requestRecordArray(requestInput, "key_moments");
+  const existingWeekCards = requestRecordArray(
+    requestInput,
+    "existing_week_cards",
+  );
+  const existingDayCard = requestRecordArray(requestInput, "existing_day_card");
+  const sentExistingCards = existingWeekCards.length > 0
+    ? existingWeekCards
+    : existingDayCard;
   const referenceContext = safeJSONStringify({
-    confirmed_references: input.confirmed_references,
-    reference_extractions: input.reference_extractions,
+    confirmed_references: confirmedReferences,
+    reference_extractions: referenceExtractions,
   });
+  const rawReferenceContext = safeJSONStringify({
+    confirmed_references: rawConfirmedReferences,
+    reference_extractions: rawReferenceExtractions,
+  });
+  const rawExistingWeekCards = input.existing_week_cards ?? [];
 
   return {
     prompt_system_chars: prompts.system.length,
@@ -2526,36 +3191,137 @@ function aiGenerationRequestSizeMetrics(
     prompt_estimated_tokens: estimatedTokenCount(prompts.total),
     provider_request_body_chars: requestBody.length,
     provider_request_body_bytes: utf8ByteLength(requestBody),
+    request_timeout_ms: requestTimeoutMS,
+    request_input_version: requestInputVersion(requestInput),
     input_snapshot_chars: inputSnapshot.length,
     input_snapshot_bytes: utf8ByteLength(inputSnapshot),
     input_snapshot_estimated_tokens: estimatedTokenCount(inputSnapshot),
+    raw_input_snapshot_chars: rawInputSnapshot.length,
+    raw_input_snapshot_bytes: utf8ByteLength(rawInputSnapshot),
+    raw_input_snapshot_estimated_tokens: estimatedTokenCount(rawInputSnapshot),
     reference_context_chars: referenceContext.length,
     reference_context_bytes: utf8ByteLength(referenceContext),
     reference_context_estimated_tokens: estimatedTokenCount(referenceContext),
-    creator_profile_chars: safeJSONStringify(input.creator_profile).length,
-    weekly_setup_chars: safeJSONStringify(input.weekly_setup).length,
-    confirmed_reference_count: input.confirmed_references.length,
-    confirmed_reference_chars: confirmedReferences.length,
-    reference_extraction_count: input.reference_extractions.length,
-    reference_extraction_chars: referenceExtractions.length,
-    recent_archive_count: input.recent_archive.length,
-    recent_archive_chars: safeJSONStringify(input.recent_archive).length,
-    idea_bank_count: input.idea_bank.length,
-    idea_bank_chars: safeJSONStringify(input.idea_bank).length,
-    pattern_count: input.patterns.length,
-    pattern_chars: safeJSONStringify(input.patterns).length,
-    trend_count: input.trends.length,
-    trend_chars: safeJSONStringify(input.trends).length,
-    audio_option_count: input.audio_options.length,
-    audio_option_chars: safeJSONStringify(input.audio_options).length,
-    brand_brief_count: input.brand_briefs.length,
-    brand_brief_chars: safeJSONStringify(input.brand_briefs).length,
-    key_moment_count: input.key_moments.length,
-    key_moment_chars: safeJSONStringify(input.key_moments).length,
-    existing_week_card_count: input.existing_week_cards?.length ?? 0,
-    existing_week_card_chars: safeJSONStringify(input.existing_week_cards ?? [])
-      .length,
+    raw_reference_context_chars: rawReferenceContext.length,
+    dropped_reference_context_chars: Math.max(
+      0,
+      rawReferenceContext.length - referenceContext.length,
+    ),
+    creator_profile_chars: safeJSONStringify(
+      requestRecord(requestInput, "creator_profile"),
+    ).length,
+    weekly_setup_chars:
+      safeJSONStringify(requestRecord(requestInput, "weekly_setup"))
+        .length,
+    confirmed_reference_count: confirmedReferences.length,
+    raw_confirmed_reference_count: rawConfirmedReferences.length,
+    dropped_confirmed_reference_count: Math.max(
+      0,
+      rawConfirmedReferences.length - confirmedReferences.length,
+    ),
+    confirmed_reference_chars: safeJSONStringify(confirmedReferences).length,
+    reference_extraction_count: referenceExtractions.length,
+    raw_reference_extraction_count: rawReferenceExtractions.length,
+    dropped_reference_extraction_count: Math.max(
+      0,
+      rawReferenceExtractions.length - referenceExtractions.length,
+    ),
+    reference_extraction_chars: safeJSONStringify(referenceExtractions).length,
+    recent_archive_count: recentArchive.length,
+    raw_recent_archive_count: input.recent_archive.length,
+    dropped_recent_archive_count: Math.max(
+      0,
+      input.recent_archive.length - recentArchive.length,
+    ),
+    recent_archive_chars: safeJSONStringify(recentArchive).length,
+    idea_bank_count: ideaBank.length,
+    raw_idea_bank_count: input.idea_bank.length,
+    dropped_idea_bank_count: Math.max(
+      0,
+      input.idea_bank.length - ideaBank.length,
+    ),
+    idea_bank_chars: safeJSONStringify(ideaBank).length,
+    pattern_count: patterns.length,
+    raw_pattern_count: input.patterns.length,
+    dropped_pattern_count: Math.max(0, input.patterns.length - patterns.length),
+    pattern_chars: safeJSONStringify(patterns).length,
+    trend_count: trends.length,
+    raw_trend_count: input.trends.length,
+    dropped_trend_count: Math.max(0, input.trends.length - trends.length),
+    trend_chars: safeJSONStringify(trends).length,
+    audio_option_count: audioOptions.length,
+    raw_audio_option_count: input.audio_options.length,
+    dropped_audio_option_count: Math.max(
+      0,
+      input.audio_options.length - audioOptions.length,
+    ),
+    audio_option_chars: safeJSONStringify(audioOptions).length,
+    brand_brief_count: brandBriefs.length,
+    raw_brand_brief_count: input.brand_briefs.length,
+    dropped_brand_brief_count: Math.max(
+      0,
+      input.brand_briefs.length - brandBriefs.length,
+    ),
+    brand_brief_chars: safeJSONStringify(brandBriefs).length,
+    key_moment_count: keyMoments.length,
+    raw_key_moment_count: input.key_moments.length,
+    dropped_key_moment_count: Math.max(
+      0,
+      input.key_moments.length - keyMoments.length,
+    ),
+    key_moment_chars: safeJSONStringify(keyMoments).length,
+    existing_week_card_count: sentExistingCards.length,
+    raw_existing_week_card_count: rawExistingWeekCards.length,
+    dropped_existing_week_card_count: Math.max(
+      0,
+      rawExistingWeekCards.length - sentExistingCards.length,
+    ),
+    existing_week_card_chars: safeJSONStringify(sentExistingCards).length,
   };
+}
+
+function requestInputSnapshot(
+  request: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const user = providerPromptText(request).user;
+  const firstLine = user.split("\n", 1)[0]?.trim();
+  if (!firstLine) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(firstLine);
+    if (isRecord(payload) && isRecord(payload.input)) {
+      return payload.input;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function requestInputVersion(input: Record<string, unknown>): string | null {
+  return stringValue(input.compact_input_version) ??
+    stringValue(input.input_version) ??
+    null;
+}
+
+function requestRecord(
+  input: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> {
+  const value = input[key];
+  return isRecord(value) ? value : {};
+}
+
+function requestRecordArray(
+  input: Record<string, unknown>,
+  key: string,
+): Record<string, unknown>[] {
+  const value = input[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord);
 }
 
 function providerPromptText(
@@ -2586,7 +3352,9 @@ function providerPromptText(
   return {
     system: systemText,
     user: userText,
-    total: [systemText, userText].filter((value) => value.length > 0).join("\n"),
+    total: [systemText, userText].filter((value) => value.length > 0).join(
+      "\n",
+    ),
   };
 }
 
@@ -2736,19 +3504,20 @@ function scoreGeneratedCardsQuality(
   const metricsWithoutScore = {
     version: "instagram_content_quality_v2" as const,
     pillar_count: pillarCount,
-    instructor_phrase_count: cards.filter((card) =>
-      containsInstructorPhrasing(generatedCardQualityText(card))
-    ).length,
-    instructor_ending_count: cards.filter((card) =>
-      containsInstructorEnding(generatedCardQualityText(card))
-    ).length,
+    instructor_phrase_count:
+      cards.filter((card) =>
+        containsInstructorPhrasing(generatedCardQualityText(card))
+      ).length,
+    instructor_ending_count:
+      cards.filter((card) =>
+        containsInstructorEnding(generatedCardQualityText(card))
+      ).length,
     source_reference_link_count: cards.reduce(
       (sum, card) => sum + card.source_reference_ids.length,
       0,
     ),
-    cards_with_source_reference_count: cards.filter((card) =>
-      card.source_reference_ids.length > 0
-    ).length,
+    cards_with_source_reference_count:
+      cards.filter((card) => card.source_reference_ids.length > 0).length,
     hook_first_3s_present: allSnapshotsPass(
       snapshots,
       (snapshot) => snapshot.hookFirst3SPresent,
@@ -2812,9 +3581,9 @@ function scoreGeneratedCardsQuality(
       snapshots,
       (snapshot) => snapshot.specificContextAnchorPresent,
     ),
-    generic_template_risk_count: snapshots.filter((snapshot) =>
-      snapshot.genericTemplateRiskPresent
-    ).length,
+    generic_template_risk_count:
+      snapshots.filter((snapshot) => snapshot.genericTemplateRiskPresent)
+        .length,
     story_interactive_sticker_present: nullableAllSnapshotsPass(
       storySnapshots,
       (snapshot) => snapshot.storyInteractiveStickerPresent,
@@ -2879,9 +3648,9 @@ function generationQualityScore(
   const authenticityScore = Math.max(
     0,
     averageScore([
-      metrics.creator_lived_detail_present,
-      metrics.specific_context_anchor_present,
-    ]) * 10 - Math.min(metrics.generic_template_risk_count * 3, 6),
+          metrics.creator_lived_detail_present,
+          metrics.specific_context_anchor_present,
+        ]) * 10 - Math.min(metrics.generic_template_risk_count * 3, 6),
   );
   const safetyScore = Math.max(
     0,
@@ -3199,8 +3968,8 @@ function hasGenericTemplateRisk(text: string): boolean {
     normalized.includes(phrase.toLowerCase())
   ) ||
     BANNED_CTA_TEMPLATES.filter((phrase) =>
-      normalized.includes(phrase.toLowerCase())
-    ).length > 1;
+        normalized.includes(phrase.toLowerCase())
+      ).length > 1;
 }
 
 function hasOneClearIdea(card: GeneratedDailyCard): boolean {
@@ -3212,9 +3981,9 @@ function hasOneClearIdea(card: GeneratedDailyCard): boolean {
     card.growth_job,
   ].filter((value) => value.trim().length > 0);
   return anchors.length >= 3 && new Set([
-    card.content_pillar,
-    card.growth_job,
-  ]).size >= 1;
+        card.content_pillar,
+        card.growth_job,
+      ]).size >= 1;
 }
 
 function firstNonBlank(values: Array<string | undefined>): string {
@@ -3249,8 +4018,8 @@ function generatedCardQualityText(card: GeneratedDailyCard): string {
 async function fetchWithAIRequestTimeout(
   input: string,
   init: RequestInit,
+  timeoutMS: number = aiRequestTimeoutMS(),
 ): Promise<Response> {
-  const timeoutMS = aiRequestTimeoutMS();
   const controller = new AbortController();
   const timeoutID = setTimeout(() => controller.abort(), timeoutMS);
   try {
@@ -3284,6 +4053,23 @@ export function resolveAIRequestTimeoutMs(
 
 function aiRequestTimeoutMS(): number {
   return resolveAIRequestTimeoutMs(
+    Deno.env.get("MCO_AI_REQUEST_TIMEOUT_MS")?.trim(),
+  );
+}
+
+export function resolveAIDayRequestTimeoutMs(
+  configured: string | undefined,
+  generalConfigured?: string,
+): number {
+  if (!configured) {
+    return resolveAIRequestTimeoutMs(generalConfigured);
+  }
+  return resolveAIRequestTimeoutMs(configured);
+}
+
+function aiDayRequestTimeoutMS(): number {
+  return resolveAIDayRequestTimeoutMs(
+    Deno.env.get("MCO_AI_DAY_REQUEST_TIMEOUT_MS")?.trim(),
     Deno.env.get("MCO_AI_REQUEST_TIMEOUT_MS")?.trim(),
   );
 }

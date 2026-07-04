@@ -387,6 +387,123 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertNil(object["day_guidance"])
     }
 
+    func testRegenerateDayRequestEncodesClientContextWithSafeMetadataOnly() throws {
+        let guidance = "Make it about recovery and family life in New Jersey."
+        let request = SupabaseRegenerateDayRequest(
+            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            weeklyPlanID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
+            scheduledDate: "2026-06-10",
+            preserveManualEdits: false,
+            mock: true,
+            dayGuidance: guidance,
+            clientContext: SupabaseGenerationClientContext(
+                uiSurface: "weekly_manager",
+                action: "regenerate_day",
+                selectedWeekStart: nil,
+                scheduledDate: "2026-06-10",
+                dayGuidancePresent: true,
+                dayGuidanceChars: guidance.count
+            )
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(object["day_guidance"] as? String, guidance)
+
+        let context = try XCTUnwrap(object["client_context"] as? [String: Any])
+        XCTAssertEqual(context["ui_surface"] as? String, "weekly_manager")
+        XCTAssertEqual(context["action"] as? String, "regenerate_day")
+        XCTAssertEqual(context["scheduled_date"] as? String, "2026-06-10")
+        XCTAssertEqual(context["day_guidance_present"] as? Bool, true)
+        XCTAssertEqual(context["day_guidance_chars"] as? Int, guidance.count)
+        XCTAssertNil(context["selected_week_start"])
+
+        let contextKeys = Set(context.keys)
+        let safeKeys: Set<String> = [
+            "ui_surface", "action", "selected_week_start",
+            "scheduled_date", "day_guidance_present", "day_guidance_chars"
+        ]
+        let unexpectedKeys = contextKeys.subtracting(safeKeys)
+        XCTAssertTrue(unexpectedKeys.isEmpty,
+                      "client_context must only carry safe metadata keys, found: \(unexpectedKeys)")
+        XCTAssertNil(context["day_guidance"],
+                     "client_context must not echo the raw day_guidance text")
+    }
+
+    func testRegenerateDayRequestOmitsClientContextWhenNil() throws {
+        let request = SupabaseRegenerateDayRequest(
+            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            weeklyPlanID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
+            scheduledDate: "2026-06-10",
+            preserveManualEdits: false,
+            mock: true,
+            dayGuidance: nil
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(object["client_context"],
+                     "client_context must be omitted when nil for backward compatibility")
+    }
+
+    func testGenerateWeekRequestOmitsClientContextWhenNil() throws {
+        let request = SupabaseGenerateWeekRequest(
+            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            weekStartDate: "2026-06-08",
+            weeklySetupID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
+            mode: .generateDraft,
+            preserveManualEdits: true,
+            mock: true,
+            responseMode: .sync
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(object["client_context"],
+                     "client_context must be omitted when nil for backward compatibility")
+    }
+
+    func testGenerateWeekRequestEncodesClientContextWhenPresent() throws {
+        let request = SupabaseGenerateWeekRequest(
+            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            weekStartDate: "2026-06-08",
+            weeklySetupID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
+            mode: .generateDraft,
+            preserveManualEdits: true,
+            mock: true,
+            responseMode: .sync,
+            clientContext: SupabaseGenerationClientContext(
+                uiSurface: "weekly_manager",
+                action: "generate_week",
+                selectedWeekStart: "2026-06-08",
+                scheduledDate: nil,
+                dayGuidancePresent: nil,
+                dayGuidanceChars: nil
+            )
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        let context = try XCTUnwrap(object["client_context"] as? [String: Any])
+        XCTAssertEqual(context["ui_surface"] as? String, "weekly_manager")
+        XCTAssertEqual(context["action"] as? String, "generate_week")
+        XCTAssertEqual(context["selected_week_start"] as? String, "2026-06-08")
+        XCTAssertNil(context["scheduled_date"])
+        XCTAssertNil(context["day_guidance_present"])
+        XCTAssertNil(context["day_guidance_chars"])
+
+        let contextKeys = Set(context.keys)
+        let safeKeys: Set<String> = [
+            "ui_surface", "action", "selected_week_start",
+            "scheduled_date", "day_guidance_present", "day_guidance_chars"
+        ]
+        let unexpectedKeys = contextKeys.subtracting(safeKeys)
+        XCTAssertTrue(unexpectedKeys.isEmpty,
+                      "client_context must only carry safe metadata keys, found: \(unexpectedKeys)")
+    }
+
     func testRegenerateDayRequestEncodesEdgeFunctionContract() throws {
         let request = SupabaseRegenerateDayRequest(
             creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,

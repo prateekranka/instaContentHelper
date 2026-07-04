@@ -15,12 +15,15 @@ import {
   countExplicitSaveCTAs,
   extractChatCompletionOutputText,
   extractOpenAIOutputText,
+  GenerateWeekValidationError,
   GenerationInputSnapshot,
   INSTRUCTOR_ISH_PHRASES,
   makeMockGeneratedWeek,
   parseGeneratedWeekJSON,
   preserveManualDailyCardEdits,
+  resolveAIDayRequestTimeoutMs,
   resolveAIRequestTimeoutMs,
+  scopeInputForDayPrompt,
   validateGeneratedDayOutput,
   validateGeneratedWeek,
   weekDates,
@@ -185,8 +188,14 @@ Deno.test("prompt builder includes creator voice essence and point of view", () 
   const guidance = `${prompt.system}\n${prompt.user}`;
 
   assert(guidance.includes("has lived enough life to know what matters"));
-  assert(guidance.includes("not trying to look younger; she is making 60 feel like something to look forward to"));
-  assert(guidance.includes("voice note from a friend, not a caption from a brand"));
+  assert(
+    guidance.includes(
+      "not trying to look younger; she is making 60 feel like something to look forward to",
+    ),
+  );
+  assert(
+    guidance.includes("voice note from a friend, not a caption from a brand"),
+  );
   assert(guidance.includes("This is what I'm doing, noticing, or trying"));
 });
 
@@ -558,6 +567,131 @@ Deno.test("day AI request includes target day intent and diversity guidance", ()
   );
 });
 
+Deno.test("per-day prompt scopes input to target day context", () => {
+  const input: GenerationInputSnapshot = {
+    ...fixtureInput(),
+    confirmed_references: [
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        manual_notes:
+          "Thursday strength snack brand integration at home after compound day.",
+      },
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+        manual_notes: "Sunday long run beach montage for a race recap.",
+      },
+    ],
+    reference_extractions: [
+      {
+        id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
+        source_reference_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        extracted_payload: {
+          summary: "Home snack prep sequence with brand pack shot.",
+        },
+      },
+      {
+        id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2",
+        source_reference_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+        extracted_payload: { summary: "Beach running montage." },
+      },
+    ],
+    brand_briefs: [
+      {
+        brand_name: "SnackCo",
+        campaign_title: "Thursday strength snack",
+        post_date: "2026-06-11",
+      },
+      {
+        brand_name: "SundayShoes",
+        campaign_title: "Sunday beach long run",
+        post_date: "2026-06-14",
+      },
+    ],
+    key_moments: [
+      {
+        name: "Thursday snack shoot",
+        moment_date: "2026-06-11",
+      },
+      {
+        name: "Sunday beach race",
+        moment_date: "2026-06-14",
+      },
+    ],
+    existing_week_cards: [
+      {
+        id: "44444444-4444-4444-8444-444444444411",
+        scheduled_date: "2026-06-11",
+        title: "Thursday snack card",
+      },
+      {
+        id: "44444444-4444-4444-8444-444444444414",
+        scheduled_date: "2026-06-14",
+        title: "Sunday race card",
+      },
+    ],
+  };
+
+  const scoped = scopeInputForDayPrompt(input, "2026-06-11", 3);
+
+  assertEquals(scoped.existing_week_cards?.length, 1);
+  assertEquals(scoped.existing_week_cards?.[0].title, "Thursday snack card");
+  assertEquals(scoped.confirmed_references.length, 1);
+  assertEquals(
+    scoped.confirmed_references[0].id,
+    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+  );
+  assertEquals(scoped.reference_extractions.length, 1);
+  assertEquals(scoped.brand_briefs.length, 1);
+  assertEquals(scoped.brand_briefs[0].brand_name, "SnackCo");
+  assertEquals(scoped.key_moments.length, 1);
+  assertEquals(scoped.key_moments[0].name, "Thursday snack shoot");
+});
+
+Deno.test("per-day DeepSeek prompt omits unrelated day references", () => {
+  const input: GenerationInputSnapshot = {
+    ...fixtureInput(),
+    confirmed_references: [
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        manual_notes:
+          "Thursday strength snack brand integration at home after compound day.",
+      },
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+        manual_notes: "Sunday long run beach montage for a race recap.",
+      },
+    ],
+    existing_week_cards: [
+      {
+        scheduled_date: "2026-06-11",
+        title: "Thursday snack card",
+      },
+      {
+        scheduled_date: "2026-06-14",
+        title: "Sunday race card",
+      },
+    ],
+  };
+  const request = buildDeepSeekDayChatRequest(
+    input,
+    "deepseek-v4-pro",
+    "2026-06-11",
+    3,
+  );
+  const requestText = JSON.stringify(request);
+
+  assert(requestText.includes("Thursday strength snack"));
+  assert(requestText.includes("Thursday snack card"));
+  assert(
+    !requestText.includes("Sunday long run beach montage"),
+    "Thursday prompt should not carry unrelated Sunday reference text",
+  );
+  assert(
+    !requestText.includes("Sunday race card"),
+    "Thursday prompt should not carry unrelated Sunday existing card text",
+  );
+});
+
 Deno.test("day AI request uses the scheduled date weekday instead of the week slot", () => {
   const sundayStartInput = {
     ...fixtureInput(),
@@ -599,6 +733,212 @@ Deno.test("day AI request uses the scheduled date weekday instead of the week sl
       .includes("Sunday 2026-06-21"),
     "weekly arc should be labeled by actual scheduled weekdays",
   );
+});
+
+Deno.test("per-day prompt uses compact daily guidance instead of full weekly guidance", () => {
+  const request = buildDeepSeekDayChatRequest(
+    fixtureInput(),
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const messages = request.messages as Record<string, string>[];
+  const userPayload = JSON.parse(messages[1].content.split("\n")[0]);
+  const guidance = recordValue(userPayload.generation_guidance);
+  const guidanceText = JSON.stringify(guidance);
+
+  assertEquals(
+    guidance.compact_guidance_version,
+    "creator_daily_generation_compact_v3",
+  );
+  assert(guidanceText.includes("Wednesday 2026-06-10"));
+  assert(!guidanceText.includes("creator_positioning"));
+  assert(!guidanceText.includes("retention_first_rules"));
+  assert(!guidanceText.includes("growth_references"));
+  assert(!guidanceText.includes("no_chill_days_rule"));
+});
+
+Deno.test("per-day prompt sends compact input instead of raw scoped snapshot", () => {
+  const input: GenerationInputSnapshot = {
+    ...fixtureInput(),
+    creator_profile: {
+      ...recordValue(fixtureInput().creator_profile),
+      long_private_notes: "creator profile filler ".repeat(80),
+      full_strategy_archive: "archive filler ".repeat(80),
+    },
+    weekly_setup: {
+      ...recordValue(fixtureInput().weekly_setup),
+      selected_sources: Array.from(
+        { length: 20 },
+        (_, index) => `source-${index}`,
+      ),
+      old_full_brief_dump: "weekly setup filler ".repeat(100),
+    },
+    recent_archive: Array.from({ length: 10 }, (_, index) => ({
+      archive_date: `2026-05-${String(index + 1).padStart(2, "0")}`,
+      decision: "published",
+      output_line: "old unrelated archive filler ".repeat(30),
+    })),
+    idea_bank: Array.from({ length: 10 }, (_, index) => ({
+      title: `Idea ${index}`,
+      summary: "saved idea filler ".repeat(30),
+    })),
+  };
+  const scoped = scopeInputForDayPrompt(input, "2026-06-10", 2);
+  const request = buildDeepSeekDayChatRequest(
+    input,
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const messages = request.messages as Record<string, string>[];
+  const userPayload = JSON.parse(messages[1].content.split("\n")[0]);
+  const compactInput = recordValue(userPayload.input);
+
+  assertEquals(
+    compactInput.compact_input_version,
+    "creator_day_prompt_input_v2",
+  );
+  assert(!("creator_id" in recordValue(compactInput.creator_profile)));
+  assert(!("selected_sources" in recordValue(compactInput.weekly_setup)));
+  assert(
+    JSON.stringify(compactInput).length < JSON.stringify(scoped).length,
+    "day prompt should send a smaller compact input than the raw scoped snapshot",
+  );
+});
+
+Deno.test("per-day repair prompt includes the repair context and compact instruction", () => {
+  const request = buildDeepSeekDayChatRequest(
+    {
+      ...fixtureInput(),
+      day_retry_context: {
+        retry_kind: "validation_repair",
+        retry_reason: "invalid_generated_week",
+        validation_error: { rule: "scene_count" },
+      },
+    },
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const messages = request.messages as Record<string, string>[];
+  const userPayload = JSON.parse(messages[1].content.split("\n")[0]);
+  const compactInput = recordValue(userPayload.input);
+
+  assertEquals(userPayload.repair_context.retry_kind, "validation_repair");
+  assertEquals(
+    userPayload.repair_context.retry_reason,
+    "invalid_generated_week",
+  );
+  assertEquals(
+    userPayload.generation_guidance.repair_instruction,
+    "This is a repair retry for the same scheduled_date. Do not broaden the idea. Fix the stated issue, simplify the concept if needed, and return one complete valid daily card.",
+  );
+  assertEquals(
+    compactInput.compact_input_version,
+    "creator_day_prompt_repair_input_v2",
+  );
+  assertEquals(compactInput.repair_mode, true);
+  assertEquals(recordValueArray(compactInput.confirmed_references).length, 0);
+  assertEquals(recordValueArray(compactInput.reference_extractions).length, 0);
+  assert(!("recent_archive" in compactInput));
+  assert(!("idea_bank" in compactInput));
+  assert(!("trends" in compactInput));
+  assert(!("audio_options" in compactInput));
+});
+
+Deno.test("per-day repair prompt keeps day-scoped source context when available", () => {
+  const request = buildDeepSeekDayChatRequest(
+    {
+      ...fixtureInput(),
+      confirmed_references: [{
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        manual_notes: "Wednesday source reference for floor work.",
+      }],
+      reference_extractions: [{
+        id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
+        source_reference_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        extracted_payload: { summary: "Wednesday source reference detail." },
+      }],
+      day_retry_context: {
+        retry_kind: "validation_repair",
+        retry_reason: "invalid_generated_week",
+        validation_error: {
+          rule: "source_reference_ids",
+          path: "source_reference_ids",
+        },
+      },
+    },
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const messages = request.messages as Record<string, string>[];
+  const userPayload = JSON.parse(messages[1].content.split("\n")[0]);
+  const compactInput = recordValue(userPayload.input);
+
+  assertEquals(recordValueArray(compactInput.confirmed_references).length, 1);
+  assertEquals(recordValueArray(compactInput.reference_extractions).length, 1);
+});
+
+Deno.test("per-day repair prompt is materially smaller than the first attempt", () => {
+  const input: GenerationInputSnapshot = {
+    ...fixtureInput(),
+    confirmed_references: Array.from({ length: 5 }, (_, index) => ({
+      id: `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa${index}`,
+      manual_notes: `Wednesday reference ${index} ${"detail ".repeat(80)}`,
+    })),
+    reference_extractions: Array.from({ length: 5 }, (_, index) => ({
+      id: `eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee${index}`,
+      source_reference_id: `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa${index}`,
+      extracted_payload: {
+        summary: `Wednesday extraction ${index} ${"payload ".repeat(80)}`,
+      },
+    })),
+    recent_archive: Array.from({ length: 5 }, (_, index) => ({
+      archive_date: `2026-06-${String(index + 1).padStart(2, "0")}`,
+      output_line: `archive ${index} ${"old context ".repeat(80)}`,
+    })),
+    idea_bank: Array.from({ length: 5 }, (_, index) => ({
+      title: `Idea ${index}`,
+      summary: `idea ${index} ${"saved detail ".repeat(80)}`,
+    })),
+  };
+  const firstAttempt = buildDeepSeekDayChatRequest(
+    input,
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const repairAttempt = buildDeepSeekDayChatRequest(
+    {
+      ...input,
+      day_retry_context: {
+        retry_kind: "validation_repair",
+        retry_reason: "invalid_generated_week",
+        validation_error: { rule: "scene_count", path: "scene_list" },
+        error_message: "scene_list must include at least one scene",
+      },
+    },
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const repairUserPayload = JSON.parse(
+    (repairAttempt.messages as Record<string, string>[])[1].content
+      .split("\n")[0],
+  );
+  const repairInput = recordValue(repairUserPayload.input);
+
+  assert(
+    JSON.stringify(repairAttempt).length <
+      JSON.stringify(firstAttempt).length * 0.9,
+    "repair request should be materially smaller than the first attempt",
+  );
+  assertEquals(recordValueArray(repairInput.confirmed_references).length, 0);
+  assertEquals(recordValueArray(repairInput.reference_extractions).length, 0);
+  assert(!("recent_archive" in repairInput));
+  assert(!("idea_bank" in repairInput));
 });
 
 Deno.test("per-day validator rejects weekday language that conflicts with scheduled date", () => {
@@ -677,6 +1017,50 @@ Deno.test("daily AI provider caller preserves DeepSeek-primary OpenAI-fallback o
   assertEquals(output.daily_card.scheduled_date, "2026-06-10");
 });
 
+Deno.test("daily AI provider caller makes second validation attempt repair-specific", async () => {
+  const input = fixtureInput();
+  const retryContexts: Array<Record<string, unknown> | undefined> = [];
+  const output = await callAIProvidersForDay(
+    input,
+    [{
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      apiKey: "deepseek-key",
+    }],
+    "2026-06-10",
+    2,
+    async (attemptInput, _provider, scheduledDate, dayIndex) => {
+      retryContexts.push(attemptInput.day_retry_context);
+      if (retryContexts.length === 1) {
+        throw new GenerateWeekValidationError(
+          "invalid_generated_week",
+          "scene_list must include at least one scene",
+        );
+      }
+      const card = makeMockGeneratedWeek(attemptInput).daily_cards[dayIndex];
+      return {
+        strategy_note: "Repaired day",
+        warnings: [],
+        assumptions: [],
+        daily_card: { ...card, scheduled_date: scheduledDate },
+        idea_bank: [],
+        source_summary: "Repaired context",
+      };
+    },
+  );
+
+  assertEquals(output.daily_card.scheduled_date, "2026-06-10");
+  assertEquals(retryContexts[0], undefined);
+  assertEquals(retryContexts[1]?.retry_kind, "validation_repair");
+  assertEquals(retryContexts[1]?.retry_reason, "invalid_generated_week");
+  assertEquals(retryContexts[1]?.scheduled_date, "2026-06-10");
+  assertEquals(retryContexts[1]?.day_index, 3);
+  assertEquals(
+    recordValue(retryContexts[1]?.validation_error).rule,
+    "scene_count",
+  );
+});
+
 Deno.test("daily OpenAI provider instrumentation logs retries, usage, finish reason, and quality metrics", async () => {
   const input = fixtureInput();
   const logs: AIGenerationAttemptLog[] = [];
@@ -747,8 +1131,15 @@ Deno.test("daily OpenAI provider instrumentation logs retries, usage, finish rea
     logs[0].output_text_chars,
     JSON.stringify({ daily_card: {} }).length,
   );
-  assertEquals(logs[0].request_metrics?.confirmed_reference_count, 1);
-  assertEquals(logs[0].request_metrics?.reference_extraction_count, 1);
+  assertEquals(logs[0].request_metrics?.confirmed_reference_count, 0);
+  assertEquals(logs[0].request_metrics?.reference_extraction_count, 0);
+  assertEquals(logs[0].request_metrics?.dropped_confirmed_reference_count, 1);
+  assertEquals(logs[0].request_metrics?.dropped_reference_extraction_count, 1);
+  assertEquals(
+    logs[0].request_metrics?.request_input_version,
+    "creator_day_prompt_input_v2",
+  );
+  assertEquals(logs[0].request_metrics?.request_timeout_ms, 240_000);
   assert(
     (logs[0].request_metrics?.prompt_total_chars ?? 0) > 0,
     "prompt size metrics should be logged",
@@ -773,11 +1164,18 @@ Deno.test("daily OpenAI provider instrumentation logs retries, usage, finish rea
     logs[1].output_text_chars,
     JSON.stringify(validDayOutput).length,
   );
-  assertEquals(logs[1].request_metrics?.confirmed_reference_count, 1);
-  assertEquals(logs[1].request_metrics?.reference_extraction_count, 1);
+  assertEquals(logs[1].request_metrics?.confirmed_reference_count, 0);
+  assertEquals(logs[1].request_metrics?.reference_extraction_count, 0);
+  assertEquals(logs[1].request_metrics?.dropped_confirmed_reference_count, 1);
+  assertEquals(logs[1].request_metrics?.dropped_reference_extraction_count, 1);
   assertEquals(
-    logs[1].request_metrics?.provider_request_body_chars,
-    logs[0].request_metrics?.provider_request_body_chars,
+    logs[1].request_metrics?.request_input_version,
+    "creator_day_prompt_repair_input_v2",
+  );
+  assertEquals(logs[1].request_metrics?.request_timeout_ms, 240_000);
+  assert(
+    (logs[1].request_metrics?.dropped_reference_context_chars ?? 0) > 0,
+    "repair retry should log dropped reference context unless the failure needs it",
   );
   assertEquals(logs[1].quality_version, "instagram_content_quality_v2");
   assertEquals(logs[1].quality_metrics?.pillar_count, 1);
@@ -1375,7 +1773,12 @@ Deno.test("day intent assigns deterministic weekday roles: training-led Mon/Wed,
   const input = fixtureInput();
   const dateIntents: Record<string, string> = {};
   for (const date of weekDates("2026-06-08")) {
-    const request = buildDeepSeekDayChatRequest(input, "deepseek-v4-pro", date, 0);
+    const request = buildDeepSeekDayChatRequest(
+      input,
+      "deepseek-v4-pro",
+      date,
+      0,
+    );
     const messages = request.messages as Record<string, string>[];
     const userContent = messages[1].content as string;
     const userPayload = JSON.parse(userContent.split("\n")[0]);
@@ -1383,13 +1786,38 @@ Deno.test("day intent assigns deterministic weekday roles: training-led Mon/Wed,
     dateIntents[date] = intent;
   }
 
-  assert(dateIntents["2026-06-08"].includes("training-led"), `Monday should be training-led, got: ${dateIntents["2026-06-08"]}`);
-  assert(dateIntents["2026-06-10"].includes("training-led"), `Wednesday should be training-led, got: ${dateIntents["2026-06-10"]}`);
-  assert(dateIntents["2026-06-11"].includes("eating"), `Thursday should be eating, got: ${dateIntents["2026-06-11"]}`);
-  assert(dateIntents["2026-06-12"].includes("lifestyle"), `Friday should be lifestyle, got: ${dateIntents["2026-06-12"]}`);
-  assert(dateIntents["2026-06-13"].includes("experimental lifestyle"), `Saturday should be experimental lifestyle, got: ${dateIntents["2026-06-13"]}`);
-  assert(dateIntents["2026-06-14"].includes("recovery/family"), `Sunday should be recovery/family, got: ${dateIntents["2026-06-14"]}`);
-  assert(dateIntents["2026-06-09"].includes("recovery/eating/lifestyle"), `Tuesday should be recovery/eating/lifestyle, got: ${dateIntents["2026-06-09"]}`);
+  assert(
+    dateIntents["2026-06-08"].includes("training-led"),
+    `Monday should be training-led, got: ${dateIntents["2026-06-08"]}`,
+  );
+  assert(
+    dateIntents["2026-06-10"].includes("training-led"),
+    `Wednesday should be training-led, got: ${dateIntents["2026-06-10"]}`,
+  );
+  assert(
+    dateIntents["2026-06-11"].includes("eating"),
+    `Thursday should be eating, got: ${dateIntents["2026-06-11"]}`,
+  );
+  assert(
+    dateIntents["2026-06-12"].includes("lifestyle"),
+    `Friday should be lifestyle, got: ${dateIntents["2026-06-12"]}`,
+  );
+  assert(
+    dateIntents["2026-06-13"].includes("experimental lifestyle"),
+    `Saturday should be experimental lifestyle, got: ${
+      dateIntents["2026-06-13"]
+    }`,
+  );
+  assert(
+    dateIntents["2026-06-14"].includes("recovery/family"),
+    `Sunday should be recovery/family, got: ${dateIntents["2026-06-14"]}`,
+  );
+  assert(
+    dateIntents["2026-06-09"].includes("recovery/eating/lifestyle"),
+    `Tuesday should be recovery/eating/lifestyle, got: ${
+      dateIntents["2026-06-09"]
+    }`,
+  );
 });
 
 Deno.test("day intent assigns save CTA eligibility to Monday and Wednesday only", () => {
@@ -1397,13 +1825,28 @@ Deno.test("day intent assigns save CTA eligibility to Monday and Wednesday only"
 
   const mondayIntent = dayIntentFromPrompt(input, "2026-06-08");
   const wedIntent = dayIntentFromPrompt(input, "2026-06-10");
-  assert(mondayIntent.includes("save CTA eligible"), `Monday: save CTA eligible, got: ${mondayIntent}`);
-  assert(wedIntent.includes("save CTA eligible"), `Wednesday: save CTA eligible, got: ${wedIntent}`);
+  assert(
+    mondayIntent.includes("save CTA eligible"),
+    `Monday: save CTA eligible, got: ${mondayIntent}`,
+  );
+  assert(
+    wedIntent.includes("save CTA eligible"),
+    `Wednesday: save CTA eligible, got: ${wedIntent}`,
+  );
 
-  const nonEligibleDates = ["2026-06-09", "2026-06-11", "2026-06-12", "2026-06-13", "2026-06-14"];
+  const nonEligibleDates = [
+    "2026-06-09",
+    "2026-06-11",
+    "2026-06-12",
+    "2026-06-13",
+    "2026-06-14",
+  ];
   for (const date of nonEligibleDates) {
     const intent = dayIntentFromPrompt(input, date);
-    assert(intent.includes("save CTA NOT eligible"), `Expected save CTA NOT eligible for ${date}, got: ${intent}`);
+    assert(
+      intent.includes("save CTA NOT eligible"),
+      `Expected save CTA NOT eligible for ${date}, got: ${intent}`,
+    );
   }
 });
 
@@ -1411,13 +1854,29 @@ Deno.test("day intent assigns age eligibility to Monday only, never required", (
   const input = fixtureInput();
 
   const mondayIntent = dayIntentFromPrompt(input, "2026-06-08");
-  assert(mondayIntent.includes("Age eligible if the weekly brief supports it"), `Monday: age eligible if brief supports it, got: ${mondayIntent}`);
-  assert(mondayIntent.includes("never required"), `Monday: age never required, got: ${mondayIntent}`);
+  assert(
+    mondayIntent.includes("Age eligible if the weekly brief supports it"),
+    `Monday: age eligible if brief supports it, got: ${mondayIntent}`,
+  );
+  assert(
+    mondayIntent.includes("never required"),
+    `Monday: age never required, got: ${mondayIntent}`,
+  );
 
-  const nonEligibleDates = ["2026-06-09", "2026-06-10", "2026-06-11", "2026-06-12", "2026-06-13", "2026-06-14"];
+  const nonEligibleDates = [
+    "2026-06-09",
+    "2026-06-10",
+    "2026-06-11",
+    "2026-06-12",
+    "2026-06-13",
+    "2026-06-14",
+  ];
   for (const date of nonEligibleDates) {
     const intent = dayIntentFromPrompt(input, date);
-    assert(intent.includes("Age NOT eligible on this day"), `Expected Age NOT eligible for ${date}, got: ${intent}`);
+    assert(
+      intent.includes("Age NOT eligible on this day"),
+      `Expected Age NOT eligible for ${date}, got: ${intent}`,
+    );
   }
 });
 
@@ -1432,8 +1891,14 @@ Deno.test("day intent overrides non-training roles when weekly brief explicitly 
   };
 
   const thursdayIntent = dayIntentFromPrompt(gymFocusInput, "2026-06-11");
-  assert(thursdayIntent.includes("training-led"), `Thursday should be training-led in gym focus week, got: ${thursdayIntent}`);
-  assert(!thursdayIntent.includes("eating"), "Thursday should NOT be eating in gym focus week");
+  assert(
+    thursdayIntent.includes("training-led"),
+    `Thursday should be training-led in gym focus week, got: ${thursdayIntent}`,
+  );
+  assert(
+    !thursdayIntent.includes("eating"),
+    "Thursday should NOT be eating in gym focus week",
+  );
 });
 
 // ── F3/F6: Template no longer contains 'Save this' as example text ──
@@ -1447,61 +1912,143 @@ Deno.test("daily card compact template does not include 'Save this' in on_screen
   );
   const requestText = JSON.stringify(request);
 
-  assert(!requestText.includes('"Save this"'), "Template on_screen_text must not contain 'Save this' as example text");
+  assert(
+    !requestText.includes('"Save this"'),
+    "Template on_screen_text must not contain 'Save this' as example text",
+  );
 });
 
 // ── F4: BANNED_CTA_TEMPLATES uses full patterns, not broad substrings ──
 
 Deno.test("BANNED_CTA_TEMPLATES contains full CTA patterns, not bare 'tell me'", () => {
-  assert(!BANNED_CTA_TEMPLATES.includes("tell me"), "'tell me' alone is overbroad and must not be in BANNED_CTA_TEMPLATES");
-  assert(BANNED_CTA_TEMPLATES.includes("tell me in the comments"), "'tell me in the comments' should be in BANNED_CTA_TEMPLATES");
-  assert(BANNED_CTA_TEMPLATES.includes("tell me what you think"), "'tell me what you think' should be in BANNED_CTA_TEMPLATES");
-  assert(BANNED_CTA_TEMPLATES.includes("save this for"), "'save this for' should be in BANNED_CTA_TEMPLATES");
-  assert(BANNED_CTA_TEMPLATES.includes("send this to a friend"), "'send this to a friend' should be in BANNED_CTA_TEMPLATES");
+  assert(
+    !BANNED_CTA_TEMPLATES.includes("tell me"),
+    "'tell me' alone is overbroad and must not be in BANNED_CTA_TEMPLATES",
+  );
+  assert(
+    BANNED_CTA_TEMPLATES.includes("tell me in the comments"),
+    "'tell me in the comments' should be in BANNED_CTA_TEMPLATES",
+  );
+  assert(
+    BANNED_CTA_TEMPLATES.includes("tell me what you think"),
+    "'tell me what you think' should be in BANNED_CTA_TEMPLATES",
+  );
+  assert(
+    BANNED_CTA_TEMPLATES.includes("save this for"),
+    "'save this for' should be in BANNED_CTA_TEMPLATES",
+  );
+  assert(
+    BANNED_CTA_TEMPLATES.includes("send this to a friend"),
+    "'send this to a friend' should be in BANNED_CTA_TEMPLATES",
+  );
 });
 
 // ── F5: INSTRUCTOR_ISH_PHRASES excludes bare 'clients' and first-person 'fix my form' ──
 
 Deno.test("INSTRUCTOR_ISH_PHRASES excludes bare 'clients' and 'fix my form' while retaining coaching-specific phrases", () => {
-  assert(!INSTRUCTOR_ISH_PHRASES.includes("clients"), "bare 'clients' must not be in INSTRUCTOR_ISH_PHRASES");
-  assert(!INSTRUCTOR_ISH_PHRASES.includes("fix my form"), "'fix my form' must not be in INSTRUCTOR_ISH_PHRASES");
-  assert(INSTRUCTOR_ISH_PHRASES.includes("your client"), "'your client' should remain");
-  assert(INSTRUCTOR_ISH_PHRASES.includes("my clients"), "'my clients' should remain");
-  assert(INSTRUCTOR_ISH_PHRASES.includes("training clients"), "'training clients' should be present");
+  assert(
+    !INSTRUCTOR_ISH_PHRASES.includes("clients"),
+    "bare 'clients' must not be in INSTRUCTOR_ISH_PHRASES",
+  );
+  assert(
+    !INSTRUCTOR_ISH_PHRASES.includes("fix my form"),
+    "'fix my form' must not be in INSTRUCTOR_ISH_PHRASES",
+  );
+  assert(
+    INSTRUCTOR_ISH_PHRASES.includes("your client"),
+    "'your client' should remain",
+  );
+  assert(
+    INSTRUCTOR_ISH_PHRASES.includes("my clients"),
+    "'my clients' should remain",
+  );
+  assert(
+    INSTRUCTOR_ISH_PHRASES.includes("training clients"),
+    "'training clients' should be present",
+  );
 });
 
 Deno.test("containsInstructorPhrasing still catches coaching language but allows first-person 'fix my form' and brand-collab 'clients'", () => {
-  assert(containsInstructorPhrasing("do this exercise"), "should catch 'do this exercise'");
-  assert(containsInstructorPhrasing("your client needs"), "should catch 'your client'");
-  assert(containsInstructorPhrasing("my clients ask me"), "should catch 'my clients'");
-  assert(containsInstructorPhrasing("upper body cue for today"), "should catch 'upper body cue'");
+  assert(
+    containsInstructorPhrasing("do this exercise"),
+    "should catch 'do this exercise'",
+  );
+  assert(
+    containsInstructorPhrasing("your client needs"),
+    "should catch 'your client'",
+  );
+  assert(
+    containsInstructorPhrasing("my clients ask me"),
+    "should catch 'my clients'",
+  );
+  assert(
+    containsInstructorPhrasing("upper body cue for today"),
+    "should catch 'upper body cue'",
+  );
 
-  assert(!containsInstructorPhrasing("I had to fix my form on the sled push today"), "first-person 'fix my form' should be allowed");
-  assert(!containsInstructorPhrasing("worked with a new brand client today"), "brand-collab 'client' should be allowed");
-  assert(!containsInstructorPhrasing("the brand client loved the reel"), "brand-collab 'client' in context should be allowed");
+  assert(
+    !containsInstructorPhrasing("I had to fix my form on the sled push today"),
+    "first-person 'fix my form' should be allowed",
+  );
+  assert(
+    !containsInstructorPhrasing("worked with a new brand client today"),
+    "brand-collab 'client' should be allowed",
+  );
+  assert(
+    !containsInstructorPhrasing("the brand client loved the reel"),
+    "brand-collab 'client' in context should be allowed",
+  );
 });
 
 // ── F6: Runtime instructor-ending rejection ──
 
 Deno.test("containsInstructorEnding catches banned instructor endings in card text", () => {
-  assert(containsInstructorEnding("just start. One set, then the next."), "should catch 'just start'");
-  assert(containsInstructorEnding("the real win is showing up"), "should catch 'the real win'");
-  assert(containsInstructorEnding("if you needed a reminder, here it is"), "should catch 'if you needed a reminder'");
-  assert(containsInstructorEnding("you can do this. I believe in you."), "should catch 'you can do this'");
-  assert(containsInstructorEnding("you got this. Keep going."), "should catch 'you got this'");
-  assert(containsInstructorEnding("no excuses. Get it done."), "should catch 'no excuses'");
+  assert(
+    containsInstructorEnding("just start. One set, then the next."),
+    "should catch 'just start'",
+  );
+  assert(
+    containsInstructorEnding("the real win is showing up"),
+    "should catch 'the real win'",
+  );
+  assert(
+    containsInstructorEnding("if you needed a reminder, here it is"),
+    "should catch 'if you needed a reminder'",
+  );
+  assert(
+    containsInstructorEnding("you can do this. I believe in you."),
+    "should catch 'you can do this'",
+  );
+  assert(
+    containsInstructorEnding("you got this. Keep going."),
+    "should catch 'you got this'",
+  );
+  assert(
+    containsInstructorEnding("no excuses. Get it done."),
+    "should catch 'no excuses'",
+  );
 
-  assert(!containsInstructorEnding("I noticed the sled felt heavier today"), "first-person observation should be allowed");
-  assert(!containsInstructorEnding("today felt like a real win for my consistency"), "first-person 'real win' used descriptively about own experience is a substring match but the pattern 'the real win' is banned — verify it catches the instructor form");
+  assert(
+    !containsInstructorEnding("I noticed the sled felt heavier today"),
+    "first-person observation should be allowed",
+  );
+  assert(
+    !containsInstructorEnding("today felt like a real win for my consistency"),
+    "first-person 'real win' used descriptively about own experience is a substring match but the pattern 'the real win' is banned — verify it catches the instructor form",
+  );
   // 'the real win' as a follower-directed ending IS banned:
-  assert(containsInstructorEnding("remember, the real win is showing up"), "'the real win' as follower-directed ending should be caught");
+  assert(
+    containsInstructorEnding("remember, the real win is showing up"),
+    "'the real win' as follower-directed ending should be caught",
+  );
 });
 
 Deno.test("validator rejects cards containing banned instructor endings", () => {
   const generated = makeMockGeneratedWeek(fixtureInput());
   generated.daily_cards[0] = {
     ...generated.daily_cards[0],
-    script: "Today was tough. But just start. One set, then the next. You got this.",
+    script:
+      "Today was tough. But just start. One set, then the next. You got this.",
   };
 
   assertThrowsGenerationCode(
@@ -1602,9 +2149,33 @@ Deno.test("countExplicitSaveCTAs counts save-this patterns across cta, script, c
   // Card 2: save CTA in both cta and caption → counted once (not twice)
   assertEquals(
     countExplicitSaveCTAs([
-      { cta: "Save this for your next session.", script: "Good script.", caption: "Nice caption.", on_screen_text: [], backup_story: "", backup_caption_only: "", caption_backup_detail: "" } as never,
-      { cta: "Just a thought.", script: "A script that says Save this reel if it helps.", caption: "Nice caption.", on_screen_text: [], backup_story: "", backup_caption_only: "", caption_backup_detail: "" } as never,
-      { cta: "Save this for later.", script: "Good script.", caption: "Also says Save this to your routine.", on_screen_text: [], backup_story: "", backup_caption_only: "", caption_backup_detail: "" } as never,
+      {
+        cta: "Save this for your next session.",
+        script: "Good script.",
+        caption: "Nice caption.",
+        on_screen_text: [],
+        backup_story: "",
+        backup_caption_only: "",
+        caption_backup_detail: "",
+      } as never,
+      {
+        cta: "Just a thought.",
+        script: "A script that says Save this reel if it helps.",
+        caption: "Nice caption.",
+        on_screen_text: [],
+        backup_story: "",
+        backup_caption_only: "",
+        caption_backup_detail: "",
+      } as never,
+      {
+        cta: "Save this for later.",
+        script: "Good script.",
+        caption: "Also says Save this to your routine.",
+        on_screen_text: [],
+        backup_story: "",
+        backup_caption_only: "",
+        caption_backup_detail: "",
+      } as never,
     ]),
     3,
     "should count 3 cards with save CTAs across multiple fields, each card at most once",
@@ -1613,8 +2184,24 @@ Deno.test("countExplicitSaveCTAs counts save-this patterns across cta, script, c
   // No save CTAs
   assertEquals(
     countExplicitSaveCTAs([
-      { cta: "What do you think?", script: "A reflective script.", caption: "Nice caption.", on_screen_text: ["Back in routine"], backup_story: "A story backup.", backup_caption_only: "", caption_backup_detail: "" } as never,
-      { cta: "Try this cue in your next session.", script: "A practical script.", caption: "A helpful caption.", on_screen_text: [], backup_story: "", backup_caption_only: "", caption_backup_detail: "" } as never,
+      {
+        cta: "What do you think?",
+        script: "A reflective script.",
+        caption: "Nice caption.",
+        on_screen_text: ["Back in routine"],
+        backup_story: "A story backup.",
+        backup_caption_only: "",
+        caption_backup_detail: "",
+      } as never,
+      {
+        cta: "Try this cue in your next session.",
+        script: "A practical script.",
+        caption: "A helpful caption.",
+        on_screen_text: [],
+        backup_story: "",
+        backup_caption_only: "",
+        caption_backup_detail: "",
+      } as never,
     ]),
     0,
     "should count 0 when no save CTAs present",
@@ -1625,7 +2212,15 @@ Deno.test("countExplicitSaveCTAs counts save text appearing in scripts and backu
   // Save CTA in script
   assertEquals(
     countExplicitSaveCTAs([
-      { cta: "What do you think?", script: "Try this setup and save this for your next session.", caption: "Good caption.", on_screen_text: [], backup_story: "", backup_caption_only: "", caption_backup_detail: "" } as never,
+      {
+        cta: "What do you think?",
+        script: "Try this setup and save this for your next session.",
+        caption: "Good caption.",
+        on_screen_text: [],
+        backup_story: "",
+        backup_caption_only: "",
+        caption_backup_detail: "",
+      } as never,
     ]),
     1,
     "save this for in script should count",
@@ -1634,7 +2229,15 @@ Deno.test("countExplicitSaveCTAs counts save text appearing in scripts and backu
   // Save CTA in backup_story
   assertEquals(
     countExplicitSaveCTAs([
-      { cta: "Any thoughts?", script: "Good script.", caption: "Nice caption.", on_screen_text: [], backup_story: "Save this for a quick reset when you are short on time.", backup_caption_only: "", caption_backup_detail: "" } as never,
+      {
+        cta: "Any thoughts?",
+        script: "Good script.",
+        caption: "Nice caption.",
+        on_screen_text: [],
+        backup_story: "Save this for a quick reset when you are short on time.",
+        backup_caption_only: "",
+        caption_backup_detail: "",
+      } as never,
     ]),
     1,
     "save this for in backup_story should count",
@@ -1643,7 +2246,15 @@ Deno.test("countExplicitSaveCTAs counts save text appearing in scripts and backu
   // Save CTA in on_screen_text
   assertEquals(
     countExplicitSaveCTAs([
-      { cta: "Share your thoughts.", script: "Good script.", caption: "Nice caption.", on_screen_text: ["Save this for later"], backup_story: "", backup_caption_only: "", caption_backup_detail: "" } as never,
+      {
+        cta: "Share your thoughts.",
+        script: "Good script.",
+        caption: "Nice caption.",
+        on_screen_text: ["Save this for later"],
+        backup_story: "",
+        backup_caption_only: "",
+        caption_backup_detail: "",
+      } as never,
     ]),
     1,
     "save this for in on_screen_text should count",
@@ -1653,8 +2264,24 @@ Deno.test("countExplicitSaveCTAs counts save text appearing in scripts and backu
 Deno.test("countExplicitSaveCTAs does not count ordinary 'save time' or 'saved my breakfast' or 'I save this kind of'", () => {
   assertEquals(
     countExplicitSaveCTAs([
-      { cta: "Share your morning routine!", script: "This will save time in the morning.", caption: "I saved my breakfast for later.", on_screen_text: ["Save time", "Morning reset"], backup_story: "Saving a few minutes helps.", backup_caption_only: "", caption_backup_detail: "" } as never,
-      { cta: "What do you think?", script: "I save this kind of energy for the moments that matter.", caption: "Save your energy.", on_screen_text: [], backup_story: "", backup_caption_only: "", caption_backup_detail: "" } as never,
+      {
+        cta: "Share your morning routine!",
+        script: "This will save time in the morning.",
+        caption: "I saved my breakfast for later.",
+        on_screen_text: ["Save time", "Morning reset"],
+        backup_story: "Saving a few minutes helps.",
+        backup_caption_only: "",
+        caption_backup_detail: "",
+      } as never,
+      {
+        cta: "What do you think?",
+        script: "I save this kind of energy for the moments that matter.",
+        caption: "Save your energy.",
+        on_screen_text: [],
+        backup_story: "",
+        backup_caption_only: "",
+        caption_backup_detail: "",
+      } as never,
     ]),
     0,
     "ordinary non-CTA uses of 'save' should not count",
@@ -1683,6 +2310,18 @@ Deno.test("resolveAIRequestTimeoutMs applies maximum cap of 240_000 ms", () => {
   assertEquals(resolveAIRequestTimeoutMs("999999"), 240_000);
 });
 
+Deno.test("resolveAIDayRequestTimeoutMs inherits the general timeout by default", () => {
+  assertEquals(resolveAIDayRequestTimeoutMs(undefined, "180000"), 180_000);
+});
+
+Deno.test("resolveAIDayRequestTimeoutMs accepts a day-specific override", () => {
+  assertEquals(resolveAIDayRequestTimeoutMs("150000", "240000"), 150_000);
+});
+
+Deno.test("resolveAIDayRequestTimeoutMs keeps the 240_000 cap", () => {
+  assertEquals(resolveAIDayRequestTimeoutMs("999999", "180000"), 240_000);
+});
+
 // ── Four pillars preserved ──
 
 Deno.test("validator continues to enforce four-pillar contract after all corrective changes", () => {
@@ -1694,7 +2333,8 @@ Deno.test("validator continues to enforce four-pillar contract after all correct
   assert(pillars.has("lifestyle"), "lifestyle pillar must be present");
   assert(pillars.size >= 3, "at least 3 of 4 pillars must be represented");
 
-  const gymDays = validated.daily_cards.filter((c) => c.content_pillar === "gym").length;
+  const gymDays =
+    validated.daily_cards.filter((c) => c.content_pillar === "gym").length;
   assert(gymDays <= 2, `gym days (${gymDays}) must not exceed cap of 2`);
 });
 
@@ -1732,7 +2372,8 @@ Deno.test("per-day prompt includes concise 40-70 word caption rule", () => {
 Deno.test("per-day prompt includes day_guidance scoped to target scheduled date", () => {
   const input = {
     ...fixtureInput(),
-    day_guidance: "Thursday brand brief: highlight the new recovery product launch.",
+    day_guidance:
+      "Thursday brand brief: highlight the new recovery product launch.",
   };
   const request = buildDeepSeekDayChatRequest(
     input,
@@ -1744,11 +2385,15 @@ Deno.test("per-day prompt includes day_guidance scoped to target scheduled date"
   const userContent = messages[1].content as string;
 
   assert(
-    userContent.includes("Thursday brand brief: highlight the new recovery product launch."),
+    userContent.includes(
+      "Thursday brand brief: highlight the new recovery product launch.",
+    ),
     "per-day prompt should include day_guidance text",
   );
   assert(
-    userContent.includes("Creator/admin instruction for 2026-06-11 ONLY (not week-wide)"),
+    userContent.includes(
+      "Creator/admin instruction for 2026-06-11 ONLY (not week-wide)",
+    ),
     "day_guidance should be labeled as scoped to the target date only",
   );
   assert(
@@ -1768,7 +2413,9 @@ Deno.test("per-day prompt guidance does not become week-wide instruction", () =>
     "2026-06-10",
     2,
   );
-  const wednesdayContent = (wednesdayRequest.messages as Record<string, string>[])[1].content as string;
+  const wednesdayContent =
+    (wednesdayRequest.messages as Record<string, string>[])[1]
+      .content as string;
 
   assert(
     wednesdayContent.includes("Brand collab: feature the hydration brand."),
@@ -1781,10 +2428,13 @@ Deno.test("per-day prompt guidance does not become week-wide instruction", () =>
     "2026-06-12",
     4,
   );
-  const fridayContent = (fridayRequest.messages as Record<string, string>[])[1].content as string;
+  const fridayContent = (fridayRequest.messages as Record<string, string>[])[1]
+    .content as string;
 
   assert(
-    fridayContent.includes("Creator/admin instruction for 2026-06-12 ONLY (not week-wide)"),
+    fridayContent.includes(
+      "Creator/admin instruction for 2026-06-12 ONLY (not week-wide)",
+    ),
     "Friday scoping label should reference Friday's date, not inherit Wednesday's",
   );
 });
@@ -2034,4 +2684,9 @@ function recordValue(value: unknown): Record<string, unknown> {
     `Expected object, got ${JSON.stringify(value)}`,
   );
   return value as Record<string, unknown>;
+}
+
+function recordValueArray(value: unknown): Record<string, unknown>[] {
+  assert(Array.isArray(value), `Expected array, got ${JSON.stringify(value)}`);
+  return value.map(recordValue);
 }
