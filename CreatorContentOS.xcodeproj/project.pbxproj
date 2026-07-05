@@ -60,6 +60,7 @@
 		E3BD409D4CCB2EFABDB5049F /* NotTodaySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA513EE516274570D68E102 /* NotTodaySheet.swift */; };
 		E960AE9810B9CBB549538E38 /* SupabaseRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90532CA91160D600CF200666 /* SupabaseRepositories.swift */; };
 		EC533C490D01ABEA8AC52476 /* ArchiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D30B229F5943E73438D46F5 /* ArchiveView.swift */; };
+		9F3B7D1C5E8A2F4061C3B7A2 /* DayGenerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2A9C8E71B3F5062A8C4E19 /* DayGenerationView.swift */; };
 		ED0E1C95BE6CD4E0BFED6E66 /* ContentQualityLearningLoop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F9A7463B86BBE57EF99AB5 /* ContentQualityLearningLoop.swift */; };
 		F53CA7EC1CC07711BCA397D4 /* DevicePairingServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EF81B58FA3AF15A81BC5742 /* DevicePairingServiceTests.swift */; };
 /* End PBXBuildFile section */
@@ -99,6 +100,7 @@
 		650B453B0865435AA8F1ED4C /* TestWeeklyGenerationRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestWeeklyGenerationRepository.swift; sourceTree = "<group>"; };
 		674AC06A8413A366F72FD56A /* ManagerAdminUsageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerAdminUsageTests.swift; sourceTree = "<group>"; };
 		6D30B229F5943E73438D46F5 /* ArchiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveView.swift; sourceTree = "<group>"; };
+		4D2A9C8E71B3F5062A8C4E19 /* DayGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayGenerationView.swift; sourceTree = "<group>"; };
 		79C80E2B2E609414F002A71F /* RuntimeConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfigurationTests.swift; sourceTree = "<group>"; };
 		7CA513EE516274570D68E102 /* NotTodaySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotTodaySheet.swift; sourceTree = "<group>"; };
 		843D5A526CCBA04114C4A72A /* TodayCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayCacheStore.swift; sourceTree = "<group>"; };
@@ -319,11 +321,20 @@
 			children = (
 				8468C4104C513AFAC8CAB8F5 /* Archive */,
 				C61D96FCD326C26E3DD2AA0B /* Authentication */,
+				6C1E8A3F9D274B50C2E6A184 /* Daily */,
 				4687AD2DBB82D88B1EE92D99 /* Intelligence */,
 				87FF7DE577AA31A3051946A4 /* Today */,
 				825024F62145C3FA2EEFF931 /* Weekly */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		6C1E8A3F9D274B50C2E6A184 /* Daily */ = {
+			isa = PBXGroup;
+			children = (
+				4D2A9C8E71B3F5062A8C4E19 /* DayGenerationView.swift */,
+			);
+			path = Daily;
 			sourceTree = "<group>";
 		};
 		D665ECFFAE1215C5330D91C5 /* Models */ = {
@@ -511,6 +522,7 @@
 				3A5D41F83414D6D085C0C631 /* AppServices.swift in Sources */,
 				B3BC133C4E17918A8B4DA2B4 /* AppState.swift in Sources */,
 				EC533C490D01ABEA8AC52476 /* ArchiveView.swift in Sources */,
+				9F3B7D1C5E8A2F4061C3B7A2 /* DayGenerationView.swift in Sources */,
 				2940295B3DE8A914016EBF11 /* AuthenticationDTOs.swift in Sources */,
 				D3C627342885EE2916BFCF97 /* AuthenticationService.swift in Sources */,
 				ED0E1C95BE6CD4E0BFED6E66 /* ContentQualityLearningLoop.swift in Sources */,

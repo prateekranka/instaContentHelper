@@ -2418,7 +2418,7 @@ Deno.test("regenerate_day accepts and bounds day_guidance", async () => {
     "Focus on the Thursday brand brief for recovery products.",
   );
 
-  const longGuidance = "x".repeat(600);
+  const longGuidance = "x".repeat(2400);
   const longResponse = await handleGenerateWeekRequest(
     requestFor({
       action: "regenerate_day",
@@ -2434,13 +2434,211 @@ Deno.test("regenerate_day accepts and bounds day_guidance", async () => {
   assertEquals(longResponse.status, 200);
   assertEquals(
     capturedGuidance?.length,
-    500,
-    `day_guidance should be bounded to 500 chars, got ${capturedGuidance?.length}`,
+    2000,
+    `day_guidance should be bounded to 2000 chars, got ${capturedGuidance?.length}`,
   );
   assertEquals(
     capturedGuidance,
-    longGuidance.slice(0, 500),
+    longGuidance.slice(0, 2000),
   );
+});
+
+Deno.test("generate_day requires a non-empty day brief", async () => {
+  const state = dayGenerationState();
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "generate_day",
+      creator_id: creatorID,
+      scheduled_date: "2026-06-10",
+      day_brief: "   ",
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+    },
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals(await errorCode(response), "day_brief_required");
+});
+
+Deno.test("generate_day rejects past scheduled dates", async () => {
+  overrideTodayISO(() => "2026-07-01");
+  try {
+    const state = dayGenerationState();
+    const response = await handleGenerateWeekRequest(
+      requestFor({
+        action: "generate_day",
+        creator_id: creatorID,
+        scheduled_date: "2026-06-30",
+        day_brief: "Yesterday's shoot.",
+      }),
+      {
+        env: fakeEnv("openai-key"),
+        createAdminClient: () => fakeAdmin(state),
+      },
+    );
+
+    assertEquals(response.status, 400);
+    assertEquals(await errorCode(response), "past_generation_date_not_allowed");
+  } finally {
+    overrideTodayISO(() => "2026-01-01");
+  }
+});
+
+Deno.test("generate_day reuses the existing draft week and sends the day brief as the only brief", async () => {
+  const state = dayGenerationState();
+  const dayBrief =
+    "Brand shoot day: unbox the new recovery drink at home after the morning walk. Keep it honest, one deliverable Reel.";
+  let capturedInput: GenerationInputSnapshot | undefined;
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "generate_day",
+      creator_id: creatorID,
+      scheduled_date: "2026-06-10",
+      day_brief: dayBrief,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        capturedInput = input;
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: "Single day from day brief.",
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+            title: "Brand recovery drink day",
+          },
+          idea_bank: [],
+          source_summary: "Day brief plus creator profile and references.",
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.weekly_plan_id, weeklyPlanID);
+  assertEquals(body.target_scheduled_date, "2026-06-10");
+  assertEquals(body.daily_card.title, "Brand recovery drink day");
+  assertEquals(
+    state.insertedWeeklyPlans.length,
+    0,
+    "must reuse the existing draft container",
+  );
+  assertEquals(
+    (capturedInput?.weekly_setup as Record<string, unknown>)?.notes,
+    dayBrief,
+    "the day brief must replace the stored weekly setup",
+  );
+  assertEquals(capturedInput?.day_guidance, dayBrief);
+  assertEquals(state.dailyCards[2].title, "Brand recovery drink day");
+});
+
+Deno.test("generate_day creates a thin draft container week when none exists", async () => {
+  const state = dayGenerationState();
+  const dayBrief = "Rest day vlog: easy morning, stretch, and simple meals.";
+  let capturedInput: GenerationInputSnapshot | undefined;
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "generate_day",
+      creator_id: creatorID,
+      scheduled_date: "2026-06-17",
+      day_brief: dayBrief,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        capturedInput = input;
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: "Fresh container week.",
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+            title: "Rest day reset",
+          },
+          idea_bank: [],
+          source_summary: "Day brief only.",
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(state.insertedWeeklyPlans.length, 1);
+  const container = state.insertedWeeklyPlans[0];
+  assertEquals(container.week_start_date, "2026-06-15");
+  assertEquals(container.status, "draft");
+  assertEquals(container.weekly_setup_id, null);
+  assertEquals(body.weekly_plan_id, container.id);
+  assertEquals(body.target_scheduled_date, "2026-06-17");
+  assertEquals(body.daily_card.title, "Rest day reset");
+  assertEquals(capturedInput?.week_start_date, "2026-06-15");
+  assertEquals(
+    (capturedInput?.weekly_setup as Record<string, unknown>)?.notes,
+    dayBrief,
+  );
+  assertEquals(
+    state.upsertedDailyCardDates.includes("2026-06-17"),
+    true,
+    "the generated card must be written for the requested date",
+  );
+});
+
+Deno.test("generate_day async mode returns a pollable run", async () => {
+  const state = dayGenerationState();
+  const backgrounded: Promise<void>[] = [];
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "generate_day",
+      creator_id: creatorID,
+      scheduled_date: "2026-06-10",
+      day_brief: "Simple gym return day.",
+      response_mode: "async",
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      runInBackground: (promise) => {
+        backgrounded.push(promise);
+      },
+      generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
+        return {
+          strategy_note: "Async day.",
+          warnings: [],
+          assumptions: [],
+          daily_card: {
+            ...card,
+            scheduled_date: scheduledDate,
+            title: "Async gym return",
+          },
+          idea_bank: [],
+          source_summary: "Day brief.",
+        };
+      },
+    },
+  );
+
+  assertEquals(response.status, 202);
+  const body = await response.json();
+  assertEquals(body.status, "running");
+  assertEquals(body.target_scheduled_date, "2026-06-10");
+  assertEquals(typeof body.generation_id, "string");
+
+  await Promise.all(backgrounded);
+  assertEquals(state.dailyCards[2].title, "Async gym return");
 });
 
 function requestFor(body: Record<string, unknown>): Request {
@@ -2518,6 +2716,7 @@ type FakeState = {
   weeklyPlan: Record<string, unknown> | null;
   dailyCards: Record<string, unknown>[];
   dayJobs: Record<string, unknown>[];
+  insertedWeeklyPlans: Record<string, unknown>[];
   updatedDailyCardIDs: string[];
   upsertedDailyCardDates: string[];
   dailyCardUpdateMissDates: Set<string>;
@@ -2553,6 +2752,7 @@ function fakeAdmin(
     weeklyPlan: state.weeklyPlan ?? null,
     dailyCards: state.dailyCards ?? [],
     dayJobs: state.dayJobs ?? [],
+    insertedWeeklyPlans: state.insertedWeeklyPlans ?? [],
     updatedDailyCardIDs: state.updatedDailyCardIDs ?? [],
     upsertedDailyCardDates: state.upsertedDailyCardDates ?? [],
     dailyCardUpdateMissDates: state.dailyCardUpdateMissDates ?? new Set(),
@@ -2771,6 +2971,12 @@ class FakeQuery {
     }
 
     if (this.operation !== "select") {
+      if (this.table === "weekly_plans" && this.operation === "insert") {
+        const values = this.values as Record<string, unknown>;
+        this.state.insertedWeeklyPlans.push({ ...values });
+        this.state.weeklyPlan = { is_soft_locked: false, ...values };
+        return { data: { id: values.id }, error: null };
+      }
       if (
         this.table === "weekly_generation_runs" &&
         this.operation === "insert"
@@ -2958,6 +3164,13 @@ class FakeQuery {
           return { data: this.state.weeklyPlan, error: null };
         }
         if (
+          this.filters.id &&
+          this.state.weeklyPlan &&
+          this.state.weeklyPlan.id === this.filters.id
+        ) {
+          return { data: this.state.weeklyPlan, error: null };
+        }
+        if (
           this.state.weeklyPlan &&
           this.filters.creator_id === this.state.weeklyPlan.creator_id &&
           this.filters.week_start_date === this.state.weeklyPlan.week_start_date
@@ -3138,6 +3351,7 @@ function dayGenerationState(): FakeState {
     },
     dailyCards: cards,
     dayJobs: [],
+    insertedWeeklyPlans: [],
     updatedDailyCardIDs: [],
     upsertedDailyCardDates: [],
     dailyCardUpdateMissDates: new Set(),

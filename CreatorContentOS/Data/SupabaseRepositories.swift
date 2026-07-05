@@ -548,6 +548,55 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         }
     }
 
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult {
+        do {
+            logGeneration("generate_day invoke_initial scheduled_date=\(scheduledDate) brief_chars=\(dayBrief.count)")
+            let initial = try await invokeRegenerateDay(
+                SupabaseGenerateDayRequest(
+                    creatorID: creatorID,
+                    scheduledDate: scheduledDate,
+                    dayBrief: dayBrief,
+                    responseMode: .async,
+                    clientContext: SupabaseGenerationClientContext(
+                        uiSurface: "daily_generator",
+                        action: "generate_day",
+                        selectedWeekStart: nil,
+                        scheduledDate: scheduledDate,
+                        dayGuidancePresent: true,
+                        dayGuidanceChars: dayBrief.count
+                    )
+                )
+            )
+            logGeneration("generate_day initial \(regenerateInvocationSummary(initial))")
+
+            switch initial {
+            case .completed(let response):
+                return response.domainResult
+            case .running(let status):
+                logGeneration("generate_day polling_start \(statusSummary(status))")
+                return try await pollRegeneratedDay(
+                    generationID: status.generationID,
+                    creatorID: creatorID
+                )
+            case .failed(let status):
+                logGeneration("generate_day initial_failed \(statusSummary(status))")
+                throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_day")
+            }
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                logGeneration("generate_day failed mapped_error=\(code)")
+                throw RepositoryError.edgeFunction(code)
+            }
+            logGeneration("generate_day failed error=\(error.localizedDescription)")
+            throw error
+        }
+    }
+
     func retryQueuedDay(
         generationID: UUID,
         scheduledDate: String,

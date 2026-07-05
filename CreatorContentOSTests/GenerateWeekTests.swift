@@ -1027,6 +1027,98 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(services.weeklyGenerationProgress?.error, "Fixture generation is unavailable. Use live generation or backend mock generation.")
     }
 
+    func testGenerateDayCardStoresResultForTheRequestedDate() async throws {
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: BriefEchoDayGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+
+        let card = try await services.generateDayCard(
+            scheduledDate: "2026-06-03",
+            dayBrief: "  Brand unboxing at home, honest tone.  "
+        )
+
+        XCTAssertEqual(card.scheduledDate, "2026-06-03")
+        XCTAssertEqual(card.title, "Day card: Brand unboxing at home, honest tone.")
+        XCTAssertEqual(services.dayBriefGeneratedCards["2026-06-03"]?.id, card.id)
+        XCTAssertNil(services.dayBriefGenerationErrors["2026-06-03"])
+        XCTAssertFalse(services.generatingDayBriefDates.contains("2026-06-03"))
+    }
+
+    func testGenerateDayCardRejectsPastDates() async throws {
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: BriefEchoDayGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+
+        do {
+            _ = try await services.generateDayCard(
+                scheduledDate: "2026-05-30",
+                dayBrief: "Yesterday's plan."
+            )
+            XCTFail("Expected past date rejection")
+        } catch {
+            XCTAssertEqual(
+                services.dayBriefGenerationErrors["2026-05-30"],
+                "past_generation_date_not_allowed"
+            )
+        }
+        XCTAssertTrue(services.dayBriefGeneratedCards.isEmpty)
+    }
+
+    func testGenerateDayCardRequiresBrief() async throws {
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: BriefEchoDayGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+
+        do {
+            _ = try await services.generateDayCard(
+                scheduledDate: "2026-06-03",
+                dayBrief: "   "
+            )
+            XCTFail("Expected empty brief rejection")
+        } catch {
+            XCTAssertEqual(
+                services.dayBriefGenerationErrors["2026-06-03"],
+                "day_brief_required"
+            )
+        }
+    }
+
     func testEmptyGeneratedDraftDoesNotReplaceExistingWeek() async throws {
         let services = AppServices.fixtureBacked(
             repositories: AppRepositories(
@@ -2686,6 +2778,71 @@ private struct FailingWeeklyGenerationRepository: WeeklyGenerationRepository {
         progress: WeeklyGenerationProgressHandler?
     ) async throws -> GeneratedWeekDraft {
         throw RepositoryError.notConfigured("missing_openai_api_key")
+    }
+}
+
+/// Echoes the day brief back in the generated card title so tests can prove
+/// the brief reached the repository unchanged (after trimming).
+private struct BriefEchoDayGenerationRepository: WeeklyGenerationRepository {
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        throw RepositoryError.notConfigured("generate_week_not_used")
+    }
+
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult {
+        RegeneratedDayResult(
+            generationID: UUID(),
+            weeklyPlanID: UUID(),
+            status: "draft",
+            targetScheduledDate: scheduledDate,
+            dailyCard: GeneratedDailyCardDraft(
+                id: UUID(),
+                scheduledDate: scheduledDate,
+                status: "draft",
+                title: "Day card: \(dayBrief)",
+                whyToday: "Test day-at-a-time generation.",
+                growthJob: "Consistency.",
+                contentPillar: "lifestyle",
+                shootability: "easy",
+                estimatedShootMinutes: 8,
+                energyRequired: "low",
+                languageMode: "English",
+                sceneList: [
+                    ShotScene(number: 1, title: "Test scene", duration: "3 sec", symbol: "sparkles")
+                ],
+                script: "Test day script.",
+                noVoiceoverVersion: "No VO.",
+                onScreenText: ["Test"],
+                caption: "Test day caption.",
+                cta: "Save this.",
+                hashtags: ["test"],
+                coverText: "Test",
+                postInstructions: "Test instructions.",
+                brandEventNotes: "",
+                backupStory: "Backup story.",
+                backupCaptionOnly: "Backup caption.",
+                audioOptionNotes: "",
+                creatorFitScore: 90,
+                riskNotes: [],
+                assumptions: ["Test assumption."],
+                sourceNote: "Test source."
+            ),
+            warnings: [],
+            assumptions: [],
+            sourceSummary: "Day brief only.",
+            generatedAt: "2026-06-01T00:00:00Z"
+        )
     }
 }
 

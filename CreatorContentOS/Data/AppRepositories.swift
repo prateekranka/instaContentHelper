@@ -272,6 +272,13 @@ protocol WeeklyGenerationRepository: Sendable {
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult
 
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult
+
     func retryQueuedDay(
         generationID: UUID,
         scheduledDate: String,
@@ -356,6 +363,15 @@ extension WeeklyGenerationRepository {
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult {
         throw RepositoryError.notConfigured("regenerate_day_not_configured")
+    }
+
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult {
+        throw RepositoryError.notConfigured("generate_day_not_configured")
     }
 
     func retryQueuedDay(

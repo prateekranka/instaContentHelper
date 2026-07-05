@@ -6,6 +6,11 @@ struct AdminShellView: View {
     var body: some View {
         TabView {
             NavigationStack {
+                DayGenerationView()
+            }
+            .tabItem { Label("Daily", systemImage: "calendar.badge.plus") }
+
+            NavigationStack {
                 WeeklyControlView()
             }
             .tabItem { Label("Weekly", systemImage: "calendar") }

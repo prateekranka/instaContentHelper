@@ -47,6 +47,9 @@ final class AppServices {
     var isGeneratingWeek = false
     var regeneratingDayDates: Set<String> = []
     var regenerationDayErrors: [String: String] = [:]
+    var generatingDayBriefDates: Set<String> = []
+    var dayBriefGenerationErrors: [String: String] = [:]
+    var dayBriefGeneratedCards: [String: GeneratedDailyCardDraft] = [:]
     var generatingStoryboardThumbnailCardIDs: Set<UUID> = []
     var storyboardThumbnailErrors: [UUID: String] = [:]
     var isPrewarmingStoryboardThumbnails = false
@@ -777,6 +780,74 @@ final class AppServices {
             regenerationDayErrors[scheduledDate] = message
             generationError = message
             logGeneration("regenerate_day failed scheduled_date=\(scheduledDate) error=\(message)")
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
+    /// Day-at-a-time generation: one storyboard + caption card for an explicit
+    /// target date, driven entirely by the supplied day brief (which can also
+    /// carry one-off asks like brand deliverables). The server sends the
+    /// creator profile, references, and this brief to the AI provider.
+    @discardableResult
+    func generateDayCard(
+        scheduledDate: String,
+        dayBrief: String
+    ) async throws -> GeneratedDailyCardDraft {
+        let brief = dayBrief.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !brief.isEmpty else {
+            let error = "day_brief_required"
+            dayBriefGenerationErrors[scheduledDate] = error
+            throw RepositoryError.edgeFunction(error)
+        }
+
+        guard !SupabaseDateFormatting.isDatePast(scheduledDate, todayString: todayDate()) else {
+            let error = "past_generation_date_not_allowed"
+            dayBriefGenerationErrors[scheduledDate] = error
+            logGeneration("generate_day rejected past_generation_date scheduled_date=\(scheduledDate)")
+            throw RepositoryError.edgeFunction(error)
+        }
+
+        guard memberRole == "owner" || memberRole == "editor" else {
+            let error = "role_not_allowed"
+            dayBriefGenerationErrors[scheduledDate] = error
+            logGeneration("generate_day rejected role_not_allowed scheduled_date=\(scheduledDate) role=\(memberRole)")
+            throw RepositoryError.edgeFunction(error)
+        }
+
+        guard !generatingDayBriefDates.contains(scheduledDate) else {
+            if let existing = dayBriefGeneratedCards[scheduledDate] {
+                logGeneration("generate_day ignored already_running returning_existing scheduled_date=\(scheduledDate)")
+                return existing
+            }
+            let error = "generation_already_running"
+            dayBriefGenerationErrors[scheduledDate] = error
+            throw RepositoryError.edgeFunction(error)
+        }
+
+        generatingDayBriefDates.insert(scheduledDate)
+        dayBriefGenerationErrors[scheduledDate] = nil
+        defer { generatingDayBriefDates.remove(scheduledDate) }
+
+        do {
+            logGeneration("generate_day started scheduled_date=\(scheduledDate) brief_chars=\(brief.count)")
+            let result = try await repositories.weeklyGeneration.generateDay(
+                creatorID: context.creatorID,
+                scheduledDate: scheduledDate,
+                dayBrief: brief,
+                context: context
+            )
+            dayBriefGeneratedCards[scheduledDate] = result.dailyCard
+            if weeklyPlan.days.contains(where: { $0.scheduledDate == scheduledDate }) {
+                applyRegeneratedDay(result.dailyCard)
+            }
+            scheduleStoryboardThumbnailPrewarm(for: [result.dailyCard])
+            lastRepositoryError = nil
+            logGeneration("generate_day completed scheduled_date=\(scheduledDate) daily_card_id=\(result.dailyCard.id)")
+            return result.dailyCard
+        } catch {
+            let message = WeeklyGenerationErrorDisplay.message(for: error)
+            dayBriefGenerationErrors[scheduledDate] = message
+            logGeneration("generate_day failed scheduled_date=\(scheduledDate) error=\(message)")
             throw RepositoryError.edgeFunction(message)
         }
     }

@@ -226,6 +226,15 @@ export type GenerateWeekRequest = {
   input_overrides?: Record<string, unknown>;
 };
 
+export type GenerateDayRequest = {
+  action: "generate_day";
+  creator_id: string;
+  scheduled_date: string;
+  day_brief: string;
+  mock: boolean;
+  response_mode: GenerateWeekResponseMode;
+};
+
 export type GenerationInputSnapshot = {
   creator_id: string;
   week_start_date: string;
@@ -566,6 +575,7 @@ export function preserveManualDailyCardEdits(
 
 export type GenerateWeekValidationCode =
   | "invalid_generation_payload"
+  | "day_brief_required"
   | "invalid_ai_json"
   | "invalid_generated_week";
 
@@ -640,7 +650,65 @@ export function normalizeGenerateWeekRequest(
   };
 }
 
-const MAX_DAY_GUIDANCE_LENGTH = 500;
+const MAX_DAY_GUIDANCE_LENGTH = 2000;
+export const MAX_DAY_BRIEF_LENGTH = 2000;
+
+/**
+ * Monday (UTC) of the week containing the supplied ISO date. Weekly plan
+ * containers are Monday-anchored, matching the day-role mix used by the
+ * day prompt builders.
+ */
+export function weekStartDateForDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const weekday = date.getUTCDay(); // 0 = Sunday ... 6 = Saturday
+  const daysSinceMonday = (weekday + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - daysSinceMonday);
+  return date.toISOString().slice(0, 10);
+}
+
+export function normalizeGenerateDayRequest(body: unknown): GenerateDayRequest {
+  if (!isRecord(body) || body.action !== "generate_day") {
+    throw new GenerateWeekValidationError(
+      "invalid_generation_payload",
+      "action must be generate_day.",
+    );
+  }
+
+  const creatorID = stringValue(body.creator_id);
+  const scheduledDate = stringValue(body.scheduled_date);
+  const responseMode = stringValue(body.response_mode) ?? "sync";
+  const rawBrief = stringValue(body.day_brief)?.trim() ?? "";
+  const dayBrief = rawBrief.slice(0, MAX_DAY_BRIEF_LENGTH);
+
+  if (!isUUID(creatorID) || !isDateString(scheduledDate)) {
+    throw new GenerateWeekValidationError(
+      "invalid_generation_payload",
+      "creator_id and scheduled_date are required.",
+    );
+  }
+  if (dayBrief.length === 0) {
+    throw new GenerateWeekValidationError(
+      "day_brief_required",
+      "day_brief must be a non-empty string.",
+    );
+  }
+  if (responseMode !== "sync" && responseMode !== "async") {
+    throw new GenerateWeekValidationError(
+      "invalid_generation_payload",
+      "response_mode must be sync or async.",
+    );
+  }
+
+  return {
+    action: "generate_day",
+    creator_id: creatorID,
+    scheduled_date: scheduledDate,
+    day_brief: dayBrief,
+    mock: body.mock === true,
+    response_mode: responseMode,
+  };
+}
 
 export function normalizeRegenerateDayRequest(
   body: unknown,

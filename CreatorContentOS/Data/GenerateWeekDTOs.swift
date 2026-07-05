@@ -428,6 +428,30 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
     }
 }
 
+/// Day-at-a-time generation: one card for an explicit target date driven by a
+/// free-text day brief. The server assembles the creator profile and
+/// references, uses the day brief as the only brief, and returns the same
+/// storyboard + caption card payload as regenerate_day.
+struct SupabaseGenerateDayRequest: Encodable, Sendable {
+    var creatorID: UUID
+    var scheduledDate: String
+    var dayBrief: String
+    var responseMode: GenerateWeekResponseMode = .sync
+    var mock: Bool?
+    var action = "generate_day"
+    var clientContext: SupabaseGenerationClientContext? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case scheduledDate = "scheduled_date"
+        case dayBrief = "day_brief"
+        case responseMode = "response_mode"
+        case mock
+        case action
+        case clientContext = "client_context"
+    }
+}
+
 struct SupabaseRetryQueuedDayRequest: Encodable, Sendable {
     var generationID: UUID
     var scheduledDate: String

@@ -18,11 +18,13 @@ import {
   GeneratedDailyCard,
   GeneratedDayOutput,
   GeneratedWeekOutput,
+  GenerateDayRequest,
   GenerateWeekRequest,
   GenerateWeekValidationError,
   GenerationInputSnapshot,
   isUUID,
   makeMockGeneratedWeek,
+  normalizeGenerateDayRequest,
   normalizeGenerateWeekRequest,
   normalizeRegenerateDayRequest,
   preserveManualDailyCardEdits,
@@ -30,6 +32,7 @@ import {
   validateGeneratedDayOutput,
   validateGeneratedWeek,
   weekDates,
+  weekStartDateForDate,
 } from "./generation.ts";
 
 type EnvReader = {
@@ -115,7 +118,7 @@ function logAIGenerationAttempt(log: AIGenerationAttemptLog): void {
 }
 
 type GenerationLifecycleLog = {
-  action: "generate_week" | "regenerate_day" | "retry_day";
+  action: "generate_week" | "generate_day" | "regenerate_day" | "retry_day";
   phase:
     | "request_accepted"
     | "generation_started"
@@ -422,6 +425,16 @@ export async function handleGenerateWeekRequest(
     return await cancelGeneration(admin, session, rawBody);
   }
 
+  if (isGenerateDayAction(rawBody)) {
+    return await handleGenerateDayRequest(
+      admin,
+      env,
+      rawBody,
+      session,
+      dependencies,
+    );
+  }
+
   if (isRegenerateDayAction(rawBody)) {
     return await handleRegenerateDayRequest(
       admin,
@@ -542,6 +555,10 @@ function isRegenerateDayAction(body: unknown): body is Record<string, unknown> {
   return isRecord(body) && body.action === "regenerate_day";
 }
 
+function isGenerateDayAction(body: unknown): body is Record<string, unknown> {
+  return isRecord(body) && body.action === "generate_day";
+}
+
 async function handleRegenerateDayRequest(
   admin: SupabaseAdminClient,
   env: EnvReader,
@@ -559,7 +576,176 @@ async function handleRegenerateDayRequest(
     return preparedResult.response;
   }
 
-  const { prepared } = preparedResult;
+  return await startPreparedDayGeneration(
+    admin,
+    preparedResult.prepared,
+    session,
+    dependencies,
+    "regenerate_day",
+  );
+}
+
+/**
+ * Day-at-a-time generation: the caller supplies a target date and a
+ * free-text brief for that day. The server finds or creates a thin draft
+ * weekly plan container for the containing week, then runs the existing
+ * single-day generation pipeline. The day brief is the only brief sent to
+ * the AI provider: it replaces any stored weekly setup in the prompt input
+ * so the generated card anchors to what the user asked for that day
+ * (including one-off asks like brand deliverables).
+ */
+async function handleGenerateDayRequest(
+  admin: SupabaseAdminClient,
+  env: EnvReader,
+  rawBody: unknown,
+  session: VerifiedDeviceSession,
+  dependencies: GenerateWeekDependencies,
+): Promise<Response> {
+  let request: GenerateDayRequest;
+  try {
+    request = normalizeGenerateDayRequest(rawBody);
+  } catch (error) {
+    return jsonResponse({
+      error: error instanceof GenerateWeekValidationError
+        ? error.code
+        : "invalid_generation_payload",
+    }, 400);
+  }
+
+  if (isDateBeforeToday(request.scheduled_date)) {
+    return pastDateNotAllowedResponse();
+  }
+
+  const creatorResult = await readCreator(
+    admin,
+    session.workspaceID,
+    request.creator_id,
+  );
+  if ("response" in creatorResult) {
+    return creatorResult.response;
+  }
+
+  const containerResult = await ensureDayPlanContainer(
+    admin,
+    session,
+    request,
+  );
+  if ("response" in containerResult) {
+    return containerResult.response;
+  }
+
+  const regenerateBody: Record<string, unknown> = {
+    action: "regenerate_day",
+    creator_id: request.creator_id,
+    weekly_plan_id: containerResult.weeklyPlanID,
+    scheduled_date: request.scheduled_date,
+    preserve_manual_edits: false,
+    mock: request.mock,
+    response_mode: request.response_mode,
+    day_guidance: request.day_brief,
+  };
+
+  const preparedResult = await prepareDayGeneration(
+    admin,
+    env,
+    regenerateBody,
+    session,
+  );
+  if ("response" in preparedResult) {
+    return preparedResult.response;
+  }
+
+  // Per-day brief only: replace any stored weekly setup so the day brief is
+  // the single brief the prompt and validators anchor to.
+  const prepared: PreparedDayGeneration = {
+    ...preparedResult.prepared,
+    inputSnapshot: {
+      ...preparedResult.prepared.inputSnapshot,
+      weekly_setup: { notes: request.day_brief },
+      day_guidance: request.day_brief,
+    },
+  };
+
+  return await startPreparedDayGeneration(
+    admin,
+    prepared,
+    session,
+    dependencies,
+    "generate_day",
+  );
+}
+
+/**
+ * Find the latest draft weekly plan covering the requested date, or create a
+ * thin draft container so a single day can be generated without a full-week
+ * generation run.
+ */
+async function ensureDayPlanContainer(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  request: GenerateDayRequest,
+): Promise<{ weeklyPlanID: string } | { response: Response }> {
+  const weekStartDate = weekStartDateForDate(request.scheduled_date);
+
+  const existingResult = await admin
+    .from("weekly_plans")
+    .select("id,status,is_soft_locked")
+    .eq("workspace_id", session.workspaceID)
+    .eq("creator_id", request.creator_id)
+    .eq("week_start_date", weekStartDate)
+    .in("status", ["draft"])
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (existingResult.error) {
+    return generationPersistFailure(
+      "day_container_plan_lookup",
+      existingResult.error,
+    );
+  }
+
+  const existing = (existingResult.data?.[0] ?? null) as PlanRecord | null;
+  if (existing?.is_soft_locked) {
+    return {
+      response: jsonResponse({ error: "existing_published_week_locked" }, 409),
+    };
+  }
+  if (existing?.id) {
+    return { weeklyPlanID: existing.id };
+  }
+
+  const weeklyPlanID = crypto.randomUUID();
+  const { data, error } = await admin
+    .from("weekly_plans")
+    .insert({
+      id: weeklyPlanID,
+      workspace_id: session.workspaceID,
+      creator_id: request.creator_id,
+      weekly_setup_id: null,
+      creator_profile_id: null,
+      week_start_date: weekStartDate,
+      status: "draft",
+      strategy_summary: "Day-at-a-time container week.",
+      warnings: [],
+      assumptions: ["Created automatically for single-day generation."],
+      is_soft_locked: false,
+      created_by_member_id: session.memberID,
+    })
+    .select("id")
+    .single();
+  if (error || !data) {
+    return generationPersistFailure("day_container_plan_write", error);
+  }
+
+  return { weeklyPlanID };
+}
+
+async function startPreparedDayGeneration(
+  admin: SupabaseAdminClient,
+  prepared: PreparedDayGeneration,
+  session: VerifiedDeviceSession,
+  dependencies: GenerateWeekDependencies,
+  action: "generate_day" | "regenerate_day",
+): Promise<Response> {
   const runResult = await createDayGenerationRun(
     admin,
     prepared,
@@ -570,7 +756,7 @@ async function handleRegenerateDayRequest(
   }
 
   logGenerationLifecycle({
-    action: "regenerate_day",
+    action,
     phase: "request_accepted",
     status: "running",
     generation_id: runResult.run.id,
