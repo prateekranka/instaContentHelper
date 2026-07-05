@@ -10,6 +10,15 @@
 // Modes:
 //   --mode plan-full-week       Plan N full-week generation attempts.
 //   --mode plan-regenerate-day  Plan N regenerate-day attempts with a guidance string.
+//   --mode plan-generate-day    Plan N day-at-a-time generate_day attempts with a
+//                               day brief (--brief). Add --optimize-brief to run the
+//                               Karpathy-style loop: after EVERY run, keep the brief
+//                               if it set a new best objective, otherwise revert to
+//                               the best-known brief, then append one targeted
+//                               instruction for the weakest quality category.
+//                               Live env: MCO_SUPABASE_URL, MCO_SUPABASE_PUBLISHABLE_KEY,
+//                               MCO_LIVE_CREATOR_ID, MCO_LIVE_DEVICE_TOKEN,
+//                               MCO_LIVE_GENERATE_DATE (today or future).
 //   --mode summary              Compute summary stats from a results JSONL file.
 //   --mode evaluate-guidance    Evaluate guidance adherence of generated content.
 //
@@ -45,9 +54,11 @@
 type Mode =
   | "plan-full-week"
   | "plan-regenerate-day"
+  | "plan-generate-day"
   | "summary"
   | "evaluate-guidance";
 type JsonObject = Record<string, unknown>;
+type ExperimentKind = "full-week" | "regenerate-day" | "generate-day";
 type QualityCategory =
   | "opening_attention"
   | "retention_architecture"
@@ -65,7 +76,7 @@ type QualityCategoryScore = {
 
 type ResultRow = {
   run_index: number;
-  experiment: "full-week" | "regenerate-day";
+  experiment: ExperimentKind;
   started_at: string;
   finished_at: string;
   mode: "dry-run" | "live";
@@ -102,7 +113,7 @@ type ResultRow = {
 
 type OutputRow = {
   run_index: number;
-  experiment: "full-week" | "regenerate-day";
+  experiment: ExperimentKind;
   generated_content: string;
 };
 
@@ -144,7 +155,7 @@ type LiveTerminalResult = {
 
 type AutoresearchObservation = {
   run_index: number;
-  experiment: "full-week" | "regenerate-day";
+  experiment: ExperimentKind;
   observed_after_generation: true;
   observed_at: string;
   objective_score: number;
@@ -154,7 +165,10 @@ type AutoresearchObservation = {
   failure_cluster: string | null;
   weakest_quality_category: QualityCategory | null;
   suggested_next_probe: string;
-  allowed_to_change_generation_behavior: false;
+  allowed_to_change_generation_behavior: boolean;
+  brief_used: string | null;
+  next_brief: string | null;
+  hypothesis: string | null;
 };
 
 type SummaryStats = {
@@ -216,6 +230,25 @@ const QUALITY_WEIGHTS: Record<QualityCategory, number> = {
   format_production_fit: 10,
 };
 
+const MAX_OPTIMIZED_BRIEF_LENGTH = 2_000;
+
+const BRIEF_ADDENDA: Record<QualityCategory, string> = {
+  opening_attention:
+    "Open with a concrete visual hook in the first two seconds; the first line must create a curiosity gap without clickbait.",
+  retention_architecture:
+    "Structure scenes so each shot sets up the next; land one clear payoff in the final scene and make the ending loopable.",
+  creator_voice_specificity:
+    "Use lived, specific detail from this brief — name the place, the routine, the exact object; no generic fitness-creator phrasing.",
+  audience_goal_fit:
+    "State plainly why this day matters to a woman rebuilding fitness later in life; match one clear content job: connect, teach, or document.",
+  save_share_trigger:
+    "Give one practical detail worth saving or sending to a friend; keep the CTA natural, never templated.",
+  accessibility_comprehension:
+    "Make the Reel fully understandable on mute: tight on-screen text, readable density, and a complete silent version.",
+  format_production_fit:
+    "Keep it shootable in one session with minimal setups; respect the stated duration and keep the scene count realistic.",
+};
+
 const args = parseArgs(Deno.args);
 const mode = args.mode as Mode;
 const runs = parsePositiveInt(args.runs) ?? DEFAULT_RUNS;
@@ -261,6 +294,24 @@ async function main(): Promise<void> {
         stopAfterFailures,
       );
       break;
+    case "plan-generate-day": {
+      const brief = args.brief ?? guidance;
+      if (!brief) {
+        fail("--brief is required for --mode plan-generate-day");
+      }
+      await runExperimentPlan(
+        "generate-day",
+        runs,
+        dryRun,
+        brief,
+        output,
+        outputsPath,
+        seed,
+        stopAfterFailures,
+        args.optimizeBrief === "1",
+      );
+      break;
+    }
     case "summary":
       if (!input) {
         fail("--input is required for --mode summary");
@@ -279,7 +330,7 @@ async function main(): Promise<void> {
       break;
     default:
       fail(
-        `--mode must be one of: plan-full-week, plan-regenerate-day, summary, evaluate-guidance (got "${
+        `--mode must be one of: plan-full-week, plan-regenerate-day, plan-generate-day, summary, evaluate-guidance (got "${
           String(args.mode ?? "")
         }")`,
       );
@@ -287,7 +338,7 @@ async function main(): Promise<void> {
 }
 
 async function runExperimentPlan(
-  experiment: "full-week" | "regenerate-day",
+  experiment: ExperimentKind,
   runCount: number,
   isDryRun: boolean,
   guidanceString: string,
@@ -295,11 +346,14 @@ async function runExperimentPlan(
   companionOutputsPath: string,
   rngSeed: number,
   stopAfterFailureCount: number | null,
+  optimizeBrief = false,
 ): Promise<void> {
   const rng = mulberry32(rngSeed);
   const liveEnv = readLiveEnv(experiment);
   const action = experiment === "full-week"
     ? "generate_week"
+    : experiment === "generate-day"
+    ? "generate_day"
     : "regenerate_day";
   const functionName = "generate-week";
   const requestShape = describeRequestShape(experiment);
@@ -341,16 +395,18 @@ async function runExperimentPlan(
   let bestObjectiveScore: number | null = null;
   let consecutiveFailures = 0;
   let rowsWritten = 0;
+  let currentBrief = guidanceString;
+  let bestBrief = guidanceString;
   for (let index = 0; index < runCount; index += 1) {
     const startedAt = new Date().toISOString();
     logExperimentProgress(
       `run ${index + 1}/${runCount} starting (${experiment}, ${
         isDryRun ? "dry-run" : "live"
-      })`,
+      })${optimizeBrief ? ` brief_chars=${currentBrief.length}` : ""}`,
     );
     const measurement = isDryRun
       ? mockRunResult(experiment, index, rng)
-      : await liveRunResult(experiment, guidanceString, liveEnv, index + 1);
+      : await liveRunResult(experiment, currentBrief, liveEnv, index + 1);
     const row: ResultRow = {
       run_index: index + 1,
       experiment,
@@ -367,11 +423,11 @@ async function runExperimentPlan(
       weekly_plan_id: measurement.weeklyPlanID,
       creator_id_present: liveEnv.creatorIdPresent,
       week_start_date: liveEnv.weekStartDate ?? "2026-08-24",
-      scheduled_date: experiment === "regenerate-day"
-        ? (liveEnv.regenerateDate ?? "2026-08-25")
-        : null,
+      scheduled_date: experiment === "full-week"
+        ? null
+        : (liveEnv.regenerateDate ?? "2026-08-25"),
       weekly_plan_id_present: liveEnv.weeklyPlanIdPresent,
-      guidance: experiment === "regenerate-day" ? guidanceString : null,
+      guidance: experiment === "full-week" ? null : currentBrief,
       request_payload_shape: requestShape,
       http_status: measurement.httpStatus,
       duration_ms: measurement.durationMs,
@@ -404,9 +460,33 @@ async function runExperimentPlan(
         row.generation_id ?? "none"
       } poll_count=${row.poll_count ?? 0}`,
     );
+    // Karpathy-style per-run optimization: after every generation, keep the
+    // brief when it set a new best objective, otherwise revert to the best
+    // known brief, then propose exactly one new change targeting the weakest
+    // rubric category. One hypothesis per run, measured on the next run.
+    let briefStep: BriefOptimizationStep | null = null;
+    if (optimizeBrief && experiment === "generate-day") {
+      const passedRun = row.validation_passed &&
+        row.hard_gate_blocking_failures === 0;
+      const improvedOverBest = passedRun &&
+        (bestObjectiveScore === null ||
+          row.autoresearch_objective_score > bestObjectiveScore);
+      if (improvedOverBest) {
+        bestBrief = currentBrief;
+      }
+      briefStep = proposeNextBrief(bestBrief, currentBrief, row);
+    }
+
     const observation = autoresearchAfterGeneration(
       row,
       bestObjectiveScore,
+      briefStep
+        ? {
+          briefUsed: currentBrief,
+          nextBrief: briefStep.nextBrief,
+          hypothesis: briefStep.hypothesis,
+        }
+        : undefined,
     );
     await appendJsonl(autoresearchPath, observation);
     logExperimentProgress(
@@ -416,6 +496,12 @@ async function runExperimentPlan(
         observation.failure_cluster ?? "none"
       } diagnosis=${observation.diagnosis}`,
     );
+    if (briefStep) {
+      logExperimentProgress(
+        `run ${index + 1}/${runCount} optimize: ${briefStep.hypothesis}`,
+      );
+      currentBrief = briefStep.nextBrief;
+    }
     if (
       row.validation_passed &&
       row.hard_gate_blocking_failures === 0 &&
@@ -459,6 +545,11 @@ async function runExperimentPlan(
 function autoresearchAfterGeneration(
   row: ResultRow,
   previousBestObjectiveScore: number | null,
+  optimization?: {
+    briefUsed: string;
+    nextBrief: string;
+    hypothesis: string;
+  },
 ): AutoresearchObservation {
   const weakest = weakestQualityCategory(row.quality_breakdown);
   const improved = previousBestObjectiveScore === null
@@ -478,7 +569,80 @@ function autoresearchAfterGeneration(
       : row.failure_code || "unknown_failure",
     weakest_quality_category: weakest,
     suggested_next_probe: suggestedNextProbe(row, weakest),
-    allowed_to_change_generation_behavior: false,
+    allowed_to_change_generation_behavior: Boolean(optimization),
+    brief_used: optimization?.briefUsed ?? null,
+    next_brief: optimization?.nextBrief ?? null,
+    hypothesis: optimization?.hypothesis ?? null,
+  };
+}
+
+type BriefOptimizationStep = {
+  nextBrief: string;
+  hypothesis: string;
+};
+
+/**
+ * One-hypothesis-per-run brief optimizer. The only lever the client controls
+ * without redeploying the edge function is the day brief itself, so each run
+ * appends a single targeted instruction for the weakest rubric category to the
+ * best-known brief. Improvements are kept (the addendum stays in bestBrief on
+ * the next improvement); regressions are reverted because the next step always
+ * rebuilds from bestBrief. Validation failures never mutate the brief.
+ */
+function proposeNextBrief(
+  bestBrief: string,
+  currentBrief: string,
+  row: ResultRow,
+): BriefOptimizationStep {
+  if (!row.validation_passed) {
+    return {
+      nextBrief: bestBrief,
+      hypothesis: `Run failed validation (${
+        row.failure_code || "unknown_failure"
+      }); not a quality signal — reverting to best-known brief unchanged.`,
+    };
+  }
+  if (row.hard_gate_blocking_failures > 0) {
+    return {
+      nextBrief: bestBrief,
+      hypothesis:
+        "Blocking hard gate failed; do not optimize around it — reverting to best-known brief.",
+    };
+  }
+
+  const ranked = (Object.keys(row.quality_breakdown) as QualityCategory[])
+    .sort((a, b) =>
+      row.quality_breakdown[a].score - row.quality_breakdown[b].score
+    );
+  for (const category of ranked) {
+    const addendum = BRIEF_ADDENDA[category];
+    if (bestBrief.includes(addendum)) {
+      continue;
+    }
+    const candidate = `${bestBrief}\n${addendum}`;
+    if (candidate.length > MAX_OPTIMIZED_BRIEF_LENGTH) {
+      return {
+        nextBrief: bestBrief,
+        hypothesis:
+          `Brief is at the ${MAX_OPTIMIZED_BRIEF_LENGTH}-char cap; keeping best-known brief instead of appending for ${category}.`,
+      };
+    }
+    return {
+      nextBrief: candidate,
+      hypothesis: `Weakest rubric category is ${category} (score ${
+        row.quality_breakdown[category].score
+      }); appending one targeted instruction for it${
+        currentBrief === bestBrief
+          ? ""
+          : " on top of the best-known brief (previous change reverted)"
+      }.`,
+    };
+  }
+
+  return {
+    nextBrief: bestBrief,
+    hypothesis:
+      "All category addenda already present in best-known brief; holding steady to collect observations.",
   };
 }
 
@@ -687,18 +851,24 @@ type LiveEnv = {
   pollTimeoutMs: number;
 };
 
-function readLiveEnv(experiment: "full-week" | "regenerate-day"): LiveEnv {
+function readLiveEnv(experiment: ExperimentKind): LiveEnv {
   const baseRequired = [
     "MCO_SUPABASE_URL",
     "MCO_SUPABASE_PUBLISHABLE_KEY",
     "MCO_LIVE_CREATOR_ID",
     "MCO_LIVE_DEVICE_TOKEN",
-    "MCO_LIVE_AI_WEEK_START_DATE",
   ];
-  const regenerateRequired = experiment === "regenerate-day"
-    ? [...baseRequired, "MCO_LIVE_WEEKLY_PLAN_ID", "MCO_LIVE_REGENERATE_DATE"]
-    : baseRequired;
-  const missing = regenerateRequired.filter((name) => !Deno.env.get(name));
+  const required = experiment === "generate-day"
+    ? [...baseRequired, "MCO_LIVE_GENERATE_DATE"]
+    : experiment === "regenerate-day"
+    ? [
+      ...baseRequired,
+      "MCO_LIVE_AI_WEEK_START_DATE",
+      "MCO_LIVE_WEEKLY_PLAN_ID",
+      "MCO_LIVE_REGENERATE_DATE",
+    ]
+    : [...baseRequired, "MCO_LIVE_AI_WEEK_START_DATE"];
+  const missing = required.filter((name) => !Deno.env.get(name));
   const requestTimeoutMs =
     parsePositiveInt(Deno.env.get("MCO_LIVE_REQUEST_TIMEOUT_MS")) ??
       240_000;
@@ -717,17 +887,22 @@ function readLiveEnv(experiment: "full-week" | "regenerate-day"): LiveEnv {
     creatorIdPresent: Boolean(Deno.env.get("MCO_LIVE_CREATOR_ID")),
     weeklyPlanIdPresent: Boolean(Deno.env.get("MCO_LIVE_WEEKLY_PLAN_ID")),
     weekStartDate: envValue("MCO_LIVE_AI_WEEK_START_DATE"),
-    regenerateDate: envValue("MCO_LIVE_REGENERATE_DATE"),
+    regenerateDate: experiment === "generate-day"
+      ? envValue("MCO_LIVE_GENERATE_DATE")
+      : envValue("MCO_LIVE_REGENERATE_DATE"),
     requestTimeoutMs,
     pollTimeoutMs,
   };
 }
 
 function describeRequestShape(
-  experiment: "full-week" | "regenerate-day",
+  experiment: ExperimentKind,
 ): string {
   if (experiment === "full-week") {
     return '{"creator_id":uuid,"week_start_date":YYYY-MM-DD,"weekly_setup_id":uuid?,"mode":"generate_draft","preserve_manual_edits":false,"response_mode":"async","feature_flags":["parallel_week_generation"],"client_context":{...}}';
+  }
+  if (experiment === "generate-day") {
+    return '{"action":"generate_day","creator_id":uuid,"scheduled_date":YYYY-MM-DD,"day_brief":string,"response_mode":"async","client_context":{...}}';
   }
   return '{"action":"regenerate_day","creator_id":uuid,"weekly_plan_id":uuid,"scheduled_date":YYYY-MM-DD,"preserve_manual_edits":true,"response_mode":"async","day_guidance":string,"client_context":{...}}';
 }
@@ -743,7 +918,7 @@ type LiveQualityAssessment = {
 };
 
 type LivePayloadOptions = {
-  experiment: "full-week" | "regenerate-day";
+  experiment: ExperimentKind;
   guidanceString: string;
   liveEnv: LiveEnv;
 };
@@ -762,7 +937,7 @@ type LiveStatusKind =
   | "unknown";
 
 async function liveRunResult(
-  experiment: "full-week" | "regenerate-day",
+  experiment: ExperimentKind,
   guidanceString: string,
   liveEnv: LiveEnv,
   runIndex: number,
@@ -878,6 +1053,27 @@ function liveRequestPayload(options: LivePayloadOptions): JsonObject {
     });
   }
 
+  if (options.experiment === "generate-day") {
+    const scheduledDate = requireLiveValue(
+      "MCO_LIVE_GENERATE_DATE",
+      options.liveEnv.regenerateDate,
+    );
+    return compactObject({
+      action: "generate_day",
+      creator_id: creatorID,
+      scheduled_date: scheduledDate,
+      day_brief: options.guidanceString,
+      response_mode: "async",
+      client_context: compactObject({
+        ui_surface: "generation_reliability_experiment",
+        action: "generate_day",
+        scheduled_date: scheduledDate,
+        day_guidance_present: options.guidanceString.trim().length > 0,
+        day_guidance_chars: options.guidanceString.trim().length,
+      }),
+    });
+  }
+
   const scheduledDate = requireLiveValue(
     "MCO_LIVE_REGENERATE_DATE",
     options.liveEnv.regenerateDate,
@@ -904,7 +1100,7 @@ function liveRequestPayload(options: LivePayloadOptions): JsonObject {
 }
 
 async function waitForLiveTerminal(
-  experiment: "full-week" | "regenerate-day",
+  experiment: ExperimentKind,
   initial: LiveHTTPResult,
   liveEnv: LiveEnv,
   runIndex: number,
@@ -1092,7 +1288,7 @@ async function invokeLiveGenerateWeek(
 }
 
 function validateLiveGeneration(
-  experiment: "full-week" | "regenerate-day",
+  experiment: ExperimentKind,
   data: JsonObject | null,
   response: LiveHTTPResult,
 ): LiveValidationResult {
@@ -1152,7 +1348,7 @@ function validateLiveGeneration(
 }
 
 function assessLiveQuality(
-  experiment: "full-week" | "regenerate-day",
+  experiment: ExperimentKind,
   data: JsonObject | null,
   validation: LiveValidationResult,
   durationMs: number,
@@ -1335,7 +1531,7 @@ function zeroQualityBreakdown(
 }
 
 function liveStatusKind(
-  experiment: "full-week" | "regenerate-day",
+  experiment: ExperimentKind,
   data: JsonObject | null,
 ): LiveStatusKind {
   const status = stringValue(data?.status);
@@ -1393,7 +1589,7 @@ function liveHeaders(liveEnv: LiveEnv): HeadersInit {
 }
 
 function validateLiveEnv(
-  experiment: "full-week" | "regenerate-day",
+  experiment: ExperimentKind,
   liveEnv: LiveEnv,
 ): string[] {
   const errors: string[] = [];
@@ -1420,11 +1616,16 @@ function validateLiveEnv(
       errors.push("MCO_LIVE_REGENERATE_DATE must be YYYY-MM-DD");
     }
   }
+  if (experiment === "generate-day") {
+    if (liveEnv.regenerateDate && !isDateString(liveEnv.regenerateDate)) {
+      errors.push("MCO_LIVE_GENERATE_DATE must be YYYY-MM-DD");
+    }
+  }
   return errors;
 }
 
 function mockRunResult(
-  experiment: "full-week" | "regenerate-day",
+  experiment: ExperimentKind,
   index: number,
   rng: () => number,
 ): MockResult {
@@ -1554,7 +1755,7 @@ function weightedQualityScore(
 }
 
 function mockGeneratedContent(
-  experiment: "full-week" | "regenerate-day",
+  experiment: ExperimentKind,
   index: number,
   passed: boolean,
 ): string {
@@ -1969,6 +2170,9 @@ function defaultOutputPath(mode: Mode, isDryRun: boolean): string {
   }
   if (mode === "plan-regenerate-day") {
     return `${DEFAULT_OUTPUT_DIR}/regenerate-day-${slug}.jsonl`;
+  }
+  if (mode === "plan-generate-day") {
+    return `${DEFAULT_OUTPUT_DIR}/generate-day-${slug}.jsonl`;
   }
   return "";
 }

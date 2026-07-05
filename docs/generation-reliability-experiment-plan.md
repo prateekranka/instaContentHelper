@@ -40,6 +40,7 @@ Modes:
 | --------------------- | ---------------------------------------------------------------- |
 | `plan-full-week`      | Plan/execute N full-week `generate_week` attempts.               |
 | `plan-regenerate-day` | Plan/execute N `regenerate_day` attempts with a guidance string. |
+| `plan-generate-day`   | Plan/execute N day-at-a-time `generate_day` attempts with a day brief (`--brief`). With `--optimize-brief`, runs the Karpathy-style loop: after every run, keep the brief if it set a new best objective, otherwise revert to the best-known brief, then append one targeted instruction for the weakest quality rubric category (one hypothesis per run; validation failures never mutate the brief). Live env: `MCO_SUPABASE_URL`, `MCO_SUPABASE_PUBLISHABLE_KEY`, `MCO_LIVE_CREATOR_ID`, `MCO_LIVE_DEVICE_TOKEN`, `MCO_LIVE_GENERATE_DATE`. |
 | `summary`             | Compute summary stats from a results JSONL file.                 |
 | `evaluate-guidance`   | Evaluate guidance adherence of generated content.                |
 
