@@ -1253,6 +1253,209 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertTrue(SupabaseGenerationRetryPolicy.isRetryableStatusPollingError(error))
     }
 
+    func testGenerationRetryPolicyClassifiesServerUnavailableStatusAsRetryable() {
+        let error = FunctionsError.httpError(
+            code: 503,
+            data: Data(#"{"error":"temporarily_unavailable"}"#.utf8)
+        )
+
+        XCTAssertTrue(SupabaseGenerationRetryPolicy.isRetryableStatusPollingError(error))
+    }
+
+    func testGenerationRetryPolicyDoesNotRetryStableProviderConfigurationError() {
+        let error = FunctionsError.httpError(
+            code: 500,
+            data: Data(#"{"error":"missing_openai_api_key"}"#.utf8)
+        )
+
+        XCTAssertFalse(SupabaseGenerationRetryPolicy.isRetryableStatusPollingError(error))
+    }
+
+    func testRegenerateDayMalformedCompletedPayloadThrowsInsteadOfPolling() {
+        let data = Data(
+            #"{"generation_id":"88888888-8888-4888-8888-888888888881","weekly_plan_id":"77777777-7777-4777-8777-777777777771","status":"draft","target_scheduled_date":"2026-06-10","daily_card":{}}"#.utf8
+        )
+
+        XCTAssertThrowsError(try SupabaseRegenerateDayInvocation.decode(data))
+    }
+
+    func testRegenerateDayCancelledStatusDecodesAsTerminalFailure() throws {
+        let data = Data(
+            #"{"generation_id":"88888888-8888-4888-8888-888888888881","weekly_plan_id":"77777777-7777-4777-8777-777777777771","status":"cancelled","target_scheduled_date":"2026-06-10"}"#.utf8
+        )
+
+        let invocation = try SupabaseRegenerateDayInvocation.decode(data)
+        guard case .failed(let status) = invocation else {
+            XCTFail("Expected cancellation to be terminal.")
+            return
+        }
+        XCTAssertEqual(status.error, "generation_cancelled")
+    }
+
+    func testRegeneratedDayPollerAllowsBackendRecoveryBudget() {
+        XCTAssertGreaterThanOrEqual(
+            SupabaseRegeneratedDayPoller.defaultTimeoutSeconds,
+            1_800,
+            "The day poller must outlive the backend's bounded recovery attempts."
+        )
+    }
+
+    func testRegeneratedDayPollerCompletesTwentyOfTwentyRecoverableScenarios() async throws {
+        let completed = try completedDayPollingInvocation()
+        let running = try SupabaseRegenerateDayInvocation.decode(
+            Data(
+                #"{"generation_id":"88888888-8888-4888-8888-888888888881","weekly_plan_id":"77777777-7777-4777-8777-777777777771","status":"running","target_scheduled_date":"2026-06-10","poll_after_seconds":5}"#.utf8
+            )
+        )
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        for scenario in 0..<20 {
+            let steps: [RegeneratedDayPollingScript.Step]
+            switch scenario % 5 {
+            case 0:
+                steps = [.networkConnectionLost, .completed]
+            case 1:
+                steps = [.acceptedRunNotFound, .running, .completed]
+            case 2:
+                steps = [.networkConnectionLost, .networkConnectionLost, .completed]
+            case 3:
+                steps = [.running, .completed]
+            default:
+                steps = [.serverUnavailable, .completed]
+            }
+            let script = RegeneratedDayPollingScript(
+                steps: steps,
+                running: running,
+                completed: completed
+            )
+            let result = try await SupabaseRegeneratedDayPoller.poll(
+                deadline: now.addingTimeInterval(60),
+                now: { now },
+                initialPollAfterSeconds: 0,
+                sleep: { _ in },
+                invokeStatus: {
+                    try await script.next()
+                }
+            )
+
+            XCTAssertEqual(result.targetScheduledDate, "2026-06-10")
+            XCTAssertEqual(result.status, "draft")
+        }
+    }
+
+    func testRegeneratedDayPollerBacksOffRepeatedRetryableStatusFailures() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let completed = try completedDayPollingInvocation()
+        let script = RegeneratedDayPollingScript(
+            steps: [
+                .networkConnectionLost,
+                .serverUnavailable,
+                .networkConnectionLost,
+                .completed,
+            ],
+            running: completed,
+            completed: completed
+        )
+        let sleeper = RegeneratedDayPollingSleeper()
+
+        _ = try await SupabaseRegeneratedDayPoller.poll(
+            deadline: now.addingTimeInterval(60),
+            now: { now },
+            initialPollAfterSeconds: 0,
+            sleep: { nanoseconds in
+                await sleeper.record(nanoseconds)
+            },
+            invokeStatus: {
+                try await script.next()
+            }
+        )
+
+        let recordedNanoseconds = await sleeper.recordedNanoseconds
+        XCTAssertEqual(
+            recordedNanoseconds,
+            [0, 2_000_000_000, 4_000_000_000, 8_000_000_000]
+        )
+    }
+
+    func testRegeneratedDayPollerDoesNotRetryNonTransientStatusError() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let completed = try completedDayPollingInvocation()
+        for terminalStep in [
+            RegeneratedDayPollingScript.Step.unauthorized,
+            .missingProviderConfiguration,
+        ] {
+            let script = RegeneratedDayPollingScript(
+                steps: [terminalStep, .completed],
+                running: completed,
+                completed: completed
+            )
+
+            do {
+                _ = try await SupabaseRegeneratedDayPoller.poll(
+                    deadline: now.addingTimeInterval(60),
+                    now: { now },
+                    initialPollAfterSeconds: 0,
+                    sleep: { _ in },
+                    invokeStatus: {
+                        try await script.next()
+                    }
+                )
+                XCTFail("Expected the non-transient status error to fail immediately.")
+            } catch {
+                let invocationCount = await script.invocationCount
+                XCTAssertEqual(invocationCount, 1)
+            }
+        }
+    }
+
+    private func completedDayPollingInvocation() throws -> SupabaseRegenerateDayInvocation {
+        let data = Data(
+            """
+            {
+              "generation_id": "88888888-8888-4888-8888-888888888881",
+              "weekly_plan_id": "77777777-7777-4777-8777-777777777771",
+              "status": "draft",
+              "target_scheduled_date": "2026-06-10",
+              "warnings": [],
+              "assumptions": [],
+              "source_summary": "Polling reliability fixture.",
+              "generated_at": "2026-06-10T08:00:00Z",
+              "daily_card": {
+                "id": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1",
+                "scheduled_date": "2026-06-10",
+                "status": "draft",
+                "title": "Recovery walk reset",
+                "why_today": "Keep recovery visible.",
+                "growth_job": "Consistency.",
+                "content_pillar": "recovery",
+                "shootability": "easy",
+                "estimated_shoot_minutes": 8,
+                "energy_required": "low",
+                "language_mode": "English",
+                "scene_list": [{"number":1,"title":"Walking shoes","duration":"3 sec","symbol":"shoeprints.fill"}],
+                "script": "Recovery still counts.",
+                "no_voiceover_version": "Use three quiet clips.",
+                "on_screen_text": ["Recovery still counts"],
+                "caption": "A short recovery walk in New Jersey.",
+                "cta": "Save this reminder.",
+                "hashtags": ["recovery"],
+                "cover_text": "Recovery counts",
+                "post_instructions": "Use natural sound.",
+                "brand_event_notes": "",
+                "backup_story": "One walking clip.",
+                "backup_caption_only": "Recovery day note.",
+                "audio_option_notes": "No audio dependency.",
+                "creator_fit_score": 94,
+                "risk_notes": [],
+                "assumptions": ["Low energy"],
+                "source_note": "Weekly setup."
+              }
+            }
+            """.utf8
+        )
+        return try SupabaseRegenerateDayInvocation.decode(data)
+    }
+
     func testPublishingGeneratedDraftPreservesRichFieldsInFixtureModel() async throws {
         let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
         var draft = try await TestWeeklyGenerationRepository().generateWeek(
@@ -3584,5 +3787,74 @@ private actor ReconciliationContentRepository: WeeklyPlanRepository {
         context: WorkspaceContext
     ) async throws -> WeeklyPlan {
         throw RepositoryError.notConfigured("brief not needed")
+    }
+}
+
+private actor RegeneratedDayPollingScript {
+    enum Step: Sendable {
+        case networkConnectionLost
+        case acceptedRunNotFound
+        case serverUnavailable
+        case unauthorized
+        case missingProviderConfiguration
+        case running
+        case completed
+    }
+
+    private var steps: [Step]
+    private let running: SupabaseRegenerateDayInvocation
+    private let completed: SupabaseRegenerateDayInvocation
+    private(set) var invocationCount = 0
+
+    init(
+        steps: [Step],
+        running: SupabaseRegenerateDayInvocation,
+        completed: SupabaseRegenerateDayInvocation
+    ) {
+        self.steps = steps
+        self.running = running
+        self.completed = completed
+    }
+
+    func next() throws -> SupabaseRegenerateDayInvocation {
+        invocationCount += 1
+        let step = steps.isEmpty ? .completed : steps.removeFirst()
+
+        switch step {
+        case .networkConnectionLost:
+            throw URLError(.networkConnectionLost)
+        case .acceptedRunNotFound:
+            throw FunctionsError.httpError(
+                code: 404,
+                data: Data(#"{"error":"invalid_generation_payload"}"#.utf8)
+            )
+        case .serverUnavailable:
+            throw FunctionsError.httpError(
+                code: 503,
+                data: Data(#"{"error":"temporarily_unavailable"}"#.utf8)
+            )
+        case .unauthorized:
+            throw FunctionsError.httpError(
+                code: 401,
+                data: Data(#"{"error":"invalid_device_session"}"#.utf8)
+            )
+        case .missingProviderConfiguration:
+            throw FunctionsError.httpError(
+                code: 500,
+                data: Data(#"{"error":"missing_openai_api_key"}"#.utf8)
+            )
+        case .running:
+            return running
+        case .completed:
+            return completed
+        }
+    }
+}
+
+private actor RegeneratedDayPollingSleeper {
+    private(set) var recordedNanoseconds: [UInt64] = []
+
+    func record(_ nanoseconds: UInt64) {
+        recordedNanoseconds.append(nanoseconds)
     }
 }

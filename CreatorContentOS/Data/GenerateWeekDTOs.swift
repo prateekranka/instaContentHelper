@@ -903,18 +903,30 @@ enum SupabaseRegenerateDayInvocation: Sendable {
     case failed(SupabaseGenerateWeekStatusResponse)
 
     static func decode(_ data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> SupabaseRegenerateDayInvocation {
-        let probe = try? decoder.decode(SupabaseGenerationStatusProbe.self, from: data)
-        if probe?.status == "draft" || probe?.status == "completed" {
-            if let response = try? decoder.decode(SupabaseRegenerateDayResponse.self, from: data) {
-                return .completed(response)
-            }
+        let probe = try decoder.decode(SupabaseGenerationStatusProbe.self, from: data)
+        if probe.status == "draft" || probe.status == "completed" {
+            return .completed(try decoder.decode(SupabaseRegenerateDayResponse.self, from: data))
         }
 
-        let status = try decoder.decode(SupabaseGenerateWeekStatusResponse.self, from: data)
-        if status.status == "failed" {
+        var status = try decoder.decode(SupabaseGenerateWeekStatusResponse.self, from: data)
+        switch status.status {
+        case "failed":
             return .failed(status)
+        case "cancelled":
+            if status.error?.nilIfBlank == nil {
+                status.error = "generation_cancelled"
+            }
+            return .failed(status)
+        case "pending", "queued", "retrying", "running":
+            return .running(status)
+        default:
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: [],
+                    debugDescription: "Unexpected regenerate-day status: \(status.status)"
+                )
+            )
         }
-        return .running(status)
     }
 }
 

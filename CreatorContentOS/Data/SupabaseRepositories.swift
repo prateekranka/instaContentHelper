@@ -735,31 +735,35 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         generationID: UUID,
         creatorID: UUID
     ) async throws -> RegeneratedDayResult {
-        let deadline = Date().addingTimeInterval(600)
-        var pollAfterSeconds = 3
-
-        while Date() < deadline {
-            logGeneration("regenerate_day poll_wait generation_id=\(generationID) seconds=\(pollAfterSeconds)")
-            try await Task.sleep(nanoseconds: UInt64(pollAfterSeconds) * 1_000_000_000)
-            let invocation = try await invokeRegenerateDay(
-                statusRequest(generationID: generationID, creatorID: creatorID)
-            )
-            logGeneration("regenerate_day poll_result \(regenerateInvocationSummary(invocation))")
-
-            switch invocation {
-            case .completed(let response):
-                logGeneration("regenerate_day poll_terminal completed generation_id=\(response.generationID) scheduled_date=\(response.targetScheduledDate)")
-                return response.domainResult
-            case .running(let status):
-                pollAfterSeconds = max(2, min(status.pollAfterSeconds ?? 3, 15))
-            case .failed(let status):
-                logGeneration("regenerate_day poll_terminal failed \(statusSummary(status))")
-                throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_day")
+        try await SupabaseRegeneratedDayPoller.poll(
+            deadline: Date().addingTimeInterval(SupabaseRegeneratedDayPoller.defaultTimeoutSeconds),
+            sleep: { nanoseconds in
+                try await Task.sleep(nanoseconds: nanoseconds)
+            },
+            invokeStatus: {
+                let invocation = try await invokeRegenerateDay(
+                    statusRequest(generationID: generationID, creatorID: creatorID)
+                )
+                logGeneration("regenerate_day poll_result \(regenerateInvocationSummary(invocation))")
+                return invocation
+            },
+            observe: { event in
+                switch event {
+                case .waiting(let seconds):
+                    logGeneration("regenerate_day poll_wait generation_id=\(generationID) seconds=\(seconds)")
+                case .acceptedRunNotFound(let count, let retryAfterSeconds):
+                    logGeneration("regenerate_day poll accepted_run_not_found count=\(count) retrying_after=\(retryAfterSeconds)s")
+                case .retryableStatusFailure(let count, let retryAfterSeconds):
+                    logGeneration("regenerate_day poll retryable_status_failure count=\(count) retrying_after=\(retryAfterSeconds)s")
+                case .completed(let completedGenerationID, let scheduledDate):
+                    logGeneration("regenerate_day poll_terminal completed generation_id=\(completedGenerationID) scheduled_date=\(scheduledDate)")
+                case .failed(let status):
+                    logGeneration("regenerate_day poll_terminal failed \(statusSummary(status))")
+                case .timedOut:
+                    logGeneration("regenerate_day poll_timeout generation_id=\(generationID)")
+                }
             }
-        }
-
-        logGeneration("regenerate_day poll_timeout generation_id=\(generationID)")
-        throw RepositoryError.edgeFunction("generation_timeout")
+        )
     }
 
     private func invokeRegenerateDay<Body: Encodable>(
@@ -905,7 +909,108 @@ private struct DirectFunctionHTTPError: Error {
     let data: Data
 }
 
+enum SupabaseRegeneratedDayPoller {
+    enum Event: Sendable {
+        case waiting(seconds: Int)
+        case acceptedRunNotFound(count: Int, retryAfterSeconds: Int)
+        case retryableStatusFailure(count: Int, retryAfterSeconds: Int)
+        case completed(generationID: UUID, scheduledDate: String)
+        case failed(SupabaseGenerateWeekStatusResponse)
+        case timedOut
+    }
+
+    static let defaultTimeoutSeconds: TimeInterval = 1_800
+
+    static func poll(
+        deadline: Date,
+        now: @Sendable () -> Date = Date.init,
+        initialPollAfterSeconds: Int = 3,
+        sleep: @Sendable (UInt64) async throws -> Void,
+        invokeStatus: @Sendable () async throws -> SupabaseRegenerateDayInvocation,
+        observe: @Sendable (Event) -> Void = { _ in }
+    ) async throws -> RegeneratedDayResult {
+        var pollAfterSeconds = initialPollAfterSeconds
+        var acceptedRunNotFoundCount = 0
+        var retryableStatusFailureCount = 0
+
+        while now() < deadline {
+            observe(.waiting(seconds: pollAfterSeconds))
+            try await sleep(UInt64(max(pollAfterSeconds, 0)) * 1_000_000_000)
+            let invocation: SupabaseRegenerateDayInvocation
+            do {
+                invocation = try await invokeStatus()
+            } catch {
+                if SupabaseGenerationRetryPolicy.isAcceptedRunNotFoundStatusError(error) {
+                    acceptedRunNotFoundCount += 1
+                    pollAfterSeconds = acceptedRunNotFoundCount < 6 ? 2 : 5
+                    observe(.acceptedRunNotFound(
+                        count: acceptedRunNotFoundCount,
+                        retryAfterSeconds: pollAfterSeconds
+                    ))
+                    continue
+                }
+                guard SupabaseGenerationRetryPolicy.isRetryableStatusPollingError(error) else {
+                    throw error
+                }
+                retryableStatusFailureCount += 1
+                pollAfterSeconds = switch retryableStatusFailureCount {
+                case 1: 2
+                case 2: 4
+                case 3: 8
+                default: 15
+                }
+                observe(.retryableStatusFailure(
+                    count: retryableStatusFailureCount,
+                    retryAfterSeconds: pollAfterSeconds
+                ))
+                continue
+            }
+
+            retryableStatusFailureCount = 0
+            switch invocation {
+            case .completed(let response):
+                observe(.completed(
+                    generationID: response.generationID,
+                    scheduledDate: response.targetScheduledDate
+                ))
+                return response.domainResult
+            case .running(let status):
+                acceptedRunNotFoundCount = 0
+                pollAfterSeconds = max(2, min(status.pollAfterSeconds ?? 3, 15))
+            case .failed(let status):
+                observe(.failed(status))
+                throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_day")
+            }
+        }
+
+        observe(.timedOut)
+        throw RepositoryError.edgeFunction("generation_timeout")
+    }
+}
+
 enum SupabaseGenerationRetryPolicy {
+    private static let terminalStatusErrorCodes: Set<String> = [
+        "creator_member_not_found",
+        "creator_not_found",
+        "cross_workspace_forbidden",
+        "daily_card_not_found",
+        "date_not_in_plan",
+        "device_session_failed",
+        "existing_published_week_locked",
+        "invalid_auth_session",
+        "invalid_device_session",
+        "invalid_device_token",
+        "invalid_generated_week",
+        "invalid_generation_payload",
+        "method_not_allowed",
+        "missing_device_token",
+        "missing_function_secrets",
+        "missing_openai_api_key",
+        "past_generation_date_not_allowed",
+        "weekly_plan_not_found",
+        "weekly_setup_not_found",
+    ]
+
     static func isTransientPollingError(_ error: Error) -> Bool {
         let nsError = error as NSError
         if nsError.domain == NSURLErrorDomain {
@@ -927,11 +1032,24 @@ enum SupabaseGenerationRetryPolicy {
     }
 
     static func isRetryableStatusPollingError(_ error: Error) -> Bool {
+        if isAcceptedRunNotFoundStatusError(error) {
+            return true
+        }
+
+        if let code = SupabaseFunctionErrorMapper.errorCode(from: error),
+           terminalStatusErrorCodes.contains(code) {
+            return false
+        }
+
         if isTransientPollingError(error) {
             return true
         }
 
-        return isAcceptedRunNotFoundStatusError(error)
+        guard let httpError = functionHTTPError(error) else {
+            return false
+        }
+
+        return [408, 429, 500, 502, 503, 504].contains(httpError.status)
     }
 
     static func isAcceptedRunNotFoundStatusError(_ error: Error) -> Bool {
