@@ -1221,7 +1221,10 @@ final class AppServices {
         if var draft = latestGenerationSummary, draft.weeklyPlanID == result.weeklyPlanID {
             draft.replaceDailyCard(result.dailyCard)
             latestGenerationSummary = draft
-        } else {
+        } else if weeklyPlan.id == result.weeklyPlanID {
+            // Only adopt a new day-at-a-time summary when it belongs to the
+            // plan currently shown. A day persisted under another week's
+            // container must not discard an unrelated full-week draft.
             latestGenerationSummary = GeneratedWeekDraft(
                 id: result.generationID,
                 weeklyPlanID: result.weeklyPlanID,
@@ -1236,14 +1239,23 @@ final class AppServices {
             )
         }
 
+        if weeklyPlan.id != result.weeklyPlanID {
+            // Cross-week (or draft-container) day generation: keep the card in
+            // dayBriefGeneratedCards (caller) and update a matching day row in
+            // place when present, but never swap the visible weekly plan for a
+            // one-card container.
+            if let dayIndex = weeklyPlan.days.firstIndex(where: {
+                $0.id == result.dailyCard.id || $0.scheduledDate == result.dailyCard.scheduledDate
+            }) {
+                weeklyPlan.days[dayIndex] = result.dailyCard.weeklyDay
+                weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
+            }
+            return
+        }
+
         applyRegeneratedDay(result.dailyCard)
 
-        if weeklyPlan.id != result.weeklyPlanID {
-            weeklyPlan = latestGenerationSummary?.weeklyPlan(
-                setupSections: weeklyPlan.setupSections,
-                weeklyBriefText: weeklyPlan.weeklyBriefText
-            ) ?? weeklyPlan
-        } else if !weeklyPlan.days.contains(where: {
+        if !weeklyPlan.days.contains(where: {
             $0.id == result.dailyCard.id || $0.scheduledDate == result.dailyCard.scheduledDate
         }) {
             weeklyPlan.days.append(result.dailyCard.weeklyDay)
