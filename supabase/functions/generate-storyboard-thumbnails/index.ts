@@ -7,9 +7,13 @@ import {
   verifyDeviceSession,
 } from "../_shared/device-auth.ts";
 import {
+  DEFAULT_GEMINI_IMAGE_MODEL,
+  GeminiImageGenerationError,
+  generateGeminiImageWithFallback,
+} from "../_shared/gemini-image.ts";
+import {
   buildStoryboardThumbnailPrompt,
   cachedAssetForRow,
-  extractGeneratedImage,
   mergeStoryboardThumbnailAsset,
   normalizeStoryboardThumbnailAssets,
   STORYBOARD_THUMBNAIL_PROMPT_VERSION,
@@ -53,7 +57,7 @@ type ImageGenerator = (
   apiKey: string,
   model: string,
   prompt: string,
-) => Promise<{ data: string; mimeType: string }>;
+) => Promise<{ data: string; mimeType: string; model?: string }>;
 
 const CARD_SELECT = [
   "id",
@@ -71,7 +75,6 @@ const CARD_SELECT = [
 ].join(",");
 
 const BUCKET_NAME = "storyboard-thumbnails";
-const DEFAULT_GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image";
 const DEFAULT_MAX_ROWS = 6;
 const MAX_ROWS_PER_INVOCATION = 12;
 
@@ -81,7 +84,7 @@ if (import.meta.main) {
 
 export async function handleGenerateStoryboardThumbnailsRequest(
   request: Request,
-  generateImage: ImageGenerator = generateGeminiImage,
+  generateImage: ImageGenerator = defaultGenerateImage,
 ): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -221,21 +224,24 @@ export async function handleGenerateStoryboardThumbnailsRequest(
       }
 
       const start = performance.now();
-      let image: { data: string; mimeType: string };
+      let image: { data: string; mimeType: string; model?: string };
       try {
         image = await generateImage(geminiAPIKey, model, prompt);
-      } catch {
+      } catch (error) {
         cardFailedCount += 1;
         failedCount += 1;
         cardRemainingCount += 1;
         remainingCount += 1;
-        lastError = "storyboard_thumbnail_gemini_failed";
+        lastError = error instanceof GeminiImageGenerationError
+          ? error.code
+          : "storyboard_thumbnail_gemini_failed";
         console.error(JSON.stringify({
           event: "storyboard_week_thumbnail_gemini_failed",
           weekly_plan_id: weeklyPlanID,
           daily_card_id: dailyCardID,
           row_index: row.row_index,
           model,
+          error: lastError,
         }));
         shouldStopAfterCurrentCard = true;
         break;
@@ -272,7 +278,7 @@ export async function handleGenerateStoryboardThumbnailsRequest(
         prompt_hash: promptHash,
         storage_path: storagePath,
         public_url: publicURL,
-        model,
+        model: image.model ?? model,
         prompt_version: STORYBOARD_THUMBNAIL_PROMPT_VERSION,
         status: "generated",
         generated_at: new Date().toISOString(),
@@ -357,69 +363,20 @@ export function normalizedMaxRows(value: unknown): number {
   );
 }
 
-async function generateGeminiImage(
+async function defaultGenerateImage(
   apiKey: string,
   model: string,
   prompt: string,
-): Promise<{ data: string; mimeType: string }> {
-  const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/interactions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        model,
-        input: [{ type: "text", text: prompt }],
-        response_format: {
-          type: "image",
-          mime_type: "image/jpeg",
-          aspect_ratio: "16:9",
-          image_size: "1K",
-        },
-      }),
-    },
-  );
-
-  const responseBody = await response.json().catch(() => null);
-  if (!response.ok) {
-    console.error(JSON.stringify({
-      event: "storyboard_week_thumbnail_gemini_failed",
-      status: response.status,
-      model,
-      error: geminiErrorCode(responseBody),
-    }));
-    throw new Error("storyboard_thumbnail_gemini_failed");
-  }
-
-  const image = extractGeneratedImage(responseBody);
-  if (!image) {
-    console.error(JSON.stringify({
-      event: "storyboard_week_thumbnail_gemini_empty_image",
-      model,
-    }));
-    throw new Error("storyboard_thumbnail_empty_image");
-  }
-  return image;
+): Promise<{ data: string; mimeType: string; model?: string }> {
+  return await generateGeminiImageWithFallback({
+    apiKey,
+    model,
+    prompt,
+  });
 }
 
 function base64ToBytes(value: string): Uint8Array {
   return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
-}
-
-function geminiErrorCode(value: unknown): string {
-  if (!value || typeof value !== "object") {
-    return "unknown";
-  }
-  const error = (value as Record<string, unknown>).error;
-  if (!error || typeof error !== "object") {
-    return "unknown";
-  }
-  const code = (error as Record<string, unknown>).status ??
-    (error as Record<string, unknown>).code;
-  return typeof code === "string" ? code : String(code ?? "unknown");
 }
 
 function stringValue(value: unknown): string | undefined {

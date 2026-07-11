@@ -7,9 +7,13 @@ import {
   verifyDeviceSession,
 } from "../_shared/device-auth.ts";
 import {
+  DEFAULT_GEMINI_IMAGE_MODEL,
+  GeminiImageGenerationError,
+  generateGeminiImageWithFallback,
+} from "../_shared/gemini-image.ts";
+import {
   buildStoryboardThumbnailPrompt,
   cachedAssetForRow,
-  extractGeneratedImage,
   mergeStoryboardThumbnailAsset,
   normalizeStoryboardThumbnailAssets,
   STORYBOARD_THUMBNAIL_PROMPT_VERSION,
@@ -56,7 +60,6 @@ const CARD_SELECT = [
 ].join(",");
 
 const BUCKET_NAME = "storyboard-thumbnails";
-const DEFAULT_GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image";
 
 if (import.meta.main) {
   Deno.serve((request) => handleGenerateStoryboardThumbnailRequest(request));
@@ -173,11 +176,28 @@ export async function handleGenerateStoryboardThumbnailRequest(
     }
 
     const start = performance.now();
-    let image: { data: string; mimeType: string };
+    let image: { data: string; mimeType: string; model: string };
     try {
-      image = await generateGeminiImage(geminiAPIKey, model, prompt);
-    } catch {
-      return jsonResponse({ error: "storyboard_thumbnail_gemini_failed" }, 502);
+      image = await generateGeminiImageWithFallback({
+        apiKey: geminiAPIKey,
+        model,
+        prompt,
+      });
+    } catch (error) {
+      const code = error instanceof GeminiImageGenerationError
+        ? error.code
+        : "storyboard_thumbnail_gemini_failed";
+      console.error(JSON.stringify({
+        event: "storyboard_thumbnail_gemini_failed",
+        daily_card_id: dailyCardID,
+        row_index: rowIndex,
+        model,
+        error: code,
+        detail: error instanceof GeminiImageGenerationError
+          ? String((error as Error & { cause?: unknown }).cause ?? "")
+          : undefined,
+      }));
+      return jsonResponse({ error: code }, 502);
     }
     const latencyMs = Math.round(performance.now() - start);
     const bytes = base64ToBytes(image.data);
@@ -213,7 +233,7 @@ export async function handleGenerateStoryboardThumbnailRequest(
       prompt_hash: promptHash,
       storage_path: storagePath,
       public_url: publicURL,
-      model,
+      model: image.model,
       prompt_version: STORYBOARD_THUMBNAIL_PROMPT_VERSION,
       status: "generated",
       generated_at: new Date().toISOString(),
@@ -265,57 +285,6 @@ function normalizedRevisionInstructions(value: unknown): string | undefined {
   return trimmed.slice(0, 600);
 }
 
-async function generateGeminiImage(
-  apiKey: string,
-  model: string,
-  prompt: string,
-): Promise<{ data: string; mimeType: string }> {
-  const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/interactions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        model,
-        input: [{ type: "text", text: prompt }],
-        response_format: {
-          type: "image",
-          mime_type: "image/jpeg",
-          aspect_ratio: "16:9",
-          image_size: "1K",
-        },
-      }),
-    },
-  );
-
-  const responseBody = await response.json().catch(() => null);
-  if (!response.ok) {
-    console.error(JSON.stringify({
-      event: "storyboard_thumbnail_gemini_failed",
-      status: response.status,
-      model,
-      error: geminiErrorCode(responseBody),
-    }));
-    throw new Error("storyboard_thumbnail_gemini_failed");
-  }
-
-  const image = extractGeneratedImage(responseBody);
-  if (!image) {
-    console.error(JSON.stringify({
-      event: "storyboard_thumbnail_missing_image",
-      model,
-      response_keys: responseBody && typeof responseBody === "object"
-        ? Object.keys(responseBody as Record<string, unknown>)
-        : [],
-    }));
-    throw new Error("storyboard_thumbnail_missing_image");
-  }
-  return image;
-}
-
 function normalizedRowIndexes(
   body: GenerateStoryboardThumbnailRequest,
 ): number[] | null | undefined {
@@ -343,15 +312,4 @@ function base64ToBytes(base64: string): Uint8Array {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
-}
-
-function geminiErrorCode(value: unknown): string {
-  if (!value || typeof value !== "object") {
-    return "unknown";
-  }
-  const error = (value as Record<string, unknown>).error;
-  if (!error || typeof error !== "object") {
-    return "unknown";
-  }
-  return String((error as Record<string, unknown>).status ?? "unknown");
 }
