@@ -705,13 +705,22 @@ final class AppServices {
     }
 
     func generatedDailyCard(for dayID: UUID) -> GeneratedDailyCardDraft? {
-        latestGenerationSummary?.dailyCards.first { $0.id == dayID }
+        if let card = latestGenerationSummary?.dailyCards.first(where: { $0.id == dayID }) {
+            return card
+        }
+        return dayBriefGeneratedCards.values.first(where: { $0.id == dayID })
     }
 
     func generatedDailyCard(for day: WeeklyDay) -> GeneratedDailyCardDraft? {
-        latestGenerationSummary?.dailyCards.first {
+        if let card = latestGenerationSummary?.dailyCards.first(where: {
             $0.id == day.id || $0.scheduledDate == day.scheduledDate
+        }) {
+            return card
         }
+        if let scheduledDate = day.scheduledDate {
+            return dayBriefGeneratedCards[scheduledDate]
+        }
+        return dayBriefGeneratedCards.values.first(where: { $0.id == day.id })
     }
 
     func regeneratedDailyCard(
@@ -837,9 +846,7 @@ final class AppServices {
                 context: context
             )
             dayBriefGeneratedCards[scheduledDate] = result.dailyCard
-            if weeklyPlan.days.contains(where: { $0.scheduledDate == scheduledDate }) {
-                applyRegeneratedDay(result.dailyCard)
-            }
+            applyPersistedDayDraft(result)
             scheduleStoryboardThumbnailPrewarm(for: [result.dailyCard])
             lastRepositoryError = nil
             logGeneration("generate_day completed scheduled_date=\(scheduledDate) daily_card_id=\(result.dailyCard.id)")
@@ -1031,12 +1038,26 @@ final class AppServices {
 
     func prepareStoryboardThumbnailsForVisibleCard(dailyCardID: UUID) async {
         guard !isPrewarmingStoryboardThumbnails else { return }
-        guard let draft = latestGenerationSummary,
-              draft.dailyCards.contains(where: { $0.id == dailyCardID }),
-              draft.dailyCards.contains(where: { Self.shouldPrewarmStoryboardThumbnails(for: $0) })
+
+        if let draft = latestGenerationSummary,
+           draft.dailyCards.contains(where: { $0.id == dailyCardID }),
+           draft.dailyCards.contains(where: { Self.shouldPrewarmStoryboardThumbnails(for: $0) }) {
+            await prewarmStoryboardThumbnails(forWeeklyPlanID: draft.weeklyPlanID)
+            return
+        }
+
+        guard let card = generatedDailyCard(for: dailyCardID),
+              Self.shouldPrewarmStoryboardThumbnails(for: card)
         else { return }
 
-        await prewarmStoryboardThumbnails(forWeeklyPlanID: draft.weeklyPlanID)
+        isPrewarmingStoryboardThumbnails = true
+        storyboardThumbnailPrewarmError = nil
+        defer { isPrewarmingStoryboardThumbnails = false }
+        do {
+            _ = try await generateStoryboardThumbnails(for: card)
+        } catch {
+            storyboardThumbnailPrewarmError = WeeklyGenerationErrorDisplay.message(for: error)
+        }
     }
 
     func cancelGeneration() {
@@ -1069,6 +1090,12 @@ final class AppServices {
             }
         }
 
+        if card.status == "published" {
+            dayBriefGeneratedCards.removeValue(forKey: card.scheduledDate)
+        } else {
+            dayBriefGeneratedCards[card.scheduledDate] = card
+        }
+
         if let dayIndex = weeklyPlan.days.firstIndex(where: {
             $0.id == card.id || $0.scheduledDate == card.scheduledDate
         }) {
@@ -1085,6 +1112,12 @@ final class AppServices {
            let index = draft.dailyCards.firstIndex(where: { $0.id == dailyCardID }) {
             draft.dailyCards[index].storyboardThumbnailAssets = assets
             latestGenerationSummary = draft
+        }
+
+        if let scheduledDate = dayBriefGeneratedCards.first(where: { $0.value.id == dailyCardID })?.key,
+           var card = dayBriefGeneratedCards[scheduledDate] {
+            card.storyboardThumbnailAssets = assets
+            dayBriefGeneratedCards[scheduledDate] = card
         }
     }
 
@@ -1154,10 +1187,120 @@ final class AppServices {
 
     private func scheduleStoryboardThumbnailPrewarm(for cards: [GeneratedDailyCardDraft]) {
         guard memberRole == "owner" || memberRole == "editor" else { return }
-        guard cards.contains(where: { Self.shouldPrewarmStoryboardThumbnails(for: $0) }) else { return }
-        if let draft = latestGenerationSummary {
+        let cardsNeedingThumbnails = cards.filter { Self.shouldPrewarmStoryboardThumbnails(for: $0) }
+        guard !cardsNeedingThumbnails.isEmpty else { return }
+        if let draft = latestGenerationSummary,
+           draft.dailyCards.contains(where: { card in
+               cardsNeedingThumbnails.contains(where: { $0.id == card.id })
+           }) {
             scheduleStoryboardThumbnailPrewarm(for: draft)
+            return
         }
+
+        storyboardThumbnailPrewarmTask?.cancel()
+        storyboardThumbnailPrewarmTask = Task { [weak self] in
+            guard let self else { return }
+            self.isPrewarmingStoryboardThumbnails = true
+            self.storyboardThumbnailPrewarmError = nil
+            defer { self.isPrewarmingStoryboardThumbnails = false }
+
+            for card in cardsNeedingThumbnails {
+                guard !Task.isCancelled else { return }
+                do {
+                    _ = try await self.generateStoryboardThumbnails(for: card)
+                } catch {
+                    self.storyboardThumbnailPrewarmError =
+                        WeeklyGenerationErrorDisplay.message(for: error)
+                    break
+                }
+            }
+        }
+    }
+
+    private func applyPersistedDayDraft(_ result: RegeneratedDayResult) {
+        if var draft = latestGenerationSummary, draft.weeklyPlanID == result.weeklyPlanID {
+            draft.replaceDailyCard(result.dailyCard)
+            latestGenerationSummary = draft
+        } else if weeklyPlan.id == result.weeklyPlanID {
+            // Only adopt a new day-at-a-time summary when it belongs to the
+            // plan currently shown. A day persisted under another week's
+            // container must not discard an unrelated full-week draft.
+            latestGenerationSummary = GeneratedWeekDraft(
+                id: result.generationID,
+                weeklyPlanID: result.weeklyPlanID,
+                status: result.status,
+                strategySummary: "Day-at-a-time draft.",
+                warnings: result.warnings,
+                assumptions: result.assumptions,
+                dailyCards: [result.dailyCard],
+                ideaBank: weeklyIdeas,
+                sourceSummary: result.sourceSummary,
+                generatedAt: result.generatedAt
+            )
+        }
+
+        if weeklyPlan.id != result.weeklyPlanID {
+            // Cross-week (or draft-container) day generation: keep the card in
+            // dayBriefGeneratedCards (caller) and update a matching day row in
+            // place when present, but never swap the visible weekly plan for a
+            // one-card container.
+            if let dayIndex = weeklyPlan.days.firstIndex(where: {
+                $0.id == result.dailyCard.id || $0.scheduledDate == result.dailyCard.scheduledDate
+            }) {
+                weeklyPlan.days[dayIndex] = result.dailyCard.weeklyDay
+                weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
+            }
+            return
+        }
+
+        applyRegeneratedDay(result.dailyCard)
+
+        if !weeklyPlan.days.contains(where: {
+            $0.id == result.dailyCard.id || $0.scheduledDate == result.dailyCard.scheduledDate
+        }) {
+            weeklyPlan.days.append(result.dailyCard.weeklyDay)
+            weeklyPlan.days.sort {
+                ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "")
+            }
+            weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
+        }
+    }
+
+    /// Restore draft day cards into the Daily tab from the working plan.
+    /// Published cards are dropped; regenerating the same date overwrites.
+    private func hydrateDayBriefGeneratedCards(from draft: GeneratedWeekDraft?) {
+        guard let draft else {
+            dayBriefGeneratedCards = dayBriefGeneratedCards.filter {
+                generatingDayBriefDates.contains($0.key)
+            }
+            return
+        }
+
+        var restored: [String: GeneratedDailyCardDraft] = [:]
+        for card in draft.dailyCards where Self.isPersistedDayDraft(card) {
+            restored[card.scheduledDate] = card
+        }
+
+        // Keep in-flight session cards that have not yet been reflected in the
+        // refreshed draft snapshot, but drop anything that is now published.
+        for (date, card) in dayBriefGeneratedCards {
+            if restored[date] != nil { continue }
+            if card.status == "published" { continue }
+            if draft.dailyCards.contains(where: {
+                $0.scheduledDate == date && $0.status == "published"
+            }) {
+                continue
+            }
+            if generatingDayBriefDates.contains(date) {
+                restored[date] = card
+            }
+        }
+
+        dayBriefGeneratedCards = restored
+    }
+
+    private static func isPersistedDayDraft(_ card: GeneratedDailyCardDraft) -> Bool {
+        card.status == "draft" || card.status == "reviewed" || card.status == "ready"
     }
 
     private func prewarmStoryboardThumbnails(forWeeklyPlanID weeklyPlanID: UUID) async {
@@ -1495,6 +1638,7 @@ final class AppServices {
             if let draft = latestGenerationSummary, draft.weeklyPlanID == result.weeklyPlan.id {
                 latestGenerationSummary = draft.markedPublished
             }
+            clearPublishedDayBriefCards(for: result.weeklyPlan)
             if let todayCard = result.todayCard {
                 self.todayCard = todayCard
             }
@@ -1507,6 +1651,16 @@ final class AppServices {
             await scheduleTodayNotificationIfNeededImmediately()
         } catch {
             lastPublishError = error.localizedDescription
+        }
+    }
+
+    private func clearPublishedDayBriefCards(for plan: WeeklyPlan) {
+        let publishedDates = Set(plan.days.compactMap(\.scheduledDate))
+        for date in publishedDates {
+            dayBriefGeneratedCards.removeValue(forKey: date)
+        }
+        for (date, card) in dayBriefGeneratedCards where card.status == "published" {
+            dayBriefGeneratedCards.removeValue(forKey: date)
         }
     }
 
@@ -1767,6 +1921,7 @@ final class AppServices {
             weeklyBriefDraftText = weeklyPlan.weeklyBriefText
             latestGenerationSummary = weeklyContent.generatedDraft
             weeklyIdeas = weeklyContent.ideaBank
+            hydrateDayBriefGeneratedCards(from: weeklyContent.generatedDraft)
             reconcileGenerationProgressAfterDraftRefresh()
             if let generatedDraft = weeklyContent.generatedDraft {
                 scheduleStoryboardThumbnailPrewarm(for: generatedDraft)
@@ -1863,6 +2018,7 @@ final class AppServices {
             weeklyBriefDraftText = weeklyPlan.weeklyBriefText
             latestGenerationSummary = weeklyContent.generatedDraft
             weeklyIdeas = weeklyContent.ideaBank
+            hydrateDayBriefGeneratedCards(from: weeklyContent.generatedDraft)
             reconcileGenerationProgressAfterDraftRefresh()
             if let generatedDraft = weeklyContent.generatedDraft {
                 scheduleStoryboardThumbnailPrewarm(for: generatedDraft)
@@ -2156,7 +2312,10 @@ private enum WeeklyGenerationErrorDisplay {
         "generation_persist_failed": "The draft could not be saved. Try Generate again.",
         "weekly_setup_not_found": "The weekly brief could not be found. Save the brief and try again.",
         "existing_published_week_locked": "This week is already published and locked.",
-        "past_generation_date_not_allowed": "You cannot generate content for a past date. Select today or a future date."
+        "past_generation_date_not_allowed": "You cannot generate content for a past date. Select today or a future date.",
+        "storyboard_thumbnail_gemini_failed": "Visual generation failed. Try Prepare visuals again.",
+        "storyboard_thumbnail_missing_image": "The image model returned no visual. Try Prepare visuals again.",
+        "gemini_api_key_missing": "Visual generation is not configured in Supabase."
     ]
 
     private static let stableCodes = [
@@ -2172,7 +2331,10 @@ private enum WeeklyGenerationErrorDisplay {
         "generation_persist_failed",
         "weekly_setup_not_found",
         "existing_published_week_locked",
-        "past_generation_date_not_allowed"
+        "past_generation_date_not_allowed",
+        "storyboard_thumbnail_gemini_failed",
+        "storyboard_thumbnail_missing_image",
+        "gemini_api_key_missing"
     ]
 
     static func message(for error: Error) -> String {

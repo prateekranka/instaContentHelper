@@ -242,7 +242,7 @@ struct DayGenerationView: View {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 WeeklySectionTitle(
                     title: "Generated days",
-                    subtitle: "Days with a card from this session."
+                    subtitle: "Draft cards stay until you publish or generate that day again."
                 )
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: MCOSpace.s) {
@@ -273,7 +273,10 @@ struct DayGenerationView: View {
                     subtitle: "\(shortLabel(for: card.scheduledDate)) — review, then shoot from the storyboard."
                 )
                 GeneratedDayPlannedContent(card: card) { assets in
-                    services.dayBriefGeneratedCards[card.scheduledDate]?.storyboardThumbnailAssets = assets
+                    if var updated = services.dayBriefGeneratedCards[card.scheduledDate] {
+                        updated.storyboardThumbnailAssets = assets
+                        services.dayBriefGeneratedCards[card.scheduledDate] = updated
+                    }
                 }
             }
         } else {
