@@ -1052,8 +1052,121 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(card.scheduledDate, "2026-06-03")
         XCTAssertEqual(card.title, "Day card: Brand unboxing at home, honest tone.")
         XCTAssertEqual(services.dayBriefGeneratedCards["2026-06-03"]?.id, card.id)
+        XCTAssertEqual(services.latestGenerationSummary?.dailyCards.first?.id, card.id)
+        XCTAssertEqual(services.generatedDailyCard(for: card.id)?.id, card.id)
         XCTAssertNil(services.dayBriefGenerationErrors["2026-06-03"])
         XCTAssertFalse(services.generatingDayBriefDates.contains("2026-06-03"))
+    }
+
+    func testRefreshHydratesPersistedDayDraftIntoDailyTab() async throws {
+        let draftCard = GeneratedDailyCardDraft(
+            id: UUID(),
+            scheduledDate: "2026-06-03",
+            status: "draft",
+            title: "Persisted day draft",
+            whyToday: "Should survive reload.",
+            growthJob: "Consistency.",
+            contentPillar: "lifestyle",
+            shootability: "easy",
+            estimatedShootMinutes: 8,
+            energyRequired: "low",
+            languageMode: "English",
+            sceneList: [
+                ShotScene(number: 1, title: "Opening", duration: "3 sec", symbol: "sparkles")
+            ],
+            script: "Persisted script.",
+            noVoiceoverVersion: "No VO.",
+            onScreenText: ["Persisted"],
+            caption: "Persisted caption.",
+            cta: "Save this.",
+            hashtags: ["test"],
+            coverText: "Persisted",
+            postInstructions: "Shoot it.",
+            brandEventNotes: "",
+            backupStory: "Backup.",
+            backupCaptionOnly: "Backup caption.",
+            audioOptionNotes: "",
+            creatorFitScore: 90,
+            riskNotes: [],
+            assumptions: [],
+            sourceNote: "Persisted draft."
+        )
+        let draft = GeneratedWeekDraft(
+            id: UUID(),
+            weeklyPlanID: UUID(),
+            status: "draft",
+            strategySummary: "Day-at-a-time container week.",
+            warnings: [],
+            assumptions: [],
+            dailyCards: [draftCard],
+            ideaBank: [],
+            sourceSummary: "Persisted day draft.",
+            generatedAt: "2026-06-01T00:00:00Z"
+        )
+        let weeklyRepository = WorkingPlanPreferringWeeklyPlanRepository(
+            publishedPlan: .raceWeek,
+            workingDraft: draft,
+            weekStartDate: "2026-06-01"
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: weeklyRepository,
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+
+        XCTAssertTrue(services.dayBriefGeneratedCards.isEmpty)
+
+        await services.refreshFromRepositoriesImmediately()
+
+        XCTAssertEqual(services.dayBriefGeneratedCards["2026-06-03"]?.id, draftCard.id)
+        XCTAssertEqual(services.dayBriefGeneratedCards["2026-06-03"]?.title, "Persisted day draft")
+        XCTAssertEqual(services.latestGenerationSummary?.dailyCards.first?.id, draftCard.id)
+    }
+
+    func testGenerateDayCardOverwritesExistingDraftForSameDate() async throws {
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                weeklyGeneration: BriefEchoDayGenerationRepository(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+
+        let first = try await services.generateDayCard(
+            scheduledDate: "2026-06-03",
+            dayBrief: "First brief"
+        )
+        let second = try await services.generateDayCard(
+            scheduledDate: "2026-06-03",
+            dayBrief: "Second brief"
+        )
+
+        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertEqual(services.dayBriefGeneratedCards["2026-06-03"]?.id, second.id)
+        XCTAssertEqual(
+            services.dayBriefGeneratedCards["2026-06-03"]?.title,
+            "Day card: Second brief"
+        )
+        XCTAssertEqual(services.latestGenerationSummary?.dailyCards.count, 1)
+        XCTAssertEqual(services.latestGenerationSummary?.dailyCards.first?.id, second.id)
     }
 
     func testGenerateDayCardRejectsPastDates() async throws {
