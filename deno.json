@@ -1,0 +1,7 @@
+{
+  "tasks": {
+    "check:backend": "deno check supabase/functions/*/*.ts supabase/functions/_shared/*.ts",
+    "test:backend": "deno test --allow-env --allow-read --allow-net=0.0.0.0:8000,127.0.0.1:8000,localhost:8000 supabase/functions",
+    "ci:backend": "deno task check:backend && deno task test:backend"
+  }
+}

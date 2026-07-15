@@ -6,6 +6,7 @@ extension DailyCard {
         context: "Friday, Race Week",
         effortLabel: "Easy - 12 min",
         whyToday: "Stay visible without overthinking it.",
+        hook: "The tiny thing I changed this race week.",
         sourceNote: "Inspired by a race-week discipline pattern.",
         scheduledDate: "2026-06-05",
         scenes: [
@@ -117,6 +118,7 @@ extension WeeklyPlan {
                 isSoftLocked: false
             )
         ],
+        weeklyBriefText: "Mumbai race week. Early mornings are best. Keep the week practical: 3 runs, 1 gym, 1 race, family on Sunday, Puma disclosure on Saturday, and no politics, weight talk, or negativity.",
         setupSections: [
             WeeklySetupSection(systemImage: "mappin.and.ellipse", title: "Place", summary: "Mumbai, race week, early mornings.", state: "Ready"),
             WeeklySetupSection(systemImage: "dumbbell", title: "Body", summary: "3 runs, 1 gym, 1 race.", state: "Ready"),
@@ -226,20 +228,33 @@ extension IntelligenceHome {
         ],
         needsReview: [
             IntelligenceItem(
+                id: UUID(uuidString: "2B01A874-F839-4F01-9D63-842D8D1BB701")!,
                 title: "Real training highlight",
                 subtitle: "USA reel structure, not the script.",
                 kind: .trend,
                 state: .needsReview,
                 trailingNote: "Check fit",
-                symbol: "sparkle.magnifyingglass"
+                symbol: "sparkle.magnifyingglass",
+                typeChip: .reel,
+                sourceURL: "https://www.instagram.com/reel/fixture-training-highlight/",
+                reviewItem: ReferenceReviewItem(
+                    kind: .sourceReference,
+                    id: UUID(uuidString: "D0DA7C7B-E52B-48FD-BBC4-1201B5E7B801")!
+                )
             ),
             IntelligenceItem(
+                id: UUID(uuidString: "6477C1F0-3DB4-4A46-B0EB-FE5A10B97C64")!,
                 title: "Gym mirror format",
                 subtitle: "Could feel too generic.",
                 kind: .pattern,
                 state: .needsReview,
                 trailingNote: "Low fit",
-                symbol: "rectangle.on.rectangle"
+                symbol: "rectangle.on.rectangle",
+                typeChip: .unknown,
+                reviewItem: ReferenceReviewItem(
+                    kind: .sourceReference,
+                    id: UUID(uuidString: "E0F2B681-BCF5-4B0D-93C7-BC896E09D9D8")!
+                )
             )
         ],
         ideaCandidates: [

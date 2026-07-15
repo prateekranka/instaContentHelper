@@ -12,8 +12,9 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
    from Manager Control before sign-in works.
 4. From Profile, switch to Manager Control.
 5. Tester access uses approved-email OTP. Do not pass pairing codes around.
-   Until tester management is moved into a secondary admin screen, add or revoke
-   testers through the backend/admin runbook.
+   Owner sessions can use the Testers tab in Manager Control to invite, resend,
+   or revoke tester access. Editors can use Manager tools but cannot manage
+   testers.
 6. Open Weekly.
 7. Confirm this week's plan:
    - Check that the week range is correct.
@@ -50,8 +51,8 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
 
 - Sign-in says email is not approved: invite or reactivate that email through
   the backend/admin tester runbook.
-- No email code: resend from the app or backend/admin tester flow. Also check
-  spam and the email address spelling.
+- No email code: resend from the Testers tab or backend/admin tester flow. Also
+  check spam and the email address spelling.
 - App says `Fixtures`: the build is missing live Supabase config or the live
   session could not be restored.
 - Release archive fails with a Supabase bootstrap error: this is intentional.

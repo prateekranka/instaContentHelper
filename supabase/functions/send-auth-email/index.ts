@@ -13,11 +13,30 @@ type AuthEmailPayload = {
   };
 };
 
+type SendAuthEmailDependencies = {
+  env?: { get(name: string): string | undefined };
+  verifyPayload?: (
+    body: string,
+    headers: Headers,
+    hookSecret: string,
+  ) => AuthEmailPayload;
+  sendEmail?: (
+    resendKey: string,
+    message: {
+      from: string;
+      to: string[];
+      subject: string;
+      html: string;
+      text: string;
+    },
+  ) => Promise<{ error?: unknown }>;
+};
+
 const jsonHeaders = { "Content-Type": "application/json" };
 
 export async function handleSendAuthEmail(
   request: Request,
-  env: { get(name: string): string | undefined } = Deno.env,
+  dependencies: SendAuthEmailDependencies = {},
 ): Promise<Response> {
   if (request.method !== "POST") {
     return new Response(JSON.stringify({ error: "method_not_allowed" }), {
@@ -26,6 +45,7 @@ export async function handleSendAuthEmail(
     });
   }
 
+  const env = dependencies.env ?? Deno.env;
   const resendKey = env.get("RESEND_API_KEY");
   const rawHookSecret = env.get("SEND_EMAIL_HOOK_SECRET");
   if (!resendKey || !rawHookSecret) {
@@ -39,10 +59,12 @@ export async function handleSendAuthEmail(
   let payload: AuthEmailPayload;
   try {
     const secret = rawHookSecret.replace(/^v1,whsec_/, "");
-    payload = new Webhook(secret).verify(
-      body,
-      Object.fromEntries(request.headers),
-    ) as AuthEmailPayload;
+    payload = dependencies.verifyPayload
+      ? dependencies.verifyPayload(body, request.headers, secret)
+      : new Webhook(secret).verify(
+        body,
+        Object.fromEntries(request.headers),
+      ) as AuthEmailPayload;
   } catch {
     return new Response(JSON.stringify({ error: "invalid_hook_signature" }), {
       status: 401,
@@ -59,15 +81,17 @@ export async function handleSendAuthEmail(
     });
   }
 
-  const resend = new Resend(resendKey);
-  const { error } = await resend.emails.send({
+  const message = {
     from: "ContentHelper <auth@contenthelper.in>",
     to: [recipient],
     subject: `${token} is your ContentHelper sign-in code`,
     html: otpEmailHTML(token),
     text:
       `Your ContentHelper sign-in code is ${token}. It expires in 10 minutes.`,
-  });
+  };
+  const { error } = dependencies.sendEmail
+    ? await dependencies.sendEmail(resendKey, message)
+    : await new Resend(resendKey).emails.send(message);
 
   if (error) {
     return new Response(JSON.stringify({ error: "email_delivery_failed" }), {

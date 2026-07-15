@@ -4,6 +4,7 @@ import UIKit
 #endif
 
 struct ShootFolioView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
     @State private var selection: PackageSection = .scenes
 
@@ -13,20 +14,19 @@ struct ShootFolioView: View {
                 header
 
                 if case .ready = services.todayContentState {
+                    ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
                     sectionTabs
 
                     switch selection {
                     case .scenes:
                         sceneProgress
-                        SceneListView(scenes: services.todayCard.scenes)
+                        SceneListView(card: services.todayCard)
                     case .script:
-                        CopyBlock(title: "Script", bodyText: services.todayCard.script ?? "Race week isn't about doing more. It's about doing what matters. Simple plan. Steady steps. Let's go.")
+                        CopyBlock(title: "Script", bodyText: services.todayCard.script ?? "No script recorded for today.")
                     case .caption:
-                        CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "Race week has entered the house. Keeping it simple, steady, and real today.")
+                        CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "No caption recorded for today.")
                     case .audio:
-                        CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "Calm Drive - Instrumental - fallback ready")
-                    case .post:
-                        CopyBlock(title: "Post", bodyText: services.todayCard.postInstructions ?? "Open Instagram, use the saved audio if available, add cover text: Race week mindset.")
+                        CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "No audio notes recorded for today.")
                     }
                 } else {
                     ShootFolioEmptyState(state: services.todayContentState)
@@ -37,12 +37,16 @@ struct ShootFolioView: View {
                case .ready = services.todayContentState {
                 GlassCommandBar {
                     PrimaryActionButton(
-                        title: services.areAllScenesShot ? "All scenes shot" : "Mark all as shot",
-                        systemImage: services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal"
+                        title: services.canMarkPosted ? "Mark as posted" : (services.areAllScenesShot ? "All scenes shot" : "Mark all as shot"),
+                        systemImage: services.canMarkPosted ? "paperplane.fill" : (services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal")
                     ) {
-                        services.markAllScenesShot()
+                        if services.canMarkPosted {
+                            services.markPosted()
+                        } else {
+                            services.markAllScenesShot()
+                        }
                     }
-                    .disabled(services.areAllScenesShot)
+                    .disabled(services.areAllScenesShot && !services.canMarkPosted)
                 }
             }
         }
@@ -50,43 +54,95 @@ struct ShootFolioView: View {
     }
 
     private var sceneProgress: some View {
-        HStack(spacing: MCOSpace.s) {
-            Label("\(services.shotSceneCount) shot", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(MCOTheme.Color.sageDeep)
-            Text("\(services.unshotSceneCount) not shot")
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-            Spacer()
+        JournalBlock {
+            HStack(alignment: .center, spacing: MCOSpace.m) {
+                Image(systemName: services.areAllScenesShot ? "checkmark.seal.fill" : "target")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(services.areAllScenesShot ? MCOTheme.Color.success : MCOTheme.Color.liveBlue)
+                    .frame(width: 34)
+
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    Text(services.areAllScenesShot ? "All scenes shot" : "\(services.shotSceneCount) of \(services.todayCard.scenes.count) scenes shot")
+                        .font(MCOType.headline)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                    Text(services.areAllScenesShot ? "Ready for post assembly." : "\(services.unshotSceneCount) remaining before the shoot is complete.")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                }
+
+                Spacer(minLength: MCOSpace.s)
+                StatusChip(
+                    text: services.areAllScenesShot ? "Complete" : "\(services.unshotSceneCount) left",
+                    tone: services.areAllScenesShot ? .ready : .info
+                )
+            }
         }
-        .font(MCOType.caption)
         .accessibilityElement(children: .combine)
     }
 
     private var header: some View {
-        HStack {
-            Text("Shoot Folio")
-                .font(MCOType.screenTitle)
-                .foregroundStyle(MCOTheme.Color.ink)
+        HStack(alignment: .top, spacing: MCOSpace.xs) {
+            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                Text("Shoot Folio")
+                    .font(MCOType.headline)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                Text(services.todayCard.title.nilIfBlank ?? "Today's shoot")
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
             Spacer()
-            FloatingIconButton(systemImage: "ellipsis", label: "More") {}
+            shootFolioMenu
+        }
+    }
+
+    private var shootFolioMenu: some View {
+        Menu {
+            Button {
+                services.lastActionMessage = "Issue noted. Share the screen with the manager if this package looks wrong."
+            } label: {
+                Label("Report issue", systemImage: "exclamationmark.bubble")
+            }
+            .disabled(!isReady)
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 16, weight: .medium))
+                .frame(width: 42, height: 42)
+                .foregroundStyle(MCOTheme.Color.ink)
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Shoot Folio options")
+    }
+
+    private var isReady: Bool {
+        if case .ready = services.todayContentState {
+            return true
+        } else {
+            return false
         }
     }
 
     private var sectionTabs: some View {
-        HStack(spacing: MCOSpace.m) {
-            ForEach(PackageSection.allCases) { section in
-                Button {
-                    selection = section
-                } label: {
-                    VStack(spacing: MCOSpace.xs) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: MCOSpace.s) {
+                ForEach(PackageSection.allCases) { section in
+                    Button {
+                        selection = section
+                    } label: {
                         Text(section.rawValue)
                             .font(MCOType.bodySmall)
-                            .foregroundStyle(selection == section ? MCOTheme.Color.oxblood : MCOTheme.Color.inkMuted)
-                        Rectangle()
-                            .fill(selection == section ? MCOTheme.Color.oxblood : .clear)
-                            .frame(height: 1)
+                            .foregroundStyle(selection == section ? MCOTheme.Color.paperRaised : MCOTheme.Color.ink)
+                            .padding(.horizontal, MCOSpace.s)
+                            .frame(height: 34)
+                            .background(selection == section ? MCOTheme.Color.oxblood : MCOTheme.Color.paperRaised.opacity(0.62))
+                            .clipShape(Capsule())
+                            .overlay {
+                                Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                            }
                     }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -127,33 +183,44 @@ private struct ShootFolioEmptyState: View {
 
 struct SceneListView: View {
     @Environment(AppServices.self) private var services
-    let scenes: [ShotScene]
+    let card: DailyCard
 
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(scenes) { scene in
+        VStack(spacing: MCOSpace.m) {
+            ForEach(Array(card.scenes.enumerated()), id: \.element.id) { index, scene in
                 NavigationLink {
-                    SceneDetailView(scene: scene)
+                    SceneDetailView(card: card, scene: scene)
                 } label: {
-                    FolioRow(title: scene.title, subtitle: services.isSceneShot(scene) ? "Shot" : "Not shot") {
-                        Text(String(format: "%02d", scene.number))
-                            .font(.system(size: 46, weight: .regular, design: .serif))
-                            .foregroundStyle(MCOTheme.Color.sageDeep)
-                    } trailing: {
-                        HStack(spacing: MCOSpace.s) {
-                            StatusChip(text: scene.duration)
-                            Image(systemName: services.isSceneShot(scene) ? "checkmark.circle.fill" : scene.symbol)
-                                .font(.system(size: 20, weight: .light))
-                                .foregroundStyle(services.isSceneShot(scene) ? MCOTheme.Color.sageDeep : MCOTheme.Color.brass)
-                                .frame(width: 54, height: 54)
-                                .background(MCOTheme.Color.paperRaised)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    JournalBlock {
+                        VStack(alignment: .leading, spacing: MCOSpace.s) {
+                            HStack(alignment: .top, spacing: MCOSpace.s) {
+                                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                                    Text("SCENE \(String(format: "%02d", scene.number))")
+                                        .font(MCOType.tinyLabel)
+                                        .foregroundStyle(MCOTheme.Color.oxblood)
+                                    Text(scene.title)
+                                        .font(MCOType.headline)
+                                        .foregroundStyle(MCOTheme.Color.ink)
+                                }
+                                Spacer(minLength: MCOSpace.s)
+                                StatusChip(
+                                    text: services.isSceneShot(scene) ? "Shot" : scene.duration,
+                                    tone: services.isSceneShot(scene) ? .ready : .info
+                                )
+                            }
+
+                            FolioDetailLine(title: "What to capture", text: SceneGuidance.capture(for: scene, at: index, in: card))
+
+                            if let text = SceneGuidance.onScreenText(at: index, in: card) {
+                                FolioDetailLine(title: "On-screen text", text: text)
+                            }
+
+                            FolioDetailLine(title: "Example", text: SceneGuidance.contextExample(for: scene, in: card))
                         }
                     }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Scene \(scene.number), \(scene.title), \(services.isSceneShot(scene) ? "shot" : "not shot")")
-                Hairline()
             }
         }
     }
@@ -161,6 +228,7 @@ struct SceneListView: View {
 
 struct SceneDetailView: View {
     @Environment(AppServices.self) private var services
+    let card: DailyCard
     let scene: ShotScene
 
     var body: some View {
@@ -182,17 +250,23 @@ struct SceneDetailView: View {
                     }
                 }
 
-                detailBlock(title: "What to capture", text: captureGuidance)
-                detailBlock(title: "Supports", text: services.todayCard.title)
+                detailBlock(title: "What to capture", text: SceneGuidance.capture(for: scene, at: sceneIndex, in: card))
+                detailBlock(title: "Example", text: SceneGuidance.contextExample(for: scene, in: card))
 
-                if let onScreenText = services.todayCard.onScreenText?.first?.nilIfBlank {
+                if let onScreenText = SceneGuidance.onScreenText(at: sceneIndex, in: card) {
                     detailBlock(title: "On-screen text", text: onScreenText)
+                }
+                if let postInstructions = services.todayCard.postInstructions?.nilIfBlank {
+                    detailBlock(title: "Post guidance", text: postInstructions)
+                }
+                if let backupStory = services.todayCard.backupStory?.nilIfBlank {
+                    detailBlock(title: "Backup option", text: backupStory)
                 }
             }
         } bottomBar: {
             GlassCommandBar {
                 PrimaryActionButton(
-                    title: services.isSceneShot(scene) ? "Shot" : "Mark shot",
+                    title: services.isSceneShot(scene) ? "Scene shot" : "Mark shot",
                     systemImage: services.isSceneShot(scene) ? "checkmark.circle.fill" : "checkmark.seal"
                 ) {
                     services.markSceneShot(scene)
@@ -218,8 +292,60 @@ struct SceneDetailView: View {
         }
     }
 
-    private var captureGuidance: String {
-        "Capture \(scene.title.lowercased()) as a steady \(scene.duration) clip. Keep the main subject clear, leave room for on-screen text, and hold the final frame briefly for an easy edit."
+    private var sceneIndex: Int {
+        card.scenes.firstIndex { $0.id == scene.id } ?? max(scene.number - 1, 0)
+    }
+}
+
+private struct FolioDetailLine: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(MCOType.tinyLabel)
+                .foregroundStyle(MCOTheme.Color.oxblood)
+            Text(text)
+                .font(MCOType.bodySmall)
+                .foregroundStyle(MCOTheme.Color.ink)
+                .lineSpacing(3)
+        }
+    }
+}
+
+private enum SceneGuidance {
+    static func capture(for scene: ShotScene, at index: Int, in card: DailyCard) -> String {
+        if let detail = card.shotTimeline?[safe: index]?.detail.nilIfBlank {
+            return detail
+        }
+        return "Capture \(scene.title.lowercased()) as a steady \(scene.duration) clip. Keep the main subject clear, leave room for on-screen text, and hold the final frame briefly for an easy edit."
+    }
+
+    static func onScreenText(at index: Int, in card: DailyCard) -> String? {
+        let timelineText = card.onScreenTextTimeline?[safe: index]
+        return timelineText?.onScreenText?.nilIfBlank
+            ?? timelineText?.title.nilIfBlank
+            ?? card.onScreenText?[safe: index]?.nilIfBlank
+        // Deliberately NOT falling back to onScreenText.first: that would make
+        // multiple scenes render the SAME first on-screen text and look like the
+        // card is internally mismatched. A scene without its own on-screen text
+        // shows nothing rather than borrowing another scene's text.
+    }
+
+    static func contextExample(for scene: ShotScene, in card: DailyCard) -> String {
+        let context = [
+            card.context,
+            card.whyToday,
+            card.sourceNote,
+            card.postInstructions
+        ]
+            .compactMap { $0?.lowercased() }
+            .joined(separator: " ")
+        let location = context.contains("bombay") || context.contains("mumbai")
+            ? "In Bombay, the creator can shoot this at home, in the society garden, or in the gym"
+            : "The creator can shoot this at home, in the society garden, or in the gym"
+        return "\(location), choosing the place that makes \(scene.title.lowercased()) easiest to capture clearly and safely."
     }
 }
 
@@ -238,7 +364,7 @@ struct CopyBlock: View {
                     .font(MCOType.body)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .lineSpacing(5)
-                SecondaryActionButton(title: didCopy ? "Copied" : "Copy \(title.lowercased())") {
+                SecondaryActionButton(title: didCopy ? "Copied" : "Copy") {
                     copyBodyText()
                 }
             }

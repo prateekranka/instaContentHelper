@@ -53,6 +53,67 @@ Response:
 }
 ```
 
+Async status polling:
+
+```json
+{
+  "action": "status",
+  "generation_id": "uuid",
+  "creator_id": "uuid"
+}
+```
+
+Running response:
+
+```json
+{
+  "generation_id": "uuid",
+  "weekly_plan_id": "uuid or null",
+  "status": "running",
+  "overall_status": "running",
+  "strategy_created": true,
+  "drafted_day_count": 4,
+  "saved_day_count": 3,
+  "failed_day_count": 1,
+  "completed_day_count": 4,
+  "total_day_count": 7,
+  "current_day": "YYYY-MM-DD or null",
+  "day_statuses": [
+    {
+      "scheduled_date": "YYYY-MM-DD",
+      "day_index": 0,
+      "status": "completed",
+      "error_code": null,
+      "daily_card_id": "uuid or null",
+      "drafted": true,
+      "saved": true,
+      "attempt_count": 1,
+      "started_at": "ISO-8601 or null",
+      "completed_at": "ISO-8601 or null"
+    }
+  ],
+  "poll_after_seconds": 5
+}
+```
+
+Compatibility notes:
+
+- Existing clients can continue using `status`, `completed_day_count`,
+  `total_day_count`, and `current_day`.
+- New clients should prefer `overall_status`, `drafted_day_count`,
+  `saved_day_count`, `failed_day_count`, and `day_statuses`.
+- `overall_status` is `completed` when all seven days are usable, `partial` when
+  at least one day is usable and at least one day failed, and `failed` only when
+  zero usable days exist. In-progress runs return `running`.
+- `drafted_day_count` counts days with validated generated output or a saved
+  card reference. `saved_day_count` counts days with a persisted
+  `daily_card_id`.
+- `strategy_created` is true once the lightweight week strategy has been saved
+  into the generation snapshot. Older sequential snapshots may report false
+  until the parallel strategy path is used.
+- Completed draft responses still include the original `status: "draft"` and
+  draft payload fields, with the generation status fields added alongside them.
+
 Auth rules:
 
 - Send only the Supabase publishable key from the app.
@@ -87,8 +148,10 @@ Set these only in Supabase Edge Function secrets or local function env files:
 - `MCO_AI_PROVIDER_ORDER`: optional comma-separated provider order. Default:
   `deepseek,openai`.
 - `MCO_AI_REQUEST_TIMEOUT_MS`: optional provider request timeout. Default:
-  `90000`; values below `5000` are ignored and values above `180000` are
-  capped.
+  `90000`; values below `5000` are ignored and values above `180000` are capped.
+- `MCO_GENERATION_DAY_STALE_MS`: optional async per-day stale retry window.
+  Default: `120000`; values below `30000` are ignored and values above `600000`
+  are capped.
 - `MCO_AI_MOCK=1`: local deterministic mock mode.
 - `MCO_ALLOW_AI_MOCK_REQUEST=1`: allows request-level `mock: true` for local/dev
   tests only.
@@ -146,6 +209,84 @@ MCO_SUPABASE_PUBLISHABLE_KEY=<local-publishable-key> \
 SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key> \
 deno run --allow-all supabase/functions/generate-week/acceptance.ts
 ```
+
+## Queued day worker
+
+Weekly generation can be processed by durable per-day jobs instead of one long
+Edge Function lifecycle. `scripts/workers/generate-day-worker.ts` runs a bounded
+worker pool, defaults to four concurrent lanes, claims `queued` or `retrying`
+`weekly_generation_day_jobs` rows, moves each owned row to `generating`, calls
+day generation, then marks the row `generated` or `failed`.
+
+The worker expects day jobs with these columns:
+
+- `id`
+- `generation_run_id`
+- `workspace_id`
+- `creator_id`
+- `weekly_plan_id`
+- `scheduled_date`
+- `day_index`
+- `status`
+- `attempt_count`
+- `daily_card_id`
+- `error_code`
+- `started_at`
+- `completed_at`
+- `created_at`
+- `updated_at`
+
+Claimable statuses are `queued` and `retrying`. Terminal statuses are
+`generated`, `failed`, and `cancelled`.
+
+Local dry-run, which selects one queued/retrying job without mutation:
+
+```sh
+SUPABASE_URL=http://127.0.0.1:54321 \
+SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key> \
+deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --dry-run
+```
+
+Local bounded-pool execution against served functions:
+
+```sh
+SUPABASE_URL=http://127.0.0.1:54321 \
+SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key> \
+MCO_GENERATE_WEEK_FUNCTION_URL=http://127.0.0.1:54321/functions/v1/generate-week \
+MCO_WORKER_DEVICE_TOKEN=<owner-or-editor-device-token> \
+MCO_DAY_WORKER_MOCK=1 \
+deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --once --concurrency=4
+```
+
+Production bounded-pool execution:
+
+```sh
+SUPABASE_URL=https://<project-ref>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key> \
+MCO_GENERATE_WEEK_FUNCTION_URL=https://<project-ref>.supabase.co/functions/v1/generate-week \
+MCO_WORKER_DEVICE_TOKEN=<owner-or-editor-device-token> \
+deno run --allow-env --allow-net scripts/workers/generate-day-worker.ts --once --concurrency=4
+```
+
+Use `MCO_DAY_WORKER_CONCURRENCY=4` instead of `--concurrency=4` when the process
+supervisor owns command arguments. Keep the cap at four until two live four-wide
+runs are stable; after that the cap can be tuned without code changes. Use
+`--run-id=<generation_run_id>` when a scheduler should drain only one generation
+run.
+
+Do not print or commit the service role key or worker device token. Run the
+worker from a scheduler, queue runner, or process supervisor. Each invocation is
+bounded by the concurrency cap and exits after no matching queued/retrying jobs
+remain.
+
+Current integration hook: the worker uses the existing `generate-week`
+`regenerate_day` action with `response_mode: "sync"`. That endpoint still
+requires `x-mco-device-token`, so production should either provide an
+owner/editor worker device token or add a service-role-only internal
+day-generation endpoint/helper in `generate-week/index.ts`. Until that hook is
+added, `MCO_DAY_WORKER_STUB=1` can exercise the claim/terminal-failure path; it
+marks the claimed row `failed` with `day_generation_endpoint_stubbed` and does
+not create a daily card.
 
 ## Local simulator live-runtime smoke
 

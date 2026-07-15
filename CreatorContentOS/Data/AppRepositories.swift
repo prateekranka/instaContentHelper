@@ -30,7 +30,7 @@ struct AppRepositories: Sendable {
         weeklyPlans: any WeeklyPlanRepository,
         references: any ReferenceRepository,
         referenceImport: any ReferenceImportRepository = FixtureReferenceImportRepository(),
-        weeklyGeneration: any WeeklyGenerationRepository = FixtureWeeklyGenerationRepository(),
+        weeklyGeneration: any WeeklyGenerationRepository = AppFixtureWeeklyGenerationUnavailableRepository(),
         intelligence: any IntelligenceRepository,
         creatorProfile: any CreatorProfileRepository,
         archive: any ArchiveRepository,
@@ -48,18 +48,21 @@ struct AppRepositories: Sendable {
         self.testerAccess = testerAccess
     }
 
-    static let fixture = AppRepositories(
-        context: .creatorFixture,
-        today: FixtureTodayCardRepository(),
-        weeklyPlans: FixtureWeeklyPlanRepository(),
-        references: FixtureReferenceRepository(),
-        referenceImport: FixtureReferenceImportRepository(),
-        weeklyGeneration: FixtureWeeklyGenerationRepository(),
-        intelligence: FixtureIntelligenceRepository(),
-        creatorProfile: FixtureCreatorProfileRepository(),
-        archive: FixtureArchiveRepository(),
-        testerAccess: FixtureTesterAccessRepository()
-    )
+    static var fixture: AppRepositories {
+        let store = FixturePublishedContentStore()
+        return AppRepositories(
+            context: .creatorFixture,
+            today: FixtureTodayCardRepository(publishedStore: store),
+            weeklyPlans: FixtureWeeklyPlanRepository(publishedStore: store),
+            references: FixtureReferenceRepository(),
+            referenceImport: FixtureReferenceImportRepository(),
+            weeklyGeneration: AppFixtureWeeklyGenerationUnavailableRepository(),
+            intelligence: FixtureIntelligenceRepository(),
+            creatorProfile: FixtureCreatorProfileRepository(),
+            archive: FixtureArchiveRepository(),
+            testerAccess: FixtureTesterAccessRepository()
+        )
+    }
 }
 
 enum RepositoryError: LocalizedError {
@@ -92,9 +95,133 @@ protocol TodayCardRepository: Sendable {
     ) async throws -> ArchiveEntry
 }
 
+struct WeeklyRepositoryContent: Hashable, Sendable {
+    var publishedPlan: WeeklyPlan
+    var workingPlan: WeeklyPlan? = nil
+    var generatedDraft: GeneratedWeekDraft?
+    var ideaBank: [WeeklyIdea]
+
+    /// Builds a manager-visible plan from a generated draft, filling all seven
+    /// expected day slots. Existing generated cards retain their data; missing
+    /// dates become visible open slots without invented card content.
+    static func makeWorkingPlan(
+        from draft: GeneratedWeekDraft?,
+        weekStartDate: String?,
+        setupSections: [WeeklySetupSection],
+        weeklyBriefText: String
+    ) -> WeeklyPlan? {
+        guard let draft, !draft.dailyCards.isEmpty, let weekStartDate else { return nil }
+
+        let draftCardsByDate = Dictionary(
+            uniqueKeysWithValues: draft.dailyCards.map { ($0.scheduledDate, $0) }
+        )
+        let expectedDates = SupabaseDateFormatting.weekDates(starting: weekStartDate)
+
+        let dateParser = DateFormatter()
+        dateParser.locale = Locale(identifier: "en_US_POSIX")
+        dateParser.dateFormat = "yyyy-MM-dd"
+        let weekdayFormatter = DateFormatter()
+        weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        weekdayFormatter.dateFormat = "EEE"
+        let dayFormatter = DateFormatter()
+        dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dayFormatter.dateFormat = "d"
+
+        let days: [WeeklyDay] = expectedDates.map { dateString in
+            if let card = draftCardsByDate[dateString] {
+                return card.weeklyDay
+            }
+            let date = dateParser.date(from: dateString)
+            return WeeklyDay(
+                weekday: date.map { weekdayFormatter.string(from: $0).uppercased() } ?? "",
+                date: date.map { dayFormatter.string(from: $0) } ?? "",
+                scheduledDate: dateString,
+                title: "Open",
+                reason: "",
+                source: .open,
+                state: .open,
+                isSoftLocked: false
+            )
+        }
+
+        return WeeklyPlan(
+            id: draft.weeklyPlanID,
+            title: "Generate a Week",
+            eyebrow: "MANAGER AI REVIEW",
+            weekRange: SupabaseDateFormatting.weekRange(starting: weekStartDate),
+            weekStartDate: weekStartDate,
+            weekEndDate: SupabaseDateFormatting.weekEndDate(starting: weekStartDate),
+            readinessLine: "\(days.filter { $0.state == .planned }.count) ready, \(days.filter { $0.state == .backup }.count) backup, \(days.filter { $0.state == .open }.count) open",
+            isSoftLocked: draft.status == "published",
+            days: days,
+            weeklyBriefText: weeklyBriefText,
+            setupSections: setupSections
+        )
+    }
+
+    /// Builds the manager-visible working plan directly from persisted daily card
+    /// rows so review_state survives reload without an extra status round-trip.
+    static func makeWorkingPlan(
+        from cardRows: [SupabaseDailyCardRow],
+        planRow: SupabaseWeeklyPlanRow,
+        setupSections: [WeeklySetupSection],
+        weeklyBriefText: String
+    ) -> WeeklyPlan? {
+        guard !cardRows.isEmpty else { return nil }
+
+        let daysByDate = Dictionary(
+            uniqueKeysWithValues: cardRows.map { ($0.scheduledDate, $0.weeklyDay()) }
+        )
+        let expectedDates = SupabaseDateFormatting.weekDates(starting: planRow.weekStartDate)
+
+        let dateParser = DateFormatter()
+        dateParser.locale = Locale(identifier: "en_US_POSIX")
+        dateParser.dateFormat = "yyyy-MM-dd"
+        let weekdayFormatter = DateFormatter()
+        weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        weekdayFormatter.dateFormat = "EEE"
+        let dayFormatter = DateFormatter()
+        dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dayFormatter.dateFormat = "d"
+
+        let days: [WeeklyDay] = expectedDates.map { dateString in
+            if let day = daysByDate[dateString] {
+                return day
+            }
+            let date = dateParser.date(from: dateString)
+            return WeeklyDay(
+                weekday: date.map { weekdayFormatter.string(from: $0).uppercased() } ?? "",
+                date: date.map { dayFormatter.string(from: $0) } ?? "",
+                scheduledDate: dateString,
+                title: "Open",
+                reason: "",
+                source: .open,
+                state: .open,
+                isSoftLocked: false
+            )
+        }
+
+        return WeeklyPlan(
+            id: planRow.id,
+            title: "Generate a Week",
+            eyebrow: "MANAGER AI REVIEW",
+            weekRange: SupabaseDateFormatting.weekRange(starting: planRow.weekStartDate),
+            weekStartDate: planRow.weekStartDate,
+            weekEndDate: SupabaseDateFormatting.weekEndDate(starting: planRow.weekStartDate),
+            readinessLine: "\(days.filter { $0.state == .planned }.count) ready, \(days.filter { $0.state == .backup }.count) backup, \(days.filter { $0.state == .open }.count) open",
+            isSoftLocked: planRow.isSoftLocked || planRow.status == "published",
+            days: days,
+            weeklyBriefText: weeklyBriefText,
+            setupSections: setupSections
+        )
+    }
+}
+
 protocol WeeklyPlanRepository: Sendable {
     func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft?
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea]
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent
     func publishWeek(
         _ plan: WeeklyPlan,
         ideaBank: [WeeklyIdea],
@@ -112,7 +239,19 @@ protocol WeeklyPlanRepository: Sendable {
         in plan: WeeklyPlan,
         context: WorkspaceContext
     ) async throws -> WeeklyPlan
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan
+    func updateDailyCardReviewState(
+        dailyCardID: UUID,
+        reviewState: String,
+        context: WorkspaceContext
+    ) async throws
 }
+
+typealias WeeklyGenerationProgressHandler = @MainActor (WeeklyGenerationProgress) -> Void
 
 protocol WeeklyGenerationRepository: Sendable {
     func generateWeek(
@@ -120,7 +259,8 @@ protocol WeeklyGenerationRepository: Sendable {
         weekStartDate: String,
         weeklySetupID: UUID?,
         mode: GenerateWeekMode,
-        context: WorkspaceContext
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
     ) async throws -> GeneratedWeekDraft
 
     func regenerateDay(
@@ -128,19 +268,147 @@ protocol WeeklyGenerationRepository: Sendable {
         weeklyPlanID: UUID,
         scheduledDate: String,
         preserveManualEdits: Bool,
+        dayGuidance: String?,
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult
+
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult
+
+    func retryQueuedDay(
+        generationID: UUID,
+        scheduledDate: String,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft
+
+    func cancelGeneration(
+        generationID: UUID,
+        context: WorkspaceContext
+    ) async throws
+
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        rowIndexes: [Int]?,
+        force: Bool,
+        revisionInstructions: String?,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset]
+
+    func generateStoryboardThumbnailsForWeek(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        force: Bool,
+        maxRows: Int,
+        context: WorkspaceContext
+    ) async throws -> SupabaseGenerateStoryboardThumbnailsResponse
+}
+
+extension WeeklyPlanRepository {
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        let publishedPlan = try await currentPublishedPlan(for: context)
+        let generatedDraft = try await currentGeneratedDraft(for: context)
+        let ideaBank = try await ideaBank(for: context)
+        let workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
+            from: generatedDraft,
+            weekStartDate: publishedPlan.weekStartDate,
+            setupSections: publishedPlan.setupSections,
+            weeklyBriefText: publishedPlan.weeklyBriefText
+        )
+        return WeeklyRepositoryContent(
+            publishedPlan: publishedPlan,
+            workingPlan: workingPlan,
+            generatedDraft: generatedDraft,
+            ideaBank: ideaBank
+        )
+    }
+
+    func updateDailyCardReviewState(
+        dailyCardID: UUID,
+        reviewState: String,
+        context: WorkspaceContext
+    ) async throws {
+    }
 }
 
 extension WeeklyGenerationRepository {
+    func generateWeek(
+        creatorID: UUID,
+        weekStartDate: String,
+        weeklySetupID: UUID?,
+        mode: GenerateWeekMode,
+        context: WorkspaceContext
+    ) async throws -> GeneratedWeekDraft {
+        try await generateWeek(
+            creatorID: creatorID,
+            weekStartDate: weekStartDate,
+            weeklySetupID: weeklySetupID,
+            mode: mode,
+            context: context,
+            progress: nil
+        )
+    }
+
     func regenerateDay(
         creatorID: UUID,
         weeklyPlanID: UUID,
         scheduledDate: String,
         preserveManualEdits: Bool,
+        dayGuidance: String?,
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult {
         throw RepositoryError.notConfigured("regenerate_day_not_configured")
+    }
+
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult {
+        throw RepositoryError.notConfigured("generate_day_not_configured")
+    }
+
+    func retryQueuedDay(
+        generationID: UUID,
+        scheduledDate: String,
+        context: WorkspaceContext,
+        progress: WeeklyGenerationProgressHandler?
+    ) async throws -> GeneratedWeekDraft {
+        throw RepositoryError.notConfigured("retry_day_not_configured")
+    }
+
+    func cancelGeneration(
+        generationID: UUID,
+        context: WorkspaceContext
+    ) async throws {
+        throw RepositoryError.notConfigured("cancel_generation_not_configured")
+    }
+
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        rowIndexes: [Int]? = nil,
+        force: Bool = false,
+        revisionInstructions: String? = nil,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset] {
+        throw RepositoryError.notConfigured("storyboard_thumbnail_generation_not_configured")
+    }
+
+    func generateStoryboardThumbnailsForWeek(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        force: Bool = false,
+        maxRows: Int = 6,
+        context: WorkspaceContext
+    ) async throws -> SupabaseGenerateStoryboardThumbnailsResponse {
+        throw RepositoryError.notConfigured("storyboard_week_thumbnail_generation_not_configured")
     }
 }
 
@@ -154,6 +422,7 @@ protocol IntelligenceRepository: Sendable {
 
 protocol CreatorProfileRepository: Sendable {
     func activeProfileSummary(for context: WorkspaceContext) async throws -> CreatorProfileSummary
+    func updateProfile(_ update: CreatorProfileUpdate, context: WorkspaceContext) async throws -> CreatorProfileSummary
 }
 
 protocol ArchiveRepository: Sendable {
@@ -189,11 +458,75 @@ struct CreatorProfileSummary: Hashable, Sendable {
     var positioning: String
     var voiceLine: String
     var noGoTopics: [String]
+    var voiceRules: [String] = []
+    var contentPillars: [String] = []
+    var captionStyle: String? = nil
+    var recurringFormats: [String] = []
 
     static let creatorFixture = CreatorProfileSummary(
         displayName: "Creator",
-        positioning: "Premium fitness-after-60 editorial voice.",
-        voiceLine: "Warm, steady, precise, lightly Hinglish when it feels natural.",
-        noGoTopics: ["Politics", "Weight talk", "Negativity"]
+        positioning: "Indian mother, wife, and HYROX athlete building a second-half-of-life fitness brand around strength, softness, humour, family, consistency, and choosing yourself later in life.",
+        voiceLine: "Warm, witty, self-aware, lightly Indian, proud without show-off, wise without preaching.",
+        noGoTopics: [
+            "Politics",
+            "Weight talk",
+            "No excuses",
+            "Beast mode",
+            "Age is just a number"
+        ],
+        voiceRules: [
+            "Conversational",
+            "Warm",
+            "Witty",
+            "Slightly sarcastic",
+            "Self-aware",
+            "Indian but not caricatured",
+            "Proud but not show-offy"
+        ],
+        contentPillars: ["gym", "lifestyle", "eating", "recovery"],
+        captionStyle: "Practical, ready-to-use, sharp, warm, and creator-focused. Simple strong lines over long explanations.",
+        recurringFormats: [
+            "Today's Hyrox Homework",
+            "The Set I Did Not Ask For",
+            "Food That Supports Training",
+            "Training While Life Is Still Happening",
+            "Brand In My Real Routine"
+        ]
     )
+}
+
+struct CreatorProfileUpdate: Hashable, Sendable {
+    var positioning: String
+    var voiceRules: [String]
+    var contentPillars: [String]
+    var captionStyle: String
+    var noGoTopics: [String]
+    var recurringFormats: [String]
+
+    init(
+        positioning: String,
+        voiceRules: [String],
+        contentPillars: [String],
+        captionStyle: String,
+        noGoTopics: [String],
+        recurringFormats: [String]
+    ) {
+        self.positioning = positioning
+        self.voiceRules = voiceRules
+        self.contentPillars = contentPillars
+        self.captionStyle = captionStyle
+        self.noGoTopics = noGoTopics
+        self.recurringFormats = recurringFormats
+    }
+
+    init(summary: CreatorProfileSummary) {
+        positioning = summary.positioning
+        voiceRules = summary.voiceRules.isEmpty
+            ? [summary.voiceLine].compactMap(\.nilIfBlank)
+            : summary.voiceRules
+        contentPillars = summary.contentPillars
+        captionStyle = summary.captionStyle ?? ""
+        noGoTopics = summary.noGoTopics
+        recurringFormats = summary.recurringFormats
+    }
 }

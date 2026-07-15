@@ -2,7 +2,7 @@
 
 Native iPhone-only SwiftUI app for Creator Content OS V2.
 
-The app is currently fixture-first, with Supabase-ready repository boundaries and local Edge Functions for device pairing and weekly publishing.
+The app is fixture-safe by default for local development, with live Supabase runtime, approved-email OTP sign-in, manager tooling, and Edge Functions for the TestFlight path.
 
 ## Local iOS
 
@@ -30,3 +30,13 @@ colima stop
 ```
 
 Runtime Supabase URL/key overrides should go in `CreatorContentOS/Config/LocalRuntime.xcconfig`, which is gitignored. Use `CreatorContentOS/Config/LocalRuntime.sample.xcconfig` as the template.
+
+## Backend verification
+
+Run the same type-check and hermetic contract suite used by pull requests:
+
+```sh
+deno task ci:backend
+```
+
+The test task permits only the local listener used by the Edge Function harness. Provider endpoints are not reachable from this suite.

@@ -46,7 +46,7 @@ struct ReferenceImportView: View {
     }
 
     var body: some View {
-        EditorialScreen {
+        EditorialScreen(bottomContentPadding: 72) {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
 
@@ -120,6 +120,12 @@ struct ReferenceImportView: View {
                     .padding(.top, MCOSpace.s)
             }
         }
+        .onAppear {
+            guard isLiveRuntime, rawText.isEmpty, preview == nil else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                isInputFocused = true
+            }
+        }
     }
 
     private var header: some View {
@@ -142,9 +148,6 @@ struct ReferenceImportView: View {
             }
 
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                Text("MANAGER INTELLIGENCE")
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
                 Text("Inspiration")
                     .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)

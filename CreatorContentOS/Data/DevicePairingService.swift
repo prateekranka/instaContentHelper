@@ -142,7 +142,7 @@ struct DevicePairingService {
     init(
         bootstrapConfiguration: SupabaseBootstrapConfiguration? = .fromInfoDictionary(),
         store: RuntimeConfigurationStoring = RuntimeConfigurationStore(),
-        deviceNameProvider: @escaping @Sendable () -> String = { "iPhone" }
+        deviceNameProvider: @escaping @Sendable () -> String = CurrentDeviceNameProvider.deviceName
     ) {
         self.bootstrapConfiguration = bootstrapConfiguration
         self.store = store

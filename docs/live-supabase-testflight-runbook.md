@@ -37,12 +37,17 @@ scripts/deploy-live-supabase.sh | tee build-logs/live_supabase_deploy_$(date +%Y
 
 The script deploys:
 
+- `exchange-auth-session`
 - `pair-device`
+- `revoke-device-session`
+- `send-auth-email`
+- `manage-testers`
 - `publish-week`
 - `read-content`
 - `write-content`
 - `import-references`
 - `review-reference`
+- `generate-week`
 
 All functions deploy with JWT verification disabled because the app uses the publishable key plus `x-mco-device-token`; the service role key stays inside Edge Functions.
 

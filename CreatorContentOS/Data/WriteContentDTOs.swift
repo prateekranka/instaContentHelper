@@ -5,6 +5,9 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
     case upsertArchiveDecision(ArchiveEntry, for: DailyCard, context: WorkspaceContext)
     case selectIdeaForNextOpenDay(idea: WeeklyIdea, plan: WeeklyPlan, context: WorkspaceContext)
     case updateWeeklySetup(sections: [WeeklySetupSection], plan: WeeklyPlan, context: WorkspaceContext)
+    case updateWeeklyBrief(text: String, plan: WeeklyPlan, context: WorkspaceContext)
+    case updateCreatorProfile(CreatorProfileUpdate, context: WorkspaceContext)
+    case updateDailyCardReviewState(dailyCardID: UUID, reviewState: String, context: WorkspaceContext)
 
     private enum CodingKeys: String, CodingKey {
         case action
@@ -17,7 +20,16 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
         case hasPostThumbnail = "has_post_thumbnail"
         case ideaID = "idea_id"
         case weeklyPlanID = "weekly_plan_id"
+        case weekStartDate = "week_start_date"
         case setupSections = "setup_sections"
+        case weeklyBrief = "weekly_brief"
+        case positioning
+        case voiceRules = "voice_rules"
+        case contentPillars = "content_pillars"
+        case captionStyle = "caption_style"
+        case neverSay = "never_say"
+        case recurringFormats = "recurring_formats"
+        case reviewState = "review_state"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -50,11 +62,57 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
             try container.encode("update_weekly_setup", forKey: .action)
             try container.encode(context.creatorID, forKey: .creatorID)
             try container.encode(plan.id, forKey: .weeklyPlanID)
+            try encodeWeekStartDateIfAvailable(plan.weekStartDate, into: &container)
             try container.encode(
                 sections.map(SupabaseWeeklySetupSectionRequest.init(section:)),
                 forKey: .setupSections
             )
+
+        case .updateWeeklyBrief(let text, let plan, let context):
+            try container.encode("update_weekly_setup", forKey: .action)
+            try container.encode(context.creatorID, forKey: .creatorID)
+            try container.encode(plan.id, forKey: .weeklyPlanID)
+            try encodeWeekStartDateIfAvailable(plan.weekStartDate, into: &container)
+            try container.encode(
+                [SupabaseWeeklyBriefSetupRequest(text: text)],
+                forKey: .setupSections
+            )
+
+        case .updateCreatorProfile(let update, let context):
+            try container.encode("update_creator_profile", forKey: .action)
+            try container.encode(context.creatorID, forKey: .creatorID)
+            try container.encode(update.positioning, forKey: .positioning)
+            try container.encode(update.voiceRules, forKey: .voiceRules)
+            try container.encode(update.contentPillars, forKey: .contentPillars)
+            try container.encode(update.captionStyle, forKey: .captionStyle)
+            try container.encode(update.noGoTopics, forKey: .neverSay)
+            try container.encode(update.recurringFormats, forKey: .recurringFormats)
+
+        case .updateDailyCardReviewState(let dailyCardID, let reviewState, let context):
+            try container.encode("update_daily_card_review_state", forKey: .action)
+            try container.encode(context.creatorID, forKey: .creatorID)
+            try container.encode(dailyCardID, forKey: .dailyCardID)
+            try container.encode(reviewState, forKey: .reviewState)
         }
+    }
+
+    private func encodeWeekStartDateIfAvailable(
+        _ weekStartDate: String?,
+        into container: inout KeyedEncodingContainer<CodingKeys>
+    ) throws {
+        if let weekStartDate = weekStartDate?.nilIfBlank {
+            try container.encode(weekStartDate, forKey: .weekStartDate)
+        }
+    }
+}
+
+struct SupabaseWeeklyBriefSetupRequest: Encodable, Sendable {
+    var key = "notes"
+    var title = "weekly_brief"
+    var value: String
+
+    init(text: String) {
+        value = text
     }
 }
 
@@ -102,15 +160,25 @@ struct SupabaseWriteDecisionRequest: Encodable, Sendable {
 
 struct SupabaseWriteContentResponse: Decodable, Hashable, Sendable {
     var action: String?
+    var error: String?
+    var dailyCardID: UUID?
+    var reviewState: String?
     var dailyCard: SupabaseWriteDailyCardResponse?
     var archiveEntry: SupabaseWriteArchiveEntryResponse?
     var idea: SupabaseWriteIdeaResponse?
+    var weeklySetup: SupabaseWeeklySetupRow?
+    var creatorProfile: SupabaseCreatorProfileRow?
 
     enum CodingKeys: String, CodingKey {
         case action
+        case error
+        case dailyCardID = "daily_card_id"
+        case reviewState = "review_state"
         case dailyCard = "daily_card"
         case archiveEntry = "archive_entry"
         case idea
+        case weeklySetup = "weekly_setup"
+        case creatorProfile = "creator_profile"
     }
 }
 

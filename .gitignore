@@ -1,7 +1,10 @@
 .DS_Store
 DerivedData/
 .build/
+build/
 build-logs/
+.commandcode/
+.omo/
 *.xcuserstate
 xcuserdata/
 

@@ -116,4 +116,40 @@ final class ReferenceImportTests: XCTestCase {
         XCTAssertEqual(services.lastReferenceImportError, "Connect live workspace to import references.")
         XCTAssertFalse(services.isLiveSupabaseRuntime)
     }
+
+    func testReferenceImportFileLoaderReadsUTF8CSVText() throws {
+        let url = try writeTemporaryFile(
+            filename: "references.csv",
+            contents: "type,value\naccount,@fitover60\nreel,https://www.instagram.com/reel/ABC123/"
+        )
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let text = try ReferenceImportFileLoader.loadText(from: url)
+
+        XCTAssertTrue(text.contains("@fitover60"))
+        XCTAssertTrue(text.contains("https://www.instagram.com/reel/ABC123/"))
+    }
+
+    func testReferenceImportFileLoaderReportsMissingFile() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("csv")
+
+        XCTAssertThrowsError(try ReferenceImportFileLoader.loadText(from: url))
+    }
+
+    func testReferenceImportAllowedFileTypesIncludeCSVAndPlainText() {
+        XCTAssertTrue(ReferenceImportFileType.allowedTypes.contains(.commaSeparatedText))
+        XCTAssertTrue(ReferenceImportFileType.allowedTypes.contains(.plainText))
+        XCTAssertTrue(ReferenceImportFileType.allowedTypes.contains(.text))
+    }
+
+    private func writeTemporaryFile(filename: String, contents: String) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(filename)
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
 }

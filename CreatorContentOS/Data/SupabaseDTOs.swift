@@ -70,6 +70,42 @@ enum SupabaseJSONValue: Codable, Hashable, Sendable {
         }
         return nil
     }
+
+    var objectValue: [String: SupabaseJSONValue]? {
+        if case .object(let value) = self {
+            return value
+        }
+        return nil
+    }
+
+    var intValue: Int? {
+        switch self {
+        case .number(let value):
+            Int(value)
+        case .string(let value):
+            Int(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            nil
+        }
+    }
+
+    var doubleValue: Double? {
+        switch self {
+        case .number(let value):
+            value
+        case .string(let value):
+            Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        default:
+            nil
+        }
+    }
+
+    func decoded<T: Decodable>(_ type: T.Type) -> T? {
+        guard let data = try? JSONEncoder().encode(self) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(type, from: data)
+    }
 }
 
 struct SupabaseShotSceneDTO: Codable, Hashable, Sendable {
@@ -106,7 +142,16 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     var estimatedShootMinutes: Int?
     var energyRequired: String?
     var languageMode: String?
+    var format: String?
+    var primarySurface: String?
+    var durationSeconds: Int?
+    var hook: String?
+    var saveShareReason: String?
     var sceneList: [SupabaseShotSceneDTO]
+    var shotTimeline: [ProductionTimelineItem]
+    var voiceoverTimeline: [ProductionTimelineItem]
+    var onScreenTextTimeline: [ProductionTimelineItem]
+    var silentVersionTimeline: [ProductionTimelineItem]
     var script: String?
     var noVoiceoverVersion: String?
     var onScreenText: [SupabaseJSONValue]?
@@ -118,6 +163,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     var brandEventNotes: String?
     var backupStory: SupabaseJSONValue?
     var backupCaptionOnly: SupabaseJSONValue?
+    var backupStoryDetail: [ProductionTimelineItem]
+    var captionBackupDetail: String?
     var audioOptionID: UUID?
     var audioFallbackID: UUID?
     var creatorFitScore: Double?
@@ -125,6 +172,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     var assumptions: [SupabaseJSONValue]?
     var sourceNote: String?
     var decisionAt: String?
+    var reviewState: String?
+    var storyboardThumbnailAssets: [StoryboardThumbnailAsset]
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -144,7 +193,16 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         case estimatedShootMinutes = "estimated_shoot_minutes"
         case energyRequired = "energy_required"
         case languageMode = "language_mode"
+        case format
+        case primarySurface = "primary_surface"
+        case durationSeconds = "duration_seconds"
+        case hook
+        case saveShareReason = "save_share_reason"
         case sceneList = "scene_list"
+        case shotTimeline = "shot_timeline"
+        case voiceoverTimeline = "voiceover_timeline"
+        case onScreenTextTimeline = "on_screen_text_timeline"
+        case silentVersionTimeline = "silent_version_timeline"
         case script
         case noVoiceoverVersion = "no_voiceover_version"
         case onScreenText = "on_screen_text"
@@ -156,6 +214,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         case brandEventNotes = "brand_event_notes"
         case backupStory = "backup_story"
         case backupCaptionOnly = "backup_caption_only"
+        case backupStoryDetail = "backup_story_detail"
+        case captionBackupDetail = "caption_backup_detail"
         case audioOptionID = "audio_option_id"
         case audioFallbackID = "audio_fallback_id"
         case creatorFitScore = "creator_fit_score"
@@ -163,6 +223,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         case assumptions
         case sourceNote = "source_note"
         case decisionAt = "decision_at"
+        case reviewState = "review_state"
+        case storyboardThumbnailAssets = "storyboard_thumbnail_assets"
     }
 
     init(from decoder: Decoder) throws {
@@ -184,7 +246,35 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         estimatedShootMinutes = try container.decodeIfPresent(Int.self, forKey: .estimatedShootMinutes)
         energyRequired = try container.decodeIfPresent(String.self, forKey: .energyRequired)
         languageMode = try container.decodeIfPresent(String.self, forKey: .languageMode)
+        let decodedPostInstructions = try container.decodeIfPresent(SupabaseJSONValue.self, forKey: .postInstructions)
+        let postInstructionObject = decodedPostInstructions?.objectValue
+        format = try container.decodeIfPresent(String.self, forKey: .format)
+            ?? postInstructionObject?["format"]?.displayText
+        primarySurface = try container.decodeIfPresent(String.self, forKey: .primarySurface)
+            ?? postInstructionObject?["primary_surface"]?.displayText
+        durationSeconds = try container.decodeIfPresent(Int.self, forKey: .durationSeconds)
+            ?? postInstructionObject?["duration_seconds"]?.intValue
+        hook = try container.decodeIfPresent(String.self, forKey: .hook)
+            ?? postInstructionObject?["hook"]?.displayText
+        saveShareReason = try container.decodeIfPresent(String.self, forKey: .saveShareReason)
+            ?? postInstructionObject?["save_share_reason"]?.displayText
         sceneList = (try? container.decode([SupabaseShotSceneDTO].self, forKey: .sceneList)) ?? []
+        let decodedShotTimeline = (try? container.decode([ProductionTimelineItem].self, forKey: .shotTimeline)) ?? []
+        shotTimeline = decodedShotTimeline.isEmpty
+            ? postInstructionObject?["shot_timeline"]?.decoded([ProductionTimelineItem].self) ?? []
+            : decodedShotTimeline
+        let decodedVoiceoverTimeline = (try? container.decode([ProductionTimelineItem].self, forKey: .voiceoverTimeline)) ?? []
+        voiceoverTimeline = decodedVoiceoverTimeline.isEmpty
+            ? postInstructionObject?["voiceover_timeline"]?.decoded([ProductionTimelineItem].self) ?? []
+            : decodedVoiceoverTimeline
+        let decodedOnScreenTextTimeline = (try? container.decode([ProductionTimelineItem].self, forKey: .onScreenTextTimeline)) ?? []
+        onScreenTextTimeline = decodedOnScreenTextTimeline.isEmpty
+            ? postInstructionObject?["on_screen_text_timeline"]?.decoded([ProductionTimelineItem].self) ?? []
+            : decodedOnScreenTextTimeline
+        let decodedSilentVersionTimeline = (try? container.decode([ProductionTimelineItem].self, forKey: .silentVersionTimeline)) ?? []
+        silentVersionTimeline = decodedSilentVersionTimeline.isEmpty
+            ? postInstructionObject?["silent_version_timeline"]?.decoded([ProductionTimelineItem].self) ?? []
+            : decodedSilentVersionTimeline
         script = try container.decodeIfPresent(String.self, forKey: .script)
         noVoiceoverVersion = try container.decodeIfPresent(String.self, forKey: .noVoiceoverVersion)
         onScreenText = try container.decodeIfPresent([SupabaseJSONValue].self, forKey: .onScreenText)
@@ -192,17 +282,27 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         cta = try container.decodeIfPresent(String.self, forKey: .cta)
         hashtags = (try? container.decode([String].self, forKey: .hashtags)) ?? []
         coverText = try container.decodeIfPresent(String.self, forKey: .coverText)
-        postInstructions = try container.decodeIfPresent(SupabaseJSONValue.self, forKey: .postInstructions)
+        postInstructions = decodedPostInstructions
         brandEventNotes = try container.decodeIfPresent(String.self, forKey: .brandEventNotes)
         backupStory = try container.decodeIfPresent(SupabaseJSONValue.self, forKey: .backupStory)
         backupCaptionOnly = try container.decodeIfPresent(SupabaseJSONValue.self, forKey: .backupCaptionOnly)
+        let decodedBackupStoryDetail = (try? container.decode([ProductionTimelineItem].self, forKey: .backupStoryDetail)) ?? []
+        backupStoryDetail = decodedBackupStoryDetail.isEmpty
+            ? backupStory?.objectValue?["detail"]?.decoded([ProductionTimelineItem].self) ?? []
+            : decodedBackupStoryDetail
+        captionBackupDetail = try container.decodeIfPresent(String.self, forKey: .captionBackupDetail)
+            ?? postInstructionObject?["caption_backup_detail"]?.displayText
+            ?? backupCaptionOnly?.objectValue?["detail"]?.displayText
         audioOptionID = try container.decodeIfPresent(UUID.self, forKey: .audioOptionID)
         audioFallbackID = try container.decodeIfPresent(UUID.self, forKey: .audioFallbackID)
         creatorFitScore = try container.decodeIfPresent(Double.self, forKey: .creatorFitScore)
+            ?? postInstructionObject?["creator_fit_score"]?.doubleValue
         riskNotes = try container.decodeIfPresent([SupabaseJSONValue].self, forKey: .riskNotes)
         assumptions = try container.decodeIfPresent([SupabaseJSONValue].self, forKey: .assumptions)
         sourceNote = try container.decodeIfPresent(String.self, forKey: .sourceNote)
         decisionAt = try container.decodeIfPresent(String.self, forKey: .decisionAt)
+        reviewState = try container.decodeIfPresent(String.self, forKey: .reviewState)
+        storyboardThumbnailAssets = (try? container.decode([StoryboardThumbnailAsset].self, forKey: .storyboardThumbnailAssets)) ?? []
     }
 
     func domainCard() -> DailyCard {
@@ -215,11 +315,14 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
                 minutes: estimatedShootMinutes
             ),
             whyToday: whyToday ?? growthJob ?? "Prepared for today.",
+            hook: hook?.nilIfBlank,
             sourceNote: sourceNote ?? contentPillar,
             scheduledDate: scheduledDate,
             scenes: sceneList.enumerated().map { index, scene in
                 scene.domainScene(fallbackNumber: index + 1)
             },
+            shotTimeline: shotTimeline,
+            onScreenTextTimeline: onScreenTextTimeline,
             completionState: CompletionState(supabaseStatus: status),
             script: script,
             noVoiceoverVersion: noVoiceoverVersion,
@@ -239,15 +342,84 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         )
     }
 
+    func generatedDailyCardDraft() -> GeneratedDailyCardDraft {
+        GeneratedDailyCardDraft(
+            id: id,
+            scheduledDate: scheduledDate,
+            status: Self.draftReviewStatus(dbStatus: status, reviewState: reviewState),
+            title: title,
+            whyToday: whyToday ?? growthJob ?? "Prepared for this day.",
+            growthJob: growthJob ?? whyToday ?? "Support this week’s content arc.",
+            contentPillar: contentPillar ?? sourceNote ?? "Pattern",
+            shootability: shootability ?? "Not specified",
+            estimatedShootMinutes: estimatedShootMinutes ?? 0,
+            energyRequired: energyRequired ?? "Not specified",
+            languageMode: languageMode ?? "Natural",
+            format: format,
+            primarySurface: primarySurface,
+            durationSeconds: durationSeconds,
+            hook: hook,
+            saveShareReason: saveShareReason,
+            sceneList: sceneList.enumerated().map { index, scene in
+                scene.domainScene(fallbackNumber: index + 1)
+            },
+            shotTimeline: shotTimeline,
+            voiceoverTimeline: voiceoverTimeline,
+            onScreenTextTimeline: onScreenTextTimeline,
+            silentVersionTimeline: silentVersionTimeline,
+            script: script ?? "",
+            noVoiceoverVersion: noVoiceoverVersion ?? "",
+            onScreenText: onScreenText?.compactMap(\.displayText) ?? [],
+            caption: caption ?? "",
+            cta: cta ?? "",
+            hashtags: hashtags,
+            coverText: coverText ?? "",
+            postInstructions: postInstructions?.displayText ?? "",
+            brandEventNotes: brandEventNotes ?? "",
+            backupStory: backupStory?.displayText ?? "",
+            backupCaptionOnly: backupCaptionOnly?.displayText ?? "",
+            backupStoryDetail: backupStoryDetail,
+            captionBackupDetail: captionBackupDetail,
+            audioOptionNotes: postInstructions?.audioOptionNotes ?? "",
+            creatorFitScore: creatorFitScore ?? 0,
+            riskNotes: riskNotes?.compactMap(\.displayText) ?? [],
+            assumptions: assumptions?.compactMap(\.displayText) ?? [],
+            sourceNote: sourceNote ?? "",
+            storyboardThumbnailAssets: storyboardThumbnailAssets
+        )
+    }
+
+    private static func draftReviewStatus(dbStatus: String, reviewState: String?) -> String {
+        guard dbStatus == "draft" else { return dbStatus }
+
+        guard let reviewState = reviewState?.nilIfBlank?.lowercased() else {
+            return "open"
+        }
+
+        switch reviewState {
+        case "ready", "planned":
+            return "ready"
+        case "backup":
+            return "backup"
+        default:
+            return "open"
+        }
+    }
+
     func weeklyDay() -> WeeklyDay {
-        WeeklyDay(
+        let reviewBasedState: WeeklyDayState? = {
+            guard status == "draft", let reviewState = reviewState?.nilIfBlank else { return nil }
+            return WeeklyDayState(reviewState: reviewState)
+        }()
+        return WeeklyDay(
+            id: id,
             weekday: SupabaseDateFormatting.weekdayAbbreviation(for: scheduledDate),
             date: SupabaseDateFormatting.dayNumber(for: scheduledDate),
             scheduledDate: scheduledDate,
             title: title,
             reason: whyToday ?? sourceNote ?? "Prepared for this day.",
             source: WeeklySourceReason(sourceNote: sourceNote, contentPillar: contentPillar),
-            state: WeeklyDayState(dailyCardStatus: status),
+            state: reviewBasedState ?? WeeklyDayState(dailyCardStatus: status),
             isSoftLocked: status != "draft"
         )
     }
@@ -328,6 +500,67 @@ struct SupabaseWeeklySetupRow: Codable, Hashable, Sendable {
             WeeklySetupSection(systemImage: "waveform.path.ecg", title: "Source pulse", summary: SupabaseDateFormatting.summaryText(selectedSources, fallback: "No trends/audio selected."), state: selectedSources.isEmpty ? "Needs detail" : "Ready"),
             WeeklySetupSection(systemImage: "nosign", title: "Boundaries", summary: SupabaseDateFormatting.summaryText(noGoTopics, fallback: "No extra no-go topics."), state: "Ready")
         ]
+    }
+
+    var weeklyBriefText: String {
+        if let notes = notes?.nilIfBlank {
+            return notes
+        }
+
+        return synthesizedWeeklyBriefText
+    }
+
+    private var synthesizedWeeklyBriefText: String {
+        var lines: [String] = []
+
+        if let location = location?.nilIfBlank {
+            lines.append("Location: \(location)")
+        }
+
+        appendSummary(
+            title: "Weekly routine",
+            values: workoutRaceSchedule,
+            fallback: nil,
+            into: &lines
+        )
+        appendSummary(
+            title: "Family/travel",
+            values: familyTravelMoments,
+            fallback: nil,
+            into: &lines
+        )
+        appendSummary(
+            title: "Energy/shooting constraints",
+            values: energyConstraints + shootingConstraints,
+            fallback: nil,
+            into: &lines
+        )
+        appendSummary(
+            title: "References to consider",
+            values: selectedSources,
+            fallback: nil,
+            into: &lines
+        )
+        appendSummary(
+            title: "Avoid",
+            values: noGoTopics,
+            fallback: nil,
+            into: &lines
+        )
+
+        return lines.joined(separator: "\n")
+    }
+
+    private func appendSummary(
+        title: String,
+        values: [SupabaseJSONValue],
+        fallback: String?,
+        into lines: inout [String]
+    ) {
+        let summary = SupabaseDateFormatting.summaryText(values, fallback: fallback ?? "")
+        if let text = summary.nilIfBlank {
+            lines.append("\(title): \(text)")
+        }
     }
 }
 
@@ -547,13 +780,19 @@ struct SupabaseCreatorProfileRow: Codable, Hashable, Sendable {
     var displayName: String?
     var positioning: String?
     var voiceRules: [SupabaseJSONValue]
+    var contentPillars: [SupabaseJSONValue]
+    var captionStyle: String?
     var neverSay: [SupabaseJSONValue]
+    var recurringFormats: [SupabaseJSONValue]
 
     enum CodingKeys: String, CodingKey {
         case displayName = "display_name"
         case positioning
         case voiceRules = "voice_rules"
+        case contentPillars = "content_pillars"
+        case captionStyle = "caption_style"
         case neverSay = "never_say"
+        case recurringFormats = "recurring_formats"
     }
 
     init(from decoder: Decoder) throws {
@@ -561,15 +800,23 @@ struct SupabaseCreatorProfileRow: Codable, Hashable, Sendable {
         displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
         positioning = try container.decodeIfPresent(String.self, forKey: .positioning)
         voiceRules = (try? container.decode([SupabaseJSONValue].self, forKey: .voiceRules)) ?? []
+        contentPillars = (try? container.decode([SupabaseJSONValue].self, forKey: .contentPillars)) ?? []
+        captionStyle = try container.decodeIfPresent(String.self, forKey: .captionStyle)
         neverSay = (try? container.decode([SupabaseJSONValue].self, forKey: .neverSay)) ?? []
+        recurringFormats = (try? container.decode([SupabaseJSONValue].self, forKey: .recurringFormats)) ?? []
     }
 
     func summary() -> CreatorProfileSummary {
-        CreatorProfileSummary(
+        let voiceRuleTexts = voiceRules.compactMap(\.displayText)
+        return CreatorProfileSummary(
             displayName: displayName ?? "Creator",
             positioning: positioning ?? "Creator profile active.",
-            voiceLine: SupabaseDateFormatting.summaryText(voiceRules, fallback: "Voice rules are ready."),
-            noGoTopics: neverSay.compactMap(\.displayText)
+            voiceLine: voiceRuleTexts.isEmpty ? "Voice rules are ready." : voiceRuleTexts.joined(separator: ", "),
+            noGoTopics: neverSay.compactMap(\.displayText),
+            voiceRules: voiceRuleTexts,
+            contentPillars: contentPillars.compactMap(\.displayText),
+            captionStyle: captionStyle,
+            recurringFormats: recurringFormats.compactMap(\.displayText)
         )
     }
 }
@@ -891,18 +1138,25 @@ enum SupabaseDateFormatting {
         return formatter.string(from: Date())
     }
 
+    /// Compares normalized yyyy-MM-dd prefixes lexically — valid because ISO-8601 date strings sort correctly.
+    static func isDatePast(_ dateString: String, todayString: String) -> Bool {
+        let normalized = String(dateString.prefix(10))
+        let normalizedToday = String(todayString.prefix(10))
+        return normalized < normalizedToday
+    }
+
     static func isoTimestampString() -> String {
         ISO8601DateFormatter().string(from: Date())
     }
 
     static func effortLabel(shootability: String?, minutes: Int?) -> String {
         switch (shootability?.nilIfBlank, minutes) {
-        case (.some(let shootability), .some(let minutes)):
-            "\(shootability.displayTitle) - \(minutes) min"
+        case (.some(let shootability), .some):
+            shootability.displayTitle
         case (.some(let shootability), .none):
             shootability.displayTitle
-        case (.none, .some(let minutes)):
-            "Ready - \(minutes) min"
+        case (.none, .some):
+            "Ready"
         case (.none, .none):
             "Ready"
         }
@@ -974,6 +1228,17 @@ extension WeeklyDayState {
             self = .backup
         default:
             self = .planned
+        }
+    }
+
+    init(reviewState: String) {
+        switch reviewState.lowercased() {
+        case "ready", "planned":
+            self = .planned
+        case "backup":
+            self = .backup
+        default:
+            self = .open
         }
     }
 }

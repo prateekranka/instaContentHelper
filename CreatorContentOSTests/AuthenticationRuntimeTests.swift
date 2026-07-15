@@ -66,6 +66,39 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(authentication.restoreCallCount, 1)
     }
 
+    func testStoredLiveSessionRestoresLiveRuntime() async {
+        let session = makeSession(email: "tester@example.com")
+        let authentication = AuthenticationServiceStub(restoredSession: session)
+        let state = AppState(
+            authenticationService: authentication,
+            liveRuntimeBuilder: { session in
+                Self.fixtureLiveRuntime(session)
+            }
+        )
+
+        await state.restoreAuthentication()
+
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
+        XCTAssertEqual(state.runtime.mode, AppRuntimeMode.live(session))
+        XCTAssertEqual(state.activeMode, AppMode.creator)
+        XCTAssertEqual(authentication.restoreCallCount, 1)
+    }
+
+    func testMissingLiveBootstrapConfigurationRestoresStableError() async {
+        let state = AppState(
+            authenticationService: SupabaseAuthenticationService(bootstrapConfiguration: nil),
+            liveRuntimeBuilder: { session in
+                Self.fixtureLiveRuntime(session)
+            }
+        )
+
+        await state.restoreAuthentication()
+
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.failed)
+        XCTAssertEqual(state.authenticationError, "Live Supabase is not configured for this build.")
+        XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
+    }
+
     func testAuthenticationShellDoesNotTrustLegacyPairedSessionAtStartup() {
         let runtime = AppRuntime.makeAuthenticationShellRuntime(
             todayCache: MemoryAuthenticationTodayCache(),
@@ -100,6 +133,47 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(authentication.verifiedToken, "123456")
     }
 
+    func testResetSignInClearsPendingEmailAndError() async {
+        let authentication = AuthenticationServiceStub(
+            requestError: AuthenticationServiceError.backend("tester_not_approved")
+        )
+        let state = AppState(
+            authenticationService: authentication,
+            liveRuntimeBuilder: { session in
+                Self.fixtureLiveRuntime(session)
+            }
+        )
+        state.authenticationPhase = AuthenticationPhase.signedOut
+
+        await state.requestEmailOTP("unknown@example.com")
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.failed)
+        XCTAssertNotNil(state.authenticationError)
+
+        state.pendingEmail = "unknown@example.com"
+        state.resetSignIn()
+
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
+        XCTAssertNil(state.pendingEmail)
+        XCTAssertNil(state.authenticationError)
+    }
+
+    func testVerifyWithoutPendingEmailShowsStableRecoveryError() async {
+        let authentication = AuthenticationServiceStub()
+        let state = AppState(
+            authenticationService: authentication,
+            liveRuntimeBuilder: { session in
+                Self.fixtureLiveRuntime(session)
+            }
+        )
+        state.authenticationPhase = AuthenticationPhase.signedOut
+
+        await state.verifyEmailOTP("123456")
+
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.failed)
+        XCTAssertEqual(state.authenticationError, "Request a new code first.")
+        XCTAssertNil(authentication.verifiedEmail)
+    }
+
     func testOTPVerificationStaysLiveWhenTodayCardIsMissing() async throws {
         let session = makeSession(email: "tester@example.com")
         let authentication = AuthenticationServiceStub(verifiedSession: session)
@@ -113,6 +187,10 @@ final class AuthenticationRuntimeTests: XCTestCase {
 
         await state.requestEmailOTP("tester@example.com")
         await state.verifyEmailOTP("123456")
+        await waitForTodayContentState(
+            in: state,
+            toBecome: TodayContentState.missingPublishedCard(date: "2026-06-14")
+        )
 
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.live(session))
@@ -121,10 +199,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
             state.runtime.services.todayContentState,
             TodayContentState.missingPublishedCard(date: "2026-06-14")
         )
-        XCTAssertEqual(
-            state.runtime.services.lastRepositoryError,
-            "No published daily card exists for 2026-06-14."
-        )
+        XCTAssertNil(state.runtime.services.lastRepositoryError)
     }
 
     func testAuthenticationFailureSurfacesStableMessage() async {
@@ -148,6 +223,38 @@ final class AuthenticationRuntimeTests: XCTestCase {
         )
     }
 
+    func testSupabaseAuthenticationServiceRejectsInvalidEmailBeforeBootstrap() async {
+        let authentication = SupabaseAuthenticationService(bootstrapConfiguration: nil)
+
+        do {
+            try await authentication.requestEmailOTP(email: "not-an-email")
+            XCTFail("Expected invalid email validation to throw.")
+        } catch {
+            XCTAssertEqual(error as? AuthenticationServiceError, .invalidEmail)
+        }
+    }
+
+    func testSupabaseAuthenticationServiceRejectsInvalidOTPBeforeBootstrap() async {
+        let authentication = SupabaseAuthenticationService(bootstrapConfiguration: nil)
+
+        do {
+            _ = try await authentication.verifyEmailOTP(email: "tester@example.com", token: "12ab")
+            XCTFail("Expected invalid OTP validation to throw.")
+        } catch {
+            XCTAssertEqual(error as? AuthenticationServiceError, .invalidOTP)
+        }
+    }
+
+    func testCurrentDeviceNameProviderUsesTrimmedNameOrFallback() {
+        XCTAssertEqual(
+            CurrentDeviceNameProvider.displayName(from: " ContentHelper QA iPhone "),
+            "ContentHelper QA iPhone"
+        )
+        XCTAssertEqual(CurrentDeviceNameProvider.displayName(from: "  "), "iPhone")
+        XCTAssertEqual(CurrentDeviceNameProvider.displayName(from: nil), "iPhone")
+        XCTAssertFalse(CurrentDeviceNameProvider.deviceName().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
     func testSignOutRevokesSessionAndReturnsToSignedOutShell() async throws {
         let session = makeSession(email: "tester@example.com")
         let authentication = AuthenticationServiceStub()
@@ -166,6 +273,88 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
         XCTAssertEqual(state.activeMode, AppMode.creator)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
+    }
+
+    func testSignOutRevokeFailureStillClearsLocalSession() async throws {
+        let session = makeSession(email: "tester@example.com")
+        let authentication = AuthenticationServiceStub(
+            signOutError: AuthenticationServiceError.backend("session_revoke_failed")
+        )
+        let state = AppState(
+            runtime: Self.fixtureLiveRuntime(session),
+            authenticationPhase: AuthenticationPhase.live,
+            authenticationService: authentication,
+            liveRuntimeBuilder: { session in
+                Self.fixtureLiveRuntime(session)
+            }
+        )
+
+        await state.signOut()
+
+        XCTAssertEqual(authentication.signedOutSession, session)
+        XCTAssertEqual(state.authenticationError, "The server could not revoke this device session.")
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
+        XCTAssertEqual(state.activeMode, AppMode.creator)
+        XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
+    }
+
+    func testRemoteSignedOutEventReturnsToSignedOutShell() async {
+        let session = makeSession(email: "tester@example.com")
+        let authentication = AuthenticationServiceStub()
+        let state = AppState(
+            activeMode: .admin,
+            runtime: Self.fixtureLiveRuntime(session),
+            authenticationPhase: AuthenticationPhase.live,
+            authenticationService: authentication,
+            liveRuntimeBuilder: { session in
+                Self.fixtureLiveRuntime(session)
+            }
+        )
+
+        let observation = Task { @MainActor in
+            await state.observeAuthenticationChanges()
+        }
+        await Task.yield()
+
+        authentication.emit(.signedOut)
+        await Task.yield()
+        authentication.finishEvents()
+        await observation.value
+
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
+        XCTAssertEqual(state.activeMode, AppMode.creator)
+        XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
+        XCTAssertNil(state.pendingEmail)
+    }
+
+    func testRemoteUserDeletedEventReturnsToSignedOutShell() async {
+        let session = makeSession(email: "tester@example.com")
+        let authentication = AuthenticationServiceStub()
+        let state = AppState(
+            activeMode: .admin,
+            runtime: Self.fixtureLiveRuntime(session),
+            authenticationPhase: AuthenticationPhase.live,
+            authenticationService: authentication,
+            liveRuntimeBuilder: { session in
+                Self.fixtureLiveRuntime(session)
+            }
+        )
+        state.pendingEmail = "tester@example.com"
+
+        let observation = Task { @MainActor in
+            await state.observeAuthenticationChanges()
+        }
+        await Task.yield()
+
+        authentication.emit(.userDeleted)
+        await Task.yield()
+        authentication.finishEvents()
+        await observation.value
+
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
+        XCTAssertEqual(state.activeMode, AppMode.creator)
+        XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
+        XCTAssertNil(state.pendingEmail)
     }
 
     func testLiveRuntimeStartsWithoutCreatorFixtureContent() throws {
@@ -195,7 +384,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: FixtureWeeklyGenerationRepository(),
+                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository(),
@@ -222,6 +411,22 @@ final class AuthenticationRuntimeTests: XCTestCase {
             authenticatedEmail: email
         )
     }
+
+    private func waitForTodayContentState(
+        in state: AppState,
+        toBecome expectedState: TodayContentState,
+        timeoutNanoseconds: UInt64 = 1_000_000_000
+    ) async {
+        let intervalNanoseconds: UInt64 = 20_000_000
+        var elapsedNanoseconds: UInt64 = 0
+
+        while state.runtime.services.todayContentState != expectedState,
+              elapsedNanoseconds < timeoutNanoseconds {
+            try? await Task.sleep(nanoseconds: intervalNanoseconds)
+            elapsedNanoseconds += intervalNanoseconds
+        }
+    }
+
 }
 
 private final class AuthenticationServiceStub: AuthenticationServicing, @unchecked Sendable {
@@ -230,6 +435,8 @@ private final class AuthenticationServiceStub: AuthenticationServicing, @uncheck
     var requestError: Error?
     var verifyError: Error?
     var signOutError: Error?
+    private let eventStream: AsyncStream<AuthenticationSessionEvent>
+    private let eventContinuation: AsyncStream<AuthenticationSessionEvent>.Continuation
 
     private(set) var restoreCallCount = 0
     private(set) var requestedEmail: String?
@@ -249,6 +456,9 @@ private final class AuthenticationServiceStub: AuthenticationServicing, @uncheck
         self.requestError = requestError
         self.verifyError = verifyError
         self.signOutError = signOutError
+        let pair = AsyncStream<AuthenticationSessionEvent>.makeStream()
+        self.eventStream = pair.stream
+        self.eventContinuation = pair.continuation
     }
 
     func requestEmailOTP(email: String) async throws {
@@ -274,7 +484,15 @@ private final class AuthenticationServiceStub: AuthenticationServicing, @uncheck
     }
 
     func authenticationEvents() -> AsyncStream<AuthenticationSessionEvent> {
-        AsyncStream { $0.finish() }
+        eventStream
+    }
+
+    func emit(_ event: AuthenticationSessionEvent) {
+        eventContinuation.yield(event)
+    }
+
+    func finishEvents() {
+        eventContinuation.finish()
     }
 }
 

@@ -7,7 +7,7 @@ SCHEME="${MCO_XCODE_SCHEME:-CreatorContentOS}"
 CONFIGURATION="${MCO_XCODE_CONFIGURATION:-Debug}"
 DERIVED_DATA_PATH="${MCO_DERIVED_DATA_PATH:-$ROOT_DIR/DerivedData/FastSimRefresh}"
 APP_NAME="${MCO_APP_NAME:-ContentHelper}"
-BUNDLE_ID="${MCO_BUNDLE_ID:-com.creatorcontenthelper.ios}"
+BUNDLE_ID="${MCO_BUNDLE_ID:-}"
 LOG_DIR="${MCO_BUILD_LOG_DIR:-$ROOT_DIR/build-logs}"
 SIMULATOR_UDID="${MCO_SIMULATOR_UDID:-${1:-}}"
 SKIP_ASSETS="${MCO_FAST_SKIP_ASSETS:-1}"
@@ -28,7 +28,7 @@ find_booted_simulator() {
 
 restart_mirror() {
   if [ "$RESTART_MIRROR" = "1" ]; then
-    "$ROOT_DIR/scripts/serve-sim-browser.sh" "$SIMULATOR_UDID"
+    MCO_FORCE_SERVE_SIM_RESTART=1 "$ROOT_DIR/scripts/serve-sim-browser.sh" "$SIMULATOR_UDID"
   fi
 }
 
@@ -56,7 +56,8 @@ APP_PATH="$DERIVED_DATA_PATH/Build/Products/$CONFIGURATION-iphonesimulator/$APP_
 
 if [ "$RESTART_MIRROR" = "1" ]; then
   screen -S "${MCO_SERVE_SIM_SESSION:-mco-serve-sim}" -X quit >/dev/null 2>&1 || true
-  pkill -f "serve-sim .*${SIMULATOR_UDID}" >/dev/null 2>&1 || true
+  pkill -f "serve-sim.*${SIMULATOR_UDID}" >/dev/null 2>&1 || true
+  pkill -f "node .*/serve-sim/dist/serve-sim\\.js .*${SIMULATOR_UDID}" >/dev/null 2>&1 || true
   pkill -f "serve-sim-bin ${SIMULATOR_UDID}" >/dev/null 2>&1 || true
 fi
 
@@ -94,8 +95,34 @@ if [ ! -d "$APP_PATH" ]; then
   exit 1
 fi
 
+if [ -z "$BUNDLE_ID" ]; then
+  BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")
+fi
+
 xcrun simctl terminate "$SIMULATOR_UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
 xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
+
+add_launch_env() {
+  name="$1"
+  value=$(eval "printf '%s' \"\${$name:-}\"")
+  if [ -n "$value" ]; then
+    eval "export SIMCTL_CHILD_$name=\$value"
+  fi
+}
+
+add_launch_env MCO_SUPABASE_URL
+add_launch_env MCO_SUPABASE_PUBLISHABLE_KEY
+add_launch_env MCO_DEBUG_PAIRED_WORKSPACE_ID
+add_launch_env MCO_DEBUG_PAIRED_CREATOR_ID
+add_launch_env MCO_DEBUG_PAIRED_MEMBER_ID
+add_launch_env MCO_DEBUG_PAIRED_DEVICE_INSTALLATION_ID
+add_launch_env MCO_DEBUG_PAIRED_DEVICE_TOKEN
+add_launch_env MCO_DEBUG_PAIRED_CREATOR_DISPLAY_NAME
+add_launch_env MCO_DEBUG_PAIRED_MEMBER_ROLE
+add_launch_env MCO_FORCE_FIXTURE_UI
+add_launch_env MCO_FORCE_APP_MODE
+add_launch_env MCO_FORCE_SCREEN
+
 xcrun simctl launch "$SIMULATOR_UDID" "$BUNDLE_ID"
 
 restart_mirror

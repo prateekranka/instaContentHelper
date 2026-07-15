@@ -1,8 +1,15 @@
 import SwiftUI
 
 struct AdminShellView: View {
+    @Environment(AppServices.self) private var services
+
     var body: some View {
         TabView {
+            NavigationStack {
+                DayGenerationView()
+            }
+            .tabItem { Label("Daily", systemImage: "calendar.badge.plus") }
+
             NavigationStack {
                 WeeklyControlView()
             }
@@ -12,13 +19,322 @@ struct AdminShellView: View {
                 IntelligenceHomeView()
             }
             .tabItem { Label("References", systemImage: "bookmark") }
-
-            NavigationStack {
-                LiveQAView()
-            }
-            .tabItem { Label("QA", systemImage: "checklist") }
         }
         .tint(MCOTheme.Color.oxblood)
+    }
+}
+
+struct CreatorProfileAdminView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    @Environment(AppServices.self) private var services
+    @State private var positioning = ""
+    @State private var voiceRulesText = ""
+    @State private var contentPillarsText = ""
+    @State private var captionStyle = ""
+    @State private var noGoTopicsText = ""
+    @State private var recurringFormatsText = ""
+    @State private var didLoadDraft = false
+
+    var body: some View {
+        EditorialScreen(bottomContentPadding: MCOSpace.l, showsBottomBar: false) {
+            VStack(alignment: .leading, spacing: MCOSpace.l) {
+                header
+                ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
+                if !canEditProfile {
+                    AdminSignalBlock(
+                        title: "Editor access required",
+                        value: "Only owner and editor sessions can update the creator profile.",
+                        systemImage: "lock",
+                        tone: .warning
+                    )
+                }
+                if let error = services.creatorProfileEditError {
+                    AdminSignalBlock(
+                        title: "Profile save error",
+                        value: error,
+                        systemImage: "exclamationmark.triangle",
+                        tone: .warning
+                    )
+                }
+                profileEditor
+            }
+        } bottomBar: {
+            EmptyView()
+        }
+        .navigationBarHidden(true)
+        .onAppear {
+            if !didLoadDraft {
+                loadDraft(from: services.creatorProfileSummary)
+                didLoadDraft = true
+            }
+        }
+        .onChange(of: services.creatorProfileSummary) { oldProfile, profile in
+            if normalizedUpdate == CreatorProfileUpdate(summary: oldProfile) {
+                loadDraft(from: profile)
+            }
+        }
+    }
+
+    private var canEditProfile: Bool {
+        services.memberRole == "owner" || services.memberRole == "editor"
+    }
+
+    private var canSave: Bool {
+        canEditProfile && isDirty && !services.isSavingCreatorProfile
+    }
+
+    private var isDirty: Bool {
+        normalizedUpdate != CreatorProfileUpdate(summary: services.creatorProfileSummary)
+    }
+
+    private var normalizedUpdate: CreatorProfileUpdate {
+        CreatorProfileUpdate(
+            positioning: positioning.trimmedForProfile,
+            voiceRules: lineValues(from: voiceRulesText),
+            contentPillars: lineValues(from: contentPillarsText),
+            captionStyle: captionStyle.trimmedForProfile,
+            noGoTopics: lineValues(from: noGoTopicsText),
+            recurringFormats: lineValues(from: recurringFormatsText)
+        )
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: MCOSpace.s) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 38, height: 38)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .background(MCOTheme.Color.paperRaised.opacity(0.72), in: Circle())
+                    .overlay {
+                        Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
+
+            Text("Creator Profile")
+                .font(MCOType.screenTitle)
+                .foregroundStyle(MCOTheme.Color.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+
+            Spacer(minLength: MCOSpace.s)
+
+            Menu {
+                Button {
+                    appState.activeMode = .creator
+                } label: {
+                    Label("Creator mode", systemImage: "person.crop.circle")
+                }
+
+                Button {
+                    services.refreshFromRepositories()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 42, height: 42)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Creator Profile options")
+        }
+    }
+
+    private var profileEditor: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            creatorVoiceSection
+            CreatorProfileTextEditor(
+                title: "Content Pillars",
+                systemImage: "square.grid.2x2",
+                placeholder: "gym\nlifestyle\neating\nrecovery",
+                text: $contentPillarsText
+            )
+            CreatorProfileTextEditor(
+                title: "Recurring Formats",
+                systemImage: "rectangle.stack",
+                placeholder: "one practical detail\ncaption-only backup",
+                text: $recurringFormatsText
+            )
+            saveProfileButton
+        }
+    }
+
+    private var creatorVoiceSection: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            WeeklySectionTitle(
+                title: "Creator voice",
+                subtitle: "Shape how this creator sounds, feels, and never sounds."
+            )
+
+            JournalBlock {
+                VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                    Label("Point of view", systemImage: "scope")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                    TextField("Creator positioning", text: $positioning, axis: .vertical)
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                        .lineLimit(2...8)
+                        .padding(MCOSpace.m)
+                        .background(MCOTheme.Color.paper.opacity(0.82))
+                        .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
+                                .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                        }
+                }
+            }
+            .accessibilityLabel("Point of view, using positioning")
+
+            CreatorProfileTextEditor(
+                title: "Voice essence",
+                systemImage: "quote.bubble",
+                placeholder: "Warm\nPrecise\nLight Hinglish when natural",
+                text: $voiceRulesText
+            )
+
+            CreatorProfileTextEditor(
+                title: "Sounds like this creator",
+                systemImage: "text.quote",
+                placeholder: "Short, useful, and human.",
+                text: $captionStyle,
+                minimumLines: 2,
+                maximumLines: 8
+            )
+
+            CreatorProfileTextEditor(
+                title: "Never sounds like",
+                systemImage: "nosign",
+                placeholder: "Politics\nWeight talk\nNegativity",
+                text: $noGoTopicsText
+            )
+
+            JournalBlock {
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    Label("Identity context", systemImage: "person.text.rectangle")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                    Text("Age or identity details should only be used when they add emotional weight or context, not in every post.")
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityLabel("Identity context rule, read-only")
+
+            JournalBlock {
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    Label("Writing test", systemImage: "pencil.and.scribble")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                    Text("If another creator could say a line unchanged, rewrite it with this creator's lived detail, opinion, relationships, home context, or humour.")
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityLabel("Writing test rule, read-only")
+        }
+    }
+
+    private var saveProfileButton: some View {
+        PrimaryActionButton(
+            title: saveButtonTitle,
+            systemImage: services.isSavingCreatorProfile ? "hourglass" : "checkmark"
+        ) {
+            Task {
+                await saveProfile()
+            }
+        }
+        .disabled(!canSave)
+        .opacity(canSave ? 1 : 0.52)
+    }
+
+    private var saveButtonTitle: String {
+        if services.isSavingCreatorProfile {
+            return "Saving"
+        }
+
+        return isDirty ? "Save profile" : "Saved"
+    }
+
+    private func loadDraft(from profile: CreatorProfileSummary) {
+        positioning = profile.positioning
+        voiceRulesText = profile.voiceRules.isEmpty ? profile.voiceLine : profile.voiceRules.joined(separator: "\n")
+        contentPillarsText = profile.contentPillars.joined(separator: "\n")
+        captionStyle = profile.captionStyle ?? ""
+        noGoTopicsText = profile.noGoTopics.joined(separator: "\n")
+        recurringFormatsText = profile.recurringFormats.joined(separator: "\n")
+    }
+
+    @MainActor
+    private func saveProfile() async {
+        let update = normalizedUpdate
+        let didSave = await services.updateCreatorProfileImmediately(update)
+        if didSave {
+            loadDraft(from: services.creatorProfileSummary)
+        }
+    }
+
+    private func lineValues(from text: String) -> [String] {
+        text
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmedForProfile }
+            .filter { !$0.isEmpty }
+    }
+}
+
+struct CreatorProfileTextEditor: View {
+    let title: String
+    let systemImage: String
+    let placeholder: String
+    @Binding var text: String
+    var minimumLines: Int = 4
+    var maximumLines: Int = 12
+
+    var body: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                Label(title, systemImage: systemImage)
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                TextField("", text: $text, axis: .vertical)
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .lineLimit(minimumLines...maximumLines)
+                    .padding(MCOSpace.s)
+                    .background(MCOTheme.Color.paper.opacity(0.82))
+                    .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
+                            .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text(placeholder)
+                                .font(MCOType.bodySmall)
+                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                                .padding(MCOSpace.s)
+                                .allowsHitTesting(false)
+                        }
+                    }
+            }
+        }
+    }
+}
+
+private extension String {
+    var trimmedForProfile: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -238,6 +554,7 @@ struct LiveQAView: View {
         EditorialScreen {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
+                ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
                 proofGrid
                 todayBlock
                 weekBlock
@@ -266,12 +583,12 @@ struct LiveQAView: View {
                 }
             }
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                Text("QA")
+                Text("Live QA")
                     .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
-                Text("End-to-end proof for the current runtime.")
+                Text("Checks that live data is loading, writable, and safe to publish.")
                     .font(MCOType.body)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
             }
@@ -356,7 +673,7 @@ struct LiveQAView: View {
 
     private var repositoryBlock: some View {
         VStack(alignment: .leading, spacing: MCOSpace.s) {
-            WeeklySectionTitle(title: "Repository Signals", subtitle: "Latest app-side sync state.")
+            WeeklySectionTitle(title: "Live data signals", subtitle: "Latest app-side sync state.")
             JournalBlock {
                 VStack(alignment: .leading, spacing: MCOSpace.s) {
                     AdminProofRow(

@@ -20,6 +20,13 @@ type SupabaseAdminClient = {
   from: (table: string) => any;
 };
 
+type PairDeviceDependencies = {
+  env?: { get: (name: string) => string | undefined };
+  createAdminClient?: (url: string, key: string) => any;
+  generateDeviceToken?: () => string;
+  now?: () => Date;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -27,7 +34,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-Deno.serve(async (request) => {
+export async function handlePairDeviceRequest(
+  request: Request,
+  dependencies: PairDeviceDependencies = {},
+): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -36,8 +46,9 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
 
-  const supabaseURL = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const env = dependencies.env ?? Deno.env;
+  const supabaseURL = env.get("SUPABASE_URL");
+  const serviceRoleKey = env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!supabaseURL || !serviceRoleKey) {
     return jsonResponse({ error: "missing_function_secrets" }, 500);
@@ -62,9 +73,12 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "unsupported_platform" }, 400);
   }
 
-  const admin = createClient(supabaseURL, serviceRoleKey, {
-    auth: { persistSession: false },
-  });
+  const createAdminClient = dependencies.createAdminClient ??
+    ((url, key) =>
+      createClient(url, key, {
+        auth: { persistSession: false },
+      }));
+  const admin = createAdminClient(supabaseURL, serviceRoleKey);
 
   const codeHash = await sha256Hex(inviteCode);
   const { data: invite, error: inviteError } = await admin
@@ -85,7 +99,7 @@ Deno.serve(async (request) => {
 
   const deviceInvite = invite as DeviceInvite;
 
-  const now = new Date();
+  const now = dependencies.now?.() ?? new Date();
   const nowISO = now.toISOString();
 
   if (deviceInvite.revoked_at !== null) {
@@ -155,7 +169,8 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "member_create_failed" }, 500);
   }
 
-  const deviceToken = generateDeviceToken();
+  const deviceToken = dependencies.generateDeviceToken?.() ??
+    generateDeviceToken();
   const tokenHash = await sha256Hex(deviceToken);
 
   const { data: installation, error: installationError } = await admin
@@ -188,7 +203,11 @@ Deno.serve(async (request) => {
     device_token: deviceToken,
     paired_at: installation.paired_at,
   });
-});
+}
+
+if (import.meta.main) {
+  Deno.serve((request) => handlePairDeviceRequest(request));
+}
 
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {

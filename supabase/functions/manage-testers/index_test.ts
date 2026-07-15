@@ -5,6 +5,7 @@ const workspaceID = "11111111-1111-4111-8111-111111111111";
 const ownerID = "22222222-2222-4222-8222-222222222222";
 const testerID = "33333333-3333-4333-8333-333333333333";
 const authUserID = "44444444-4444-4444-8444-444444444444";
+const existingAuthUserID = "55555555-5555-4555-8555-555555555555";
 
 Deno.test("normalizeEmail validates and canonicalizes approved email", () => {
   assertEquals(normalizeEmail(" Tester@Example.COM "), "tester@example.com");
@@ -39,6 +40,59 @@ Deno.test("invite creates approved editor and sends OTP", async () => {
   assertEquals((await response.json()).otp_sent, true);
 });
 
+Deno.test("bind_creator preserves creator role and sets auth user", async () => {
+  const state = manageState({ existingTester: activeCreator() });
+  const response = await handleManageTestersRequest(
+    manageRequest({
+      action: "bind_creator",
+      email: " Creator@Example.com ",
+      display_name: "Creator Person",
+    }),
+    dependencies(state),
+  );
+
+  const body = await response.json();
+  assertEquals(response.status, 200);
+  assertEquals(state.memberUpdates[0].role, "creator");
+  assertEquals(state.memberUpdates[0].auth_user_id, authUserID);
+  assertEquals(state.memberUpdates[0].email, "creator@example.com");
+  assertEquals(state.createdAuthUserEmails, ["creator@example.com"]);
+  assertEquals(state.otpEmails, []);
+  assertEquals(body.auth_bound, true);
+  assertEquals(body.creator_member.role, "creator");
+});
+
+Deno.test("bind_creator reuses existing auth user by email", async () => {
+  const state = manageState({
+    existingTester: activeCreator(),
+    authUsers: [{ id: existingAuthUserID, email: "CREATOR@example.com" }],
+  });
+  const response = await handleManageTestersRequest(
+    manageRequest({ action: "bind_creator", email: "creator@example.com" }),
+    dependencies(state),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(state.memberUpdates[0].role, "creator");
+  assertEquals(state.memberUpdates[0].auth_user_id, existingAuthUserID);
+  assertEquals(state.createdAuthUserEmails, []);
+  assertEquals((await response.json()).auth_bound, true);
+});
+
+Deno.test("bind_creator does not convert editor members", async () => {
+  const state = manageState({ existingTester: activeTester() });
+  const response = await handleManageTestersRequest(
+    manageRequest({ action: "bind_creator", email: "tester@example.com" }),
+    dependencies(state),
+  );
+
+  assertEquals(response.status, 404);
+  assertEquals((await response.json()).error, "creator_member_not_found");
+  assertEquals(state.memberUpdates, []);
+  assertEquals(state.memberWrites, []);
+  assertEquals(state.otpEmails, []);
+});
+
 Deno.test("resend only sends OTP for active approved tester", async () => {
   const state = manageState({ existingTester: activeTester() });
   const response = await handleManageTestersRequest(
@@ -69,6 +123,8 @@ type ManageState = {
   memberUpdates: Record<string, unknown>[];
   installationUpdates: Record<string, unknown>[];
   otpEmails: string[];
+  authUsers: Record<string, unknown>[];
+  createdAuthUserEmails: string[];
 };
 
 function manageState(overrides: Partial<ManageState> = {}): ManageState {
@@ -78,6 +134,8 @@ function manageState(overrides: Partial<ManageState> = {}): ManageState {
     memberUpdates: [],
     installationUpdates: [],
     otpEmails: [],
+    authUsers: [],
+    createdAuthUserEmails: [],
     ...overrides,
   };
 }
@@ -88,6 +146,18 @@ function activeTester(): Record<string, unknown> {
     email: "tester@example.com",
     display_name: "Tester",
     role: "editor",
+    status: "active",
+    created_at: "2026-06-10T10:00:00.000Z",
+    updated_at: "2026-06-10T10:00:00.000Z",
+  };
+}
+
+function activeCreator(): Record<string, unknown> {
+  return {
+    id: testerID,
+    email: "creator@example.com",
+    display_name: "Creator",
+    role: "creator",
     status: "active",
     created_at: "2026-06-10T10:00:00.000Z",
     updated_at: "2026-06-10T10:00:00.000Z",
@@ -138,12 +208,14 @@ function dependencies(state: ManageState, owner = true) {
       auth: {
         admin: {
           listUsers: () =>
-            Promise.resolve({ data: { users: [] }, error: null }),
-          createUser: () =>
-            Promise.resolve({
-              data: { user: { id: authUserID, email: "tester@example.com" } },
+            Promise.resolve({ data: { users: state.authUsers }, error: null }),
+          createUser: ({ email }: { email: string }) => {
+            state.createdAuthUserEmails.push(email);
+            return Promise.resolve({
+              data: { user: { id: authUserID, email } },
               error: null,
-            }),
+            });
+          },
           deleteUser: () => Promise.resolve({ error: null }),
         },
         signInWithOtp: ({ email }: { email: string }) => {

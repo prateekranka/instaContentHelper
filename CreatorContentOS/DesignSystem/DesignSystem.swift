@@ -14,6 +14,10 @@ enum MCOTheme {
         static let sageDeep = SwiftUI.Color(hex: 0x5E6A50)
         static let brass = SwiftUI.Color(hex: 0xB89A61)
         static let clay = SwiftUI.Color(hex: 0xA96E4D)
+        static let liveBlue = SwiftUI.Color(hex: 0x2F6E8E)
+        static let success = SwiftUI.Color(hex: 0x3F6F4F)
+        static let warning = SwiftUI.Color(hex: 0x9C7A28)
+        static let danger = SwiftUI.Color(hex: 0xA2433F)
     }
 }
 
@@ -63,23 +67,42 @@ extension SwiftUI.Color {
 }
 
 struct EditorialScreen<Content: View, BottomBar: View>: View {
+    let bottomContentPadding: CGFloat
+    let showsBottomBar: Bool
     @ViewBuilder let content: Content
     @ViewBuilder let bottomBar: BottomBar
 
+    init(
+        bottomContentPadding: CGFloat = 120,
+        showsBottomBar: Bool = true,
+        @ViewBuilder content: () -> Content,
+        @ViewBuilder bottomBar: () -> BottomBar
+    ) {
+        self.bottomContentPadding = bottomContentPadding
+        self.showsBottomBar = showsBottomBar
+        self.content = content()
+        self.bottomBar = bottomBar()
+    }
+
     var body: some View {
-        ZStack {
+        let screen = ZStack {
             MCOTheme.Color.paper.ignoresSafeArea()
             ScrollView {
                 content
                     .padding(.horizontal, MCOSpace.l)
                     .padding(.top, MCOSpace.l)
-                    .padding(.bottom, 120)
+                    .padding(.bottom, bottomContentPadding)
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomBar
-                .padding(.horizontal, MCOSpace.m)
-                .padding(.bottom, MCOSpace.s)
+
+        if showsBottomBar {
+            screen.safeAreaInset(edge: .bottom, spacing: 0) {
+                bottomBar
+                    .padding(.horizontal, MCOSpace.m)
+                    .padding(.bottom, MCOSpace.s)
+            }
+        } else {
+            screen
         }
     }
 }
@@ -205,16 +228,20 @@ struct StatusChip: View {
     }
 }
 
-enum ChipTone {
+enum ChipTone: Equatable {
     case quiet
     case ready
     case warning
+    case info
+    case danger
 
     var foreground: Color {
         switch self {
         case .quiet: MCOTheme.Color.inkMuted
-        case .ready: MCOTheme.Color.sageDeep
-        case .warning: MCOTheme.Color.clay
+        case .ready: MCOTheme.Color.success
+        case .warning: MCOTheme.Color.warning
+        case .info: MCOTheme.Color.liveBlue
+        case .danger: MCOTheme.Color.danger
         }
     }
 
@@ -259,5 +286,49 @@ struct Hairline: View {
         Rectangle()
             .fill(MCOTheme.Color.hairline)
             .frame(height: 1)
+    }
+}
+
+struct ActionFeedbackBanner: View {
+    let message: String?
+    var tone: ChipTone = .info
+
+    var body: some View {
+        if let message = message?.nilIfBlank {
+            HStack(alignment: .center, spacing: MCOSpace.s) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold))
+                Text(message)
+                    .font(MCOType.bodySmall)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: MCOSpace.s)
+            }
+            .foregroundStyle(tone.foreground)
+            .padding(.horizontal, MCOSpace.m)
+            .padding(.vertical, MCOSpace.s)
+            .background(tone.background)
+            .clipShape(RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
+                    .stroke(tone.stroke, lineWidth: 1)
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private var systemImage: String {
+        switch tone {
+        case .quiet:
+            "info.circle"
+        case .ready:
+            "checkmark.circle.fill"
+        case .warning:
+            "exclamationmark.triangle.fill"
+        case .info:
+            "dot.radiowaves.left.and.right"
+        case .danger:
+            "xmark.octagon.fill"
+        }
     }
 }

@@ -12,6 +12,7 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         XCTAssertEqual(services.weekCards.count, 7)
         XCTAssertNil(services.lastRepositoryError)
 
+        await markAllFixtureDaysPlanned(in: services)
         await services.publishCurrentWeekImmediately()
 
         XCTAssertTrue(services.weeklyPlan.isSoftLocked)
@@ -21,6 +22,7 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         XCTAssertEqual(services.todayCard.title, expectedTodayCard.title)
         XCTAssertEqual(services.todayCard.scheduledDate, expectedTodayCard.scheduledDate)
         XCTAssertEqual(services.lastPublishSummary, "Published 7 cards to Creator Today.")
+        XCTAssertEqual(services.lastActionMessage, "Week published. Creator Today is updated.")
         XCTAssertNil(services.lastRepositoryError)
     }
 
@@ -28,6 +30,7 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         let cache = MemoryTodayCacheStore()
         let services = AppServices.fixtureBacked(todayCache: cache)
 
+        await markAllFixtureDaysPlanned(in: services)
         await services.publishCurrentWeekImmediately()
 
         let snapshot = try XCTUnwrap(cache.loadSnapshot(for: .creatorFixture))
@@ -110,6 +113,21 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         XCTAssertEqual(entry.outputLine, "Shot today, ready to post")
         XCTAssertTrue(entry.hasPostThumbnail)
         XCTAssertNil(services.lastRepositoryError)
+    }
+
+    func testCreatorSceneShotActionsExposeFeedback() async throws {
+        let services = AppServices.fixtureBacked(todayCache: MemoryTodayCacheStore())
+        let firstScene = try XCTUnwrap(services.todayCard.scenes.first)
+
+        services.markSceneShot(firstScene)
+
+        XCTAssertTrue(services.isSceneShot(firstScene))
+        XCTAssertEqual(services.lastActionMessage, "Scene \(firstScene.number) marked shot.")
+
+        services.markAllScenesShot()
+
+        XCTAssertTrue(services.areAllScenesShot)
+        XCTAssertEqual(services.lastActionMessage, "All scenes marked shot.")
     }
 
     func testCreatorDecisionStaysInLocalArchiveWhenRepositoryWriteFails() async throws {
@@ -310,6 +328,12 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
             "MCO_DEBUG_PAIRED_CREATOR_DISPLAY_NAME": "Creator",
             "MCO_DEBUG_PAIRED_MEMBER_ROLE": memberRole
         ]
+    }
+
+    private func markAllFixtureDaysPlanned(in services: AppServices) async {
+        for day in services.weeklyPlan.days {
+            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
+        }
     }
 }
 

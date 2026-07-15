@@ -11,7 +11,9 @@ type WriteAction =
   | "complete_today"
   | "upsert_archive_decision"
   | "select_idea_for_next_open_day"
-  | "update_weekly_setup";
+  | "update_weekly_setup"
+  | "update_creator_profile"
+  | "update_daily_card_review_state";
 
 type WriteContentRequest = {
   action?: WriteAction;
@@ -22,6 +24,14 @@ type WriteContentRequest = {
   weekly_setup_id?: string | null;
   week_start_date?: string;
   setup_sections?: unknown;
+  weekly_brief?: unknown;
+  notes?: unknown;
+  positioning?: unknown;
+  voice_rules?: unknown;
+  content_pillars?: unknown;
+  caption_style?: unknown;
+  never_say?: unknown;
+  recurring_formats?: unknown;
   archive_date?: string;
   decision?: string | {
     status?: string;
@@ -31,6 +41,7 @@ type WriteContentRequest = {
   decision_at?: string | null;
   output_line?: string;
   has_post_thumbnail?: unknown;
+  review_state?: string;
 };
 
 const DAILY_DECISION_STATUSES = new Set([
@@ -43,6 +54,9 @@ const DAILY_DECISION_STATUSES = new Set([
 
 const WEEKLY_SETUP_SELECT =
   "id,location,workout_race_schedule,family_travel_moments,energy_constraints,shooting_constraints,no_go_topics,selected_sources,notes";
+
+const CREATOR_PROFILE_SELECT =
+  "id,positioning,voice_rules,content_pillars,caption_style,never_say,recurring_formats,updated_at";
 
 const WEEKLY_SETUP_TEXT_COLUMNS = new Set(["location", "notes"]);
 const WEEKLY_SETUP_ARRAY_COLUMNS = new Set([
@@ -59,6 +73,8 @@ const WEEKLY_SETUP_SECTION_ALIASES: Record<string, string> = {
   place: "location",
   notes: "notes",
   note: "notes",
+  weekly_brief: "notes",
+  brief: "notes",
   workout: "workout_race_schedule",
   workouts: "workout_race_schedule",
   body: "workout_race_schedule",
@@ -111,9 +127,7 @@ Deno.serve(async (request) => {
   }
   if (!isUUID(creatorID)) {
     return jsonResponse({
-      error: action === "update_weekly_setup"
-        ? "invalid_weekly_setup_payload"
-        : "invalid_write_payload",
+      error: invalidPayloadError(action),
     }, 400);
   }
 
@@ -131,13 +145,50 @@ Deno.serve(async (request) => {
   }
 
   const { session } = authResult;
-  const creatorResult = await assertCreator(admin, session, creatorID);
+  const creatorResult = await assertCreator(admin, session, creatorID, action);
   if (creatorResult) {
     return creatorResult;
   }
 
   if (action === "update_weekly_setup") {
     return await updateWeeklySetup(admin, session, creatorID, body);
+  }
+
+  if (action === "update_creator_profile") {
+    return await updateCreatorProfile(admin, session, creatorID, body);
+  }
+
+  if (action === "update_daily_card_review_state") {
+    if (
+      !isUUID(body.daily_card_id) ||
+      !isReviewState(body.review_state)
+    ) {
+      return jsonResponse({ error: "invalid_review_state_payload" }, 400);
+    }
+
+    const payload = {
+      action: body.action,
+      workspace_id: session.workspaceID,
+      creator_id: creatorID,
+      member_id: session.memberID,
+      daily_card_id: body.daily_card_id,
+      review_state: body.review_state,
+    };
+
+    const { data, error } = await admin.rpc("write_content", { payload });
+    if (error) {
+      return jsonResponse({ error: "review_state_update_failed" }, 500);
+    }
+
+    if (data?.error) {
+      const responseError = stableWriteError(data.error, action);
+      return jsonResponse(
+        { error: responseError },
+        typeof data.status === "number" ? data.status : 500,
+      );
+    }
+
+    return jsonResponse(data ?? { action });
   }
 
   const payload = normalizedPayload(body, session, creatorID);
@@ -165,6 +216,7 @@ async function assertCreator(
   admin: SupabaseAdminClient,
   session: VerifiedDeviceSession,
   creatorID: string,
+  action: WriteAction,
 ): Promise<Response | null> {
   const { data: creator, error } = await admin
     .from("creators")
@@ -179,6 +231,23 @@ async function assertCreator(
   }
 
   if (!creator) {
+    if (action === "update_creator_profile") {
+      const { data: crossWorkspaceCreator, error: crossWorkspaceError } =
+        await admin
+          .from("creators")
+          .select("id")
+          .eq("id", creatorID)
+          .maybeSingle();
+
+      if (crossWorkspaceError) {
+        return jsonResponse({ error: "creator_profile_update_failed" }, 500);
+      }
+
+      if (crossWorkspaceCreator) {
+        return jsonResponse({ error: "cross_workspace_forbidden" }, 403);
+      }
+    }
+
     return jsonResponse({ error: "creator_not_found" }, 404);
   }
 
@@ -266,6 +335,8 @@ function normalizedPayload(
     }
 
     case "update_weekly_setup":
+    case "update_creator_profile":
+    case "update_daily_card_review_state":
       return null;
   }
 
@@ -281,7 +352,7 @@ async function updateWeeklySetup(
   const weeklySetupID = body.weekly_setup_id?.trim() || null;
   const weeklyPlanID = body.weekly_plan_id?.trim() || null;
   const weekStartDate = body.week_start_date?.trim();
-  const update = normalizedWeeklySetupUpdate(body.setup_sections);
+  const update = normalizedWeeklySetupUpdate(body);
 
   if (
     !update ||
@@ -295,6 +366,15 @@ async function updateWeeklySetup(
 
   let resolvedWeeklySetupID = weeklySetupID;
   let resolvedWeekStartDate = weekStartDate;
+  let resolvedWeeklyPlan:
+    | {
+      id: string;
+      workspace_id: string;
+      creator_id: string;
+      weekly_setup_id: string | null;
+      week_start_date: string | null;
+    }
+    | null = null;
 
   if (!resolvedWeeklySetupID && weeklyPlanID) {
     const { data: weeklyPlan, error: planLookupError } = await admin
@@ -308,18 +388,28 @@ async function updateWeeklySetup(
     }
 
     if (!weeklyPlan) {
-      return jsonResponse({ error: "weekly_setup_not_found" }, 404);
-    }
-
-    if (
+      if (isDateString(resolvedWeekStartDate)) {
+        resolvedWeeklySetupID = null;
+      } else {
+        return jsonResponse({ error: "weekly_setup_not_found" }, 404);
+      }
+    } else if (
       weeklyPlan.workspace_id !== session.workspaceID ||
       weeklyPlan.creator_id !== creatorID
     ) {
-      return jsonResponse({ error: "cross_workspace_forbidden" }, 403);
+      if (isDateString(resolvedWeekStartDate)) {
+        resolvedWeeklySetupID = null;
+      } else {
+        return jsonResponse({ error: "cross_workspace_forbidden" }, 403);
+      }
+    } else {
+      resolvedWeeklyPlan = weeklyPlan;
+      resolvedWeeklySetupID = weeklyPlan.weekly_setup_id ?? null;
+      if (!isDateString(resolvedWeekStartDate)) {
+        resolvedWeekStartDate = weeklyPlan.week_start_date ??
+          resolvedWeekStartDate;
+      }
     }
-
-    resolvedWeeklySetupID = weeklyPlan.weekly_setup_id ?? null;
-    resolvedWeekStartDate = weeklyPlan.week_start_date ?? resolvedWeekStartDate;
   }
 
   if (!resolvedWeeklySetupID && !isDateString(resolvedWeekStartDate)) {
@@ -346,6 +436,12 @@ async function updateWeeklySetup(
   }
 
   if (weeklySetup) {
+    await maybeAttachWeeklySetupToPlan(
+      admin,
+      resolvedWeeklyPlan,
+      weeklySetup.id,
+      resolvedWeekStartDate,
+    );
     return jsonResponse({
       action: "update_weekly_setup",
       weekly_setup: weeklySetup,
@@ -368,94 +464,239 @@ async function updateWeeklySetup(
     }
   }
 
-  return jsonResponse({ error: "weekly_setup_not_found" }, 404);
+  const createResult = await createWeeklySetupForWeek(
+    admin,
+    session,
+    creatorID,
+    resolvedWeekStartDate!,
+    update,
+  );
+  if ("response" in createResult) {
+    return createResult.response;
+  }
+
+  await maybeAttachWeeklySetupToPlan(
+    admin,
+    resolvedWeeklyPlan,
+    createResult.weeklySetup.id,
+    resolvedWeekStartDate,
+  );
+
+  return jsonResponse({
+    action: "update_weekly_setup",
+    weekly_setup: createResult.weeklySetup,
+  });
+}
+
+async function createWeeklySetupForWeek(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  creatorID: string,
+  weekStartDate: string,
+  update: Record<string, unknown>,
+): Promise<
+  { weeklySetup: Record<string, unknown> & { id: string } } | {
+    response: Response;
+  }
+> {
+  const { data: profile } = await admin
+    .from("creator_profiles")
+    .select("id")
+    .eq("workspace_id", session.workspaceID)
+    .eq("creator_id", creatorID)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: weeklySetup, error } = await admin
+    .from("weekly_setups")
+    .insert({
+      workspace_id: session.workspaceID,
+      creator_id: creatorID,
+      creator_profile_id: profile?.id ?? null,
+      week_start_date: weekStartDate,
+      status: "ready_to_generate",
+      created_by_member_id: session.memberID,
+      ...update,
+    })
+    .select(WEEKLY_SETUP_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "23505") {
+      const { data: existing, error: lookupError } = await admin
+        .from("weekly_setups")
+        .update(update)
+        .eq("workspace_id", session.workspaceID)
+        .eq("creator_id", creatorID)
+        .eq("week_start_date", weekStartDate)
+        .select(WEEKLY_SETUP_SELECT)
+        .maybeSingle();
+
+      if (lookupError || !existing) {
+        return {
+          response: jsonResponse({ error: "weekly_setup_update_failed" }, 500),
+        };
+      }
+
+      return {
+        weeklySetup: existing as Record<string, unknown> & { id: string },
+      };
+    }
+
+    return {
+      response: jsonResponse({ error: "weekly_setup_update_failed" }, 500),
+    };
+  }
+
+  if (!weeklySetup) {
+    return {
+      response: jsonResponse({ error: "weekly_setup_update_failed" }, 500),
+    };
+  }
+
+  return {
+    weeklySetup: weeklySetup as Record<string, unknown> & { id: string },
+  };
+}
+
+async function maybeAttachWeeklySetupToPlan(
+  admin: SupabaseAdminClient,
+  weeklyPlan: {
+    id: string;
+    workspace_id: string;
+    creator_id: string;
+    weekly_setup_id: string | null;
+    week_start_date: string | null;
+  } | null,
+  weeklySetupID: string,
+  requestedWeekStartDate?: string,
+): Promise<void> {
+  if (
+    !weeklyPlan ||
+    weeklyPlan.weekly_setup_id ||
+    weeklyPlan.week_start_date !== requestedWeekStartDate
+  ) {
+    return;
+  }
+
+  await admin
+    .from("weekly_plans")
+    .update({ weekly_setup_id: weeklySetupID })
+    .eq("id", weeklyPlan.id)
+    .eq("workspace_id", weeklyPlan.workspace_id)
+    .eq("creator_id", weeklyPlan.creator_id);
 }
 
 function normalizedWeeklySetupUpdate(
-  setupSections: unknown,
+  body: WriteContentRequest,
 ): Record<string, unknown> | null {
-  if (!Array.isArray(setupSections) || setupSections.length === 0) {
+  const setupSections = body.setup_sections;
+  const hasSetupSections = setupSections !== undefined;
+  const hasTopLevelNotes = body.weekly_brief !== undefined ||
+    body.notes !== undefined;
+
+  if (!hasSetupSections && !hasTopLevelNotes) {
     return null;
   }
 
   const update: Record<string, unknown> = {};
 
-  for (const section of setupSections) {
-    if (!isRecord(section)) {
+  if (hasSetupSections) {
+    if (!Array.isArray(setupSections) || setupSections.length === 0) {
       return null;
     }
 
-    const sectionKey = weeklySetupSectionKey(section);
-    if (!sectionKey) {
-      return null;
-    }
-
-    const column = WEEKLY_SETUP_SECTION_ALIASES[sectionKey];
-    if (!column) {
-      return null;
-    }
-
-    const value = sectionValue(section);
-    if (column === "__constraints__") {
-      if (typeof value === "string") {
-        update.energy_constraints = jsonTextArray(value);
-        continue;
-      }
-      if (!isRecord(value)) {
+    for (const section of setupSections) {
+      if (!isRecord(section)) {
         return null;
       }
 
-      const energy = value.energy_constraints ?? value.energyConstraints;
-      const shooting = value.shooting_constraints ?? value.shootingConstraints;
-      let applied = false;
+      const sectionKey = weeklySetupSectionKey(section);
+      if (!sectionKey) {
+        return null;
+      }
 
-      if (energy !== undefined) {
-        if (!Array.isArray(energy)) {
+      const column = WEEKLY_SETUP_SECTION_ALIASES[sectionKey];
+      if (!column) {
+        return null;
+      }
+
+      const value = sectionValue(section);
+      if (column === "__constraints__") {
+        if (typeof value === "string") {
+          update.energy_constraints = jsonTextArray(value);
+          continue;
+        }
+        if (!isRecord(value)) {
           return null;
         }
-        update.energy_constraints = energy;
-        applied = true;
-      }
 
-      if (shooting !== undefined) {
-        if (!Array.isArray(shooting)) {
+        const energy = value.energy_constraints ?? value.energyConstraints;
+        const shooting = value.shooting_constraints ??
+          value.shootingConstraints;
+        let applied = false;
+
+        if (energy !== undefined) {
+          if (!Array.isArray(energy)) {
+            return null;
+          }
+          update.energy_constraints = energy;
+          applied = true;
+        }
+
+        if (shooting !== undefined) {
+          if (!Array.isArray(shooting)) {
+            return null;
+          }
+          update.shooting_constraints = shooting;
+          applied = true;
+        }
+
+        if (!applied) {
           return null;
         }
-        update.shooting_constraints = shooting;
-        applied = true;
-      }
-
-      if (!applied) {
-        return null;
-      }
-      continue;
-    }
-
-    if (WEEKLY_SETUP_TEXT_COLUMNS.has(column)) {
-      if (value === null) {
-        update[column] = null;
         continue;
       }
-      if (typeof value !== "string") {
-        return null;
-      }
-      update[column] = value.trim() || null;
-      continue;
-    }
 
-    if (WEEKLY_SETUP_ARRAY_COLUMNS.has(column)) {
-      if (typeof value === "string") {
-        update[column] = jsonTextArray(value);
+      if (WEEKLY_SETUP_TEXT_COLUMNS.has(column)) {
+        if (value === null) {
+          update[column] = null;
+          continue;
+        }
+        if (typeof value !== "string") {
+          return null;
+        }
+        update[column] = value.trim() || null;
         continue;
       }
-      if (!Array.isArray(value)) {
-        return null;
-      }
-      update[column] = value;
-      continue;
-    }
 
-    return null;
+      if (WEEKLY_SETUP_ARRAY_COLUMNS.has(column)) {
+        if (typeof value === "string") {
+          update[column] = jsonTextArray(value);
+          continue;
+        }
+        if (!Array.isArray(value)) {
+          return null;
+        }
+        update[column] = value;
+        continue;
+      }
+
+      return null;
+    }
+  }
+
+  if (hasTopLevelNotes) {
+    const weeklyBrief = body.weekly_brief !== undefined
+      ? body.weekly_brief
+      : body.notes;
+    if (weeklyBrief !== null && typeof weeklyBrief !== "string") {
+      return null;
+    }
+    update.notes = typeof weeklyBrief === "string"
+      ? weeklyBrief.trim() || null
+      : null;
   }
 
   if (Object.keys(update).length === 0) {
@@ -464,6 +705,132 @@ function normalizedWeeklySetupUpdate(
 
   update.updated_at = new Date().toISOString();
   return update;
+}
+
+async function updateCreatorProfile(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  creatorID: string,
+  body: WriteContentRequest,
+): Promise<Response> {
+  const update = normalizedCreatorProfileUpdate(body);
+
+  if (!update) {
+    return jsonResponse({ error: "invalid_creator_profile_payload" }, 400);
+  }
+
+  const { data: activeProfile, error: lookupError } = await admin
+    .from("creator_profiles")
+    .select("id")
+    .eq("workspace_id", session.workspaceID)
+    .eq("creator_id", creatorID)
+    .eq("status", "active")
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lookupError) {
+    return jsonResponse({ error: "creator_profile_update_failed" }, 500);
+  }
+
+  if (!activeProfile) {
+    return jsonResponse({ error: "creator_profile_not_found" }, 404);
+  }
+
+  const { data: updatedProfile, error: updateError } = await admin
+    .from("creator_profiles")
+    .update(update)
+    .eq("id", activeProfile.id)
+    .eq("workspace_id", session.workspaceID)
+    .eq("creator_id", creatorID)
+    .eq("status", "active")
+    .select(CREATOR_PROFILE_SELECT)
+    .maybeSingle();
+
+  if (updateError || !updatedProfile) {
+    return jsonResponse({ error: "creator_profile_update_failed" }, 500);
+  }
+
+  return jsonResponse({
+    action: "update_creator_profile",
+    creator_profile: updatedProfile,
+  });
+}
+
+function normalizedCreatorProfileUpdate(
+  body: WriteContentRequest,
+): Record<string, unknown> | null {
+  const update: Record<string, unknown> = {};
+
+  for (const column of ["positioning", "caption_style"] as const) {
+    const value = body[column];
+    if (value === undefined) {
+      continue;
+    }
+
+    if (value !== null && typeof value !== "string") {
+      return null;
+    }
+
+    update[column] = value?.trim() || null;
+  }
+
+  for (
+    const column of [
+      "voice_rules",
+      "content_pillars",
+      "never_say",
+      "recurring_formats",
+    ] as const
+  ) {
+    const value = body[column];
+    if (value === undefined) {
+      continue;
+    }
+
+    const normalized = normalizedTextArray(value);
+    if (normalized === null) {
+      return null;
+    }
+
+    update[column] = normalized;
+  }
+
+  if (Object.keys(update).length === 0) {
+    return null;
+  }
+
+  update.updated_at = new Date().toISOString();
+  return update;
+}
+
+function normalizedTextArray(value: unknown): string[] | null {
+  if (value === null) {
+    return [];
+  }
+
+  if (typeof value === "string") {
+    return value.split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const normalized: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      return null;
+    }
+    const trimmedItem = item.trim();
+    if (trimmedItem.length > 0) {
+      normalized.push(trimmedItem);
+    }
+  }
+
+  return normalized;
 }
 
 function weeklySetupSectionKey(
@@ -510,7 +877,9 @@ function jsonTextArray(value: string): unknown[] {
 function allowedRoles(action: WriteAction): string[] {
   if (
     action === "select_idea_for_next_open_day" ||
-    action === "update_weekly_setup"
+    action === "update_weekly_setup" ||
+    action === "update_creator_profile" ||
+    action === "update_daily_card_review_state"
   ) {
     return ["owner", "editor"];
   }
@@ -529,7 +898,13 @@ function stableWriteError(value: unknown, action: WriteAction): string {
     value === "weekly_setup_not_found" ||
     value === "invalid_weekly_setup_payload" ||
     value === "weekly_setup_update_failed" ||
-    value === "cross_workspace_forbidden"
+    value === "invalid_creator_profile_payload" ||
+    value === "creator_profile_not_found" ||
+    value === "creator_profile_update_failed" ||
+    value === "cross_workspace_forbidden" ||
+    value === "invalid_review_state_payload" ||
+    value === "review_state_update_failed" ||
+    value === "published_week_locked"
   ) {
     return value;
   }
@@ -547,6 +922,25 @@ function actionFailureError(action: WriteAction): string {
       return "select_idea_failed";
     case "update_weekly_setup":
       return "weekly_setup_update_failed";
+    case "update_creator_profile":
+      return "creator_profile_update_failed";
+    case "update_daily_card_review_state":
+      return "review_state_update_failed";
+  }
+}
+
+function invalidPayloadError(action: WriteAction): string {
+  switch (action) {
+    case "update_weekly_setup":
+      return "invalid_weekly_setup_payload";
+    case "update_creator_profile":
+      return "invalid_creator_profile_payload";
+    case "update_daily_card_review_state":
+      return "invalid_review_state_payload";
+    case "complete_today":
+    case "upsert_archive_decision":
+    case "select_idea_for_next_open_day":
+      return "invalid_write_payload";
   }
 }
 
@@ -554,7 +948,9 @@ function isWriteAction(value: string | undefined): value is WriteAction {
   return value === "complete_today" ||
     value === "upsert_archive_decision" ||
     value === "select_idea_for_next_open_day" ||
-    value === "update_weekly_setup";
+    value === "update_weekly_setup" ||
+    value === "update_creator_profile" ||
+    value === "update_daily_card_review_state";
 }
 
 function isDecisionStatus(value: string | undefined): value is string {
@@ -590,4 +986,8 @@ function stringProperty(
 function isUUID(value: string | undefined | null): value is string {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     .test(value ?? "");
+}
+
+function isReviewState(value: string | undefined): value is string {
+  return value === "open" || value === "ready" || value === "backup";
 }

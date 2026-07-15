@@ -39,12 +39,48 @@ struct SupabaseWeeklyReadResponse: Decodable, Hashable, Sendable {
     var dailyCards: [SupabaseDailyCardRow]
     var weeklySetup: SupabaseWeeklySetupRow?
     var ideaBank: [SupabaseIdeaRow]
+    var publishedWeeklyPlan: SupabaseWeeklyPlanRow?
+    var publishedDailyCards: [SupabaseDailyCardRow]
+    var publishedWeeklySetup: SupabaseWeeklySetupRow?
 
     enum CodingKeys: String, CodingKey {
         case weeklyPlan = "weekly_plan"
         case dailyCards = "daily_cards"
         case weeklySetup = "weekly_setup"
         case ideaBank = "idea_bank"
+        case publishedWeeklyPlan = "published_weekly_plan"
+        case publishedDailyCards = "published_daily_cards"
+        case publishedWeeklySetup = "published_weekly_setup"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        weeklyPlan = try container.decodeIfPresent(SupabaseWeeklyPlanRow.self, forKey: .weeklyPlan)
+        dailyCards = (try? container.decode([SupabaseDailyCardRow].self, forKey: .dailyCards)) ?? []
+        weeklySetup = try container.decodeIfPresent(SupabaseWeeklySetupRow.self, forKey: .weeklySetup)
+        ideaBank = (try? container.decode([SupabaseIdeaRow].self, forKey: .ideaBank)) ?? []
+        publishedWeeklyPlan = try container.decodeIfPresent(SupabaseWeeklyPlanRow.self, forKey: .publishedWeeklyPlan)
+        publishedDailyCards = (try? container.decode([SupabaseDailyCardRow].self, forKey: .publishedDailyCards)) ?? []
+        publishedWeeklySetup = try container.decodeIfPresent(SupabaseWeeklySetupRow.self, forKey: .publishedWeeklySetup)
+    }
+
+    func generatedDraft() -> GeneratedWeekDraft? {
+        guard let weeklyPlan else { return nil }
+
+        return GeneratedWeekDraft(
+            id: weeklyPlan.id,
+            weeklyPlanID: weeklyPlan.id,
+            status: weeklyPlan.status,
+            strategySummary: weeklyPlan.strategySummary ?? "Generated week loaded from live daily cards.",
+            warnings: weeklyPlan.warnings.compactMap(\.displayText),
+            assumptions: weeklyPlan.assumptions.compactMap(\.displayText),
+            dailyCards: dailyCards
+                .map { $0.generatedDailyCardDraft() }
+                .sorted { $0.scheduledDate < $1.scheduledDate },
+            ideaBank: ideaBank.map { $0.domainIdea() },
+            sourceSummary: "Live weekly daily cards.",
+            generatedAt: weeklyPlan.publishedAt ?? SupabaseDateFormatting.todayDateString()
+        )
     }
 }
 

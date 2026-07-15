@@ -22,13 +22,16 @@ final class AppState {
             AppRuntime.live(session: $0)
         }
     ) {
+        let initialRuntime = runtime ?? AppRuntime.makeAuthenticationShellRuntime()
         self.activeMode = activeMode
-        self.runtime = runtime ?? AppRuntime.makeAuthenticationShellRuntime()
+        self.runtime = initialRuntime
         self.authenticationService = authenticationService
         self.liveRuntimeBuilder = liveRuntimeBuilder
         if let authenticationPhase {
             self.authenticationPhase = authenticationPhase
         } else if runtime != nil {
+            self.authenticationPhase = .live
+        } else if case .live = initialRuntime.mode {
             self.authenticationPhase = .live
         } else {
             self.authenticationPhase = .restoring
@@ -41,21 +44,26 @@ final class AppState {
 
     func restoreAuthentication() async {
         guard authenticationPhase == .restoring else { return }
+        debugAuthLog("restore:start")
 
         if case .live = runtime.mode {
             await activate(runtime: runtime)
+            debugAuthLog("restore:already-live")
             return
         }
 
         do {
             guard let session = try await authenticationService.restoreSession() else {
                 authenticationPhase = .signedOut
+                debugAuthLog("restore:signed-out")
                 return
             }
             await activate(session: session)
+            debugAuthLog("restore:activated")
         } catch {
             authenticationError = error.localizedDescription
             authenticationPhase = .failed
+            debugAuthLog("restore:failed \(error.localizedDescription)")
         }
     }
 
@@ -86,14 +94,18 @@ final class AppState {
         authenticationPhase = .verifyingCode
         authenticationError = nil
         do {
+            debugAuthLog("otp:verify:start")
             let session = try await authenticationService.verifyEmailOTP(
                 email: pendingEmail,
                 token: token
             )
+            debugAuthLog("otp:verify:session-ready")
             await activate(session: session)
+            debugAuthLog("otp:verify:activated")
         } catch {
             authenticationError = error.localizedDescription
             authenticationPhase = .failed
+            debugAuthLog("otp:verify:failed \(error.localizedDescription)")
         }
     }
 
@@ -128,15 +140,17 @@ final class AppState {
     }
 
     private func activate(runtime: AppRuntime) async {
-        await runtime.services.refreshFromRepositoriesImmediately()
-
+        debugAuthLog("activate:set-live")
         self.runtime = runtime
         activeMode = .creator
         pendingEmail = nil
         authenticationError = nil
         authenticationPhase = .live
-        if runtime.services.lastRepositoryError == nil {
-            await runtime.services.scheduleTodayNotificationIfNeededImmediately()
+
+        Task { @MainActor in
+            debugAuthLog("activate:refresh:start")
+            await runtime.services.refreshFromRepositoriesImmediately()
+            debugAuthLog("activate:refresh:done")
         }
     }
 
@@ -145,6 +159,12 @@ final class AppState {
         pendingEmail = nil
         runtime = .fixtures()
         authenticationPhase = .signedOut
+    }
+
+    private func debugAuthLog(_ message: String) {
+        #if DEBUG
+        print("[ContentHelperAuth] \(Date()) \(message)")
+        #endif
     }
 }
 

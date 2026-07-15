@@ -5,6 +5,7 @@ const ids = {
   workspaceA: "11111111-1111-4111-8111-111111111111",
   workspaceB: "22222222-2222-4222-8222-222222222222",
   creatorA: "33333333-3333-4333-8333-333333333333",
+  creatorNoProfileA: "33333333-3333-4333-8333-333333333334",
   creatorB: "44444444-4444-4444-8444-444444444444",
   ownerMember: "55555555-5555-4555-8555-555555555551",
   editorMember: "55555555-5555-4555-8555-555555555552",
@@ -16,6 +17,8 @@ const ids = {
   weeklySetupB: "88888888-8888-4888-8888-888888888882",
   weeklyPlanA: "77777777-7777-4777-8777-777777777771",
   weeklyPlanB: "77777777-7777-4777-8777-777777777772",
+  creatorProfileA: "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+  creatorProfileB: "cccccccc-cccc-4ccc-8ccc-ccccccccccc2",
   ownerCard: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
   editorCard: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
   creatorCard: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
@@ -76,6 +79,7 @@ await assertEditorCanWriteAllActions();
 await assertCreatorWriteBoundary();
 await assertCrossWorkspaceIdeaRejection();
 await assertWeeklySetupUpdateBoundary();
+await assertCreatorProfileUpdateBoundary();
 
 console.log("PASS write-content acceptance");
 
@@ -110,6 +114,13 @@ async function seedAcceptanceData() {
         workspace_id: ids.workspaceB,
         display_name: "Other Creator",
         handle: "other",
+        status: "active",
+      },
+      {
+        id: ids.creatorNoProfileA,
+        workspace_id: ids.workspaceA,
+        display_name: "Creator Without Profile",
+        handle: "creator-no-profile",
         status: "active",
       },
     ]),
@@ -171,6 +182,39 @@ async function seedAcceptanceData() {
       },
     ]),
     "seed device installations",
+  );
+
+  await must(
+    admin.from("creator_profiles").insert([
+      {
+        id: ids.creatorProfileA,
+        workspace_id: ids.workspaceA,
+        creator_id: ids.creatorA,
+        status: "active",
+        version: 1,
+        positioning: "Original creator positioning",
+        voice_rules: ["Original warm"],
+        content_pillars: ["Original routine"],
+        caption_style: "Original caption style",
+        never_say: ["Original no-go"],
+        recurring_formats: ["Original recurring format"],
+        created_by_member_id: ids.ownerMember,
+      },
+      {
+        id: ids.creatorProfileB,
+        workspace_id: ids.workspaceB,
+        creator_id: ids.creatorB,
+        status: "active",
+        version: 1,
+        positioning: "Other workspace positioning",
+        voice_rules: [],
+        content_pillars: [],
+        caption_style: "Other caption style",
+        never_say: [],
+        recurring_formats: [],
+      },
+    ]),
+    "seed creator profiles",
   );
 
   await must(
@@ -497,6 +541,59 @@ async function assertWeeklySetupUpdateBoundary() {
     ["Editor edited family note"],
   );
 
+  const notesSectionUpdate = await callWriteContent(
+    tokens.editor,
+    {
+      action: "update_weekly_setup",
+      creator_id: ids.creatorA,
+      weekly_setup_id: ids.weeklySetupA,
+      setup_sections: [
+        {
+          key: "notes",
+          text: "Editor section weekly brief",
+        },
+      ],
+    },
+  );
+  assertEquals(
+    notesSectionUpdate.status,
+    200,
+    "editor weekly setup notes section update status",
+  );
+  await assertWeeklySetupSummary("notes", "Editor section weekly brief");
+
+  const topLevelBriefUpdate = await callWriteContent(
+    tokens.owner,
+    {
+      action: "update_weekly_setup",
+      creator_id: ids.creatorA,
+      week_start_date: "2026-06-01",
+      weekly_brief: "Owner top-level weekly brief",
+    },
+  );
+  assertEquals(
+    topLevelBriefUpdate.status,
+    200,
+    "owner weekly setup top-level brief update status",
+  );
+  await assertWeeklySetupSummary("notes", "Owner top-level weekly brief");
+
+  const topLevelNotesUpdate = await callWriteContent(
+    tokens.owner,
+    {
+      action: "update_weekly_setup",
+      creator_id: ids.creatorA,
+      week_start_date: "2026-06-01",
+      notes: "Owner top-level notes alias",
+    },
+  );
+  assertEquals(
+    topLevelNotesUpdate.status,
+    200,
+    "owner weekly setup top-level notes update status",
+  );
+  await assertWeeklySetupSummary("notes", "Owner top-level notes alias");
+
   const creatorUpdate = await callWriteContent(
     tokens.creator,
     weeklySetupBody("Creator should not edit", ids.weeklyPlanA),
@@ -521,6 +618,26 @@ async function assertWeeklySetupUpdateBoundary() {
     crossWorkspacePlan.json.error,
     "cross_workspace_forbidden",
     "cross workspace weekly plan update error",
+  );
+
+  const stalePlanWithWeekDate = await callWriteContent(
+    tokens.owner,
+    {
+      ...weeklySetupBody(
+        "Fallback by authenticated week date",
+        ids.weeklyPlanB,
+      ),
+      week_start_date: "2026-06-01",
+    },
+  );
+  assertEquals(
+    stalePlanWithWeekDate.status,
+    200,
+    "stale weekly plan id with week date update status",
+  );
+  await assertWeeklySetupSummary(
+    "location",
+    "Fallback by authenticated week date",
   );
 
   const crossWorkspaceSetup = await callWriteContent(
@@ -565,6 +682,121 @@ async function assertWeeklySetupUpdateBoundary() {
   );
 
   console.log("PASS weekly setup update boundary");
+}
+
+async function assertCreatorProfileUpdateBoundary() {
+  const ownerUpdate = await callWriteContent(
+    tokens.owner,
+    creatorProfileBody({
+      positioning: "Owner updated creator positioning",
+      voice_rules: ["Warm but direct", "No hype"],
+      content_pillars: "gym\nlifestyle\neating\nrecovery",
+      caption_style: "Owner updated caption style",
+      never_say: ["weight talk", "politics"],
+      recurring_formats: "shoe check\ncaption-only backup",
+    }),
+  );
+  assertEquals(ownerUpdate.status, 200, "owner creator profile update status");
+  await assertCreatorProfileValue(
+    "positioning",
+    "Owner updated creator positioning",
+  );
+  await assertCreatorProfileValue(
+    "content_pillars",
+    ["gym", "lifestyle", "eating", "recovery"],
+  );
+  await assertCreatorProfileValue(
+    "recurring_formats",
+    ["shoe check", "caption-only backup"],
+  );
+
+  const editorUpdate = await callWriteContent(
+    tokens.editor,
+    creatorProfileBody({
+      caption_style: "Editor tightened caption style",
+      voice_rules: ["steady", "practical"],
+    }),
+  );
+  assertEquals(
+    editorUpdate.status,
+    200,
+    "editor creator profile update status",
+  );
+  await assertCreatorProfileValue(
+    "caption_style",
+    "Editor tightened caption style",
+  );
+  await assertCreatorProfileValue("voice_rules", ["steady", "practical"]);
+
+  const creatorUpdate = await callWriteContent(
+    tokens.creator,
+    creatorProfileBody({
+      positioning: "Creator should not edit profile",
+    }),
+  );
+  assertEquals(
+    creatorUpdate.status,
+    403,
+    "creator creator profile update status",
+  );
+  assertEquals(
+    creatorUpdate.json.error,
+    "role_not_allowed",
+    "creator creator profile update error",
+  );
+
+  const malformed = await callWriteContent(
+    tokens.owner,
+    creatorProfileBody({
+      voice_rules: ["good", 42],
+    }),
+  );
+  assertEquals(malformed.status, 400, "malformed creator profile status");
+  assertEquals(
+    malformed.json.error,
+    "invalid_creator_profile_payload",
+    "malformed creator profile error",
+  );
+
+  const crossWorkspace = await callWriteContent(
+    tokens.owner,
+    {
+      action: "update_creator_profile",
+      creator_id: ids.creatorB,
+      positioning: "Cross workspace should fail",
+    },
+  );
+  assertEquals(
+    crossWorkspace.status,
+    403,
+    "cross workspace creator profile status",
+  );
+  assertEquals(
+    crossWorkspace.json.error,
+    "cross_workspace_forbidden",
+    "cross workspace creator profile error",
+  );
+
+  const missingProfile = await callWriteContent(
+    tokens.owner,
+    {
+      action: "update_creator_profile",
+      creator_id: ids.creatorNoProfileA,
+      positioning: "No active profile should fail",
+    },
+  );
+  assertEquals(
+    missingProfile.status,
+    404,
+    "missing creator profile status",
+  );
+  assertEquals(
+    missingProfile.json.error,
+    "creator_profile_not_found",
+    "missing creator profile error",
+  );
+
+  console.log("PASS creator profile update boundary");
 }
 
 async function upsertArchiveTwice(
@@ -682,6 +914,14 @@ function weeklySetupBody(summary: string, weeklyPlanID: string) {
   };
 }
 
+function creatorProfileBody(values: Record<string, unknown>) {
+  return {
+    action: "update_creator_profile",
+    creator_id: ids.creatorA,
+    ...values,
+  };
+}
+
 async function assertWeeklySetupSummary(
   column: string,
   expectedValue: unknown,
@@ -703,6 +943,30 @@ async function assertWeeklySetupSummary(
     );
   } else {
     assertEquals(actualValue, expectedValue, `weekly setup ${column}`);
+  }
+}
+
+async function assertCreatorProfileValue(
+  column: string,
+  expectedValue: unknown,
+) {
+  const row = await singleRow(
+    admin.from("creator_profiles")
+      .select(column)
+      .eq("id", ids.creatorProfileA)
+      .single(),
+    `creator profile ${column}`,
+  );
+
+  const actualValue = row[column];
+  if (Array.isArray(expectedValue)) {
+    assertEquals(
+      JSON.stringify(actualValue),
+      JSON.stringify(expectedValue),
+      `creator profile ${column}`,
+    );
+  } else {
+    assertEquals(actualValue, expectedValue, `creator profile ${column}`);
   }
 }
 
