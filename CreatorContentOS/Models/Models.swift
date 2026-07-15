@@ -363,6 +363,17 @@ struct DailyDecision: Codable, Hashable, Sendable {
     var outputLine: String
     var hasPostThumbnail: Bool
 
+    /// Short confirmation copy for immediate creator-facing feedback.
+    /// Archive output can remain more descriptive without making the toast overly long.
+    var confirmationMessage: String {
+        switch completionState {
+        case .savedForTomorrow:
+            "Saved for tomorrow"
+        default:
+            outputLine
+        }
+    }
+
     init(
         completionState: CompletionState,
         outputLine: String? = nil,

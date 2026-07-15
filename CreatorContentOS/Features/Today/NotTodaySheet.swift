@@ -92,6 +92,7 @@ struct NotTodaySheet: View {
 
     private func complete(_ decision: DailyDecision) {
         services.completeToday(with: decision)
+        services.lastActionMessage = decision.confirmationMessage
         dismiss()
     }
 }

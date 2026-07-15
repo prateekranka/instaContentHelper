@@ -128,6 +128,14 @@ final class TodayCardAndPostedFlowTests: XCTestCase {
         XCTAssertEqual(decisionEntry(in: services)?.decision, .skippedIntentionally)
     }
 
+    func testSavedForTomorrowUsesShortCreatorConfirmationMessage() {
+        XCTAssertEqual(DailyDecision.savedForTomorrow.confirmationMessage, "Saved for tomorrow")
+        XCTAssertEqual(
+            DailyDecision.backupStory.confirmationMessage,
+            "Used backup: 10-second story"
+        )
+    }
+
     // MARK: - Profile refresh feedback (Subagent D)
 
     func testRefreshSetsRefreshingFlagAndClearsOnCompletion() async {
