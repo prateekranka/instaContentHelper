@@ -30,3 +30,13 @@ colima stop
 ```
 
 Runtime Supabase URL/key overrides should go in `CreatorContentOS/Config/LocalRuntime.xcconfig`, which is gitignored. Use `CreatorContentOS/Config/LocalRuntime.sample.xcconfig` as the template.
+
+## Backend verification
+
+Run the same type-check and hermetic contract suite used by pull requests:
+
+```sh
+deno task ci:backend
+```
+
+The test task permits only the local listener used by the Edge Function harness. Provider endpoints are not reachable from this suite.
