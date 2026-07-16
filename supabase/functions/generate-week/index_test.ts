@@ -4356,3 +4356,186 @@ Deno.test("generate-week parallel shutdown telemetry is emitted with boot_id", a
     "shutdown telemetry must not contain secrets",
   );
 });
+
+Deno.test("full_week_generation_retired: implicit valid full-week request returns 400 without AI or run", async () => {
+  let generateAICalled = false;
+  const state = dayGenerationState();
+  state.generationRun = null;
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateAI: async () => {
+        generateAICalled = true;
+        throw new Error("generateAI should not be called");
+      },
+    },
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals(await errorCode(response), "full_week_generation_retired");
+  assertEquals(generateAICalled, false);
+  assertEquals(state.generationRun, null);
+});
+
+Deno.test("full_week_generation_retired: explicit generate_week returns 400 without AI or run", async () => {
+  let generateAICalled = false;
+  const state = dayGenerationState();
+  state.generationRun = null;
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "generate_week",
+      creator_id: creatorID,
+      week_start_date: "2026-06-08",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateAI: async () => {
+        generateAICalled = true;
+        throw new Error("generateAI should not be called");
+      },
+    },
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals(await errorCode(response), "full_week_generation_retired");
+  assertEquals(generateAICalled, false);
+  assertEquals(state.generationRun, null);
+});
+
+Deno.test("full_week_generation_retired: retry_day returns 400 without mutating queued jobs", async () => {
+  const state = dayGenerationState();
+  state.dayJobs = makeQueuedDayJobs([
+    ["generated", dailyCardIDs[0]],
+    ["failed", null],
+  ]);
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    status: "running",
+    weekly_plan_id: weeklyPlanID,
+  };
+  const jobsBefore = state.dayJobs.map((job) => ({ ...job }));
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "retry_day",
+      generation_id: generationRunID,
+      scheduled_date: "2026-06-09",
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+    },
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals(await errorCode(response), "full_week_generation_retired");
+  assertEquals(
+    state.dayJobs.map((job) => job.status).join(","),
+    jobsBefore.map((job) => job.status).join(","),
+  );
+});
+
+Deno.test("full_week_generation_retired: cancel_generation returns 400 without mutating run", async () => {
+  const state = dayGenerationState();
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "cancel_generation",
+      generation_id: generationRunID,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+    },
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals(await errorCode(response), "full_week_generation_retired");
+  assertEquals(state.generationRun?.status, "running");
+  assertEquals(state.generationRun?.error_code, undefined);
+});
+
+Deno.test("full_week_generation_retired: historical status remains readable", async () => {
+  const state = dayGenerationState();
+  state.dayJobs = makeQueuedDayJobs([
+    ["generated", dailyCardIDs[0]],
+    ["generated", dailyCardIDs[1]],
+    ["generating", null],
+    ["queued", null],
+    ["queued", null],
+    ["failed", null],
+    ["retrying", null],
+  ]);
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    status: "running",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: generationInputSnapshot(),
+  };
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("test-key"),
+      createAdminClient: () => fakeAdmin(state),
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.status, "running");
+  assertEquals(body.completed_day_count, 2);
+  assertEquals(body.failed_day_count, 1);
+});
+
+Deno.test("full_week_generation_retired: generate_day route remains supported", async () => {
+  const state = dayGenerationState();
+  state.weeklyPlan = null;
+  state.dailyCards = [];
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "generate_day",
+      creator_id: creatorID,
+      scheduled_date: "2026-06-10",
+      day_brief: "Simple gym return day.",
+      mock: true,
+    }),
+    {
+      env: fakeEnv("test-key", true),
+      createAdminClient: () => fakeAdmin(state),
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.status, "draft");
+  assertEquals(typeof body.generation_id, "string");
+  assertEquals(typeof body.weekly_plan_id, "string");
+});

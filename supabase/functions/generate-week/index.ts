@@ -326,14 +326,6 @@ export async function handleGenerateWeekRequest(
     );
   }
 
-  if (isRetryDayAction(rawBody)) {
-    return await retryQueuedDayGeneration(admin, session, rawBody);
-  }
-
-  if (isCancelGenerationAction(rawBody)) {
-    return await cancelGeneration(admin, session, rawBody);
-  }
-
   if (isGenerateDayAction(rawBody)) {
     return await handleGenerateDayRequest(
       admin,
@@ -352,6 +344,15 @@ export async function handleGenerateWeekRequest(
       session,
       dependencies,
     );
+  }
+
+  if (isRetiredBatchLifecycleAction(rawBody)) {
+    return fullWeekGenerationRetiredResponse();
+  }
+
+  const implicitRetirement = retiredImplicitFullWeekResponse(rawBody);
+  if (implicitRetirement) {
+    return implicitRetirement;
   }
 
   const preparedResult = await prepareGeneration(
@@ -1969,6 +1970,46 @@ function isCancelGenerationAction(
   body: unknown,
 ): body is Record<string, unknown> {
   return isRecord(body) && body.action === "cancel_generation";
+}
+
+function fullWeekGenerationRetiredResponse(): Response {
+  return jsonResponse({ error: "full_week_generation_retired" }, 400);
+}
+
+function isRetiredBatchLifecycleAction(body: unknown): boolean {
+  return isRecord(body) && (
+    body.action === "retry_day" ||
+    body.action === "cancel_generation" ||
+    body.action === "generate_week"
+  );
+}
+
+function retiredImplicitFullWeekResponse(body: unknown): Response | null {
+  if (!isRecord(body)) {
+    return null;
+  }
+
+  const action = stringValue(body.action);
+  if (
+    action === "status" ||
+    action === "generate_day" ||
+    action === "regenerate_day" ||
+    action === "retry_day" ||
+    action === "cancel_generation" ||
+    action === "generate_week"
+  ) {
+    return null;
+  }
+
+  try {
+    normalizeGenerateWeekRequest(body);
+    return fullWeekGenerationRetiredResponse();
+  } catch (error) {
+    if (error instanceof GenerateWeekValidationError) {
+      return jsonResponse({ error: error.code }, 400);
+    }
+    return jsonResponse({ error: "invalid_generation_payload" }, 400);
+  }
 }
 
 async function retryQueuedDayGeneration(
