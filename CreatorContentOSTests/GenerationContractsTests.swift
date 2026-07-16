@@ -821,6 +821,128 @@ final class GenerationContractsTests: XCTestCase {
         )
     }
 
+    func testGenerateDayCardRejectsDuplicateInFlightWhenStaleCachedCardExists() async throws {
+        let targetDate = "2026-06-03"
+        let staleCard = GeneratedDailyCardDraft(
+            id: UUID(),
+            scheduledDate: targetDate,
+            status: "draft",
+            title: "Stale cached day card from first request",
+            whyToday: "Prior in-flight generation.",
+            growthJob: "Consistency.",
+            contentPillar: "lifestyle",
+            shootability: "easy",
+            estimatedShootMinutes: 8,
+            energyRequired: "low",
+            languageMode: "English",
+            sceneList: [
+                ShotScene(number: 1, title: "Stale scene", duration: "3 sec", symbol: "sparkles")
+            ],
+            script: "Stale script.",
+            noVoiceoverVersion: "No VO.",
+            onScreenText: ["Stale"],
+            caption: "Stale caption.",
+            cta: "Save this.",
+            hashtags: ["stale"],
+            coverText: "Stale",
+            postInstructions: "Stale instructions.",
+            brandEventNotes: "",
+            backupStory: "Stale backup.",
+            backupCaptionOnly: "Stale backup caption.",
+            audioOptionNotes: "",
+            creatorFitScore: 90,
+            riskNotes: [],
+            assumptions: ["Stale cache fixture."],
+            sourceNote: "Stale cache fixture."
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: CodeThrowingDayGenerationRepository(errorCode: "must_not_call_provider"),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+        services.generatingDayBriefDates.insert(targetDate)
+        services.dayBriefGeneratedCards[targetDate] = staleCard
+
+        do {
+            _ = try await services.generateDayCard(
+                scheduledDate: targetDate,
+                dayBrief: "Second overlapping request."
+            )
+            XCTFail("Expected generation_already_running rejection instead of stale cached card.")
+        } catch RepositoryError.edgeFunction(let message) {
+            XCTAssertEqual(
+                message,
+                "A generation is already in progress for this day. Wait for it to finish, then try again."
+            )
+        }
+
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.title, "Stale cached day card from first request")
+        XCTAssertEqual(
+            services.dayBriefGenerationErrors[targetDate],
+            "A generation is already in progress for this day. Wait for it to finish, then try again."
+        )
+    }
+
+    func testRegenerateDailyCardRejectsDuplicateInFlightWhenStaleSummaryCardExists() async throws {
+        let targetDate = "2026-06-03"
+        var draft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-06-01")
+        draft.weeklyPlanID = WeeklyPlan.raceWeek.id
+        guard let targetIndex = draft.dailyCards.firstIndex(where: { $0.scheduledDate == targetDate }) else {
+            XCTFail("Expected draft to include \(targetDate)")
+            return
+        }
+        draft.dailyCards[targetIndex].title = "Stale summary card from first regenerate"
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: CodeThrowingDayGenerationRepository(errorCode: "must_not_call_provider"),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+        services.applyGeneratedDraft(draft)
+        services.regeneratingDayDates.insert(targetDate)
+
+        do {
+            _ = try await services.regeneratedDailyCard(
+                scheduledDate: targetDate,
+                preserveManualEdits: false
+            )
+            XCTFail("Expected generation_already_running rejection instead of stale summary card.")
+        } catch RepositoryError.edgeFunction(let message) {
+            XCTAssertEqual(
+                message,
+                "A generation is already in progress for this day. Wait for it to finish, then try again."
+            )
+        }
+
+        XCTAssertEqual(
+            services.latestGenerationSummary?.dailyCards.first { $0.scheduledDate == targetDate }?.title,
+            "Stale summary card from first regenerate"
+        )
+        XCTAssertEqual(
+            services.regenerationDayErrors[targetDate],
+            "A generation is already in progress for this day. Wait for it to finish, then try again."
+        )
+    }
+
     func testDailyGenerationPollerAllowsBackendRecoveryBudget() {
         XCTAssertGreaterThanOrEqual(
             SupabaseDailyGenerationPoller.defaultTimeoutSeconds,

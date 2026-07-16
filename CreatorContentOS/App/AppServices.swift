@@ -578,10 +578,6 @@ final class AppServices {
         }
 
         guard !regeneratingDayDates.contains(scheduledDate) else {
-            if let existing = latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate }) {
-                logGeneration("regenerate_day ignored already_running returning_existing scheduled_date=\(scheduledDate)")
-                return existing
-            }
             let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
             regenerationDayErrors[scheduledDate] = message
             logGeneration("regenerate_day rejected generation_already_running scheduled_date=\(scheduledDate)")
@@ -649,10 +645,6 @@ final class AppServices {
         }
 
         guard !generatingDayBriefDates.contains(scheduledDate) else {
-            if let existing = dayBriefGeneratedCards[scheduledDate] {
-                logGeneration("generate_day ignored already_running returning_existing scheduled_date=\(scheduledDate)")
-                return existing
-            }
             let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
             dayBriefGenerationErrors[scheduledDate] = message
             throw RepositoryError.edgeFunction(message)
