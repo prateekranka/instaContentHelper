@@ -29,7 +29,6 @@ import {
   normalizeRegenerateDayRequest,
   preserveManualDailyCardEdits,
   RegenerateDayRequest,
-  validateGeneratedDayOutput,
   validateGeneratedWeek,
   weekDates,
   weekStartDateForDate,
@@ -130,6 +129,12 @@ import {
   scheduleNextPendingDayGeneration as scheduleNextPendingDayGenerationRunner,
   updateGenerationProgress,
 } from "./generation-per-day-runner.ts";
+import {
+  runDayGenerationPipeline,
+  scheduleSingleDayGeneration,
+  type SingleDayRunnerHost,
+  type SingleDayRunnerPreparedGeneration,
+} from "./generation-single-day-runner.ts";
 
 type GenerateWeekDependencies = {
   env?: EnvReader;
@@ -230,16 +235,7 @@ type SavedDailyCard = GeneratedDailyCard & {
   storyboard_thumbnail_assets?: Record<string, unknown>[];
 };
 
-type PreparedDayGeneration = {
-  request: RegenerateDayRequest;
-  session: VerifiedDeviceSession;
-  plan: PlanRecord;
-  targetCard?: CardIdentityRecord;
-  inputSnapshot: GenerationInputSnapshot;
-  providers: AIProviderConfig[];
-  model: string;
-  mockEnabled: boolean;
-};
+type PreparedDayGeneration = SingleDayRunnerPreparedGeneration;
 
 type CreatorRecord = Record<string, unknown> & {
   id: string;
@@ -692,7 +688,7 @@ async function startPreparedDayGeneration(
       runResult.run.id,
       prepared,
       progress,
-      dependencies,
+      buildSingleDayRunnerHost(dependencies),
     );
     if ("response" in scheduleResult) {
       return scheduleResult.response;
@@ -710,7 +706,7 @@ async function startPreparedDayGeneration(
     admin,
     runResult.run.id,
     prepared,
-    dependencies,
+    buildSingleDayRunnerHost(dependencies),
   );
   return "response" in result ? result.response : jsonResponse(result.payload);
 }
@@ -1434,6 +1430,33 @@ function isQueuedWeekGenerationEnabled(
   return false;
 }
 
+function buildSingleDayRunnerHost(
+  dependencies: GenerateWeekDependencies,
+): SingleDayRunnerHost {
+  return {
+    generateOutput: (prepared, generationID, dayIndex) =>
+      generateRegeneratedDayOutput(
+        prepared,
+        generationID,
+        dayIndex,
+        dependencies,
+      ),
+    mockOutput: mockGeneratedDayOutput,
+    persistRegeneratedDay,
+    completeDayGenerationRun,
+    markGenerationRunFailed,
+    stableGenerationError,
+    updateGenerationProgress,
+    scheduleBackgroundTask: (promise) =>
+      scheduleBackgroundGeneration(promise, dependencies),
+    emitLifecycleEvent: (event) =>
+      logGenerationLifecycle({
+        action: "regenerate_day",
+        ...event,
+      }),
+  };
+}
+
 function buildPerDayRunnerHost(
   dependencies: GenerateWeekDependencies,
 ): PerDayRunnerHost {
@@ -1562,9 +1585,9 @@ function buildGenerationStatusHandlerHost(
       scheduleSingleDayGeneration(
         admin,
         generationID,
-        prepared as PreparedDayGeneration,
+        prepared,
         progress,
-        dependencies,
+        buildSingleDayRunnerHost(dependencies),
       ),
     runParallelWeekGenerationInBackground: (
       admin,
@@ -2545,207 +2568,6 @@ async function updateGenerationRunWeeklyPlan(
     return generationPersistFailure("update_generation_weekly_plan", error);
   }
   return { ok: true };
-}
-
-async function scheduleSingleDayGeneration(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  prepared: PreparedDayGeneration,
-  progress: SingleDayGenerationSnapshot,
-  dependencies: GenerateWeekDependencies,
-): Promise<{ ok: true } | { response: Response }> {
-  const now = new Date().toISOString();
-  const runningProgress: SingleDayGenerationSnapshot = {
-    ...progress,
-    status: "running",
-    started_at: now,
-    updated_at: now,
-  };
-  const updateResult = await updateGenerationProgress(
-    admin,
-    generationID,
-    runningProgress,
-  );
-  if ("response" in updateResult) {
-    return updateResult;
-  }
-  scheduleBackgroundGeneration(
-    runDayGenerationPipeline(
-      admin,
-      generationID,
-      prepared,
-      dependencies,
-    ),
-    dependencies,
-  );
-  return { ok: true };
-}
-
-async function runDayGenerationPipeline(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  prepared: PreparedDayGeneration,
-  dependencies: GenerateWeekDependencies,
-): Promise<
-  { payload: RegenerateDayDraftResponse } | { response: Response }
-> {
-  const dayIndex = weekDates(prepared.inputSnapshot.week_start_date).indexOf(
-    prepared.request.scheduled_date,
-  );
-  if (dayIndex < 0) {
-    await markGenerationRunFailed(admin, generationID, "date_not_in_plan");
-    logGenerationLifecycle({
-      action: "regenerate_day",
-      phase: "generation_failed",
-      status: "failed",
-      generation_id: generationID,
-      weekly_plan_id: prepared.request.weekly_plan_id,
-      week_start_date: prepared.inputSnapshot.week_start_date,
-      scheduled_date: prepared.request.scheduled_date,
-      day_index: null,
-      duration_ms: null,
-      day_guidance_present: prepared.request.day_guidance !== undefined,
-      day_guidance_chars: prepared.request.day_guidance?.length ?? 0,
-    });
-    return {
-      response: jsonResponse({ error: "date_not_in_plan" }, 400),
-    };
-  }
-
-  const pipelineStartedAt = Date.now();
-  logGenerationLifecycle({
-    action: "regenerate_day",
-    phase: "generation_started",
-    status: "running",
-    generation_id: generationID,
-    weekly_plan_id: prepared.request.weekly_plan_id,
-    week_start_date: prepared.inputSnapshot.week_start_date,
-    scheduled_date: prepared.request.scheduled_date,
-    day_index: dayIndex,
-    duration_ms: null,
-    day_guidance_present: prepared.request.day_guidance !== undefined,
-    day_guidance_chars: prepared.request.day_guidance?.length ?? 0,
-  });
-
-  let generated: GeneratedDayOutput;
-  try {
-    const rawOutput = prepared.mockEnabled
-      ? mockGeneratedDayOutput(prepared.inputSnapshot, dayIndex)
-      : await generateRegeneratedDayOutput(
-        prepared,
-        generationID,
-        dayIndex,
-        dependencies,
-      );
-    generated = validateGeneratedDayOutput(
-      rawOutput,
-      prepared.request.scheduled_date,
-      dayIndex,
-    );
-  } catch (error) {
-    const errorCode = stableGenerationError(error);
-    await markGenerationRunFailed(admin, generationID, errorCode);
-    logGenerationLifecycle({
-      action: "regenerate_day",
-      phase: "generation_failed",
-      status: "failed",
-      generation_id: generationID,
-      weekly_plan_id: prepared.request.weekly_plan_id,
-      week_start_date: prepared.inputSnapshot.week_start_date,
-      scheduled_date: prepared.request.scheduled_date,
-      day_index: dayIndex,
-      duration_ms: Date.now() - pipelineStartedAt,
-      day_guidance_present: prepared.request.day_guidance !== undefined,
-      day_guidance_chars: prepared.request.day_guidance?.length ?? 0,
-    });
-    return {
-      response: jsonResponse(
-        { error: errorCode },
-        errorCode === "openai_request_failed" ? 502 : 400,
-      ),
-    };
-  }
-
-  const persistResult = await persistRegeneratedDay(
-    admin,
-    prepared,
-    generated.daily_card,
-  );
-  if ("response" in persistResult) {
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      "generation_persist_failed",
-    );
-    logGenerationLifecycle({
-      action: "regenerate_day",
-      phase: "generation_failed",
-      status: "failed",
-      generation_id: generationID,
-      weekly_plan_id: prepared.request.weekly_plan_id,
-      week_start_date: prepared.inputSnapshot.week_start_date,
-      scheduled_date: prepared.request.scheduled_date,
-      day_index: dayIndex,
-      duration_ms: Date.now() - pipelineStartedAt,
-      day_guidance_present: prepared.request.day_guidance !== undefined,
-      day_guidance_chars: prepared.request.day_guidance?.length ?? 0,
-    });
-    return persistResult;
-  }
-
-  const completedAt = new Date().toISOString();
-  const payload: RegenerateDayDraftResponse = {
-    generation_id: generationID,
-    weekly_plan_id: prepared.request.weekly_plan_id,
-    status: "draft",
-    target_scheduled_date: prepared.request.scheduled_date,
-    daily_card: persistResult.dailyCard,
-    warnings: generated.warnings,
-    assumptions: generated.assumptions,
-    source_summary: generated.source_summary,
-    generated_at: completedAt,
-  };
-  const completedResult = await completeDayGenerationRun(
-    admin,
-    generationID,
-    payload,
-    completedAt,
-  );
-  if ("response" in completedResult) {
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      "generation_persist_failed",
-    );
-    logGenerationLifecycle({
-      action: "regenerate_day",
-      phase: "generation_failed",
-      status: "failed",
-      generation_id: generationID,
-      weekly_plan_id: prepared.request.weekly_plan_id,
-      week_start_date: prepared.inputSnapshot.week_start_date,
-      scheduled_date: prepared.request.scheduled_date,
-      day_index: dayIndex,
-      duration_ms: Date.now() - pipelineStartedAt,
-      day_guidance_present: prepared.request.day_guidance !== undefined,
-      day_guidance_chars: prepared.request.day_guidance?.length ?? 0,
-    });
-    return completedResult;
-  }
-  logGenerationLifecycle({
-    action: "regenerate_day",
-    phase: "generation_completed",
-    status: "completed",
-    generation_id: generationID,
-    weekly_plan_id: prepared.request.weekly_plan_id,
-    week_start_date: prepared.inputSnapshot.week_start_date,
-    scheduled_date: prepared.request.scheduled_date,
-    day_index: dayIndex,
-    duration_ms: Date.now() - pipelineStartedAt,
-    day_guidance_present: prepared.request.day_guidance !== undefined,
-    day_guidance_chars: prepared.request.day_guidance?.length ?? 0,
-  });
-  return { payload };
 }
 
 async function generateRegeneratedDayOutput(
