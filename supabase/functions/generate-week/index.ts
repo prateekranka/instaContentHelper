@@ -76,8 +76,8 @@ import {
   completeGenerationRun,
   markGenerationRunFailed,
 } from "./generation-run-completion.ts";
+import { createDayGenerationRun } from "./generation-run-start.ts";
 import {
-  insertDayGenerationRun,
   insertWeekGenerationRun,
   linkGenerationRunWeeklyPlan,
   markGenerationRunCancelled,
@@ -2489,33 +2489,6 @@ async function createGenerationRun(
     return generationPersistFailure("create_generation_run", error);
   }
 
-  return { run: data as RunRecord };
-}
-
-async function createDayGenerationRun(
-  admin: SupabaseAdminClient,
-  prepared: PreparedDayGeneration,
-  memberID: string,
-): Promise<{ run: RunRecord } | { response: Response }> {
-  const { data, error } = await insertDayGenerationRun(admin, {
-    workspace_id: prepared.session.workspaceID,
-    creator_id: prepared.request.creator_id,
-    weekly_setup_id: prepared.plan.weekly_setup_id ?? null,
-    weekly_plan_id: prepared.request.weekly_plan_id,
-    requested_by_member_id: memberID,
-    status: "running",
-    model: prepared.model,
-    prompt_version: PROMPT_VERSION,
-    generation_scope: "day",
-    target_daily_card_id: prepared.targetCard?.id ?? null,
-    target_scheduled_date: prepared.request.scheduled_date,
-    input_snapshot: prepared.inputSnapshot,
-    warnings: [],
-    assumptions: [],
-  });
-  if (error || !data) {
-    return generationPersistFailure("create_day_generation_run", error);
-  }
   return { run: data as RunRecord };
 }
 
