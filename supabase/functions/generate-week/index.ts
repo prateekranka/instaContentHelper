@@ -105,6 +105,15 @@ import {
   shouldRunDayGeneration,
   staleDayFailure,
 } from "./generation-day-progress.ts";
+import {
+  readCreatorRow,
+  readDailyCardsForPlan,
+  readDayGenerationPlanRow,
+  readGenerationContextRows,
+  readLatestWeeklySetupForWeek,
+  readPublishedWeekRow,
+  readWeeklySetupByID,
+} from "./generation-context-store.ts";
 
 type EnvReader = {
   get: (name: string) => string | undefined;
@@ -920,13 +929,12 @@ async function readDayGenerationPlan(
   workspaceID: string,
   request: RegenerateDayRequest,
 ): Promise<{ plan: PlanRecord } | { response: Response }> {
-  const { data, error } = await admin
-    .from("weekly_plans")
-    .select("id,status,is_soft_locked,week_start_date,weekly_setup_id")
-    .eq("id", request.weekly_plan_id)
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", request.creator_id)
-    .maybeSingle();
+  const { data, error } = await readDayGenerationPlanRow(
+    admin,
+    workspaceID,
+    request.creator_id,
+    request.weekly_plan_id,
+  );
   if (error) {
     return {
       response: jsonResponse({ error: "weekly_plan_lookup_failed" }, 500),
@@ -943,19 +951,18 @@ async function readPlanCardsForDayGeneration(
   workspaceID: string,
   request: RegenerateDayRequest,
 ): Promise<{ cards: CardIdentityRecord[] } | { response: Response }> {
-  const { data, error } = await admin
-    .from("daily_cards")
-    .select(dayGenerationCardSelect())
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", request.creator_id)
-    .eq("weekly_plan_id", request.weekly_plan_id)
-    .order("scheduled_date", { ascending: true });
+  const { data, error } = await readDailyCardsForPlan(
+    admin,
+    workspaceID,
+    request.creator_id,
+    request.weekly_plan_id,
+  );
   if (error) {
     return {
       response: jsonResponse({ error: "daily_card_lookup_failed" }, 500),
     };
   }
-  return { cards: (data ?? []) as CardIdentityRecord[] };
+  return { cards: data as CardIdentityRecord[] };
 }
 
 async function readSavedDailyCards(
@@ -964,18 +971,17 @@ async function readSavedDailyCards(
   creatorID: string,
   weeklyPlanID: string,
 ): Promise<{ dailyCards: SavedDailyCard[] } | { response: Response }> {
-  const { data, error } = await admin
-    .from("daily_cards")
-    .select(dayGenerationCardSelect())
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", creatorID)
-    .eq("weekly_plan_id", weeklyPlanID)
-    .order("scheduled_date", { ascending: true });
+  const { data, error } = await readDailyCardsForPlan(
+    admin,
+    workspaceID,
+    creatorID,
+    weeklyPlanID,
+  );
   if (error) {
     return generationPersistFailure("daily_cards_lookup", error);
   }
   return {
-    dailyCards: ((data ?? []) as CardIdentityRecord[]).map(
+    dailyCards: (data as CardIdentityRecord[]).map(
       storedDailyCardToGenerated,
     ),
   };
@@ -1089,39 +1095,6 @@ function onScreenTextTimelineArray(
   return Array.isArray(value)
     ? value as GeneratedDailyCard["on_screen_text_timeline"]
     : [];
-}
-
-function dayGenerationCardSelect(): string {
-  return [
-    "id",
-    "scheduled_date",
-    "status",
-    "title",
-    "why_today",
-    "growth_job",
-    "content_pillar",
-    "shootability",
-    "estimated_shoot_minutes",
-    "energy_required",
-    "language_mode",
-    "scene_list",
-    "script",
-    "no_voiceover_version",
-    "on_screen_text",
-    "caption",
-    "cta",
-    "hashtags",
-    "cover_text",
-    "post_instructions",
-    "brand_event_notes",
-    "backup_story",
-    "backup_caption_only",
-    "risk_notes",
-    "assumptions",
-    "source_note",
-    "storyboard_thumbnail_assets",
-    "updated_at",
-  ].join(",");
 }
 
 async function prepareGeneration(
@@ -4533,13 +4506,7 @@ async function readCreator(
   workspaceID: string,
   creatorID: string,
 ): Promise<{ creator: CreatorRecord } | { response: Response }> {
-  const { data, error } = await admin
-    .from("creators")
-    .select("id,display_name,default_timezone")
-    .eq("id", creatorID)
-    .eq("workspace_id", workspaceID)
-    .eq("status", "active")
-    .maybeSingle();
+  const { data, error } = await readCreatorRow(admin, workspaceID, creatorID);
 
   if (error) {
     return { response: jsonResponse({ error: "creator_lookup_failed" }, 500) };
@@ -4557,14 +4524,12 @@ async function hasPublishedWeek(
   creatorID: string,
   weekStartDate: string,
 ): Promise<{ locked: boolean } | { response: Response }> {
-  const { data, error } = await admin
-    .from("weekly_plans")
-    .select("id")
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", creatorID)
-    .eq("week_start_date", weekStartDate)
-    .eq("status", "published")
-    .maybeSingle();
+  const { data, error } = await readPublishedWeekRow(
+    admin,
+    workspaceID,
+    creatorID,
+    weekStartDate,
+  );
 
   if (error) {
     return {
@@ -4580,17 +4545,13 @@ async function readWeeklySetup(
   workspaceID: string,
   request: GenerateWeekRequest,
 ): Promise<{ setup: Record<string, unknown> | null } | { response: Response }> {
-  const select =
-    "id,creator_profile_id,week_start_date,status,location,workout_race_schedule,family_travel_moments,energy_constraints,shooting_constraints,no_go_topics,selected_sources,notes";
-
   if (request.weekly_setup_id) {
-    const { data, error } = await admin
-      .from("weekly_setups")
-      .select(select)
-      .eq("workspace_id", workspaceID)
-      .eq("creator_id", request.creator_id)
-      .eq("id", request.weekly_setup_id)
-      .maybeSingle();
+    const { data, error } = await readWeeklySetupByID(
+      admin,
+      workspaceID,
+      request.creator_id,
+      request.weekly_setup_id,
+    );
 
     if (error) {
       return {
@@ -4602,17 +4563,15 @@ async function readWeeklySetup(
         response: jsonResponse({ error: "weekly_setup_not_found" }, 404),
       };
     }
-    return { setup: data as Record<string, unknown> };
+    return { setup: data };
   }
 
-  const { data, error } = await admin
-    .from("weekly_setups")
-    .select(select)
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", request.creator_id)
-    .eq("week_start_date", request.week_start_date)
-    .order("updated_at", { ascending: false })
-    .limit(1);
+  const { data, error } = await readLatestWeeklySetupForWeek(
+    admin,
+    workspaceID,
+    request.creator_id,
+    request.week_start_date,
+  );
 
   if (error) {
     return {
@@ -4620,7 +4579,7 @@ async function readWeeklySetup(
     };
   }
 
-  return { setup: (data?.[0] ?? null) as Record<string, unknown> | null };
+  return { setup: data };
 }
 
 async function buildGenerationInput(
@@ -4631,133 +4590,14 @@ async function buildGenerationInput(
   creator: CreatorRecord,
   weeklySetup: Record<string, unknown> | null,
 ): Promise<{ input: GenerationInputSnapshot } | { response: Response }> {
-  const [
-    profile,
-    confirmedReferences,
-    referenceExtractions,
-    recentArchive,
-    ideaBank,
-    patterns,
-    trends,
-    audioOptions,
-    brandBriefs,
-    keyMoments,
-  ] = await Promise.all([
-    readRows(
-      admin,
-      "creator_profiles",
-      "id,status,version,positioning,voice_rules,content_pillars,caption_style,never_say,weekly_routine,family_race_travel_context,language_preferences,recurring_formats,trend_filter_rules,influencer_adaptation_rules",
-      workspaceID,
-      creatorID,
-      (query) =>
-        query.eq("status", "active").order("version", { ascending: false })
-          .limit(1),
-    ),
-    readRows(
-      admin,
-      "source_references",
-      "id,source_type,source_url,manual_notes,analysis_confidence,status,created_at",
-      workspaceID,
-      creatorID,
-      (query) =>
-        query.eq("status", "confirmed").order("created_at", {
-          ascending: false,
-        }).limit(12),
-    ),
-    readRows(
-      admin,
-      "reference_extractions",
-      "id,source_reference_id,extraction_kind,extracted_payload,confidence,status,created_at",
-      workspaceID,
-      creatorID,
-      (query) =>
-        query.eq("status", "confirmed").order("updated_at", {
-          ascending: false,
-        }).limit(20),
-    ),
-    readRows(
-      admin,
-      "archive_entries",
-      "id,archive_date,decision,output_line,has_post_thumbnail,daily_cards(title,content_pillar,shootability,source_note)",
-      workspaceID,
-      creatorID,
-      (query) => query.order("archive_date", { ascending: false }).limit(20),
-    ),
-    readRows(
-      admin,
-      "ideas",
-      "id,title,summary,tags,suggested_use,shootability,fit_score,notes,status,source_reference_id,source_pattern_id,source_trend_id,source_audio_option_id",
-      workspaceID,
-      creatorID,
-      (query) =>
-        query.in("status", ["saved", "scheduled"]).order("updated_at", {
-          ascending: false,
-        }).limit(30),
-    ),
-    readRows(
-      admin,
-      "patterns",
-      "id,title,pattern_type,summary,fit_notes,avoid_notes,creator_adaptation,creator_fit_score,status",
-      workspaceID,
-      creatorID,
-      (query) =>
-        query.in("status", ["approved", "used"]).order("updated_at", {
-          ascending: false,
-        }).limit(12),
-    ),
-    readRows(
-      admin,
-      "trends",
-      "id,title,summary,timing_recommendation,creator_adaptation,creator_fit_score,status",
-      workspaceID,
-      creatorID,
-      (query) =>
-        query.in("status", ["approved", "used"]).order("updated_at", {
-          ascending: false,
-        }).limit(12),
-    ),
-    readRows(
-      admin,
-      "audio_options",
-      "id,title,artist_or_creator,usage_notes,availability_confidence,verification_note,status",
-      workspaceID,
-      creatorID,
-      (query) =>
-        query.in("status", ["verified_available", "used"]).order(
-          "updated_at",
-          { ascending: false },
-        ).limit(12),
-    ),
-    readRows(
-      admin,
-      "brand_briefs",
-      "id,brand_name,campaign_title,deliverable,due_date,post_date,review_deadline,mandatory_points,must_avoid,required_tags,disclosure_requirement,tone,notes,status",
-      workspaceID,
-      creatorID,
-      (query) =>
-        query.in("status", [
-          "active",
-          "scheduled",
-          "awaiting_approval",
-          "approved",
-        ]).order("updated_at", { ascending: false }).limit(12),
-    ),
-    readRows(
-      admin,
-      "key_moments",
-      "id,name,moment_date,location,kind,content_angle,required_scenes,pre_event_notes,post_event_notes,status",
-      workspaceID,
-      creatorID,
-      (query) =>
-        query.in("status", ["upcoming", "active"])
-          .gte("moment_date", requestWeekWindowEnd(weekStartDate, -7))
-          .lte("moment_date", requestWeekWindowEnd(weekStartDate, 21))
-          .order("moment_date", { ascending: true })
-          .limit(12),
-    ),
-  ]);
+  const context = await readGenerationContextRows(
+    admin,
+    workspaceID,
+    creatorID,
+    weekStartDate,
+  );
 
-  const profileRow = rowsOrEmpty(profile)[0] ?? null;
+  const profileRow = context.profile_rows[0] ?? null;
 
   return {
     input: {
@@ -4774,55 +4614,17 @@ async function buildGenerationInput(
           default_timezone: creator.default_timezone ?? "Asia/Kolkata",
         },
       weekly_setup: weeklySetup,
-      confirmed_references: rowsOrEmpty(confirmedReferences),
-      reference_extractions: rowsOrEmpty(referenceExtractions),
-      recent_archive: rowsOrEmpty(recentArchive),
-      idea_bank: rowsOrEmpty(ideaBank),
-      patterns: rowsOrEmpty(patterns),
-      trends: rowsOrEmpty(trends),
-      audio_options: rowsOrEmpty(audioOptions),
-      brand_briefs: rowsOrEmpty(brandBriefs),
-      key_moments: rowsOrEmpty(keyMoments),
+      confirmed_references: context.confirmed_references,
+      reference_extractions: context.reference_extractions,
+      recent_archive: context.recent_archive,
+      idea_bank: context.idea_bank,
+      patterns: context.patterns,
+      trends: context.trends,
+      audio_options: context.audio_options,
+      brand_briefs: context.brand_briefs,
+      key_moments: context.key_moments,
     },
   };
-}
-
-function rowsOrEmpty(
-  result: { rows: Record<string, unknown>[] } | { response: Response },
-): Record<string, unknown>[] {
-  return "rows" in result ? result.rows : [];
-}
-
-function requestWeekWindowEnd(
-  weekStartDate: string,
-  offsetDays: number,
-): string {
-  const [year, month, day] = weekStartDate.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCDate(date.getUTCDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
-}
-
-async function readRows(
-  admin: SupabaseAdminClient,
-  table: string,
-  select: string,
-  workspaceID: string,
-  creatorID: string,
-  configure: (query: any) => any,
-): Promise<{ rows: Record<string, unknown>[] } | { response: Response }> {
-  const query = configure(
-    admin
-      .from(table)
-      .select(select)
-      .eq("workspace_id", workspaceID)
-      .eq("creator_id", creatorID),
-  );
-  const { data, error } = await query;
-  if (error) {
-    return { response: jsonResponse({ error: `${table}_lookup_failed` }, 500) };
-  }
-  return { rows: (data ?? []) as Record<string, unknown>[] };
 }
 
 async function createGenerationRun(
