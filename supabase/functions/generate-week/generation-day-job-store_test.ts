@@ -1,0 +1,608 @@
+import {
+  claimQueuedDayJob,
+  completeDayJob,
+  failDayJob,
+  heartbeatDayJob,
+  isQueuedDayJobStale,
+  normalizeQueuedDayJobRows,
+  normalizeQueuedDayJobStatus,
+  queuedDayJobSelect,
+  readQueuedDayJobsForRun,
+  reclaimStaleDayJob,
+  releaseOverCapacityDayJob,
+  stageDayJobOutput,
+} from "./generation-day-job-store.ts";
+import type { QueuedDayJobRecord } from "./generation-status.ts";
+
+type FakeJob = Record<string, unknown>;
+
+type FakeStoreState = {
+  dayJobs: FakeJob[];
+  rpcCalls: Array<{ fn: string; params: Record<string, unknown> }>;
+  lookupError?: { message: string };
+};
+
+function baseJob(overrides: Partial<FakeJob> = {}): FakeJob {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    generation_run_id: "22222222-2222-4222-8222-222222222222",
+    weekly_plan_id: "33333333-3333-4333-8333-333333333333",
+    workspace_id: "44444444-4444-4444-8444-444444444444",
+    creator_id: "55555555-5555-4555-8555-555555555555",
+    scheduled_date: "2026-06-08",
+    day_index: 0,
+    status: "queued",
+    attempt_count: 0,
+    daily_card_id: null,
+    error_code: null,
+    error_message: null,
+    started_at: null,
+    completed_at: null,
+    heartbeat_at: null,
+    lease_token: null,
+    worker_boot_id: null,
+    staged_output: null,
+    ...overrides,
+  };
+}
+
+function fakeAdmin(state: FakeStoreState): {
+  from: (table: string) => FakeQuery;
+  rpc: (
+    fn: string,
+    params?: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: unknown }>;
+} {
+  return {
+    from(table: string) {
+      return new FakeQuery(table, state);
+    },
+    async rpc(fn: string, params: Record<string, unknown> = {}) {
+      state.rpcCalls.push({ fn, params });
+      if (fn === "claim_queued_day_job") {
+        const job = state.dayJobs.find((candidate) =>
+          candidate.generation_run_id === params.p_generation_run_id &&
+          (candidate.status === "queued" || candidate.status === "retrying")
+        );
+        if (!job) return { data: null, error: null };
+        job.status = "generating";
+        job.lease_token = params.p_lease_token;
+        job.worker_boot_id = params.p_worker_boot_id;
+        job.attempt_count = ((job.attempt_count as number) ?? 0) + 1;
+        job.heartbeat_at = "2026-06-08T12:00:00.000Z";
+        job.started_at = "2026-06-08T12:00:00.000Z";
+        return { data: { ...job }, error: null };
+      }
+      if (fn === "reclaim_stale_day_job") {
+        const job = state.dayJobs.find((candidate) =>
+          candidate.generation_run_id === params.p_generation_run_id &&
+          candidate.status === "generating"
+        );
+        if (!job) return { data: null, error: null };
+        job.lease_token = params.p_lease_token;
+        job.worker_boot_id = params.p_worker_boot_id;
+        job.attempt_count = ((job.attempt_count as number) ?? 0) + 1;
+        return { data: { ...job }, error: null };
+      }
+      if (fn === "stage_day_job_output") {
+        const job = state.dayJobs.find((candidate) =>
+          candidate.id === params.p_job_id &&
+          candidate.lease_token === params.p_lease_token &&
+          candidate.attempt_count === params.p_attempt &&
+          candidate.status === "generating"
+        );
+        if (!job) return { data: null, error: null };
+        job.status = "ready_to_persist";
+        job.staged_output = params.p_output;
+        return { data: { ...job }, error: null };
+      }
+      return { data: null, error: null };
+    },
+  };
+}
+
+class FakeQuery {
+  private operation: "select" | "update" = "select";
+  private filters: Record<string, unknown> = {};
+  private values: Record<string, unknown> | null = null;
+
+  constructor(
+    private readonly table: string,
+    private readonly state: FakeStoreState,
+  ) {}
+
+  select(_columns?: string): FakeQuery {
+    return this;
+  }
+
+  update(values: Record<string, unknown>): FakeQuery {
+    this.operation = "update";
+    this.values = values;
+    return this;
+  }
+
+  eq(column: string, value: unknown): FakeQuery {
+    this.filters[column] = value;
+    return this;
+  }
+
+  in(column: string, value: unknown): FakeQuery {
+    this.filters[column] = value;
+    return this;
+  }
+
+  order(_column: string, _options?: unknown): FakeQuery {
+    return this;
+  }
+
+  maybeSingle(): Promise<{ data: unknown; error: unknown }> {
+    const result = this.resolve();
+    return Promise.resolve({
+      data: Array.isArray(result.data) ? result.data[0] ?? null : result.data,
+      error: result.error,
+    });
+  }
+
+  then<TResult1 = { data: unknown; error: unknown }, TResult2 = never>(
+    onfulfilled?:
+      | ((
+        value: { data: unknown; error: unknown },
+      ) => TResult1 | PromiseLike<TResult1>)
+      | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2> {
+    return Promise.resolve(this.resolve()).then(onfulfilled, onrejected);
+  }
+
+  private resolve(): { data: unknown; error: unknown } {
+    if (this.table !== "weekly_generation_day_jobs") {
+      return { data: null, error: null };
+    }
+    if (this.operation === "select") {
+      if (this.state.lookupError) {
+        return { data: null, error: this.state.lookupError };
+      }
+      const rows = this.state.dayJobs.filter((job) =>
+        (!this.filters.generation_run_id ||
+          job.generation_run_id === this.filters.generation_run_id) &&
+        (!this.filters.workspace_id ||
+          job.workspace_id === this.filters.workspace_id) &&
+        (!this.filters.creator_id ||
+          job.creator_id === this.filters.creator_id)
+      );
+      return { data: rows, error: null };
+    }
+
+    const rows = this.state.dayJobs.filter((job) =>
+      (!this.filters.id || job.id === this.filters.id) &&
+      (!this.filters.lease_token ||
+        job.lease_token === this.filters.lease_token) &&
+      (!this.filters.status || job.status === this.filters.status ||
+        (Array.isArray(this.filters.status) &&
+          this.filters.status.includes(job.status)))
+    );
+    if (rows.length === 0 || !this.values) {
+      return { data: null, error: { message: "no rows matched" } };
+    }
+    rows.forEach((row) => Object.assign(row, this.values));
+    return { data: { id: rows[0].id }, error: null };
+  }
+}
+
+Deno.test("queuedDayJobSelect preserves the exact column contract", () => {
+  assertEquals(
+    queuedDayJobSelect(),
+    [
+      "id",
+      "generation_run_id",
+      "weekly_plan_id",
+      "workspace_id",
+      "creator_id",
+      "scheduled_date",
+      "day_index",
+      "status",
+      "attempt_count",
+      "daily_card_id",
+      "error_code",
+      "error_message",
+      "started_at",
+      "completed_at",
+      "heartbeat_at",
+      "lease_token",
+      "worker_boot_id",
+      "staged_output",
+    ].join(","),
+  );
+});
+
+Deno.test("normalizeQueuedDayJobRows sorts, fills defaults, and drops malformed rows", () => {
+  const rows = normalizeQueuedDayJobRows([
+    {
+      id: "b",
+      generation_run_id: "run",
+      weekly_plan_id: "plan",
+      workspace_id: "ws",
+      creator_id: "creator",
+      scheduled_date: "2026-06-09",
+      day_index: 1,
+      status: "generated",
+      attempt_count: 2,
+      staged_output: { ok: true },
+    },
+    {
+      id: "a",
+      generation_run_id: "run",
+      weekly_plan_id: "plan",
+      workspace_id: "ws",
+      creator_id: "creator",
+      scheduled_date: "2026-06-08",
+      day_index: 0,
+      status: "queued",
+    },
+    {
+      scheduled_date: "2026-06-10",
+      day_index: 2,
+      status: "not-a-status",
+    },
+    {
+      scheduled_date: "   ",
+      day_index: 3,
+      status: "queued",
+    },
+    {
+      scheduled_date: "2026-06-11",
+      status: "queued",
+    },
+    null,
+    "skip",
+  ]);
+
+  assertEquals(rows.length, 2);
+  assertEquals(rows[0].day_index, 0);
+  assertEquals(rows[0].attempt_count, 0);
+  assertEquals(rows[0].daily_card_id, null);
+  assertEquals(rows[0].lease_token, null);
+  assertEquals(rows[1].day_index, 1);
+  assertEquals(rows[1].staged_output?.ok, true);
+  assertEquals(normalizeQueuedDayJobRows(null).length, 0);
+  assertEquals(normalizeQueuedDayJobRows({}).length, 0);
+});
+
+Deno.test("normalizeQueuedDayJobStatus accepts only known stored statuses", () => {
+  const accepted = [
+    "queued",
+    "generating",
+    "generated",
+    "failed",
+    "retrying",
+    "cancelled",
+    "ready_to_persist",
+  ] as const;
+  for (const status of accepted) {
+    assertEquals(normalizeQueuedDayJobStatus(status), status);
+  }
+  assertEquals(normalizeQueuedDayJobStatus("running"), undefined);
+  assertEquals(normalizeQueuedDayJobStatus(null), undefined);
+});
+
+Deno.test("isQueuedDayJobStale uses heartbeat then started_at against the threshold", () => {
+  const now = Date.parse("2026-06-08T12:10:00.000Z");
+  assertEquals(
+    isQueuedDayJobStale(
+      {
+        heartbeat_at: "2026-06-08T12:08:00.000Z",
+        started_at: "2026-06-08T11:00:00.000Z",
+      },
+      135_000,
+      now,
+    ),
+    false,
+  );
+  assertEquals(
+    isQueuedDayJobStale(
+      {
+        heartbeat_at: "2026-06-08T12:00:00.000Z",
+        started_at: "2026-06-08T12:09:00.000Z",
+      },
+      135_000,
+      now,
+    ),
+    true,
+    "heartbeat takes precedence over a fresher started_at",
+  );
+  assertEquals(
+    isQueuedDayJobStale(
+      {
+        started_at: "2026-06-08T12:00:00.000Z",
+      },
+      135_000,
+      now,
+    ),
+    true,
+  );
+  assertEquals(isQueuedDayJobStale({}, 135_000, now), false);
+  assertEquals(
+    isQueuedDayJobStale({ heartbeat_at: "not-a-date" }, 135_000, now),
+    false,
+  );
+});
+
+Deno.test("claimQueuedDayJob and reclaimStaleDayJob preserve RPC names and payloads", async () => {
+  const state: FakeStoreState = {
+    dayJobs: [baseJob({ status: "queued" })],
+    rpcCalls: [],
+  };
+  const admin = fakeAdmin(state);
+
+  const claimed = await claimQueuedDayJob(
+    admin,
+    "22222222-2222-4222-8222-222222222222",
+    "lease-a",
+    "boot-a",
+    2,
+    135_000,
+  );
+  assertEquals(claimed?.id, "11111111-1111-4111-8111-111111111111");
+  assertEquals(claimed?.status, "generating");
+  assertEquals(state.rpcCalls[0]?.fn, "claim_queued_day_job");
+  assertEquals(
+    state.rpcCalls[0]?.params.p_generation_run_id,
+    "22222222-2222-4222-8222-222222222222",
+  );
+  assertEquals(state.rpcCalls[0]?.params.p_lease_token, "lease-a");
+  assertEquals(state.rpcCalls[0]?.params.p_worker_boot_id, "boot-a");
+  assertEquals(state.rpcCalls[0]?.params.p_max_live_jobs, 2);
+  assertEquals(state.rpcCalls[0]?.params.p_stale_threshold_ms, 135_000);
+
+  state.dayJobs[0].status = "generating";
+  const reclaimed = await reclaimStaleDayJob(
+    admin,
+    "22222222-2222-4222-8222-222222222222",
+    "lease-b",
+    "boot-b",
+    240_000,
+    4,
+    3,
+  );
+  assertEquals(reclaimed?.lease_token, "lease-b");
+  assertEquals(state.rpcCalls[1]?.fn, "reclaim_stale_day_job");
+  assertEquals(
+    state.rpcCalls[1]?.params.p_generation_run_id,
+    "22222222-2222-4222-8222-222222222222",
+  );
+  assertEquals(state.rpcCalls[1]?.params.p_lease_token, "lease-b");
+  assertEquals(state.rpcCalls[1]?.params.p_worker_boot_id, "boot-b");
+  assertEquals(state.rpcCalls[1]?.params.p_stale_threshold_ms, 240_000);
+  assertEquals(state.rpcCalls[1]?.params.p_max_attempts, 3);
+  assertEquals(state.rpcCalls[1]?.params.p_max_live_jobs, 4);
+});
+
+Deno.test("stageDayJobOutput preserves stage_day_job_output RPC payload fields", async () => {
+  const state: FakeStoreState = {
+    dayJobs: [baseJob({
+      status: "generating",
+      lease_token: "lease-a",
+      attempt_count: 2,
+    })],
+    rpcCalls: [],
+  };
+  const admin = fakeAdmin(state);
+  const staged = await stageDayJobOutput(
+    admin,
+    "11111111-1111-4111-8111-111111111111",
+    "lease-a",
+    2,
+    { source_summary: "staged" },
+  );
+  assertEquals(staged, true);
+  assertEquals(state.rpcCalls[0]?.fn, "stage_day_job_output");
+  assertEquals(
+    state.rpcCalls[0]?.params.p_job_id,
+    "11111111-1111-4111-8111-111111111111",
+  );
+  assertEquals(state.rpcCalls[0]?.params.p_lease_token, "lease-a");
+  assertEquals(state.rpcCalls[0]?.params.p_attempt, 2);
+  assertEquals(
+    (state.rpcCalls[0]?.params.p_output as { source_summary?: string })
+      .source_summary,
+    "staged",
+  );
+  assertEquals(state.dayJobs[0].status, "ready_to_persist");
+});
+
+Deno.test("heartbeat, complete, fail, and capacity release enforce lease transitions", async () => {
+  const generating = baseJob({
+    status: "generating",
+    lease_token: "lease-a",
+    attempt_count: 1,
+  });
+  const ready = baseJob({
+    id: "66666666-6666-4666-8666-666666666666",
+    scheduled_date: "2026-06-09",
+    day_index: 1,
+    status: "ready_to_persist",
+    lease_token: "lease-b",
+    attempt_count: 1,
+  });
+  const state: FakeStoreState = {
+    dayJobs: [generating, ready],
+    rpcCalls: [],
+  };
+  const admin = fakeAdmin(state);
+
+  assertEquals(
+    await heartbeatDayJob(
+      admin,
+      "11111111-1111-4111-8111-111111111111",
+      "lease-a",
+    ),
+    true,
+  );
+  assertEquals(typeof generating.heartbeat_at, "string");
+
+  assertEquals(
+    await heartbeatDayJob(
+      admin,
+      "11111111-1111-4111-8111-111111111111",
+      "wrong-lease",
+    ),
+    false,
+  );
+
+  assertEquals(
+    await completeDayJob(
+      admin,
+      "66666666-6666-4666-8666-666666666666",
+      "lease-b",
+      "card-1",
+    ),
+    true,
+  );
+  assertEquals(ready.status, "generated");
+  assertEquals(ready.daily_card_id, "card-1");
+  assertEquals(typeof ready.completed_at, "string");
+
+  generating.status = "generating";
+  generating.lease_token = "lease-a";
+  assertEquals(
+    await failDayJob(
+      admin,
+      "11111111-1111-4111-8111-111111111111",
+      "lease-a",
+      "provider_failed",
+      "x".repeat(1200),
+    ),
+    true,
+  );
+  assertEquals(generating.status, "failed");
+  assertEquals(generating.error_code, "provider_failed");
+  assertEquals((generating.error_message as string).length, 1000);
+
+  const overCapacity = baseJob({
+    id: "77777777-7777-4777-8777-777777777777",
+    status: "generating",
+    lease_token: "lease-c",
+    attempt_count: 2,
+  }) as unknown as QueuedDayJobRecord;
+  state.dayJobs.push(overCapacity as unknown as FakeJob);
+  assertEquals(
+    await releaseOverCapacityDayJob(admin, overCapacity, "lease-c"),
+    true,
+  );
+  assertEquals(overCapacity.status, "retrying");
+  assertEquals(overCapacity.attempt_count, 1);
+  assertEquals(overCapacity.lease_token, null);
+  assertEquals(overCapacity.heartbeat_at, null);
+});
+
+Deno.test("readQueuedDayJobsForRun normalizes rows and surfaces persist failures", async () => {
+  const state: FakeStoreState = {
+    dayJobs: [
+      baseJob({ day_index: 1, scheduled_date: "2026-06-09", status: "queued" }),
+      baseJob({
+        id: "88888888-8888-4888-8888-888888888888",
+        day_index: 0,
+        scheduled_date: "2026-06-08",
+        status: "generated",
+        daily_card_id: "card-0",
+      }),
+    ],
+    rpcCalls: [],
+  };
+  const admin = fakeAdmin(state);
+  const result = await readQueuedDayJobsForRun(
+    admin,
+    "22222222-2222-4222-8222-222222222222",
+    "44444444-4444-4444-8444-444444444444",
+    "55555555-5555-4555-8555-555555555555",
+  );
+  assert("jobs" in result);
+  assertEquals(result.jobs.length, 2);
+  assertEquals(result.jobs[0].day_index, 0);
+  assertEquals(result.jobs[1].day_index, 1);
+
+  state.lookupError = { message: "select failed" };
+  const failed = await readQueuedDayJobsForRun(
+    admin,
+    "22222222-2222-4222-8222-222222222222",
+    "44444444-4444-4444-8444-444444444444",
+    "55555555-5555-4555-8555-555555555555",
+  );
+  assert("response" in failed);
+  assertEquals(failed.response.status, 500);
+  const body = await failed.response.json();
+  assertEquals(body.error, "generation_persist_failed");
+  assertEquals(body.step, "read_generation_day_jobs");
+});
+
+Deno.test("claimQueuedDayJob returns null for empty-id and invalid RPC rows", async () => {
+  const emptyIDAdmin = {
+    from() {
+      throw new Error("from should not be called");
+    },
+    async rpc() {
+      return {
+        data: {
+          id: "   ",
+          generation_run_id: "run",
+          weekly_plan_id: "plan",
+          workspace_id: "ws",
+          creator_id: "creator",
+          scheduled_date: "2026-06-08",
+          day_index: 0,
+          status: "queued",
+        },
+        error: null,
+      };
+    },
+  };
+  assertEquals(
+    await claimQueuedDayJob(emptyIDAdmin, "run", "lease", "boot", 1, 135_000),
+    null,
+  );
+
+  const invalidAdmin = {
+    from() {
+      throw new Error("from should not be called");
+    },
+    async rpc() {
+      return {
+        data: {
+          scheduled_date: "2026-06-08",
+          day_index: 0,
+          status: "not-valid",
+        },
+        error: null,
+      };
+    },
+  };
+  let threw = false;
+  try {
+    await claimQueuedDayJob(invalidAdmin, "run", "lease", "boot", 1, 135_000);
+  } catch {
+    threw = true;
+  }
+  assertEquals(
+    threw,
+    true,
+    "invalid status rows still short-circuit via missing normalized job",
+  );
+});
+
+function assert(
+  condition: unknown,
+  message = "Assertion failed",
+): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function assertEquals<T>(actual: T, expected: T, message?: string): void {
+  if (!Object.is(actual, expected)) {
+    throw new Error(
+      message ??
+        `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
+    );
+  }
+}
