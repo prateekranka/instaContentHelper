@@ -1494,6 +1494,7 @@ final class AppServices {
             weekCards = result.weekCards
             if let draft = latestGenerationSummary, draft.weeklyPlanID == result.weeklyPlan.id {
                 latestGenerationSummary = draft.markedPublished
+                hydrateDayBriefGeneratedCardsFromLatestDraft()
             }
             if let todayCard = result.todayCard {
                 self.todayCard = todayCard
@@ -1766,6 +1767,7 @@ final class AppServices {
             weeklyPlan = weeklyContent.workingPlan ?? weeklyContent.publishedPlan
             weeklyBriefDraftText = weeklyPlan.weeklyBriefText
             latestGenerationSummary = weeklyContent.generatedDraft
+            hydrateDayBriefGeneratedCardsFromLatestDraft()
             weeklyIdeas = weeklyContent.ideaBank
             reconcileGenerationProgressAfterDraftRefresh()
             if let generatedDraft = weeklyContent.generatedDraft {
@@ -1862,6 +1864,7 @@ final class AppServices {
             weeklyPlan = weeklyContent.workingPlan ?? weeklyContent.publishedPlan
             weeklyBriefDraftText = weeklyPlan.weeklyBriefText
             latestGenerationSummary = weeklyContent.generatedDraft
+            hydrateDayBriefGeneratedCardsFromLatestDraft()
             weeklyIdeas = weeklyContent.ideaBank
             reconcileGenerationProgressAfterDraftRefresh()
             if let generatedDraft = weeklyContent.generatedDraft {
@@ -1877,6 +1880,21 @@ final class AppServices {
             lastRepositoryError = nil
             normalizeManagerWeekStartIfStale()
         }
+    }
+
+    private func hydrateDayBriefGeneratedCardsFromLatestDraft() {
+        var hydratedCards = dayBriefGeneratedCards.filter { generatingDayBriefDates.contains($0.key) }
+
+        guard let draft = latestGenerationSummary else {
+            return
+        }
+
+        for card in draft.dailyCards where card.status.lowercased() != "published" {
+            guard !generatingDayBriefDates.contains(card.scheduledDate) else { continue }
+            hydratedCards[card.scheduledDate] = card
+        }
+
+        dayBriefGeneratedCards = hydratedCards
     }
 
     private func reconcileGenerationProgressAfterDraftRefresh() {
