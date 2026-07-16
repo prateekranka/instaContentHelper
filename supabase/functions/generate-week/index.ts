@@ -67,18 +67,9 @@ import type {
 } from "./generation-status.ts";
 import {
   cancelActiveQueuedDayJobs,
-  claimQueuedDayJob,
-  completeDayJob,
-  failDayJob,
-  heartbeatDayJob,
-  isQueuedDayJobStale,
   lookupQueuedDayJobsExist,
   markFailedDayJobRetrying,
   readQueuedDayJobsForRun,
-  reclaimStaleDayJob,
-  releaseOverCapacityDayJob,
-  stageDayJobOutput,
-  upsertDayJobRows,
 } from "./generation-day-job-store.ts";
 import {
   clearExistingDraftDailyCardsForFullGeneration,
@@ -96,7 +87,6 @@ import {
   completeDayGenerationRun as completeDayGenerationRunStore,
   completeFullWeekGenerationRun,
   completeGenerationRunMinimal,
-  completePartialGenerationRun as completePartialGenerationRunStore,
   insertDayGenerationRun,
   insertWeekGenerationRun,
   linkGenerationRunWeeklyPlan,
@@ -110,15 +100,11 @@ import {
 import {
   allDaysCompleted,
   allDaysTerminal,
-  availableParallelDayJobSlots as availableParallelDayJobSlotsFor,
-  hasActiveParallelDayGeneration,
   isParallelWeekGenerationTerminal,
   isRunningDayStale,
   isTerminalDayGenerationState,
-  liveParallelDayJobCount,
   mergeSavedDailyCardsIntoProgress,
   normalizeStaleRunningDays,
-  progressReconciledWithDayJobs,
   savedDailyCardsForProgress,
   shouldResumeParallelWeekGeneration,
   shouldRunDayGeneration,
@@ -133,6 +119,21 @@ import {
   readPublishedWeekRow,
   readWeeklySetupByID,
 } from "./generation-context-store.ts";
+import {
+  availableParallelDayJobSlots as availableParallelDayJobSlotsFromWorker,
+  completePartialGenerationRun,
+  createQueuedDayJobs,
+  createSeededDayJobsFromProgress,
+  finalizeParallelWeekGeneration,
+  isGenerationRunCancelled,
+  isGenerationRunRecordCancelled,
+  maxDayGenerationAttempts,
+  parallelWeekGenerationConcurrency,
+  type ParallelWeekWorkerHost,
+  runningDayStaleMS,
+  runParallelWeekGeneration,
+  shouldDispatchQueuedDayJobRecovery,
+} from "./generation-parallel-week-worker.ts";
 
 type EnvReader = {
   get: (name: string) => string | undefined;
@@ -253,54 +254,26 @@ type CreatorRecord = Record<string, unknown> & {
   display_name?: string;
 };
 
-type ShutdownTelemetry = {
-  generation_id: string;
-  boot_id: string;
-  reason:
-    | "completed"
-    | "cancelled"
-    | "error"
-    | "incomplete_loop_exit"
-    | "runtime_shutdown";
-  shutdown_reason?: string | null;
-  active_job_ids?: string[];
-  day_jobs_claimed: number;
-  day_jobs_completed: number;
-  day_jobs_failed: number;
-  duration_ms: number;
-};
-
-function logShutdownTelemetry(telemetry: ShutdownTelemetry): void {
-  console.log(JSON.stringify({
-    event: "generation_shutdown",
-    timestamp: new Date().toISOString(),
-    execution_id: safeEnvironmentValue("SB_EXECUTION_ID"),
-    ...telemetry,
-  }));
-}
-
-function safeEnvironmentValue(name: string): string | null {
-  try {
-    return Deno.env.get(name)?.trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-function generationBootID(): string {
-  return crypto.randomUUID();
-}
-
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const PROMPT_VERSION = "creator-weekly-generation-v1";
-const DEFAULT_RUNNING_DAY_STALE_MS = 135_000;
-const DAY_GENERATION_HEARTBEAT_MIN_MS = 1_000;
-const DAY_GENERATION_HEARTBEAT_MAX_MS = 60_000;
-const DEFAULT_DAY_GENERATION_MAX_ATTEMPTS = 3;
 
 let todayISOProvider: () => string = () =>
   new Date().toISOString().slice(0, 10);
+
+export function availableParallelDayJobSlots(
+  jobs: Parameters<typeof availableParallelDayJobSlotsFromWorker>[0],
+  concurrency: number,
+  staleThresholdMS: number,
+  now?: number,
+): number {
+  return availableParallelDayJobSlotsFromWorker(
+    jobs,
+    concurrency,
+    staleThresholdMS,
+    now,
+  );
+}
 
 export function overrideTodayISO(provider: () => string): void {
   todayISOProvider = provider;
@@ -1469,6 +1442,35 @@ function isQueuedWeekGenerationEnabled(
   return false;
 }
 
+function buildParallelWeekWorkerHost(
+  dependencies: GenerateWeekDependencies,
+): ParallelWeekWorkerHost {
+  return {
+    generateDayOutput: (
+      prepared,
+      scheduledDate,
+      dayIndex,
+      generationID,
+      retryContext,
+    ) =>
+      generateDayOutput(
+        prepared,
+        scheduledDate,
+        dayIndex,
+        dependencies,
+        generationID,
+        "parallel_day_generation",
+        retryContext,
+      ),
+    assertDayRespectsWeeklyBriefContext,
+    dayGenerationRetryContext,
+    readSavedDailyCards,
+    makeInitialWeekStrategyOutput,
+    makeGenerateWeekDraftResponse,
+    completeGenerationRun,
+    dayHeartbeatIntervalMS: dependencies.dayHeartbeatIntervalMS,
+  };
+}
 async function handleQueuedWeekGeneration(
   admin: SupabaseAdminClient,
   prepared: PreparedGeneration,
@@ -1662,7 +1664,7 @@ async function handleParallelWeekGeneration(
     generationID,
     planResult.weeklyPlanID,
     progress,
-    dependencies,
+    buildParallelWeekWorkerHost(dependencies),
   );
 
   if (prepared.request.response_mode === "async") {
@@ -1683,840 +1685,6 @@ async function handleParallelWeekGeneration(
 
   const result = await runPromise;
   return "response" in result ? result.response : jsonResponse(result.payload);
-}
-
-async function createQueuedDayJobs(
-  admin: SupabaseAdminClient,
-  prepared: PreparedGeneration,
-  generationID: string,
-  weeklyPlanID: string,
-): Promise<{ jobs: QueuedDayJobRecord[] } | { response: Response }> {
-  const rows = weekDates(prepared.request.week_start_date).map((
-    scheduledDate,
-    dayIndex,
-  ) => ({
-    generation_run_id: generationID,
-    weekly_plan_id: weeklyPlanID,
-    workspace_id: prepared.session.workspaceID,
-    creator_id: prepared.request.creator_id,
-    scheduled_date: scheduledDate,
-    day_index: dayIndex,
-    status: "queued" as const,
-    attempt_count: 0,
-  }));
-
-  const upsertResult = await upsertDayJobRows(admin, rows);
-  if ("error" in upsertResult) {
-    return generationPersistFailure(
-      "create_generation_day_jobs",
-      upsertResult.error,
-    );
-  }
-
-  const jobs = upsertResult.jobs;
-  for (const job of jobs) {
-    logGenerationLifecycle({
-      action: "generate_week",
-      phase: "day_job_queued",
-      status: "queued",
-      generation_id: generationID,
-      weekly_plan_id: weeklyPlanID,
-      week_start_date: prepared.request.week_start_date,
-      scheduled_date: job.scheduled_date,
-      day_index: job.day_index,
-      duration_ms: null,
-      day_guidance_present: null,
-      day_guidance_chars: null,
-    });
-  }
-  return { jobs };
-}
-async function createSeededDayJobsFromProgress(
-  admin: SupabaseAdminClient,
-  prepared: PreparedGeneration,
-  generationID: string,
-  weeklyPlanID: string,
-  progress: PerDayGenerationSnapshot,
-): Promise<{ jobs: QueuedDayJobRecord[] } | { response: Response }> {
-  const now = new Date().toISOString();
-  const nowMS = Date.now();
-  const staleThresholdMS = runningDayStaleMS();
-  const maxAttempts = maxDayGenerationAttempts();
-  const placeholderLease = crypto.randomUUID();
-  const rows = progress.days.map((day, dayIndex) => {
-    const running = day.status === "running" &&
-      !isRunningDayStale(day, staleThresholdMS, nowMS);
-    const terminalFailure = day.status === "failed" &&
-      day.attempts >= maxAttempts;
-    const status: QueuedDayJobStatus = day.status === "completed"
-      ? "generated"
-      : terminalFailure
-      ? "failed"
-      : running
-      ? "generating"
-      : day.status === "failed" || day.status === "running"
-      ? "retrying"
-      : "queued";
-    return {
-      generation_run_id: generationID,
-      weekly_plan_id: weeklyPlanID,
-      workspace_id: prepared.session.workspaceID,
-      creator_id: prepared.request.creator_id,
-      scheduled_date: day.scheduled_date,
-      day_index: dayIndex,
-      status,
-      attempt_count: day.attempts,
-      daily_card_id: day.daily_card_id ?? null,
-      error_code: day.error_code ?? null,
-      started_at: day.started_at ?? null,
-      completed_at: day.completed_at ?? null,
-      lease_token: running
-        ? `${placeholderLease}-running-${day.scheduled_date}`
-        : null,
-      heartbeat_at: running ? day.heartbeat_at ?? now : null,
-    };
-  });
-
-  const upsertResult = await upsertDayJobRows(admin, rows);
-  if ("error" in upsertResult) {
-    return generationPersistFailure(
-      "create_seeded_generation_day_jobs",
-      upsertResult.error,
-    );
-  }
-
-  return { jobs: upsertResult.jobs };
-}
-
-async function claimedDayJobFitsLiveCapacity(
-  admin: SupabaseAdminClient,
-  job: QueuedDayJobRecord,
-  leaseToken: string,
-  concurrency: number,
-  staleThresholdMS: number,
-): Promise<boolean> {
-  const dayJobs = await readQueuedDayJobsForRun(
-    admin,
-    job.generation_run_id,
-    job.workspace_id,
-    job.creator_id,
-  );
-  if ("response" in dayJobs) {
-    await releaseOverCapacityDayJob(admin, job, leaseToken);
-    return false;
-  }
-
-  const liveRunningCount = liveParallelDayJobCount(
-    dayJobs.jobs,
-    staleThresholdMS,
-    Date.now(),
-  );
-  if (liveRunningCount <= concurrency) {
-    return true;
-  }
-
-  const released = await releaseOverCapacityDayJob(admin, job, leaseToken);
-  console.warn("generate-week day-job claim released over capacity", {
-    generation_id: job.generation_run_id,
-    job_id: job.id,
-    scheduled_date: job.scheduled_date,
-    day_index: job.day_index,
-    attempt_count: job.attempt_count,
-    live_running_count: liveRunningCount,
-    concurrency,
-    released,
-  });
-  return false;
-}
-
-async function runParallelWeekGeneration(
-  admin: SupabaseAdminClient,
-  prepared: PreparedGeneration,
-  generationID: string,
-  weeklyPlanID: string,
-  progress: PerDayGenerationSnapshot,
-  dependencies: GenerateWeekDependencies,
-): Promise<{ payload: Record<string, unknown> } | { response: Response }> {
-  const bootID = generationBootID();
-  registerShutdownTracking(generationID, bootID, []);
-  const loopStartedAt = Date.now();
-  let dayJobsClaimed = 0;
-  let dayJobsCompleted = 0;
-  let dayJobsFailed = 0;
-
-  const normalizeNowMS = Date.now();
-  const normalizeNowISO = new Date().toISOString();
-  let latestProgress = {
-    ...normalizeStaleRunningDays(progress, {
-      maxAttempts: maxDayGenerationAttempts(),
-      staleThresholdMS: runningDayStaleMS(),
-      nowMS: normalizeNowMS,
-      nowISO: normalizeNowISO,
-    }),
-    weekly_plan_id: weeklyPlanID,
-  };
-  let writeQueue = Promise.resolve();
-
-  const recordDays = (
-    states: Array<{ dayIndex: number; state: DayGenerationState }>,
-  ): Promise<void> => {
-    writeQueue = writeQueue.then(async () => {
-      latestProgress = {
-        ...latestProgress,
-        days: latestProgress.days.map((day, index) => {
-          const replacement = states.find((s) => s.dayIndex === index);
-          return replacement ? replacement.state : day;
-        }),
-        updated_at: new Date().toISOString(),
-      };
-      const updateResult = await updateGenerationProgress(
-        admin,
-        generationID,
-        latestProgress,
-      );
-      if ("response" in updateResult) {
-        throw new Error("generation_persist_failed:update_generation_progress");
-      }
-    });
-    return writeQueue;
-  };
-
-  const concurrency = parallelWeekGenerationConcurrency();
-  const heartbeatIntervalMS = dayGenerationHeartbeatMS(dependencies);
-  const staleThresholdMS = runningDayStaleMS();
-  let cancelled = false;
-
-  const inFlight = new Map<
-    string,
-    Promise<{ job: QueuedDayJobRecord; state: DayGenerationState }>
-  >();
-
-  while (true) {
-    if (await isGenerationRunCancelled(admin, generationID)) {
-      cancelled = true;
-      break;
-    }
-
-    const dayJobs = await readQueuedDayJobsForRun(
-      admin,
-      generationID,
-      prepared.session.workspaceID,
-      prepared.request.creator_id,
-    );
-    if ("response" in dayJobs) break;
-
-    const hasWork = dayJobs.jobs.some((j) =>
-      j.status === "queued" || j.status === "retrying" ||
-      j.status === "generating" || j.status === "ready_to_persist"
-    );
-    if (!hasWork && inFlight.size === 0) break;
-
-    const slotsFree = availableParallelDayJobSlots(
-      dayJobs.jobs,
-      concurrency,
-      staleThresholdMS,
-      Date.now(),
-    );
-
-    const readyJobs = dayJobs.jobs.filter((job) =>
-      job.status === "ready_to_persist" && job.staged_output
-    );
-    for (const job of readyJobs) {
-      if (inFlight.has(job.id)) continue;
-      const taskPromise = persistReadyDayJob(
-        admin,
-        prepared,
-        weeklyPlanID,
-        job,
-      ).then((state) => ({ job, state }));
-      inFlight.set(job.id, taskPromise);
-    }
-
-    for (let slot = 0; slot < slotsFree; slot++) {
-      const leaseToken = crypto.randomUUID();
-      let claimed = await claimQueuedDayJob(
-        admin,
-        generationID,
-        leaseToken,
-        bootID,
-        concurrency,
-        staleThresholdMS,
-      );
-
-      if (!claimed) {
-        claimed = await reclaimStaleDayJob(
-          admin,
-          generationID,
-          leaseToken,
-          bootID,
-          staleThresholdMS,
-          concurrency,
-          maxDayGenerationAttempts(),
-        );
-      }
-
-      if (!claimed) break;
-
-      const job = claimed;
-      const fitsCapacity = await claimedDayJobFitsLiveCapacity(
-        admin,
-        job,
-        leaseToken,
-        concurrency,
-        staleThresholdMS,
-      );
-      if (!fitsCapacity) break;
-
-      dayJobsClaimed++;
-      console.log("generate-week parallel day job claimed", {
-        generation_id: generationID,
-        job_id: job.id,
-        scheduled_date: job.scheduled_date,
-        day_index: job.day_index,
-        attempt_count: job.attempt_count,
-        concurrency,
-      });
-      trackShutdownJob(generationID, job.id);
-      const dayIndex = job.day_index;
-      const snapshotDay = latestProgress.days[dayIndex];
-      const retryContext = dayGenerationRetryContext(
-        {
-          scheduled_date: job.scheduled_date,
-          status: job.status === "retrying"
-            ? "failed"
-            : snapshotDay?.status ?? "pending",
-          attempts: job.attempt_count ?? 0,
-          error_code: snapshotDay?.error_code ?? job.error_code ?? undefined,
-        },
-        dayIndex,
-        job.attempt_count ?? 1,
-      );
-
-      const heartbeatID = setInterval(() => {
-        heartbeatDayJob(admin, job.id, leaseToken).catch(() => {});
-      }, heartbeatIntervalMS);
-
-      const taskPromise = runParallelDayGenerationTask(
-        admin,
-        prepared,
-        generationID,
-        weeklyPlanID,
-        job.scheduled_date,
-        dayIndex,
-        job.attempt_count ?? 1,
-        dependencies,
-        retryContext,
-        job.id,
-        leaseToken,
-      ).then((state) => {
-        if (state.status === "completed") dayJobsCompleted++;
-        else dayJobsFailed++;
-        return { job, state };
-      }).finally(() => clearInterval(heartbeatID));
-
-      inFlight.set(job.id, taskPromise);
-    }
-
-    if (inFlight.size === 0) {
-      // Fresh generating rows are owned by another isolate. This invocation
-      // must return instead of holding the worker open until they become stale.
-      break;
-    }
-
-    const done = await Promise.race(inFlight.values());
-    inFlight.delete(done.job.id);
-    await recordDays([{ dayIndex: done.job.day_index, state: done.state }]);
-
-    if (await isGenerationRunCancelled(admin, generationID)) {
-      cancelled = true;
-      const remaining = await Promise.all(inFlight.values());
-      for (const r of remaining) {
-        await recordDays([{ dayIndex: r.job.day_index, state: r.state }]);
-      }
-      break;
-    }
-  }
-
-  await writeQueue;
-  const finalJobsResult = await readQueuedDayJobsForRun(
-    admin,
-    generationID,
-    prepared.session.workspaceID,
-    prepared.request.creator_id,
-  );
-  if (!("response" in finalJobsResult)) {
-    latestProgress = {
-      ...progressReconciledWithDayJobs(
-        latestProgress,
-        finalJobsResult.jobs,
-        new Date().toISOString(),
-      ),
-      weekly_plan_id: weeklyPlanID,
-    };
-    await updateGenerationProgress(admin, generationID, latestProgress);
-  }
-
-  logShutdownTelemetry({
-    generation_id: generationID,
-    boot_id: bootID,
-    reason: cancelled
-      ? "cancelled"
-      : dayJobsCompleted + dayJobsFailed === 0
-      ? "incomplete_loop_exit"
-      : "completed",
-    day_jobs_claimed: dayJobsClaimed,
-    day_jobs_completed: dayJobsCompleted,
-    day_jobs_failed: dayJobsFailed,
-    duration_ms: Date.now() - loopStartedAt,
-  });
-  deregisterShutdownTracking(generationID);
-
-  const activeCheckNowMS = Date.now();
-  const activeCheckStaleMS = runningDayStaleMS();
-  if (
-    cancelled &&
-    hasActiveParallelDayGeneration(
-      latestProgress,
-      activeCheckStaleMS,
-      activeCheckNowMS,
-    )
-  ) {
-    const summary = weekGenerationStatusSummary(
-      latestProgress,
-      "running",
-      (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
-    );
-    return {
-      payload: {
-        generation_id: generationID,
-        weekly_plan_id: weeklyPlanID,
-        status: "cancelled",
-        message: "generation_cancelled",
-        ...summary,
-        poll_after_seconds: null,
-      },
-    };
-  }
-
-  if (
-    hasActiveParallelDayGeneration(
-      latestProgress,
-      activeCheckStaleMS,
-      activeCheckNowMS,
-    )
-  ) {
-    const summary = weekGenerationStatusSummary(
-      latestProgress,
-      "running",
-      (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
-    );
-    return {
-      payload: {
-        generation_id: generationID,
-        weekly_plan_id: weeklyPlanID,
-        status: summary.overall_status === "completed"
-          ? "draft"
-          : summary.overall_status,
-        ...summary,
-        poll_after_seconds: summary.overall_status === "running" ? 5 : null,
-      },
-    };
-  }
-  return await finalizeParallelWeekGeneration(
-    admin,
-    prepared,
-    generationID,
-    weeklyPlanID,
-    latestProgress,
-  );
-}
-
-function parallelWeekGenerationConcurrency(): number {
-  const configured = Deno.env.get("MCO_PARALLEL_WEEK_GENERATION_CONCURRENCY")
-    ?.trim();
-  const parsed = configured ? Number(configured) : 2;
-  if (!Number.isFinite(parsed)) {
-    return 2;
-  }
-  return Math.max(1, Math.min(Math.trunc(parsed), 7));
-}
-
-async function runParallelDayGenerationTask(
-  admin: SupabaseAdminClient,
-  prepared: PreparedGeneration,
-  generationID: string,
-  weeklyPlanID: string,
-  scheduledDate: string,
-  dayIndex: number,
-  attempts: number,
-  dependencies: GenerateWeekDependencies,
-  retryContext?: Record<string, unknown>,
-  jobID?: string,
-  leaseToken?: string,
-): Promise<DayGenerationState> {
-  const startedAt = new Date().toISOString();
-  if (await isGenerationRunCancelled(admin, generationID)) {
-    if (jobID && leaseToken) {
-      await failDayJob(admin, jobID, leaseToken, "generation_cancelled");
-    }
-    return {
-      scheduled_date: scheduledDate,
-      status: "failed",
-      attempts,
-      started_at: startedAt,
-      completed_at: new Date().toISOString(),
-      error_code: "generation_cancelled",
-    };
-  }
-  try {
-    const rawOutput = await generateDayOutput(
-      prepared,
-      scheduledDate,
-      dayIndex,
-      dependencies,
-      generationID,
-      "parallel_day_generation",
-      retryContext,
-    );
-    const output = validateGeneratedDayOutput(
-      rawOutput,
-      scheduledDate,
-      dayIndex,
-    );
-    assertDayRespectsWeeklyBriefContext(
-      prepared.inputSnapshot,
-      output.daily_card,
-    );
-    if (jobID && leaseToken) {
-      const staged = await stageDayJobOutput(
-        admin,
-        jobID,
-        leaseToken,
-        attempts,
-        output as unknown as Record<string, unknown>,
-      );
-      if (!staged) {
-        return {
-          scheduled_date: scheduledDate,
-          status: "running",
-          attempts,
-          started_at: startedAt,
-        };
-      }
-    }
-    return await persistGeneratedDayOutput(
-      admin,
-      prepared,
-      weeklyPlanID,
-      output,
-      scheduledDate,
-      attempts,
-      startedAt,
-      jobID,
-      leaseToken,
-    );
-  } catch (error) {
-    const errorCode = stableGenerationError(error);
-    if (jobID && leaseToken) {
-      await failDayJob(admin, jobID, leaseToken, errorCode);
-    }
-    return {
-      scheduled_date: scheduledDate,
-      status: "failed",
-      attempts,
-      started_at: startedAt,
-      completed_at: new Date().toISOString(),
-      error_code: errorCode,
-    };
-  }
-}
-
-async function persistReadyDayJob(
-  admin: SupabaseAdminClient,
-  prepared: PreparedGeneration,
-  weeklyPlanID: string,
-  job: QueuedDayJobRecord,
-): Promise<DayGenerationState> {
-  const startedAt = job.started_at ?? new Date().toISOString();
-  try {
-    if (!job.staged_output) {
-      throw new Error("invalid_generated_week:missing_staged_output");
-    }
-    const output = validateGeneratedDayOutput(
-      job.staged_output as unknown as GeneratedDayOutput,
-      job.scheduled_date,
-      job.day_index,
-    );
-    assertDayRespectsWeeklyBriefContext(
-      prepared.inputSnapshot,
-      output.daily_card,
-    );
-    return await persistGeneratedDayOutput(
-      admin,
-      prepared,
-      weeklyPlanID,
-      output,
-      job.scheduled_date,
-      job.attempt_count ?? 1,
-      startedAt,
-      job.id,
-      job.lease_token ?? undefined,
-    );
-  } catch (error) {
-    const errorCode = stableGenerationError(error);
-    if (job.lease_token) {
-      await failDayJob(admin, job.id, job.lease_token, errorCode);
-    }
-    return {
-      scheduled_date: job.scheduled_date,
-      status: "failed",
-      attempts: job.attempt_count ?? 1,
-      started_at: startedAt,
-      completed_at: new Date().toISOString(),
-      error_code: errorCode,
-    };
-  }
-}
-
-async function persistGeneratedDayOutput(
-  admin: SupabaseAdminClient,
-  prepared: PreparedGeneration,
-  weeklyPlanID: string,
-  output: GeneratedDayOutput,
-  scheduledDate: string,
-  attempts: number,
-  startedAt: string,
-  jobID?: string,
-  leaseToken?: string,
-): Promise<DayGenerationState> {
-  try {
-    const persistResult = await upsertGeneratedDailyCards(
-      admin,
-      prepared.session.workspaceID,
-      prepared.request.creator_id,
-      weeklyPlanID,
-      [output.daily_card],
-      prepared.request.preserve_manual_edits,
-    );
-    if ("response" in persistResult) {
-      const failure = await persistenceFailureDetail(persistResult.response);
-      const errorCode = failure.step
-        ? `generation_persist_failed:${failure.step}`
-        : "generation_persist_failed";
-      if (jobID && leaseToken) {
-        await failDayJob(
-          admin,
-          jobID,
-          leaseToken,
-          errorCode,
-          failure.detail ?? undefined,
-        );
-      }
-      return {
-        scheduled_date: scheduledDate,
-        status: "failed",
-        attempts,
-        started_at: startedAt,
-        completed_at: new Date().toISOString(),
-        error_code: errorCode,
-      };
-    }
-
-    const ideaResult = await insertGeneratedIdeas(
-      admin,
-      prepared.session.workspaceID,
-      prepared.request.creator_id,
-      {
-        strategy_summary: output.strategy_note,
-        warnings: output.warnings,
-        assumptions: output.assumptions,
-        daily_cards: [output.daily_card],
-        idea_bank: output.idea_bank,
-        source_summary: output.source_summary,
-      },
-    );
-    if ("response" in ideaResult) {
-      console.warn("generate-week day idea insert failed; continuing", {
-        scheduled_date: scheduledDate,
-      });
-    }
-
-    const cardID = persistResult.dailyCards[0]?.id;
-    if (jobID && leaseToken && cardID) {
-      await completeDayJob(admin, jobID, leaseToken, cardID);
-    }
-
-    return {
-      scheduled_date: scheduledDate,
-      status: "completed",
-      attempts,
-      daily_card_id: cardID,
-      started_at: startedAt,
-      completed_at: new Date().toISOString(),
-    };
-  } catch (error) {
-    const errorCode = stableGenerationError(error);
-    if (jobID && leaseToken) {
-      await failDayJob(admin, jobID, leaseToken, errorCode);
-    }
-    return {
-      scheduled_date: scheduledDate,
-      status: "failed",
-      attempts,
-      started_at: startedAt,
-      completed_at: new Date().toISOString(),
-      error_code: errorCode,
-    };
-  }
-}
-
-async function finalizeParallelWeekGeneration(
-  admin: SupabaseAdminClient,
-  prepared: PreparedGeneration,
-  generationID: string,
-  weeklyPlanID: string,
-  progress: PerDayGenerationSnapshot,
-): Promise<{ payload: Record<string, unknown> } | { response: Response }> {
-  const completedAt = new Date().toISOString();
-  const savedCards = await readSavedDailyCards(
-    admin,
-    prepared.session.workspaceID,
-    prepared.request.creator_id,
-    weeklyPlanID,
-  );
-  if ("response" in savedCards) {
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      "generation_persist_failed",
-    );
-    return savedCards;
-  }
-
-  const savedCardsForRun = savedDailyCardsForProgress(
-    savedCards.dailyCards,
-    progress,
-  );
-
-  // Merge fallback timestamps are created after the saved-card read (pre-extraction timing).
-  const mergeNowISO = new Date().toISOString();
-  const finalProgress = {
-    ...mergeSavedDailyCardsIntoProgress(
-      progress,
-      savedCardsForRun,
-      mergeNowISO,
-    ),
-    updated_at: completedAt,
-  };
-  const summary = weekGenerationStatusSummary(
-    finalProgress,
-    savedCardsForRun.length === 0 ? "failed" : "completed",
-    (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
-  );
-
-  if (summary.saved_day_count === 0) {
-    await updateGenerationProgress(admin, generationID, finalProgress);
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      "invalid_generated_week",
-    );
-    return {
-      response: jsonResponse({
-        generation_id: generationID,
-        weekly_plan_id: weeklyPlanID,
-        status: "failed",
-        error: "invalid_generated_week",
-        ...summary,
-      }, 400),
-    };
-  }
-
-  const strategy = makeInitialWeekStrategyOutput(prepared.inputSnapshot);
-  if (summary.saved_day_count === summary.total_day_count) {
-    const generated: GeneratedWeekOutput = {
-      ...strategy,
-      daily_cards: savedCardsForRun,
-      idea_bank: [],
-    };
-    const payload = makeGenerateWeekDraftResponse(
-      generationID,
-      weeklyPlanID,
-      generated,
-      savedCardsForRun,
-      [],
-      completedAt,
-    );
-    const completedResult = await completeGenerationRun(
-      admin,
-      generationID,
-      weeklyPlanID,
-      payload,
-      completedAt,
-    );
-    if ("response" in completedResult) {
-      return completedResult;
-    }
-    return {
-      payload: {
-        ...payload,
-        ...completedDraftStatusSummary(
-          payload,
-          prepared.request.week_start_date,
-        ),
-      },
-    };
-  }
-
-  const payload = {
-    generation_id: generationID,
-    weekly_plan_id: weeklyPlanID,
-    status: "partial",
-    strategy_summary: progress.strategy_summary ?? strategy.strategy_summary,
-    warnings: [
-      ...(progress.warnings ?? []),
-      "Some days were saved and some days failed. Retry failed days before publishing.",
-    ],
-    assumptions: progress.assumptions ?? [],
-    daily_cards: savedCardsForRun,
-    idea_bank: [],
-    source_summary: progress.source_summary ?? strategy.source_summary,
-    generated_at: completedAt,
-    ...summary,
-  };
-  const completedResult = await completePartialGenerationRun(
-    admin,
-    generationID,
-    weeklyPlanID,
-    finalProgress,
-    completedAt,
-  );
-  if ("response" in completedResult) {
-    return completedResult;
-  }
-  return { payload };
-}
-
-async function completePartialGenerationRun(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  weeklyPlanID: string,
-  progress: PerDayGenerationSnapshot,
-  completedAt: string,
-): Promise<{ ok: true } | { response: Response }> {
-  const { error } = await completePartialGenerationRunStore(
-    admin,
-    generationID,
-    {
-      weekly_plan_id: weeklyPlanID,
-      output_snapshot: progress,
-      completed_at: completedAt,
-    },
-  );
-  if (error) {
-    return generationPersistFailure("complete_partial_generation_run", error);
-  }
-  return { ok: true };
 }
 
 function assertDayRespectsWeeklyBriefContext(
@@ -2906,26 +2074,6 @@ async function readGenerationRunForQueuedAction(
   return { run: data as GenerationRunStatusRecord };
 }
 
-function isGenerationRunRecordCancelled(
-  run: Record<string, unknown> | null | undefined,
-): boolean {
-  const status = stringValue(run?.status);
-  return status === "cancelled" ||
-    (status === "failed" &&
-      stringValue(run?.error_code) === "generation_cancelled");
-}
-
-async function isGenerationRunCancelled(
-  admin: SupabaseAdminClient,
-  generationID: string,
-): Promise<boolean> {
-  const { data } = await readGenerationRunCancellationState(
-    admin,
-    generationID,
-  );
-  return isGenerationRunRecordCancelled(data);
-}
-
 async function readGenerationStatus(
   admin: SupabaseAdminClient,
   session: VerifiedDeviceSession,
@@ -3261,38 +2409,10 @@ function dispatchQueuedDayJobRecovery(
         weeklyPlanID,
         makeInitialWeekStrategyOutput(inputSnapshot),
       ),
-      dependencies,
+      buildParallelWeekWorkerHost(dependencies),
     ),
     dependencies,
   );
-}
-
-function shouldDispatchQueuedDayJobRecovery(
-  jobs: QueuedDayJobRecord[],
-): boolean {
-  const staleThresholdMS = runningDayStaleMS();
-  const hasReadyToPersist = jobs.some((job) =>
-    job.status === "ready_to_persist" && job.staged_output
-  );
-  if (hasReadyToPersist) {
-    return true;
-  }
-
-  const hasRunnableJob = jobs.some((job) =>
-    job.status === "queued" || job.status === "retrying" ||
-    (job.status === "generating" &&
-      isQueuedDayJobStale(job, staleThresholdMS))
-  );
-  if (!hasRunnableJob) {
-    return false;
-  }
-
-  return availableParallelDayJobSlots(
-    jobs,
-    parallelWeekGenerationConcurrency(),
-    staleThresholdMS,
-    Date.now(),
-  ) > 0;
 }
 
 async function readQueuedGenerationStatus(
@@ -3629,6 +2749,7 @@ async function readParallelGenerationStatus(
       generationID,
       weeklyPlanID,
       progress,
+      buildParallelWeekWorkerHost(dependencies),
     );
     if ("response" in finalized) {
       return finalized.response;
@@ -3672,7 +2793,7 @@ async function readParallelGenerationStatus(
         generationID,
         weeklyPlanID,
         progress,
-        dependencies,
+        buildParallelWeekWorkerHost(dependencies),
       ),
       dependencies,
     );
@@ -4249,68 +3370,6 @@ function mockGeneratedDayOutput(
     idea_bank: dayIndex === 0 ? mock.idea_bank : [],
     source_summary: mock.source_summary,
   };
-}
-
-export function availableParallelDayJobSlots(
-  jobs: Array<{
-    status?: unknown;
-    heartbeat_at?: unknown;
-    started_at?: unknown;
-  }>,
-  concurrency: number,
-  staleThresholdMS: number,
-  now = Date.now(),
-): number {
-  return availableParallelDayJobSlotsFor(
-    jobs,
-    concurrency,
-    staleThresholdMS,
-    now,
-  );
-}
-
-function dayGenerationHeartbeatMS(
-  dependencies: GenerateWeekDependencies,
-): number {
-  const configured = dependencies.dayHeartbeatIntervalMS;
-  if (
-    typeof configured === "number" && Number.isFinite(configured) &&
-    configured > 0
-  ) {
-    return Math.max(Math.trunc(configured), 10);
-  }
-  return Math.max(
-    DAY_GENERATION_HEARTBEAT_MIN_MS,
-    Math.min(
-      Math.floor(runningDayStaleMS() / 4),
-      DAY_GENERATION_HEARTBEAT_MAX_MS,
-    ),
-  );
-}
-
-function runningDayStaleMS(): number {
-  const configured = Deno.env.get("MCO_GENERATION_DAY_STALE_MS")?.trim();
-  if (!configured) {
-    return DEFAULT_RUNNING_DAY_STALE_MS;
-  }
-  const parsed = Number(configured);
-  if (!Number.isFinite(parsed) || parsed < 30_000) {
-    return DEFAULT_RUNNING_DAY_STALE_MS;
-  }
-  return Math.min(parsed, 600_000);
-}
-
-function maxDayGenerationAttempts(): number {
-  const configured = Deno.env.get("MCO_GENERATION_DAY_MAX_ATTEMPTS")?.trim();
-  if (!configured) {
-    return DEFAULT_DAY_GENERATION_MAX_ATTEMPTS;
-  }
-
-  const parsed = Number(configured);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return DEFAULT_DAY_GENERATION_MAX_ATTEMPTS;
-  }
-  return Math.min(Math.trunc(parsed), 5);
 }
 
 async function readCreator(
@@ -5097,60 +4156,4 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 if (import.meta.main) {
   Deno.serve((request) => handleGenerateWeekRequest(request));
-}
-
-type ShutdownRecord = {
-  generation_id: string;
-  boot_id: string;
-  job_ids: string[];
-  started_at: number;
-};
-
-const activeShutdownTrackers = new Map<string, ShutdownRecord>();
-
-if (typeof globalThis.addEventListener === "function") {
-  globalThis.addEventListener("beforeunload", (event) => {
-    const now = Date.now();
-    const shutdownReason = isRecord(event) && isRecord(event.detail)
-      ? stringValue(event.detail.reason) ?? "unknown"
-      : "unknown";
-    const entries = [...activeShutdownTrackers.values()];
-    for (const entry of entries) {
-      logShutdownTelemetry({
-        generation_id: entry.generation_id,
-        boot_id: entry.boot_id,
-        reason: "runtime_shutdown",
-        shutdown_reason: shutdownReason,
-        active_job_ids: entry.job_ids,
-        day_jobs_claimed: 0,
-        day_jobs_completed: 0,
-        day_jobs_failed: 0,
-        duration_ms: now - entry.started_at,
-      });
-      activeShutdownTrackers.delete(entry.generation_id);
-    }
-  });
-}
-
-function registerShutdownTracking(
-  generationID: string,
-  bootID: string,
-  jobIDs: string[],
-): void {
-  activeShutdownTrackers.set(generationID, {
-    generation_id: generationID,
-    boot_id: bootID,
-    job_ids: [...jobIDs],
-    started_at: Date.now(),
-  });
-}
-
-function trackShutdownJob(generationID: string, jobID: string): void {
-  const tracker = activeShutdownTrackers.get(generationID);
-  if (!tracker || tracker.job_ids.includes(jobID)) return;
-  tracker.job_ids.push(jobID);
-}
-
-function deregisterShutdownTracking(generationID: string): void {
-  activeShutdownTrackers.delete(generationID);
 }

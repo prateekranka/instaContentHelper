@@ -1,6 +1,6 @@
 import {
-  availableParallelDayJobSlots as availableParallelDayJobSlotsFromIndex,
-} from "./index.ts";
+  availableParallelDayJobSlots as availableParallelDayJobSlotsFromWorker,
+} from "./generation-parallel-week-worker.ts";
 import {
   activeParallelDayGenerationCount,
   allDaysCompleted,
@@ -691,16 +691,16 @@ Deno.test("public availableParallelDayJobSlots compatibility shape", () => {
     },
   ];
   assertEquals(
-    availableParallelDayJobSlotsFromIndex(jobs, 2, STALE_MS, NOW_MS),
+    availableParallelDayJobSlotsFromWorker(jobs, 2, STALE_MS, NOW_MS),
     2,
   );
   assertEquals(
     availableParallelDayJobSlots(jobs, 2, STALE_MS, NOW_MS),
-    availableParallelDayJobSlotsFromIndex(jobs, 2, STALE_MS, NOW_MS),
+    availableParallelDayJobSlotsFromWorker(jobs, 2, STALE_MS, NOW_MS),
   );
   assertEquals(
-    typeof availableParallelDayJobSlotsFromIndex(jobs, 2, STALE_MS),
+    typeof availableParallelDayJobSlotsFromWorker(jobs, 2, STALE_MS),
     "number",
-    "index wrapper keeps optional now default",
+    "worker export keeps optional now default",
   );
 });
