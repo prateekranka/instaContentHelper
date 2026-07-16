@@ -740,13 +740,26 @@ final class AppServices {
     }
 
     func prepareStoryboardThumbnailsForVisibleCard(dailyCardID: UUID) async {
-        guard let draft = latestGenerationSummary,
-              let card = draft.dailyCards.first(where: { $0.id == dailyCardID }),
-              Self.hasMissingStoryboardThumbnails(for: card),
+        guard let card = resolvedDailyCardForStoryboardThumbnail(dailyCardID: dailyCardID),
               !generatingStoryboardThumbnailCardIDs.contains(card.id)
         else { return }
 
+        if !Self.hasMissingStoryboardThumbnails(for: card) {
+            if let summaryCard = latestGenerationSummary?.dailyCards.first(where: { $0.id == dailyCardID }),
+               Self.hasMissingStoryboardThumbnails(for: summaryCard) {
+                applyStoryboardThumbnailAssets(card.storyboardThumbnailAssets, toDailyCardID: dailyCardID)
+            }
+            return
+        }
+
         _ = try? await generateStoryboardThumbnails(for: card)
+    }
+
+    private func resolvedDailyCardForStoryboardThumbnail(dailyCardID: UUID) -> GeneratedDailyCardDraft? {
+        if let dailyCard = dayBriefGeneratedCards.values.first(where: { $0.id == dailyCardID }) {
+            return dailyCard
+        }
+        return latestGenerationSummary?.dailyCards.first(where: { $0.id == dailyCardID })
     }
 
     func applyRegeneratedDay(_ card: GeneratedDailyCardDraft) {
@@ -769,6 +782,15 @@ final class AppServices {
         _ assets: [StoryboardThumbnailAsset],
         toDailyCardID dailyCardID: UUID
     ) {
+        let matchingScheduledDates = dayBriefGeneratedCards.compactMap { scheduledDate, card in
+            card.id == dailyCardID ? scheduledDate : nil
+        }
+        for scheduledDate in matchingScheduledDates {
+            guard var updatedCard = dayBriefGeneratedCards[scheduledDate] else { continue }
+            updatedCard.storyboardThumbnailAssets = assets
+            dayBriefGeneratedCards[scheduledDate] = updatedCard
+        }
+
         if var draft = latestGenerationSummary,
            let index = draft.dailyCards.firstIndex(where: { $0.id == dailyCardID }) {
             draft.dailyCards[index].storyboardThumbnailAssets = assets
