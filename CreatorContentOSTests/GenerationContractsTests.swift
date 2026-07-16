@@ -559,7 +559,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-06-01" }
         )
 
@@ -587,7 +587,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-06-01" }
         )
 
@@ -618,7 +618,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-06-01" }
         )
 
@@ -693,7 +693,7 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertEqual(status.error, "generation_cancelled")
     }
 
-    func testRegeneratedDayPollerAllowsBackendRecoveryBudget() {
+    func testDailyGenerationPollerAllowsBackendRecoveryBudget() {
         XCTAssertGreaterThanOrEqual(
             SupabaseDailyGenerationPoller.defaultTimeoutSeconds,
             1_800,
@@ -701,7 +701,7 @@ final class GenerationContractsTests: XCTestCase {
         )
     }
 
-    func testRegeneratedDayPollerCompletesTwentyOfTwentyRecoverableScenarios() async throws {
+    func testDailyGenerationPollerCompletesTwentyOfTwentyRecoverableScenarios() async throws {
         let completed = try completedDayPollingInvocation()
         let running = try SupabaseDailyGenerationInvocation.decode(
             Data(
@@ -711,7 +711,7 @@ final class GenerationContractsTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
 
         for scenario in 0..<20 {
-            let steps: [RegeneratedDayPollingScript.Step]
+            let steps: [DailyGenerationPollingScript.Step]
             switch scenario % 5 {
             case 0:
                 steps = [.networkConnectionLost, .completed]
@@ -724,7 +724,7 @@ final class GenerationContractsTests: XCTestCase {
             default:
                 steps = [.serverUnavailable, .completed]
             }
-            let script = RegeneratedDayPollingScript(
+            let script = DailyGenerationPollingScript(
                 steps: steps,
                 running: running,
                 completed: completed
@@ -744,10 +744,10 @@ final class GenerationContractsTests: XCTestCase {
         }
     }
 
-    func testRegeneratedDayPollerBacksOffRepeatedRetryableStatusFailures() async throws {
+    func testDailyGenerationPollerBacksOffRepeatedRetryableStatusFailures() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let completed = try completedDayPollingInvocation()
-        let script = RegeneratedDayPollingScript(
+        let script = DailyGenerationPollingScript(
             steps: [
                 .networkConnectionLost,
                 .serverUnavailable,
@@ -757,7 +757,7 @@ final class GenerationContractsTests: XCTestCase {
             running: completed,
             completed: completed
         )
-        let sleeper = RegeneratedDayPollingSleeper()
+        let sleeper = DailyGenerationPollingSleeper()
 
         _ = try await SupabaseDailyGenerationPoller.poll(
             deadline: now.addingTimeInterval(60),
@@ -778,14 +778,14 @@ final class GenerationContractsTests: XCTestCase {
         )
     }
 
-    func testRegeneratedDayPollerDoesNotRetryNonTransientStatusError() async throws {
+    func testDailyGenerationPollerDoesNotRetryNonTransientStatusError() async throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let completed = try completedDayPollingInvocation()
         for terminalStep in [
-            RegeneratedDayPollingScript.Step.unauthorized,
+            DailyGenerationPollingScript.Step.unauthorized,
             .missingProviderConfiguration,
         ] {
-            let script = RegeneratedDayPollingScript(
+            let script = DailyGenerationPollingScript(
                 steps: [terminalStep, .completed],
                 running: completed,
                 completed: completed
@@ -858,7 +858,7 @@ final class GenerationContractsTests: XCTestCase {
     }
 
     func testPublishTransitionRemovesHydratedDayBriefGeneratedCards() async throws {
-        let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
+        let services = AppServices.fixtureBacked(todayCache: InMemoryTodayCacheStore())
         let draft = await TestGeneratedDraftFactory.makeDraft(
             weekStartDate: services.weeklyPlan.weekStartDate ?? "2026-06-01"
         )
@@ -883,7 +883,7 @@ final class GenerationContractsTests: XCTestCase {
     }
 
     func testPublishingGeneratedDraftPreservesRichFieldsInFixtureModel() async throws {
-        let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
+        let services = AppServices.fixtureBacked(todayCache: InMemoryTodayCacheStore())
         var draft = await TestGeneratedDraftFactory.makeDraft(
             weekStartDate: services.weeklyPlan.weekStartDate ?? "2026-06-01"
         )
@@ -1020,7 +1020,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: InMemoryTodayCacheStore()
         )
 
         await services.refreshFromRepositoriesImmediately()
@@ -1056,7 +1056,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { publishedStartDate }
         )
 
@@ -1095,7 +1095,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-07-06" }
         )
 
@@ -1140,7 +1140,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-07-06" }
         )
 
@@ -1183,7 +1183,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { completedDate }
         )
 
@@ -1479,7 +1479,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: InMemoryTodayCacheStore()
         )
 
         let draft = await TestGeneratedDraftFactory.makeDraft(
@@ -1512,7 +1512,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: InMemoryTodayCacheStore()
         )
 
         let draft = await TestGeneratedDraftFactory.makeDraft(
@@ -1549,7 +1549,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: InMemoryTodayCacheStore()
         )
         let draft = await TestGeneratedDraftFactory.makeDraft(
             weekStartDate: "2026-06-01"
@@ -1569,7 +1569,7 @@ final class GenerationContractsTests: XCTestCase {
 
     func testGeneralRepositoryErrorDoesNotSetLastPublishError() async throws {
         let services = AppServices.fixtureBacked(
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-06-01" }
         )
 
@@ -1584,7 +1584,7 @@ final class GenerationContractsTests: XCTestCase {
 
     func testPublishGuardSetsLastPublishErrorNotLastRepositoryError() async throws {
         let services = AppServices.fixtureBacked(
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-06-01" }
         )
         let draft = await TestGeneratedDraftFactory.makeDraft(
@@ -1624,7 +1624,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-06-29" }
         )
         services.applyGeneratedDraft(draft)
@@ -1640,7 +1640,7 @@ final class GenerationContractsTests: XCTestCase {
 
     func testNormalizeManagerWeekStartReplacesStalePublishedWeekWithCurrentWindow() async throws {
         let services = AppServices.fixtureBacked(
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-06-29" }
         )
         services.latestGenerationSummary = nil
@@ -1663,7 +1663,7 @@ final class GenerationContractsTests: XCTestCase {
 
     func testNormalizeManagerWeekStartSkipsWhenWeekStartIsNotPast() async throws {
         let services = AppServices.fixtureBacked(
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-06-01" }
         )
         services.latestGenerationSummary = nil
@@ -1677,7 +1677,7 @@ final class GenerationContractsTests: XCTestCase {
 
     func testNormalizeManagerWeekStartSkipsWhenWeekStartsToday() async throws {
         let services = AppServices.fixtureBacked(
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
+            todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-07-01" }
         )
         services.latestGenerationSummary = nil
@@ -1709,7 +1709,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: InMemoryTodayCacheStore()
         )
         let draft = await TestGeneratedDraftFactory.makeDraft(
             weekStartDate: "2026-06-01"
@@ -1749,7 +1749,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: InMemoryTodayCacheStore()
         )
         let draft = await TestGeneratedDraftFactory.makeDraft(
             weekStartDate: "2026-06-01"
@@ -1801,7 +1801,7 @@ final class GenerationContractsTests: XCTestCase {
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
-            todayCache: GenerateWeekMemoryTodayCacheStore()
+            todayCache: InMemoryTodayCacheStore()
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
@@ -1899,7 +1899,7 @@ private struct BriefEchoDayGenerationRepository: DayGenerationRepository {
     }
 }
 
-private final class GenerateWeekMemoryTodayCacheStore: TodayCacheStoring {
+private final class InMemoryTodayCacheStore: TodayCacheStoring {
     private var snapshots: [WorkspaceContext: CachedTodaySnapshot] = [:]
 
     func loadSnapshot(for context: WorkspaceContext) throws -> CachedTodaySnapshot? {
@@ -2463,7 +2463,7 @@ private actor ReconciliationContentRepository: WeeklyPlanRepository {
     }
 }
 
-private actor RegeneratedDayPollingScript {
+private actor DailyGenerationPollingScript {
     enum Step: Sendable {
         case networkConnectionLost
         case acceptedRunNotFound
@@ -2524,7 +2524,7 @@ private actor RegeneratedDayPollingScript {
     }
 }
 
-private actor RegeneratedDayPollingSleeper {
+private actor DailyGenerationPollingSleeper {
     private(set) var recordedNanoseconds: [UInt64] = []
 
     func record(_ nanoseconds: UInt64) {

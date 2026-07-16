@@ -76,8 +76,6 @@ struct SupabaseDailyGenerationRequest: Encodable, Sendable {
     }
 }
 
-typealias SupabaseGenerateDayRequest = SupabaseDailyGenerationRequest
-
 struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
     var generationID: UUID
     var weeklyPlanID: UUID
@@ -115,8 +113,6 @@ struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
         )
     }
 }
-
-typealias SupabaseRegenerateDayResponse = SupabaseDailyGenerationResponse
 
 struct DailyGenerationResult: Hashable, Sendable {
     var generationID: UUID
