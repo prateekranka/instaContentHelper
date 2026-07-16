@@ -43,10 +43,8 @@ import {
 } from "./generation-status.ts";
 import {
   initialSingleDayGenerationSnapshot,
-  makeGeneratedWeekOutputFromCompletedDays,
   normalizeStoredInputSnapshot,
   requestFromRun,
-  uniqueNonBlankStrings,
 } from "./generation-run-snapshot.ts";
 import type {
   GenerateWeekDraftResponse,
@@ -55,7 +53,6 @@ import type {
   SingleDayGenerationSnapshot,
 } from "./generation-run-snapshot.ts";
 import type {
-  DayGenerationState,
   PerDayGenerationSnapshot,
   QueuedDayJobRecord,
   QueuedDayJobStatus,
@@ -90,20 +87,14 @@ import {
   readGenerationRunCancellationState,
   readGenerationRunStatus,
   readQueuedActionGenerationRun,
-  updateGenerationRunProgress,
 } from "./generation-run-store.ts";
 import {
-  allDaysCompleted,
-  allDaysTerminal,
   isParallelWeekGenerationTerminal,
-  isRunningDayStale,
   isTerminalDayGenerationState,
   mergeSavedDailyCardsIntoProgress,
   normalizeStaleRunningDays,
   savedDailyCardsForProgress,
   shouldResumeParallelWeekGeneration,
-  shouldRunDayGeneration,
-  staleDayFailure,
 } from "./generation-day-progress.ts";
 import {
   readCreatorRow,
@@ -116,7 +107,6 @@ import {
 } from "./generation-context-store.ts";
 import {
   availableParallelDayJobSlots as availableParallelDayJobSlotsFromWorker,
-  completePartialGenerationRun,
   createQueuedDayJobs,
   isGenerationRunCancelled,
   isGenerationRunRecordCancelled,
@@ -132,6 +122,14 @@ import {
   readGenerationStatus,
   type StatusHandlerPreparedDayGeneration,
 } from "./generation-status-handler.ts";
+import {
+  dayGenerationRetryContext,
+  finalizePerDayGeneration as finalizePerDayGenerationRunner,
+  finalizeTerminalPerDayGeneration as finalizeTerminalPerDayGenerationRunner,
+  type PerDayRunnerHost,
+  scheduleNextPendingDayGeneration as scheduleNextPendingDayGenerationRunner,
+  updateGenerationProgress,
+} from "./generation-per-day-runner.ts";
 
 type GenerateWeekDependencies = {
   env?: EnvReader;
@@ -428,12 +426,12 @@ export async function handleGenerateWeekRequest(
       return progressResult.response;
     }
 
-    const scheduledResult = await scheduleNextPendingDayGeneration(
+    const scheduledResult = await scheduleNextPendingDayGenerationRunner(
       admin,
       runResult.run.id,
       prepared,
       progress,
-      dependencies,
+      buildPerDayRunnerHost(dependencies),
     );
     if ("response" in scheduledResult) {
       return scheduledResult.response;
@@ -1436,6 +1434,38 @@ function isQueuedWeekGenerationEnabled(
   return false;
 }
 
+function buildPerDayRunnerHost(
+  dependencies: GenerateWeekDependencies,
+): PerDayRunnerHost {
+  return {
+    generateDayOutput: (
+      prepared,
+      scheduledDate,
+      dayIndex,
+      generationID,
+      phase,
+      retryContext,
+    ) =>
+      generateDayOutput(
+        prepared,
+        scheduledDate,
+        dayIndex,
+        dependencies,
+        generationID,
+        phase,
+        retryContext,
+      ),
+    markGenerationRunFailed,
+    persistGeneratedWeek,
+    makeGenerateWeekDraftResponse,
+    completeGenerationRun,
+    persistenceFailureStep,
+    makeInitialWeekStrategyOutput,
+    scheduleBackgroundTask: (promise) =>
+      scheduleBackgroundGeneration(promise, dependencies),
+  };
+}
+
 function buildParallelWeekWorkerHost(
   dependencies: GenerateWeekDependencies,
 ): ParallelWeekWorkerHost {
@@ -1469,6 +1499,7 @@ function buildParallelWeekWorkerHost(
 function buildGenerationStatusHandlerHost(
   dependencies: GenerateWeekDependencies,
 ): GenerationStatusHandlerHost {
+  const perDayRunnerHost = buildPerDayRunnerHost(dependencies);
   return {
     prepareGenerationFromRun,
     prepareSingleDayGenerationFromRun,
@@ -1480,15 +1511,47 @@ function buildGenerationStatusHandlerHost(
       prepared,
       progress,
     ) =>
-      scheduleNextPendingDayGeneration(
+      scheduleNextPendingDayGenerationRunner(
         admin,
         generationID,
         prepared,
         progress,
-        dependencies,
+        perDayRunnerHost,
       ),
-    finalizePerDayGeneration,
-    finalizeTerminalPerDayGeneration,
+    finalizePerDayGeneration: (
+      admin,
+      generationID,
+      run,
+      session,
+      inputSnapshot,
+      progress,
+    ) =>
+      finalizePerDayGenerationRunner(
+        admin,
+        generationID,
+        run,
+        session,
+        inputSnapshot,
+        progress,
+        perDayRunnerHost,
+      ),
+    finalizeTerminalPerDayGeneration: (
+      admin,
+      generationID,
+      run,
+      session,
+      inputSnapshot,
+      progress,
+    ) =>
+      finalizeTerminalPerDayGenerationRunner(
+        admin,
+        generationID,
+        run,
+        session,
+        inputSnapshot,
+        progress,
+        perDayRunnerHost,
+      ),
     readSavedDailyCards,
     scheduleSingleDayGeneration: (
       admin,
@@ -2231,211 +2294,6 @@ function prepareSingleDayGenerationFromRun(
   });
 }
 
-async function scheduleNextPendingDayGeneration(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  prepared: PreparedGeneration,
-  progress: PerDayGenerationSnapshot,
-  dependencies: GenerateWeekDependencies,
-): Promise<
-  { progress: PerDayGenerationSnapshot } | { response: Response }
-> {
-  const staleThresholdMS = runningDayStaleMS();
-  const nowMS = Date.now();
-  const maxAttempts = maxDayGenerationAttempts();
-  const nowISO = new Date().toISOString();
-  const activeIndex = progress.days.findIndex((day) =>
-    day.status === "running" &&
-    !isRunningDayStale(day, staleThresholdMS, nowMS)
-  );
-  if (activeIndex >= 0) {
-    return { progress };
-  }
-
-  const normalizedProgress = {
-    ...progress,
-    days: progress.days.map((day) =>
-      day.status === "running" &&
-        isRunningDayStale(day, staleThresholdMS, nowMS)
-        ? staleDayFailure(day, maxAttempts, nowISO)
-        : day
-    ),
-  };
-  const dayIndex = normalizedProgress.days.findIndex((day) =>
-    shouldRunDayGeneration(day, maxAttempts, staleThresholdMS, nowMS)
-  );
-  if (dayIndex < 0) {
-    return { progress: normalizedProgress };
-  }
-
-  const day = normalizedProgress.days[dayIndex];
-  const nextAttempts = day.attempts + 1;
-  const retryContext = dayGenerationRetryContext(
-    day,
-    dayIndex,
-    nextAttempts,
-  );
-  const now = new Date().toISOString();
-  const runningProgress = {
-    ...normalizedProgress,
-    days: normalizedProgress.days.map((day, index) =>
-      index === dayIndex
-        ? {
-          ...day,
-          status: "running" as const,
-          attempts: nextAttempts,
-          started_at: now,
-          error_code: undefined,
-        }
-        : day
-    ),
-    updated_at: now,
-  };
-  const updateResult = await updateGenerationProgress(
-    admin,
-    generationID,
-    runningProgress,
-  );
-  if ("response" in updateResult) {
-    return updateResult;
-  }
-
-  scheduleBackgroundGeneration(
-    runSingleDayGenerationStep(
-      admin,
-      generationID,
-      prepared,
-      runningProgress,
-      dayIndex,
-      dependencies,
-      retryContext,
-    ),
-    dependencies,
-  );
-
-  return { progress: runningProgress };
-}
-
-async function runSingleDayGenerationStep(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  prepared: PreparedGeneration,
-  progress: PerDayGenerationSnapshot,
-  dayIndex: number,
-  dependencies: GenerateWeekDependencies,
-  retryContext?: Record<string, unknown>,
-): Promise<void> {
-  const day = progress.days[dayIndex];
-  try {
-    const output = await generateDayOutput(
-      prepared,
-      day.scheduled_date,
-      dayIndex,
-      dependencies,
-      generationID,
-      dayGenerationPhase(progress),
-      retryContext,
-    );
-    const completedAt = new Date().toISOString();
-    const completedProgress = {
-      ...progress,
-      days: progress.days.map((entry, index) =>
-        index === dayIndex
-          ? {
-            ...entry,
-            status: "completed" as const,
-            completed_at: completedAt,
-            output,
-          }
-          : entry
-      ),
-      updated_at: completedAt,
-    };
-    const updateResult = await updateGenerationProgress(
-      admin,
-      generationID,
-      completedProgress,
-    );
-    if ("response" in updateResult) {
-      await markGenerationRunFailed(
-        admin,
-        generationID,
-        "generation_persist_failed",
-      );
-      return;
-    }
-
-    if (allDaysCompleted(completedProgress)) {
-      const run: GenerationRunStatusRecord = {
-        id: generationID,
-        workspace_id: prepared.session.workspaceID,
-        creator_id: prepared.request.creator_id,
-        weekly_setup_id: prepared.request.weekly_setup_id,
-        requested_by_member_id: prepared.session.memberID,
-      };
-      await finalizePerDayGeneration(
-        admin,
-        generationID,
-        run,
-        prepared.session,
-        prepared.inputSnapshot,
-        completedProgress,
-      );
-    } else if (allDaysTerminal(completedProgress, maxDayGenerationAttempts())) {
-      const run: GenerationRunStatusRecord = {
-        id: generationID,
-        workspace_id: prepared.session.workspaceID,
-        creator_id: prepared.request.creator_id,
-        weekly_setup_id: prepared.request.weekly_setup_id,
-        requested_by_member_id: prepared.session.memberID,
-      };
-      await finalizeTerminalPerDayGeneration(
-        admin,
-        generationID,
-        run,
-        prepared.session,
-        prepared.inputSnapshot,
-        completedProgress,
-      );
-    }
-  } catch (error) {
-    const errorCode = stableGenerationError(error);
-    const failedAt = new Date().toISOString();
-    const failedProgress = {
-      ...progress,
-      days: progress.days.map((entry, index) =>
-        index === dayIndex
-          ? {
-            ...entry,
-            status: "failed" as const,
-            error_code: errorCode,
-            completed_at: failedAt,
-          }
-          : entry
-      ),
-      updated_at: failedAt,
-    };
-    await updateGenerationProgress(admin, generationID, failedProgress);
-    if (allDaysTerminal(failedProgress, maxDayGenerationAttempts())) {
-      const run: GenerationRunStatusRecord = {
-        id: generationID,
-        workspace_id: prepared.session.workspaceID,
-        creator_id: prepared.request.creator_id,
-        weekly_setup_id: prepared.request.weekly_setup_id,
-        requested_by_member_id: prepared.session.memberID,
-      };
-      await finalizeTerminalPerDayGeneration(
-        admin,
-        generationID,
-        run,
-        prepared.session,
-        prepared.inputSnapshot,
-        failedProgress,
-      );
-    }
-  }
-}
-
 async function generateDayOutput(
   prepared: PreparedGeneration,
   scheduledDate: string,
@@ -2474,262 +2332,6 @@ async function generateDayOutput(
     undefined,
     instrumentation,
   );
-}
-
-function dayGenerationRetryContext(
-  day: DayGenerationState,
-  dayIndex: number,
-  nextAttempts: number,
-): Record<string, unknown> | undefined {
-  if (nextAttempts <= 1) {
-    return undefined;
-  }
-
-  const retryKind = day.status === "running"
-    ? "stale_day_repair"
-    : "failed_day_repair";
-  const retryReason = day.error_code ??
-    (day.status === "running" ? "generation_stale" : "previous_day_failed");
-  return {
-    retry_kind: retryKind,
-    retry_reason: retryReason,
-    scheduled_date: day.scheduled_date,
-    day_index: dayIndex + 1,
-    day_attempt: nextAttempts,
-    previous_status: day.status,
-    previous_started_at: day.started_at ?? null,
-    previous_completed_at: day.completed_at ?? null,
-    instruction:
-      "Retry only this daily card. Keep the target scheduled_date fixed, simplify the concept if the prior run timed out, and return a complete valid daily-card contract.",
-  };
-}
-
-function dayGenerationPhase(
-  progress: PerDayGenerationSnapshot,
-): AIGenerationPhase {
-  return progress.kind === "parallel_week_generation_v1"
-    ? "parallel_day_generation"
-    : "async_day_generation";
-}
-
-async function finalizePerDayGeneration(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  run: GenerationRunStatusRecord,
-  session: VerifiedDeviceSession,
-  inputSnapshot: GenerationInputSnapshot,
-  progress: PerDayGenerationSnapshot,
-): Promise<{ payload: GenerateWeekDraftResponse } | { response: Response }> {
-  const dayOutputs = progress.days.map((day) => day.output);
-  if (dayOutputs.some((output) => !output)) {
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      "invalid_generated_week",
-    );
-    return {
-      response: jsonResponse({ error: "invalid_generated_week" }, 400),
-    };
-  }
-
-  const generated = combineGeneratedDayOutputs(
-    inputSnapshot,
-    dayOutputs as GeneratedDayOutput[],
-  );
-  const request = requestFromRun(run, inputSnapshot);
-  const persistResult = await persistGeneratedWeek(
-    admin,
-    session.workspaceID,
-    request,
-    stringValue(run.requested_by_member_id) ?? session.memberID,
-    inputSnapshot.weekly_setup,
-    inputSnapshot,
-    generated,
-  );
-  if ("response" in persistResult) {
-    const step = await persistenceFailureStep(persistResult.response);
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      step ? `generation_persist_failed:${step}` : "generation_persist_failed",
-    );
-    return persistResult;
-  }
-
-  const completedAt = new Date().toISOString();
-  const payload = makeGenerateWeekDraftResponse(
-    generationID,
-    persistResult.weeklyPlanID,
-    generated,
-    persistResult.dailyCards,
-    persistResult.ideaBank,
-    completedAt,
-  );
-  const completedRunResult = await completeGenerationRun(
-    admin,
-    generationID,
-    persistResult.weeklyPlanID,
-    payload,
-    completedAt,
-  );
-  if ("response" in completedRunResult) {
-    const step = await persistenceFailureStep(completedRunResult.response);
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      step ? `generation_persist_failed:${step}` : "generation_persist_failed",
-    );
-    return completedRunResult;
-  }
-
-  return { payload };
-}
-
-async function finalizeTerminalPerDayGeneration(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  run: GenerationRunStatusRecord,
-  session: VerifiedDeviceSession,
-  inputSnapshot: GenerationInputSnapshot,
-  progress: PerDayGenerationSnapshot,
-): Promise<{ payload: Record<string, unknown> } | { response: Response }> {
-  if (allDaysCompleted(progress)) {
-    return await finalizePerDayGeneration(
-      admin,
-      generationID,
-      run,
-      session,
-      inputSnapshot,
-      progress,
-    );
-  }
-
-  const completedAt = new Date().toISOString();
-  const completedOutputs = progress.days.flatMap((day) =>
-    day.status === "completed" && day.output ? [day.output] : []
-  );
-  const baseProgress = { ...progress, updated_at: completedAt };
-
-  if (completedOutputs.length === 0) {
-    await updateGenerationProgress(admin, generationID, baseProgress);
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      "invalid_generated_week",
-    );
-    const summary = weekGenerationStatusSummary(
-      baseProgress,
-      "failed",
-      (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
-    );
-    return {
-      payload: {
-        generation_id: generationID,
-        status: "failed",
-        error: "invalid_generated_week",
-        ...summary,
-        poll_after_seconds: null,
-      },
-    };
-  }
-
-  const generated = makeGeneratedWeekOutputFromCompletedDays(
-    completedOutputs,
-    baseProgress,
-    makeInitialWeekStrategyOutput(inputSnapshot),
-  );
-  const request = requestFromRun(run, inputSnapshot);
-  const persistResult = await persistGeneratedWeek(
-    admin,
-    session.workspaceID,
-    request,
-    stringValue(run.requested_by_member_id) ?? session.memberID,
-    inputSnapshot.weekly_setup,
-    inputSnapshot,
-    generated,
-  );
-  if ("response" in persistResult) {
-    const step = await persistenceFailureStep(persistResult.response);
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      step ? `generation_persist_failed:${step}` : "generation_persist_failed",
-    );
-    return persistResult;
-  }
-
-  const savedCardsByDate = new Map(
-    persistResult.dailyCards.map((card) => [card.scheduled_date, card]),
-  );
-  const finalProgress: PerDayGenerationSnapshot = {
-    ...baseProgress,
-    weekly_plan_id: persistResult.weeklyPlanID,
-    days: baseProgress.days.map((day) => {
-      if (day.status !== "completed" || !day.output) {
-        return day;
-      }
-      const saved = savedCardsByDate.get(day.scheduled_date);
-      return saved
-        ? {
-          ...day,
-          daily_card_id: saved.id,
-          completed_at: day.completed_at ?? completedAt,
-        }
-        : day;
-    }),
-  };
-  const summary = weekGenerationStatusSummary(
-    finalProgress,
-    "completed",
-    (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
-  );
-  const payload = {
-    generation_id: generationID,
-    weekly_plan_id: persistResult.weeklyPlanID,
-    status: "partial",
-    strategy_summary: generated.strategy_summary,
-    warnings: uniqueNonBlankStrings([
-      ...generated.warnings,
-      "Some days were saved and some days failed. Retry failed days before publishing.",
-    ]),
-    assumptions: generated.assumptions,
-    daily_cards: persistResult.dailyCards,
-    idea_bank: persistResult.ideaBank,
-    source_summary: generated.source_summary,
-    generated_at: completedAt,
-    ...summary,
-    failed_days: summary.day_statuses.filter((day) => day.status === "failed"),
-    poll_after_seconds: null,
-  };
-  const completedResult = await completePartialGenerationRun(
-    admin,
-    generationID,
-    persistResult.weeklyPlanID,
-    finalProgress,
-    completedAt,
-  );
-  if ("response" in completedResult) {
-    return completedResult;
-  }
-
-  return { payload };
-}
-
-async function updateGenerationProgress(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  progress: PerDayGenerationSnapshot | SingleDayGenerationSnapshot,
-): Promise<{ ok: true } | { response: Response }> {
-  const { error } = await updateGenerationRunProgress(
-    admin,
-    generationID,
-    progress,
-  );
-
-  if (error) {
-    return generationPersistFailure("update_generation_progress", error);
-  }
-  return { ok: true };
 }
 
 function mockGeneratedDayOutput(
