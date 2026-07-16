@@ -47,7 +47,7 @@ enum TestGeneratedDraftFactory {
                 creatorFitScore: 88,
                 riskNotes: [],
                 assumptions: ["Test helper used deterministic local context."],
-                sourceNote: "Test-only deterministic weekly generation."
+                sourceNote: "Test-only deterministic generated draft fixture."
             )
         }
 

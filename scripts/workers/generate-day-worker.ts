@@ -83,7 +83,7 @@ export type WorkerPoolResult = {
 export type ProcessJobContext = {
   stub: boolean;
   serviceRoleKey: string;
-  generateWeekFunctionURL: string;
+  dayGenerationEndpointURL: string;
   workerDeviceToken?: string;
   mock: boolean;
 };
@@ -100,7 +100,7 @@ export async function main(args: string[]): Promise<void> {
     "SUPABASE_SERVICE_ROLE_KEY",
     "MCO_SUPABASE_SERVICE_ROLE_KEY",
   );
-  const generateWeekFunctionURL = (
+  const dayGenerationEndpointURL = (
     env("MCO_GENERATE_WEEK_FUNCTION_URL") ??
       `${supabaseURL}/functions/v1/generate-week`
   ).replace(/\/+$/, "");
@@ -119,7 +119,7 @@ export async function main(args: string[]): Promise<void> {
   const processContext: ProcessJobContext = {
     stub: options.stub,
     serviceRoleKey,
-    generateWeekFunctionURL,
+    dayGenerationEndpointURL,
     workerDeviceToken: env("MCO_WORKER_DEVICE_TOKEN"),
     mock: env("MCO_DAY_WORKER_MOCK") === "1",
   };
@@ -278,7 +278,7 @@ export async function runWorkerPool(
       weekly_plan_id: job.weekly_plan_id,
       scheduled_date: job.scheduled_date,
       day_index: job.day_index,
-      would_call: context.stub ? "stub" : context.generateWeekFunctionURL,
+      would_call: context.stub ? "stub" : context.dayGenerationEndpointURL,
     });
     return totals;
   }
@@ -350,7 +350,7 @@ export async function processJob(
 
   let response: Response;
   try {
-    response = await fetch(context.generateWeekFunctionURL, {
+    response = await fetch(context.dayGenerationEndpointURL, {
       method: "POST",
       headers,
       body: JSON.stringify({

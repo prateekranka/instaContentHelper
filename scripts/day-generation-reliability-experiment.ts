@@ -921,7 +921,7 @@ async function liveRunResult(
         (experiment === "generate-day" ? "generate_day" : "regenerate_day")
     } scheduled_date=${stringValue(payload.scheduled_date) ?? "n/a"}`,
   );
-  const initial = await invokeLiveGenerateWeek(liveEnv, payload);
+  const initial = await invokeLiveDayGenerationEndpoint(liveEnv, payload);
   logExperimentProgress(
     `run ${runIndex} initial response: http=${
       initial.httpStatus ?? "none"
@@ -1117,7 +1117,7 @@ async function waitForLiveTerminal(
     logExperimentProgress(
       `run ${runIndex} poll ${pollCount} requesting status for generation_id=${generationID}`,
     );
-    last = await invokeLiveGenerateWeek(liveEnv, {
+    last = await invokeLiveDayGenerationEndpoint(liveEnv, {
       action: "status",
       generation_id: generationID,
       creator_id: requireLiveValue("MCO_LIVE_CREATOR_ID", liveEnv.creatorID),
@@ -1188,7 +1188,7 @@ async function waitForLiveTerminal(
   };
 }
 
-async function invokeLiveGenerateWeek(
+async function invokeLiveDayGenerationEndpoint(
   liveEnv: LiveEnv,
   body: JsonObject,
 ): Promise<LiveHTTPResult> {
@@ -1199,7 +1199,7 @@ async function invokeLiveGenerateWeek(
     liveEnv.requestTimeoutMs,
   );
   try {
-    const response = await fetch(liveGenerateWeekURL(liveEnv), {
+    const response = await fetch(liveDayGenerationEndpointURL(liveEnv), {
       method: "POST",
       headers: liveHeaders(liveEnv),
       body: JSON.stringify(body),
@@ -1474,7 +1474,7 @@ function isTerminalLiveStatus(status: LiveStatusKind): boolean {
   return ["success", "partial", "failed", "cancelled"].includes(status);
 }
 
-function liveGenerateWeekURL(liveEnv: LiveEnv): string {
+function liveDayGenerationEndpointURL(liveEnv: LiveEnv): string {
   const base = normalizeSupabaseURLValue(
     requireLiveValue("MCO_SUPABASE_URL", liveEnv.supabaseURL),
   )
