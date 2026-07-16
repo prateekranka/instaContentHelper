@@ -4,23 +4,8 @@ import Foundation
 /// Test-only deterministic draft factory. Do not inject this into app fixture runtime.
 enum TestGeneratedDraftFactory {
     static func makeDraft(
-        weekStartDate: String,
-        progress: GenerationProgressHandler? = nil
+        weekStartDate: String
     ) async -> GeneratedWeekDraft {
-        await progress?(
-            GenerationProgress(
-                phase: .generatingDays,
-                generationID: nil,
-                weeklyPlanID: nil,
-                draftedDayCount: 7,
-                checkedDayCount: 7,
-                totalDayCount: 7,
-                currentDay: nil,
-                message: "Test deterministic draft generated",
-                error: nil
-            )
-        )
-
         let cards = SupabaseDateFormatting.weekDates(starting: weekStartDate).enumerated().map { index, date in
             GeneratedDailyCardDraft(
                 id: UUID(),

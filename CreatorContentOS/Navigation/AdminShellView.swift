@@ -427,9 +427,7 @@ struct AIRunwayView: View {
     }
 
     private var generationStateLine: String {
-        if services.isGeneratingWeek {
-            "In progress"
-        } else if let draft = services.latestGenerationSummary {
+        if let draft = services.latestGenerationSummary {
             draft.status.capitalized
         } else {
             "No run this session"

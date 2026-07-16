@@ -103,8 +103,6 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertEqual(status.completedDayCount, 3)
         XCTAssertEqual(status.totalDayCount, 7)
         XCTAssertEqual(status.currentDay, "2026-06-03")
-        XCTAssertEqual(status.generationProgress.draftedDayCount, 3)
-        XCTAssertEqual(status.generationProgress.checkedDayCount, 3)
     }
 
     func testGenerateDayRequestEncodesEdgeFunctionContract() throws {
@@ -905,156 +903,6 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertNil(services.lastRepositoryError)
     }
 
-    func testPublishCurrentWeekIsLockedWhileDayStatusesAreStillGenerating() async throws {
-        let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
-        let draft = await TestGeneratedDraftFactory.makeDraft(
-            weekStartDate: "2026-06-01"
-        )
-        services.applyGeneratedDraft(draft)
-        for day in services.weeklyPlan.days {
-            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
-        }
-        XCTAssertTrue(services.canPublishCurrentWeek)
-
-        services.generationProgress = GenerationProgress(
-            phase: .generatingDays,
-            generationID: draft.id,
-            weeklyPlanID: draft.weeklyPlanID,
-            draftedDayCount: 2,
-            checkedDayCount: 2,
-            totalDayCount: 7,
-            currentDay: "2026-07-15",
-            message: "generation_running",
-            error: nil,
-            savedDayCount: 2,
-            failedDayCount: 0,
-            strategyCreated: true,
-            dayStatuses: [
-                WeeklyDayGenerationStatus(
-                    scheduledDate: "2026-07-13",
-                    dayIndex: 0,
-                    status: "generated",
-                    dailyCardID: draft.dailyCards[0].id,
-                    errorCode: nil,
-                    retryAction: nil,
-                    message: nil
-                ),
-                WeeklyDayGenerationStatus(
-                    scheduledDate: "2026-07-14",
-                    dayIndex: 1,
-                    status: "generated",
-                    dailyCardID: draft.dailyCards[1].id,
-                    errorCode: nil,
-                    retryAction: nil,
-                    message: nil
-                ),
-                WeeklyDayGenerationStatus(
-                    scheduledDate: "2026-07-15",
-                    dayIndex: 2,
-                    status: "generating",
-                    dailyCardID: nil,
-                    errorCode: nil,
-                    retryAction: nil,
-                    message: nil
-                ),
-                WeeklyDayGenerationStatus(
-                    scheduledDate: "2026-07-16",
-                    dayIndex: 3,
-                    status: "queued",
-                    dailyCardID: nil,
-                    errorCode: nil,
-                    retryAction: nil,
-                    message: nil
-                )
-            ]
-        )
-
-        XCTAssertFalse(services.canPublishCurrentWeek)
-    }
-
-
-    func testPartialFailureMergesExistingStatusesWithMissingExpectedDates() async throws {
-        var completeDraft = await TestGeneratedDraftFactory.makeDraft(
-            weekStartDate: "2026-06-28"
-        )
-        let expectedDates = completeDraft.dailyCards.map(\.scheduledDate)
-        let omittedDate = try XCTUnwrap(expectedDates.first)
-        completeDraft.dailyCards.removeAll { $0.scheduledDate == omittedDate }
-
-        let existingProgress = GenerationProgress(
-            phase: .generatingDays,
-            generationID: completeDraft.id,
-            weeklyPlanID: completeDraft.weeklyPlanID,
-            draftedDayCount: 7,
-            checkedDayCount: 6,
-            totalDayCount: 7,
-            currentDay: nil,
-            message: "generation_partial",
-            error: nil,
-            savedDayCount: 6,
-            failedDayCount: 1,
-            strategyCreated: true,
-            dayStatuses: completeDraft.dailyCards.enumerated().map { index, card in
-                WeeklyDayGenerationStatus(
-                    scheduledDate: card.scheduledDate,
-                    dayIndex: index + 1,
-                    status: "generated",
-                    dailyCardID: card.id,
-                    errorCode: nil,
-                    retryAction: nil,
-                    message: nil
-                )
-            }
-        )
-
-        let progress = GenerationProgress.partialFailure(
-            from: completeDraft,
-            message: "Some days were saved and some days failed. Retry the failed days before publishing.",
-            preserving: existingProgress,
-            expectedScheduledDates: expectedDates
-        )
-
-        XCTAssertEqual(progress.dayStatuses.map(\.scheduledDate), expectedDates)
-        XCTAssertEqual(progress.dayStatuses.count, 7)
-        XCTAssertEqual(progress.draftedDayCount, 6)
-        XCTAssertEqual(progress.checkedDayCount, 6)
-        let synthesizedFailure = try XCTUnwrap(progress.dayStatuses.first)
-        XCTAssertEqual(synthesizedFailure.scheduledDate, omittedDate)
-        XCTAssertTrue(synthesizedFailure.isFailed)
-        XCTAssertEqual(synthesizedFailure.dayIndex, 0)
-        XCTAssertEqual(synthesizedFailure.errorCode, "generation_timeout")
-        XCTAssertEqual(synthesizedFailure.retryAction, "regenerate_day")
-        XCTAssertEqual(progress.effectiveFailedDayCount, 1)
-    }
-
-    func testPartialFailurePreservesNilGenerationIDForReloadedDraft() {
-        let planID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
-        let draft = GeneratedWeekDraft(
-            id: planID,
-            weeklyPlanID: planID,
-            status: "draft",
-            strategySummary: "Reloaded draft",
-            warnings: [],
-            assumptions: [],
-            dailyCards: [],
-            ideaBank: [],
-            sourceSummary: "Reloaded",
-            generatedAt: "2026-06-30T00:00:00Z"
-        )
-
-        let progress = GenerationProgress.partialFailure(
-            from: draft,
-            message: "Some days were saved and some days failed. Retry the failed days before publishing.",
-            preserving: nil,
-            expectedScheduledDates: SupabaseDateFormatting.weekDates(starting: "2026-07-13")
-        )
-
-        XCTAssertNil(progress.generationID)
-    }
-
-
-
-
     // MARK: — Working Plan Persistence
 
     func testWorkingPlanReturnsNilWhenNoDraftExists() {
@@ -1810,8 +1658,6 @@ final class GenerationContractsTests: XCTestCase {
                           "Stale normalization should produce a new plan ID")
         XCTAssertFalse(services.weeklyPlan.isSoftLocked,
                        "Normalized plan should be unlocked")
-        XCTAssertNil(services.generationProgress,
-                     "Progress should be cleared after normalization")
         XCTAssertNil(services.generationError,
                      "Generation error should be cleared after normalization")
     }

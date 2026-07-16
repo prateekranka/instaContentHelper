@@ -253,8 +253,6 @@ protocol WeeklyPlanRepository: Sendable {
     ) async throws
 }
 
-typealias GenerationProgressHandler = @MainActor (GenerationProgress) -> Void
-
 protocol DayGenerationRepository: Sendable {
     func generateDay(
         creatorID: UUID,

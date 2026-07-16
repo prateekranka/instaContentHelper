@@ -44,7 +44,6 @@ final class AppServices {
     var creatorProfileEditError: String?
     var lastPublishSummary: String?
     var lastPublishError: String?
-    var isGeneratingWeek = false
     var regeneratingDayDates: Set<String> = []
     var regenerationDayErrors: [String: String] = [:]
     var generatingDayBriefDates: Set<String> = []
@@ -53,7 +52,6 @@ final class AppServices {
     var generatingStoryboardThumbnailCardIDs: Set<UUID> = []
     var storyboardThumbnailErrors: [UUID: String] = [:]
     var generationError: String?
-    var generationProgress: GenerationProgress?
     var latestGenerationSummary: GeneratedWeekDraft?
     var referenceImportPreview: ReferenceImportPreview?
     var referenceImportConfirmResult: ReferenceImportConfirmResult?
@@ -348,17 +346,10 @@ final class AppServices {
     var canPublishCurrentWeek: Bool {
         guard memberRole == "owner" || memberRole == "editor",
               !isPublishingWeek,
-              !isGeneratingWeek,
               !weeklyPlan.isSoftLocked,
               weeklyPlan.days.count == 7,
               weeklyPlan.openDayCount == 0
         else {
-            return false
-        }
-
-        if let progress = generationProgress,
-           !progress.dayStatuses.isEmpty,
-           !progress.dayStatuses.allSatisfy(\.isCompleted) {
             return false
         }
 
@@ -450,7 +441,6 @@ final class AppServices {
             setupSections: weeklyPlan.setupSections
         )
         weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
-        generationProgress = nil
         generationError = nil
     }
 
@@ -475,13 +465,12 @@ final class AppServices {
         weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
         latestGenerationSummary = projectedDraft
         generationError = nil
-        generationProgress = nil
         lastPublishError = nil
     }
 
     func applyGeneratedDraft(_ draft: GeneratedWeekDraft) {
         guard !draft.dailyCards.isEmpty else {
-            generationError = WeeklyGenerationErrorDisplay.message(forCode: "invalid_generated_week")
+            generationError = DayGenerationErrorDisplay.message(forCode: "invalid_generated_week")
             return
         }
 
@@ -552,21 +541,6 @@ final class AppServices {
         }
     }
 
-    private static func expectedGenerationScheduledDates(
-        weekStartDate: String?,
-        weeklyPlan: WeeklyPlan
-    ) -> [String] {
-        if let weekStartDate {
-            return SupabaseDateFormatting.weekDates(starting: weekStartDate)
-        }
-
-        if let firstScheduledDate = weeklyPlan.days.compactMap(\.scheduledDate).first {
-            return SupabaseDateFormatting.weekDates(starting: firstScheduledDate)
-        }
-
-        return weeklyPlan.days.compactMap(\.scheduledDate)
-    }
-
     func generatedDailyCard(for dayID: UUID) -> GeneratedDailyCardDraft? {
         latestGenerationSummary?.dailyCards.first { $0.id == dayID }
     }
@@ -582,8 +556,7 @@ final class AppServices {
         preserveManualEdits: Bool,
         dayGuidance: String? = nil
     ) async throws -> GeneratedDailyCardDraft {
-        guard !SupabaseDateFormatting.isDatePast(scheduledDate, todayString: todayDate()) ||
-            isRetryableFailedGenerationDate(scheduledDate) else {
+        guard !SupabaseDateFormatting.isDatePast(scheduledDate, todayString: todayDate()) else {
             let error = "past_generation_date_not_allowed"
             regenerationDayErrors[scheduledDate] = error
             logGeneration("regenerate_day rejected past_generation_date scheduled_date=\(scheduledDate)")
@@ -632,13 +605,12 @@ final class AppServices {
                 context: context
             )
             applyRegeneratedDay(result.dailyCard)
-            markRegeneratedDayCompleted(result.dailyCard)
             generationError = nil
             lastRepositoryError = nil
             logGeneration("regenerate_day completed scheduled_date=\(scheduledDate) daily_card_id=\(result.dailyCard.id)")
             return result.dailyCard
         } catch {
-            let message = WeeklyGenerationErrorDisplay.message(for: error)
+            let message = DayGenerationErrorDisplay.message(for: error)
             regenerationDayErrors[scheduledDate] = message
             generationError = message
             logGeneration("regenerate_day failed scheduled_date=\(scheduledDate) error=\(message)")
@@ -706,7 +678,7 @@ final class AppServices {
             logGeneration("generate_day completed scheduled_date=\(scheduledDate) daily_card_id=\(result.dailyCard.id)")
             return result.dailyCard
         } catch {
-            let message = WeeklyGenerationErrorDisplay.message(for: error)
+            let message = DayGenerationErrorDisplay.message(for: error)
             dayBriefGenerationErrors[scheduledDate] = message
             logGeneration("generate_day failed scheduled_date=\(scheduledDate) error=\(message)")
             throw RepositoryError.edgeFunction(message)
@@ -747,7 +719,7 @@ final class AppServices {
             lastRepositoryError = nil
             return assets
         } catch {
-            let message = WeeklyGenerationErrorDisplay.message(for: error)
+            let message = DayGenerationErrorDisplay.message(for: error)
             storyboardThumbnailErrors[card.id] = message
             throw RepositoryError.edgeFunction(message)
         }
@@ -793,75 +765,9 @@ final class AppServices {
         print("[ContentHelperGeneration] \(Date()) \(message)")
     }
 
-    private static func generationProgressSummary(_ progress: GenerationProgress) -> String {
-        let runningDays = progress.dayStatuses.filter { $0.isRunning || $0.isRetrying }
-        let queuedDays = progress.dayStatuses.filter(\.isQueued)
-        let completed = progress.dayStatuses.filter(\.isCompleted).count
-        let failedDays = progress.dayStatuses.filter(\.isFailed).compactMap { status -> String? in
-            guard let date = status.scheduledDate else { return nil }
-            if let error = status.errorCode?.nilIfBlank {
-                return "\(date):\(error)"
-            }
-            return date
-        }
-        return [
-            "phase=\(progress.phase.rawValue)",
-            "generation_id=\(progress.generationID?.uuidString ?? "none")",
-            "weekly_plan_id=\(progress.weeklyPlanID?.uuidString ?? "none")",
-            "drafted=\(progress.draftedDayCount)/\(progress.totalDayCount)",
-            "saved=\(progress.savedDayCount.map(String.init) ?? "unknown")",
-            "failed=\(progress.failedDayCount.map(String.init) ?? "unknown")",
-            "running=\(runningDays.count)",
-            runningDays.isEmpty ? "" : "running_days=\(runningDays.compactMap(\.scheduledDate).joined(separator: ","))",
-            "queued=\(queuedDays.count)",
-            queuedDays.isEmpty ? "" : "queued_days=\(queuedDays.compactMap(\.scheduledDate).joined(separator: ","))",
-            "completed=\(completed)",
-            failedDays.isEmpty ? "" : "failed_days=\(failedDays.joined(separator: ","))",
-            progress.error.map { "error=\($0)" } ?? ""
-        ].filter { !$0.isEmpty }.joined(separator: " ")
-    }
-
     private static func hasMissingStoryboardThumbnails(for card: GeneratedDailyCardDraft) -> Bool {
         let rows = GeneratedStoryboardBreakdown.rows(for: card)
         return rows.contains { $0.thumbnailURL == nil }
-    }
-
-    private func markRegeneratedDayCompleted(_ card: GeneratedDailyCardDraft) {
-        guard var progress = generationProgress else { return }
-
-        let index: Int
-        if let existingIndex = progress.dayStatuses.firstIndex(where: { $0.scheduledDate == card.scheduledDate }) {
-            index = existingIndex
-        } else {
-            progress.dayStatuses.append(
-                WeeklyDayGenerationStatus(
-                    scheduledDate: card.scheduledDate,
-                    dayIndex: progress.dayStatuses.count,
-                    status: "pending",
-                    dailyCardID: nil,
-                    errorCode: nil,
-                    retryAction: nil,
-                    message: nil
-                )
-            )
-            index = progress.dayStatuses.endIndex - 1
-        }
-
-        progress.dayStatuses[index].status = "completed"
-        progress.dayStatuses[index].dailyCardID = card.id
-        progress.dayStatuses[index].errorCode = nil
-        progress.dayStatuses[index].retryAction = nil
-        progress.dayStatuses[index].message = nil
-        let savedCount = progress.dayStatuses.filter(\.isCompleted).count
-        let failedCount = progress.dayStatuses.filter(\.isFailed).count
-        progress.savedDayCount = max(progress.savedDayCount ?? 0, savedCount)
-        progress.failedDayCount = failedCount
-        progress.checkedDayCount = progress.savedDayCount ?? progress.checkedDayCount
-        progress.draftedDayCount = min(progress.totalDayCount, savedCount)
-        if failedCount == 0, let draft = latestGenerationSummary, draft.dailyCards.count >= progress.totalDayCount {
-            progress = .readyForReview(from: draft)
-        }
-        generationProgress = progress
     }
 
     func updateWeeklyDayState(dayID: UUID, state: WeeklyDayState) {
@@ -1347,7 +1253,6 @@ final class AppServices {
             latestGenerationSummary = weeklyContent.generatedDraft
             hydrateDayBriefGeneratedCardsFromLatestDraft()
             weeklyIdeas = weeklyContent.ideaBank
-            reconcileGenerationProgressAfterDraftRefresh()
         } catch {
             refreshError = refreshError ?? error
         }
@@ -1441,7 +1346,6 @@ final class AppServices {
             latestGenerationSummary = weeklyContent.generatedDraft
             hydrateDayBriefGeneratedCardsFromLatestDraft()
             weeklyIdeas = weeklyContent.ideaBank
-            reconcileGenerationProgressAfterDraftRefresh()
         } catch {
             refreshError = error
         }
@@ -1467,43 +1371,6 @@ final class AppServices {
         }
 
         dayBriefGeneratedCards = hydratedCards
-    }
-
-    private func reconcileGenerationProgressAfterDraftRefresh() {
-        guard let draft = latestGenerationSummary, draft.weeklyPlanID == weeklyPlan.id else {
-            if generationProgress?.phase == .failed {
-                generationProgress = nil
-            }
-            return
-        }
-
-        if draft.isCompleteWeekDraft {
-            if generationProgress?.phase == .failed {
-                generationProgress = nil
-            }
-            return
-        }
-
-        generationProgress = GenerationProgress.partialFailure(
-            from: draft,
-            message: "Some days were saved and some days failed. Retry the failed days before publishing.",
-            preserving: generationProgress,
-            expectedScheduledDates: Self.expectedGenerationScheduledDates(
-                weekStartDate: weeklyPlan.weekStartDate,
-                weeklyPlan: weeklyPlan
-            )
-        )
-        generationError = nil
-    }
-
-    private func isRetryableFailedGenerationDate(_ scheduledDate: String) -> Bool {
-        guard latestGenerationSummary?.weeklyPlanID == weeklyPlan.id else { return false }
-
-        return generationProgress?.dayStatuses.contains {
-            $0.scheduledDate == scheduledDate &&
-                ($0.isFailed || $0.isRetrying) &&
-                ($0.retryAction == "retry_day" || $0.retryAction == "regenerate_day")
-        } ?? false
     }
 
     func scheduleTodayNotificationIfNeeded() {
@@ -1686,7 +1553,7 @@ final class AppServices {
     }
 }
 
-private enum WeeklyGenerationErrorDisplay {
+private enum DayGenerationErrorDisplay {
     private static let userFacingMessages = [
         "invalid_ai_json": "The AI returned an incomplete draft. Try Generate again.",
         "invalid_generated_week": "The AI draft did not pass validation. Try Generate again.",
