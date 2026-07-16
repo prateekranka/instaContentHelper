@@ -45,7 +45,6 @@ import {
 } from "./generation-status.ts";
 import type {
   DayGenerationState,
-  DayGenerationStatus,
   PerDayGenerationSnapshot,
   QueuedDayJobRecord,
   QueuedDayJobStatus,
@@ -89,6 +88,23 @@ import {
   readQueuedActionGenerationRun,
   updateGenerationRunProgress,
 } from "./generation-run-store.ts";
+import {
+  allDaysCompleted,
+  allDaysTerminal,
+  availableParallelDayJobSlots as availableParallelDayJobSlotsFor,
+  hasActiveParallelDayGeneration,
+  isParallelWeekGenerationTerminal,
+  isRunningDayStale,
+  isTerminalDayGenerationState,
+  liveParallelDayJobCount,
+  mergeSavedDailyCardsIntoProgress,
+  normalizeStaleRunningDays,
+  progressReconciledWithDayJobs,
+  savedDailyCardsForProgress,
+  shouldResumeParallelWeekGeneration,
+  shouldRunDayGeneration,
+  staleDayFailure,
+} from "./generation-day-progress.ts";
 
 type EnvReader = {
   get: (name: string) => string | undefined;
@@ -481,7 +497,7 @@ export async function handleGenerateWeekRequest(
     const summary = weekGenerationStatusSummary(
       scheduledResult.progress,
       "running",
-      isTerminalDayGenerationState,
+      (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
     );
     return jsonResponse({
       generation_id: runResult.run.id,
@@ -1037,84 +1053,6 @@ function storedDailyCardToGenerated(
       : [],
     updated_at: stringValue(card.updated_at) ?? undefined,
   };
-}
-
-function savedDailyCardsForProgress(
-  savedCards: SavedDailyCard[],
-  progress: PerDayGenerationSnapshot,
-): SavedDailyCard[] {
-  return savedCards.filter((card) =>
-    progress.days.some((day) => savedDailyCardMatchesProgressDay(card, day))
-  );
-}
-
-function mergeSavedDailyCardsIntoProgress(
-  progress: PerDayGenerationSnapshot,
-  savedCards: SavedDailyCard[],
-): PerDayGenerationSnapshot {
-  let changed = false;
-  const days = progress.days.map((day) => {
-    const saved = savedCards.find((card) =>
-      savedDailyCardMatchesProgressDay(card, day)
-    );
-    if (!saved) {
-      return day;
-    }
-    if (
-      day.status === "completed" &&
-      day.daily_card_id === saved.id &&
-      !day.error_code
-    ) {
-      return day;
-    }
-    changed = true;
-    return {
-      ...day,
-      status: "completed" as const,
-      daily_card_id: saved.id,
-      completed_at: day.completed_at ?? saved.updated_at ??
-        new Date().toISOString(),
-      error_code: undefined,
-    };
-  });
-  return changed
-    ? { ...progress, days, updated_at: new Date().toISOString() }
-    : progress;
-}
-
-function savedDailyCardMatchesProgressDay(
-  card: SavedDailyCard,
-  day: DayGenerationState,
-): boolean {
-  if (!isUUID(card.id) || card.scheduled_date !== day.scheduled_date) {
-    return false;
-  }
-  if (isUUID(day.daily_card_id) && card.id === day.daily_card_id) {
-    return true;
-  }
-  if (!isAttemptedDayGenerationState(day)) {
-    return false;
-  }
-  return savedDailyCardUpdatedAfterDayStarted(card, day);
-}
-
-function isAttemptedDayGenerationState(day: DayGenerationState): boolean {
-  return day.attempts > 0 ||
-    day.status === "running" ||
-    day.status === "completed" ||
-    day.status === "failed" ||
-    Boolean(day.output);
-}
-
-function savedDailyCardUpdatedAfterDayStarted(
-  card: SavedDailyCard,
-  day: DayGenerationState,
-): boolean {
-  const updatedAt = Date.parse(card.updated_at ?? "");
-  const startedAt = Date.parse(day.started_at ?? "");
-  return Number.isFinite(updatedAt) &&
-    Number.isFinite(startedAt) &&
-    updatedAt >= startedAt;
 }
 
 function storedBackupText(value: unknown): string {
@@ -1802,7 +1740,7 @@ async function handleParallelWeekGeneration(
       ...weekGenerationStatusSummary(
         progress,
         "running",
-        isTerminalDayGenerationState,
+        (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
       ),
       poll_after_seconds: 5,
     }, 202);
@@ -1866,11 +1804,15 @@ async function createSeededDayJobsFromProgress(
   progress: PerDayGenerationSnapshot,
 ): Promise<{ jobs: QueuedDayJobRecord[] } | { response: Response }> {
   const now = new Date().toISOString();
+  const nowMS = Date.now();
+  const staleThresholdMS = runningDayStaleMS();
+  const maxAttempts = maxDayGenerationAttempts();
   const placeholderLease = crypto.randomUUID();
   const rows = progress.days.map((day, dayIndex) => {
-    const running = day.status === "running" && !isRunningDayStale(day);
+    const running = day.status === "running" &&
+      !isRunningDayStale(day, staleThresholdMS, nowMS);
     const terminalFailure = day.status === "failed" &&
-      day.attempts >= maxDayGenerationAttempts();
+      day.attempts >= maxAttempts;
     const status: QueuedDayJobStatus = day.status === "completed"
       ? "generated"
       : terminalFailure
@@ -1932,6 +1874,7 @@ async function claimedDayJobFitsLiveCapacity(
   const liveRunningCount = liveParallelDayJobCount(
     dayJobs.jobs,
     staleThresholdMS,
+    Date.now(),
   );
   if (liveRunningCount <= concurrency) {
     return true;
@@ -1966,8 +1909,15 @@ async function runParallelWeekGeneration(
   let dayJobsCompleted = 0;
   let dayJobsFailed = 0;
 
+  const normalizeNowMS = Date.now();
+  const normalizeNowISO = new Date().toISOString();
   let latestProgress = {
-    ...normalizeStaleRunningDays(progress),
+    ...normalizeStaleRunningDays(progress, {
+      maxAttempts: maxDayGenerationAttempts(),
+      staleThresholdMS: runningDayStaleMS(),
+      nowMS: normalizeNowMS,
+      nowISO: normalizeNowISO,
+    }),
     weekly_plan_id: weeklyPlanID,
   };
   let writeQueue = Promise.resolve();
@@ -2030,6 +1980,7 @@ async function runParallelWeekGeneration(
       dayJobs.jobs,
       concurrency,
       staleThresholdMS,
+      Date.now(),
     );
 
     const readyJobs = dayJobs.jobs.filter((job) =>
@@ -2163,6 +2114,7 @@ async function runParallelWeekGeneration(
       ...progressReconciledWithDayJobs(
         latestProgress,
         finalJobsResult.jobs,
+        new Date().toISOString(),
       ),
       weekly_plan_id: weeklyPlanID,
     };
@@ -2184,11 +2136,20 @@ async function runParallelWeekGeneration(
   });
   deregisterShutdownTracking(generationID);
 
-  if (cancelled && hasActiveParallelDayGeneration(latestProgress)) {
+  const activeCheckNowMS = Date.now();
+  const activeCheckStaleMS = runningDayStaleMS();
+  if (
+    cancelled &&
+    hasActiveParallelDayGeneration(
+      latestProgress,
+      activeCheckStaleMS,
+      activeCheckNowMS,
+    )
+  ) {
     const summary = weekGenerationStatusSummary(
       latestProgress,
       "running",
-      isTerminalDayGenerationState,
+      (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
     );
     return {
       payload: {
@@ -2202,11 +2163,17 @@ async function runParallelWeekGeneration(
     };
   }
 
-  if (hasActiveParallelDayGeneration(latestProgress)) {
+  if (
+    hasActiveParallelDayGeneration(
+      latestProgress,
+      activeCheckStaleMS,
+      activeCheckNowMS,
+    )
+  ) {
     const summary = weekGenerationStatusSummary(
       latestProgress,
       "running",
-      isTerminalDayGenerationState,
+      (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
     );
     return {
       payload: {
@@ -2227,76 +2194,6 @@ async function runParallelWeekGeneration(
     weeklyPlanID,
     latestProgress,
   );
-}
-
-function progressReconciledWithDayJobs(
-  progress: PerDayGenerationSnapshot,
-  jobs: QueuedDayJobRecord[],
-): PerDayGenerationSnapshot {
-  const jobsByDate = new Map(jobs.map((job) => [job.scheduled_date, job]));
-  return {
-    ...progress,
-    days: progress.days.map((day) => {
-      const job = jobsByDate.get(day.scheduled_date);
-      if (!job) return day;
-      const status: DayGenerationStatus = job.status === "generated"
-        ? "completed"
-        : job.status === "failed" || job.status === "cancelled"
-        ? "failed"
-        : job.status === "generating" || job.status === "ready_to_persist"
-        ? "running"
-        : "pending";
-      return {
-        scheduled_date: day.scheduled_date,
-        status,
-        attempts: job.attempt_count ?? 0,
-        daily_card_id: job.daily_card_id ?? undefined,
-        started_at: job.started_at ?? undefined,
-        completed_at: job.completed_at ?? undefined,
-        heartbeat_at: job.heartbeat_at ?? undefined,
-        error_code: job.error_code ?? undefined,
-      };
-    }),
-    updated_at: new Date().toISOString(),
-  };
-}
-
-function nextParallelDayGenerationIndex(
-  progress: PerDayGenerationSnapshot,
-  inFlight: Map<number, unknown>,
-): number {
-  return progress.days.findIndex((day, index) =>
-    !inFlight.has(index) && shouldRunDayGeneration(day)
-  );
-}
-
-function activeParallelDayGenerationCount(
-  progress: PerDayGenerationSnapshot,
-): number {
-  return progress.days.filter((day) =>
-    day.status === "running" && !isRunningDayStale(day)
-  ).length;
-}
-
-function hasActiveParallelDayGeneration(
-  progress: PerDayGenerationSnapshot,
-): boolean {
-  return activeParallelDayGenerationCount(progress) > 0;
-}
-
-function liveParallelDayJobCount(
-  jobs: Array<{
-    status?: unknown;
-    heartbeat_at?: unknown;
-    started_at?: unknown;
-  }>,
-  staleThresholdMS: number,
-  now = Date.now(),
-): number {
-  return jobs.filter((job) =>
-    job.status === "generating" &&
-    !isQueuedDayJobStale(job, staleThresholdMS, now)
-  ).length;
 }
 
 function parallelWeekGenerationConcurrency(): number {
@@ -2566,14 +2463,20 @@ async function finalizeParallelWeekGeneration(
     progress,
   );
 
+  // Merge fallback timestamps are created after the saved-card read (pre-extraction timing).
+  const mergeNowISO = new Date().toISOString();
   const finalProgress = {
-    ...mergeSavedDailyCardsIntoProgress(progress, savedCardsForRun),
+    ...mergeSavedDailyCardsIntoProgress(
+      progress,
+      savedCardsForRun,
+      mergeNowISO,
+    ),
     updated_at: completedAt,
   };
   const summary = weekGenerationStatusSummary(
     finalProgress,
     savedCardsForRun.length === 0 ? "failed" : "completed",
-    isTerminalDayGenerationState,
+    (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
   );
 
   if (summary.saved_day_count === 0) {
@@ -3242,7 +3145,7 @@ async function readGenerationStatus(
       const summary = weekGenerationStatusSummary(
         progress,
         "failed",
-        isTerminalDayGenerationState,
+        (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
       );
       return jsonResponse({
         generation_id: generationID,
@@ -3302,7 +3205,12 @@ async function readGenerationStatus(
       dependencies,
     );
   }
-  const normalizedProgress = normalizeStaleRunningDays(progress);
+  const normalizedProgress = normalizeStaleRunningDays(progress, {
+    maxAttempts: maxDayGenerationAttempts(),
+    staleThresholdMS: runningDayStaleMS(),
+    nowMS: Date.now(),
+    nowISO: new Date().toISOString(),
+  });
   if (normalizedProgress !== progress) {
     const updateResult = await updateGenerationProgress(
       admin,
@@ -3328,7 +3236,7 @@ async function readGenerationStatus(
     }
     return jsonResponse(finalizeResult.payload);
   }
-  if (allDaysTerminal(progress)) {
+  if (allDaysTerminal(progress, maxDayGenerationAttempts())) {
     const finalizeResult = await finalizeTerminalPerDayGeneration(
       admin,
       generationID,
@@ -3368,7 +3276,7 @@ async function readGenerationStatus(
   const summary = weekGenerationStatusSummary(
     latestProgress,
     "running",
-    isTerminalDayGenerationState,
+    (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
   );
   const responseStatus = summary.overall_status === "completed"
     ? "draft"
@@ -3448,6 +3356,7 @@ function shouldDispatchQueuedDayJobRecovery(
     jobs,
     parallelWeekGenerationConcurrency(),
     staleThresholdMS,
+    Date.now(),
   ) > 0;
 }
 
@@ -3692,11 +3601,12 @@ async function readCompletedPerDayGenerationStatus(
   const mergedProgress = mergeSavedDailyCardsIntoProgress(
     progress,
     savedCardsForRun,
+    new Date().toISOString(),
   );
   const summary = weekGenerationStatusSummary(
     mergedProgress,
     stringValue(run.status) ?? "completed",
-    isTerminalDayGenerationState,
+    (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
   );
   const strategy = makeInitialWeekStrategyOutput(inputSnapshot);
   const responseStatus = summary.overall_status === "completed"
@@ -3746,7 +3656,7 @@ async function readParallelGenerationStatus(
     const summary = weekGenerationStatusSummary(
       progress,
       "cancelled",
-      isTerminalDayGenerationState,
+      (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
     );
     return jsonResponse({
       generation_id: generationID,
@@ -3773,10 +3683,13 @@ async function readParallelGenerationStatus(
         }
       }
     }
-    const normalizedProgress = normalizeStaleRunningDays(
-      progress,
+    const normalizedProgress = normalizeStaleRunningDays(progress, {
+      maxAttempts: maxDayGenerationAttempts(),
+      staleThresholdMS: runningDayStaleMS(),
+      nowMS: Date.now(),
+      nowISO: new Date().toISOString(),
       dayJobHeartbeats,
-    );
+    });
     if (normalizedProgress !== progress) {
       const updateResult = await updateGenerationProgress(
         admin,
@@ -3807,6 +3720,7 @@ async function readParallelGenerationStatus(
   const mergedProgress = mergeSavedDailyCardsIntoProgress(
     progress,
     savedCardsForRun,
+    new Date().toISOString(),
   );
   if (mergedProgress !== progress) {
     const updateResult = await updateGenerationProgress(
@@ -3822,7 +3736,7 @@ async function readParallelGenerationStatus(
 
   if (
     stringValue(run.status) === "running" &&
-    isParallelWeekGenerationTerminal(progress)
+    isParallelWeekGenerationTerminal(progress, maxDayGenerationAttempts())
   ) {
     const preparedResult = prepareGenerationFromRun(
       env,
@@ -3848,7 +3762,13 @@ async function readParallelGenerationStatus(
 
   if (
     stringValue(run.status) === "running" &&
-    shouldResumeParallelWeekGeneration(progress)
+    shouldResumeParallelWeekGeneration(
+      progress,
+      parallelWeekGenerationConcurrency(),
+      maxDayGenerationAttempts(),
+      runningDayStaleMS(),
+      Date.now(),
+    )
   ) {
     const preparedResult = prepareGenerationFromRun(
       env,
@@ -3885,7 +3805,7 @@ async function readParallelGenerationStatus(
   const summary = weekGenerationStatusSummary(
     progress,
     stringValue(run.status) ?? "running",
-    isTerminalDayGenerationState,
+    (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
   );
   const responseStatus = summary.overall_status === "completed"
     ? "draft"
@@ -3909,64 +3829,6 @@ async function readParallelGenerationStatus(
     ...summary,
     poll_after_seconds: summary.overall_status === "running" ? 5 : null,
   });
-}
-
-function shouldResumeParallelWeekGeneration(
-  progress: PerDayGenerationSnapshot,
-): boolean {
-  if (!progress.days.some(shouldRunDayGeneration)) {
-    return false;
-  }
-  return activeParallelDayGenerationCount(progress) <
-    parallelWeekGenerationConcurrency();
-}
-
-function isParallelWeekGenerationTerminal(
-  progress: PerDayGenerationSnapshot,
-): boolean {
-  return progress.days.length > 0 &&
-    progress.days.every(isTerminalDayGenerationState);
-}
-
-function normalizeStaleRunningDays(
-  progress: PerDayGenerationSnapshot,
-  dayJobHeartbeats?: Map<number, string | undefined>,
-): PerDayGenerationSnapshot {
-  let changed = false;
-  const days = progress.days.map((day, index) => {
-    if (day.status !== "running") return day;
-
-    const effectiveHeartbeat = dayJobHeartbeats?.get(index) ?? day.heartbeat_at;
-    const effectiveDay: DayGenerationState = effectiveHeartbeat !==
-        day.heartbeat_at
-      ? { ...day, heartbeat_at: effectiveHeartbeat }
-      : day;
-
-    if (isRunningDayStale(effectiveDay)) {
-      changed = true;
-      return staleDayFailure(effectiveDay);
-    }
-    return effectiveDay !== day ? effectiveDay : day;
-  });
-  return changed
-    ? { ...progress, days, updated_at: new Date().toISOString() }
-    : progress;
-}
-
-function shouldRunDayGeneration(day: DayGenerationState): boolean {
-  if (day.status === "pending") {
-    return true;
-  }
-  if (day.status === "failed") {
-    return day.attempts < maxDayGenerationAttempts();
-  }
-  return day.status === "running" && isRunningDayStale(day) &&
-    day.attempts < maxDayGenerationAttempts();
-}
-
-function isTerminalDayGenerationState(day: DayGenerationState): boolean {
-  return day.status === "completed" ||
-    (day.status === "failed" && day.attempts >= maxDayGenerationAttempts());
 }
 
 function normalizeStoredInputSnapshot(
@@ -4051,8 +3913,13 @@ async function scheduleNextPendingDayGeneration(
 ): Promise<
   { progress: PerDayGenerationSnapshot } | { response: Response }
 > {
+  const staleThresholdMS = runningDayStaleMS();
+  const nowMS = Date.now();
+  const maxAttempts = maxDayGenerationAttempts();
+  const nowISO = new Date().toISOString();
   const activeIndex = progress.days.findIndex((day) =>
-    day.status === "running" && !isRunningDayStale(day)
+    day.status === "running" &&
+    !isRunningDayStale(day, staleThresholdMS, nowMS)
   );
   if (activeIndex >= 0) {
     return { progress };
@@ -4061,12 +3928,15 @@ async function scheduleNextPendingDayGeneration(
   const normalizedProgress = {
     ...progress,
     days: progress.days.map((day) =>
-      day.status === "running" && isRunningDayStale(day)
-        ? staleDayFailure(day)
+      day.status === "running" &&
+        isRunningDayStale(day, staleThresholdMS, nowMS)
+        ? staleDayFailure(day, maxAttempts, nowISO)
         : day
     ),
   };
-  const dayIndex = normalizedProgress.days.findIndex(shouldRunDayGeneration);
+  const dayIndex = normalizedProgress.days.findIndex((day) =>
+    shouldRunDayGeneration(day, maxAttempts, staleThresholdMS, nowMS)
+  );
   if (dayIndex < 0) {
     return { progress: normalizedProgress };
   }
@@ -4117,26 +3987,6 @@ async function scheduleNextPendingDayGeneration(
   );
 
   return { progress: runningProgress };
-}
-
-function staleDayFailure(day: DayGenerationState): DayGenerationState {
-  if (day.attempts < maxDayGenerationAttempts()) {
-    return {
-      ...day,
-      status: "pending",
-      started_at: undefined,
-      heartbeat_at: undefined,
-    };
-  }
-
-  const completedAt = new Date().toISOString();
-  return {
-    ...day,
-    status: "failed",
-    completed_at: completedAt,
-    error_code: "generation_timeout",
-    output: undefined,
-  };
 }
 
 async function runSingleDayGenerationStep(
@@ -4204,7 +4054,7 @@ async function runSingleDayGenerationStep(
         prepared.inputSnapshot,
         completedProgress,
       );
-    } else if (allDaysTerminal(completedProgress)) {
+    } else if (allDaysTerminal(completedProgress, maxDayGenerationAttempts())) {
       const run: GenerationRunStatusRecord = {
         id: generationID,
         workspace_id: prepared.session.workspaceID,
@@ -4239,7 +4089,7 @@ async function runSingleDayGenerationStep(
       updated_at: failedAt,
     };
     await updateGenerationProgress(admin, generationID, failedProgress);
-    if (allDaysTerminal(failedProgress)) {
+    if (allDaysTerminal(failedProgress, maxDayGenerationAttempts())) {
       const run: GenerationRunStatusRecord = {
         id: generationID,
         workspace_id: prepared.session.workspaceID,
@@ -4443,7 +4293,7 @@ async function finalizeTerminalPerDayGeneration(
     const summary = weekGenerationStatusSummary(
       baseProgress,
       "failed",
-      isTerminalDayGenerationState,
+      (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
     );
     return {
       payload: {
@@ -4504,7 +4354,7 @@ async function finalizeTerminalPerDayGeneration(
   const summary = weekGenerationStatusSummary(
     finalProgress,
     "completed",
-    isTerminalDayGenerationState,
+    (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
   );
   const payload = {
     generation_id: generationID,
@@ -4616,24 +4466,6 @@ function mockGeneratedDayOutput(
   };
 }
 
-function allDaysCompleted(progress: PerDayGenerationSnapshot): boolean {
-  return progress.days.length === 7 &&
-    progress.days.every((day) => day.status === "completed" && day.output);
-}
-
-function allDaysTerminal(progress: PerDayGenerationSnapshot): boolean {
-  return progress.days.length === 7 &&
-    progress.days.every(isTerminalDayGenerationState);
-}
-
-function isRunningDayStale(day: DayGenerationState): boolean {
-  const lastLiveness = day.heartbeat_at ?? day.started_at;
-  if (!lastLiveness) {
-    return false;
-  }
-  return Date.now() - Date.parse(lastLiveness) > runningDayStaleMS();
-}
-
 export function availableParallelDayJobSlots(
   jobs: Array<{
     status?: unknown;
@@ -4644,12 +4476,12 @@ export function availableParallelDayJobSlots(
   staleThresholdMS: number,
   now = Date.now(),
 ): number {
-  const liveRunningCount = liveParallelDayJobCount(
+  return availableParallelDayJobSlotsFor(
     jobs,
+    concurrency,
     staleThresholdMS,
     now,
   );
-  return Math.max(0, concurrency - liveRunningCount);
 }
 
 function dayGenerationHeartbeatMS(
