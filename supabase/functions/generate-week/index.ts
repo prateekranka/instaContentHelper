@@ -11,7 +11,6 @@ import {
   AIGenerationInstrumentation,
   AIGenerationPhase,
   AIProviderConfig,
-  callAIProviders,
   callAIProvidersForDay,
   callAIProvidersForSplitWeek,
   combineGeneratedDayOutputs,
@@ -22,7 +21,6 @@ import {
   GenerateWeekRequest,
   GenerateWeekValidationError,
   GenerationInputSnapshot,
-  isUUID,
   makeMockGeneratedWeek,
   normalizeGenerateDayRequest,
   normalizeGenerateWeekRequest,
@@ -35,32 +33,18 @@ import {
 import {
   initialParallelWeekGenerationSnapshot,
   initialPerDayGenerationSnapshot,
-  queuedDayJobStatusResponse,
   queuedDayJobStatusSummary,
   weekGenerationStatusSummary,
 } from "./generation-status.ts";
 import {
   initialSingleDayGenerationSnapshot,
-  normalizeStoredInputSnapshot,
   requestFromRun,
 } from "./generation-run-snapshot.ts";
 import type {
   GenerateWeekDraftResponse,
   GenerationRunStatusRecord,
-  RegenerateDayDraftResponse,
   SingleDayGenerationSnapshot,
 } from "./generation-run-snapshot.ts";
-import type {
-  PerDayGenerationSnapshot,
-  QueuedDayJobRecord,
-  QueuedDayJobStatus,
-} from "./generation-status.ts";
-import {
-  cancelActiveQueuedDayJobs,
-  lookupQueuedDayJobsExist,
-  markFailedDayJobRetrying,
-  readQueuedDayJobsForRun,
-} from "./generation-day-job-store.ts";
 import {
   clearExistingDraftDailyCardsForFullGeneration,
   findLatestDraftDayPlanContainer,
@@ -80,19 +64,8 @@ import { createDayGenerationRun } from "./generation-run-start.ts";
 import {
   insertWeekGenerationRun,
   linkGenerationRunWeeklyPlan,
-  markGenerationRunCancelled,
-  readGenerationRunCancellationState,
-  readGenerationRunStatus,
-  readQueuedActionGenerationRun,
 } from "./generation-run-store.ts";
-import {
-  isParallelWeekGenerationTerminal,
-  isTerminalDayGenerationState,
-  mergeSavedDailyCardsIntoProgress,
-  normalizeStaleRunningDays,
-  savedDailyCardsForProgress,
-  shouldResumeParallelWeekGeneration,
-} from "./generation-day-progress.ts";
+import { isTerminalDayGenerationState } from "./generation-day-progress.ts";
 import {
   readCreatorRow,
   readDailyCardsForPlan,
@@ -106,12 +79,9 @@ import {
 import {
   availableParallelDayJobSlots as availableParallelDayJobSlotsFromWorker,
   createQueuedDayJobs,
-  isGenerationRunCancelled,
-  isGenerationRunRecordCancelled,
   maxDayGenerationAttempts,
   parallelWeekGenerationConcurrency,
   type ParallelWeekWorkerHost,
-  runningDayStaleMS,
   runParallelWeekGeneration,
 } from "./generation-parallel-week-worker.ts";
 import {
@@ -1962,16 +1932,6 @@ function isStatusAction(body: unknown): body is Record<string, unknown> {
   return isRecord(body) && body.action === "status";
 }
 
-function isRetryDayAction(body: unknown): body is Record<string, unknown> {
-  return isRecord(body) && body.action === "retry_day";
-}
-
-function isCancelGenerationAction(
-  body: unknown,
-): body is Record<string, unknown> {
-  return isRecord(body) && body.action === "cancel_generation";
-}
-
 function fullWeekGenerationRetiredResponse(): Response {
   return jsonResponse({ error: "full_week_generation_retired" }, 400);
 }
@@ -2010,216 +1970,6 @@ function retiredImplicitFullWeekResponse(body: unknown): Response | null {
     }
     return jsonResponse({ error: "invalid_generation_payload" }, 400);
   }
-}
-
-async function retryQueuedDayGeneration(
-  admin: SupabaseAdminClient,
-  session: VerifiedDeviceSession,
-  body: Record<string, unknown>,
-): Promise<Response> {
-  const generationID = stringValue(body.generation_id);
-  const scheduledDate = stringValue(body.scheduled_date);
-  if (!isUUID(generationID) || !scheduledDate) {
-    return jsonResponse({ error: "invalid_generation_payload" }, 400);
-  }
-
-  if (isDateBeforeToday(scheduledDate)) {
-    return pastDateNotAllowedResponse();
-  }
-
-  const runResult = await readGenerationRunForQueuedAction(
-    admin,
-    session,
-    generationID,
-  );
-  if ("response" in runResult) {
-    return runResult.response;
-  }
-
-  const retryResult = await markFailedDayJobRetrying(admin, {
-    generationRunID: generationID,
-    workspaceID: session.workspaceID,
-    creatorID: stringValue(runResult.run.creator_id) ?? "",
-    scheduledDate,
-  });
-  if ("error" in retryResult) {
-    return generationPersistFailure(
-      "retry_generation_day_job",
-      retryResult.error,
-    ).response;
-  }
-  if (!retryResult.job) {
-    return jsonResponse({ error: "day_job_not_retryable" }, 409);
-  }
-
-  logGenerationLifecycle({
-    action: "retry_day",
-    phase: "day_job_retrying",
-    status: "retrying",
-    generation_id: generationID,
-    weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ??
-      stringValue(retryResult.job.weekly_plan_id) ?? null,
-    week_start_date: null,
-    scheduled_date: scheduledDate,
-    day_index: numberValue(retryResult.job.day_index) ?? null,
-    duration_ms: null,
-    day_guidance_present: null,
-    day_guidance_chars: null,
-  });
-
-  return jsonResponse({
-    generation_id: generationID,
-    weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ??
-      stringValue(retryResult.job.weekly_plan_id) ?? null,
-    status: "running",
-    day: queuedDayJobStatusResponse(retryResult.job),
-    message: "day_retry_queued",
-    poll_after_seconds: 5,
-  });
-}
-
-async function cancelGeneration(
-  admin: SupabaseAdminClient,
-  session: VerifiedDeviceSession,
-  body: Record<string, unknown>,
-): Promise<Response> {
-  const generationID = stringValue(body.generation_id);
-  if (!isUUID(generationID)) {
-    return jsonResponse({ error: "invalid_generation_payload" }, 400);
-  }
-
-  const runResult = await readGenerationRunForQueuedAction(
-    admin,
-    session,
-    generationID,
-  );
-  if ("response" in runResult) {
-    return runResult.response;
-  }
-
-  // Determine mode: queued runs have day jobs, parallel runs do not.
-  const lookupResult = await lookupQueuedDayJobsExist(
-    admin,
-    generationID,
-    session.workspaceID,
-    stringValue(runResult.run.creator_id) ?? "",
-  );
-  if ("error" in lookupResult) {
-    return generationPersistFailure(
-      "cancel_generation_day_jobs_lookup",
-      lookupResult.error,
-    ).response;
-  }
-
-  // Queued mode: delegate to existing queued cancel flow.
-  if (lookupResult.exists) {
-    return await cancelQueuedGeneration(admin, session, body);
-  }
-
-  // Parallel mode: mark the run as cancelled directly. In-flight day tasks
-  // will detect generation_cancelled and return early.
-  const runStatus = stringValue(runResult.run.status);
-  if (isGenerationRunRecordCancelled(runResult.run)) {
-    return jsonResponse({
-      generation_id: generationID,
-      weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ?? null,
-      status: "cancelled",
-      message: "generation_cancelled",
-    });
-  }
-  if (runStatus !== "running") {
-    return jsonResponse({
-      generation_id: generationID,
-      weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ?? null,
-      status: runStatus ?? "running",
-      message: "generation_not_cancellable",
-    }, 409);
-  }
-
-  const cancelRunResult = await markGenerationRunCancelled(admin, generationID);
-  if (cancelRunResult.error) {
-    return generationPersistFailure(
-      "cancel_generation_run",
-      cancelRunResult.error,
-    ).response;
-  }
-
-  return jsonResponse({
-    generation_id: generationID,
-    weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ?? null,
-    status: "cancelled",
-    message: "generation_cancelled",
-  });
-}
-
-async function cancelQueuedGeneration(
-  admin: SupabaseAdminClient,
-  session: VerifiedDeviceSession,
-  body: Record<string, unknown>,
-): Promise<Response> {
-  const generationID = stringValue(body.generation_id);
-  if (!isUUID(generationID)) {
-    return jsonResponse({ error: "invalid_generation_payload" }, 400);
-  }
-
-  const runResult = await readGenerationRunForQueuedAction(
-    admin,
-    session,
-    generationID,
-  );
-  if ("response" in runResult) {
-    return runResult.response;
-  }
-
-  const cancelJobsResult = await cancelActiveQueuedDayJobs(
-    admin,
-    generationID,
-    session.workspaceID,
-    stringValue(runResult.run.creator_id) ?? "",
-  );
-  if (cancelJobsResult.error) {
-    return generationPersistFailure(
-      "cancel_generation_day_jobs",
-      cancelJobsResult.error,
-    ).response;
-  }
-
-  const cancelRunResult = await markGenerationRunCancelled(admin, generationID);
-  if (cancelRunResult.error) {
-    return generationPersistFailure(
-      "cancel_generation_run",
-      cancelRunResult.error,
-    ).response;
-  }
-
-  return jsonResponse({
-    generation_id: generationID,
-    weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ?? null,
-    status: "cancelled",
-    message: "generation_cancelled",
-  });
-}
-
-async function readGenerationRunForQueuedAction(
-  admin: SupabaseAdminClient,
-  session: VerifiedDeviceSession,
-  generationID: string,
-): Promise<{ run: GenerationRunStatusRecord } | { response: Response }> {
-  const { data, error } = await readQueuedActionGenerationRun(
-    admin,
-    generationID,
-    session.workspaceID,
-  );
-
-  if (error) {
-    return generationPersistFailure("read_generation_run", error);
-  }
-  if (!data) {
-    return {
-      response: jsonResponse({ error: "invalid_generation_payload" }, 404),
-    };
-  }
-  return { run: data as GenerationRunStatusRecord };
 }
 
 function prepareGenerationFromRun(
