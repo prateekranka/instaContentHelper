@@ -262,7 +262,7 @@ protocol DayGenerationRepository: Sendable {
         scheduledDate: String,
         dayBrief: String,
         context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult
+    ) async throws -> DailyGenerationResult
 }
 
 extension DayGenerationRepository {
@@ -271,7 +271,7 @@ extension DayGenerationRepository {
         scheduledDate: String,
         dayBrief: String,
         context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult {
+    ) async throws -> DailyGenerationResult {
         throw RepositoryError.notConfigured("generate_day_not_configured")
     }
 }

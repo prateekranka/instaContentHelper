@@ -432,7 +432,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
 /// free-text day brief. The server assembles the creator profile and
 /// references, uses the day brief as the only brief, and returns the same
 /// storyboard + caption card payload as regenerate_day.
-struct SupabaseGenerateDayRequest: Encodable, Sendable {
+struct SupabaseDailyGenerationRequest: Encodable, Sendable {
     var creatorID: UUID
     var scheduledDate: String
     var dayBrief: String
@@ -451,6 +451,8 @@ struct SupabaseGenerateDayRequest: Encodable, Sendable {
         case clientContext = "client_context"
     }
 }
+
+typealias SupabaseGenerateDayRequest = SupabaseDailyGenerationRequest
 
 struct SupabaseRetryQueuedDayRequest: Encodable, Sendable {
     var generationID: UUID
@@ -497,7 +499,7 @@ struct SupabaseRetryQueuedDayResponse: Decodable, Hashable, Sendable {
     }
 }
 
-struct SupabaseRegenerateDayResponse: Decodable, Hashable, Sendable {
+struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
     var generationID: UUID
     var weeklyPlanID: UUID
     var status: String
@@ -520,8 +522,8 @@ struct SupabaseRegenerateDayResponse: Decodable, Hashable, Sendable {
         case generatedAt = "generated_at"
     }
 
-    var domainResult: RegeneratedDayResult {
-        RegeneratedDayResult(
+    var domainResult: DailyGenerationResult {
+        DailyGenerationResult(
             generationID: generationID,
             weeklyPlanID: weeklyPlanID,
             status: status,
@@ -535,7 +537,9 @@ struct SupabaseRegenerateDayResponse: Decodable, Hashable, Sendable {
     }
 }
 
-struct RegeneratedDayResult: Hashable, Sendable {
+typealias SupabaseRegenerateDayResponse = SupabaseDailyGenerationResponse
+
+struct DailyGenerationResult: Hashable, Sendable {
     var generationID: UUID
     var weeklyPlanID: UUID
     var status: String
@@ -546,6 +550,8 @@ struct RegeneratedDayResult: Hashable, Sendable {
     var sourceSummary: String
     var generatedAt: String
 }
+
+typealias RegeneratedDayResult = DailyGenerationResult
 
 struct SupabaseGenerateStoryboardThumbnailRequest: Encodable, Hashable, Sendable {
     var creatorID: UUID
@@ -762,7 +768,7 @@ struct SupabaseGenerateWeekResponse: Decodable, Hashable, Sendable {
     }
 }
 
-struct SupabaseGenerateWeekStatusRequest: Encodable, Sendable {
+struct SupabaseGenerationStatusRequest: Encodable, Sendable {
     var generationID: UUID
     var creatorID: UUID
     var action = "status"
@@ -781,7 +787,9 @@ struct SupabaseGenerateWeekStatusRequest: Encodable, Sendable {
     }
 }
 
-struct SupabaseGenerateWeekStatusResponse: Decodable, Hashable, Sendable {
+typealias SupabaseGenerateWeekStatusRequest = SupabaseGenerationStatusRequest
+
+struct SupabaseGenerationStatusResponse: Decodable, Hashable, Sendable {
     var generationID: UUID
     var status: String
     var weeklyPlanID: UUID?
@@ -876,10 +884,12 @@ struct SupabaseGenerateWeekStatusResponse: Decodable, Hashable, Sendable {
     }
 }
 
+typealias SupabaseGenerateWeekStatusResponse = SupabaseGenerationStatusResponse
+
 enum SupabaseGenerateWeekInvocation: Sendable {
     case draft(SupabaseGenerateWeekResponse)
-    case running(SupabaseGenerateWeekStatusResponse)
-    case failed(SupabaseGenerateWeekStatusResponse)
+    case running(SupabaseGenerationStatusResponse)
+    case failed(SupabaseGenerationStatusResponse)
 
     static func decode(_ data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> SupabaseGenerateWeekInvocation {
         let probe = try? decoder.decode(SupabaseGenerationStatusProbe.self, from: data)
@@ -889,7 +899,7 @@ enum SupabaseGenerateWeekInvocation: Sendable {
             }
         }
 
-        let status = try decoder.decode(SupabaseGenerateWeekStatusResponse.self, from: data)
+        let status = try decoder.decode(SupabaseGenerationStatusResponse.self, from: data)
         if status.status == "failed" {
             return .failed(status)
         }
@@ -897,18 +907,18 @@ enum SupabaseGenerateWeekInvocation: Sendable {
     }
 }
 
-enum SupabaseRegenerateDayInvocation: Sendable {
-    case completed(SupabaseRegenerateDayResponse)
-    case running(SupabaseGenerateWeekStatusResponse)
-    case failed(SupabaseGenerateWeekStatusResponse)
+enum SupabaseDailyGenerationInvocation: Sendable {
+    case completed(SupabaseDailyGenerationResponse)
+    case running(SupabaseGenerationStatusResponse)
+    case failed(SupabaseGenerationStatusResponse)
 
-    static func decode(_ data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> SupabaseRegenerateDayInvocation {
+    static func decode(_ data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> SupabaseDailyGenerationInvocation {
         let probe = try decoder.decode(SupabaseGenerationStatusProbe.self, from: data)
         if probe.status == "draft" || probe.status == "completed" {
-            return .completed(try decoder.decode(SupabaseRegenerateDayResponse.self, from: data))
+            return .completed(try decoder.decode(SupabaseDailyGenerationResponse.self, from: data))
         }
 
-        var status = try decoder.decode(SupabaseGenerateWeekStatusResponse.self, from: data)
+        var status = try decoder.decode(SupabaseGenerationStatusResponse.self, from: data)
         switch status.status {
         case "failed":
             return .failed(status)
@@ -929,6 +939,8 @@ enum SupabaseRegenerateDayInvocation: Sendable {
         }
     }
 }
+
+typealias SupabaseRegenerateDayInvocation = SupabaseDailyGenerationInvocation
 
 private struct SupabaseGenerationStatusProbe: Decodable {
     let status: String?

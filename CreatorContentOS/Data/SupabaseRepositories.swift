@@ -553,11 +553,11 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         scheduledDate: String,
         dayBrief: String,
         context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult {
+    ) async throws -> DailyGenerationResult {
         do {
             logGeneration("generate_day invoke_initial scheduled_date=\(scheduledDate) brief_chars=\(dayBrief.count)")
-            let initial = try await invokeRegenerateDay(
-                SupabaseGenerateDayRequest(
+            let initial = try await invokeDailyGeneration(
+                SupabaseDailyGenerationRequest(
                     creatorID: creatorID,
                     scheduledDate: scheduledDate,
                     dayBrief: dayBrief,
@@ -572,14 +572,14 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
                     )
                 )
             )
-            logGeneration("generate_day initial \(regenerateInvocationSummary(initial))")
+            logGeneration("generate_day initial \(dailyGenerationInvocationSummary(initial))")
 
             switch initial {
             case .completed(let response):
                 return response.domainResult
             case .running(let status):
                 logGeneration("generate_day polling_start \(statusSummary(status))")
-                return try await pollRegeneratedDay(
+                return try await pollDailyGeneration(
                     generationID: status.generationID,
                     creatorID: creatorID
                 )
@@ -735,16 +735,26 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         generationID: UUID,
         creatorID: UUID
     ) async throws -> RegeneratedDayResult {
-        try await SupabaseRegeneratedDayPoller.poll(
-            deadline: Date().addingTimeInterval(SupabaseRegeneratedDayPoller.defaultTimeoutSeconds),
+        try await pollDailyGeneration(
+            generationID: generationID,
+            creatorID: creatorID
+        )
+    }
+
+    private func pollDailyGeneration(
+        generationID: UUID,
+        creatorID: UUID
+    ) async throws -> DailyGenerationResult {
+        try await SupabaseDailyGenerationPoller.poll(
+            deadline: Date().addingTimeInterval(SupabaseDailyGenerationPoller.defaultTimeoutSeconds),
             sleep: { nanoseconds in
                 try await Task.sleep(nanoseconds: nanoseconds)
             },
             invokeStatus: {
-                let invocation = try await invokeRegenerateDay(
+                let invocation = try await invokeDailyGeneration(
                     statusRequest(generationID: generationID, creatorID: creatorID)
                 )
-                logGeneration("regenerate_day poll_result \(regenerateInvocationSummary(invocation))")
+                logGeneration("regenerate_day poll_result \(dailyGenerationInvocationSummary(invocation))")
                 return invocation
             },
             observe: { event in
@@ -769,12 +779,18 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
     private func invokeRegenerateDay<Body: Encodable>(
         _ body: Body
     ) async throws -> SupabaseRegenerateDayInvocation {
-        if let statusBody = body as? SupabaseGenerateWeekStatusRequest,
+        try await invokeDailyGeneration(body)
+    }
+
+    private func invokeDailyGeneration<Body: Encodable>(
+        _ body: Body
+    ) async throws -> SupabaseDailyGenerationInvocation {
+        if let statusBody = body as? SupabaseGenerationStatusRequest,
            let runtimeConfiguration {
             return try await invokeGenerateWeekDirectly(
                 statusBody,
                 runtimeConfiguration: runtimeConfiguration,
-                decode: { try SupabaseRegenerateDayInvocation.decode($0) }
+                decode: { try SupabaseDailyGenerationInvocation.decode($0) }
             )
         }
 
@@ -782,15 +798,15 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
             "generate-week",
             options: FunctionInvokeOptions(body: body)
         ) { data, _ in
-            try SupabaseRegenerateDayInvocation.decode(data)
+            try SupabaseDailyGenerationInvocation.decode(data)
         }
     }
 
     private func statusRequest(
         generationID: UUID,
         creatorID: UUID
-    ) -> SupabaseGenerateWeekStatusRequest {
-        SupabaseGenerateWeekStatusRequest(
+    ) -> SupabaseGenerationStatusRequest {
+        SupabaseGenerationStatusRequest(
             generationID: generationID,
             creatorID: creatorID
         )
@@ -812,6 +828,10 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
     }
 
     private func regenerateInvocationSummary(_ invocation: SupabaseRegenerateDayInvocation) -> String {
+        dailyGenerationInvocationSummary(invocation)
+    }
+
+    private func dailyGenerationInvocationSummary(_ invocation: SupabaseDailyGenerationInvocation) -> String {
         switch invocation {
         case .completed(let response):
             return "completed generation_id=\(response.generationID) weekly_plan_id=\(response.weeklyPlanID) scheduled_date=\(response.targetScheduledDate) status=\(response.status)"
@@ -841,7 +861,7 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         ].filter { !$0.isEmpty }.joined(separator: " ")
     }
 
-    private func statusSummary(_ status: SupabaseGenerateWeekStatusResponse) -> String {
+    private func statusSummary(_ status: SupabaseGenerationStatusResponse) -> String {
         let runningDays = status.dayStatuses.filter { $0.isRunning || $0.isRetrying }
         let queuedDays = status.dayStatuses.filter(\.isQueued)
         let completed = status.dayStatuses.filter(\.isCompleted).count
@@ -909,13 +929,13 @@ private struct DirectFunctionHTTPError: Error {
     let data: Data
 }
 
-enum SupabaseRegeneratedDayPoller {
+enum SupabaseDailyGenerationPoller {
     enum Event: Sendable {
         case waiting(seconds: Int)
         case acceptedRunNotFound(count: Int, retryAfterSeconds: Int)
         case retryableStatusFailure(count: Int, retryAfterSeconds: Int)
         case completed(generationID: UUID, scheduledDate: String)
-        case failed(SupabaseGenerateWeekStatusResponse)
+        case failed(SupabaseGenerationStatusResponse)
         case timedOut
     }
 
@@ -926,9 +946,9 @@ enum SupabaseRegeneratedDayPoller {
         now: @Sendable () -> Date = Date.init,
         initialPollAfterSeconds: Int = 3,
         sleep: @Sendable (UInt64) async throws -> Void,
-        invokeStatus: @Sendable () async throws -> SupabaseRegenerateDayInvocation,
+        invokeStatus: @Sendable () async throws -> SupabaseDailyGenerationInvocation,
         observe: @Sendable (Event) -> Void = { _ in }
-    ) async throws -> RegeneratedDayResult {
+    ) async throws -> DailyGenerationResult {
         var pollAfterSeconds = initialPollAfterSeconds
         var acceptedRunNotFoundCount = 0
         var retryableStatusFailureCount = 0
@@ -936,7 +956,7 @@ enum SupabaseRegeneratedDayPoller {
         while now() < deadline {
             observe(.waiting(seconds: pollAfterSeconds))
             try await sleep(UInt64(max(pollAfterSeconds, 0)) * 1_000_000_000)
-            let invocation: SupabaseRegenerateDayInvocation
+            let invocation: SupabaseDailyGenerationInvocation
             do {
                 invocation = try await invokeStatus()
             } catch {
@@ -987,6 +1007,8 @@ enum SupabaseRegeneratedDayPoller {
         throw RepositoryError.edgeFunction("generation_timeout")
     }
 }
+
+typealias SupabaseRegeneratedDayPoller = SupabaseDailyGenerationPoller
 
 enum SupabaseGenerationRetryPolicy {
     private static let terminalStatusErrorCodes: Set<String> = [

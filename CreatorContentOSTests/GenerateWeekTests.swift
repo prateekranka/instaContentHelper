@@ -355,6 +355,25 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(response.weekProgress.effectiveSavedDayCount, 7)
     }
 
+    func testGenerateDayRequestEncodesEdgeFunctionContract() throws {
+        let request = SupabaseDailyGenerationRequest(
+            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
+            scheduledDate: "2026-06-10",
+            dayBrief: "Brand unboxing at home, honest tone.",
+            mock: true
+        )
+
+        let data = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(object["action"] as? String, "generate_day")
+        XCTAssertEqual(object["creator_id"] as? String, "33333333-3333-4333-8333-333333333333")
+        XCTAssertEqual(object["scheduled_date"] as? String, "2026-06-10")
+        XCTAssertEqual(object["day_brief"] as? String, "Brand unboxing at home, honest tone.")
+        XCTAssertEqual(object["response_mode"] as? String, "sync")
+        XCTAssertEqual(object["mock"] as? Bool, true)
+    }
+
     func testRegenerateDayRequestEncodesDayGuidanceWhenPresent() throws {
         let request = SupabaseRegenerateDayRequest(
             creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
@@ -617,7 +636,7 @@ final class GenerateWeekTests: XCTestCase {
             """.utf8
         )
 
-        let invocation = try SupabaseRegenerateDayInvocation.decode(data)
+        let invocation = try SupabaseDailyGenerationInvocation.decode(data)
         guard case .completed(let response) = invocation else {
             XCTFail("Expected completed day generation")
             return
@@ -1277,7 +1296,7 @@ final class GenerateWeekTests: XCTestCase {
             #"{"generation_id":"88888888-8888-4888-8888-888888888881","weekly_plan_id":"77777777-7777-4777-8777-777777777771","status":"draft","target_scheduled_date":"2026-06-10","daily_card":{}}"#.utf8
         )
 
-        XCTAssertThrowsError(try SupabaseRegenerateDayInvocation.decode(data))
+        XCTAssertThrowsError(try SupabaseDailyGenerationInvocation.decode(data))
     }
 
     func testRegenerateDayCancelledStatusDecodesAsTerminalFailure() throws {
@@ -1285,7 +1304,7 @@ final class GenerateWeekTests: XCTestCase {
             #"{"generation_id":"88888888-8888-4888-8888-888888888881","weekly_plan_id":"77777777-7777-4777-8777-777777777771","status":"cancelled","target_scheduled_date":"2026-06-10"}"#.utf8
         )
 
-        let invocation = try SupabaseRegenerateDayInvocation.decode(data)
+        let invocation = try SupabaseDailyGenerationInvocation.decode(data)
         guard case .failed(let status) = invocation else {
             XCTFail("Expected cancellation to be terminal.")
             return
@@ -1295,7 +1314,7 @@ final class GenerateWeekTests: XCTestCase {
 
     func testRegeneratedDayPollerAllowsBackendRecoveryBudget() {
         XCTAssertGreaterThanOrEqual(
-            SupabaseRegeneratedDayPoller.defaultTimeoutSeconds,
+            SupabaseDailyGenerationPoller.defaultTimeoutSeconds,
             1_800,
             "The day poller must outlive the backend's bounded recovery attempts."
         )
@@ -1303,7 +1322,7 @@ final class GenerateWeekTests: XCTestCase {
 
     func testRegeneratedDayPollerCompletesTwentyOfTwentyRecoverableScenarios() async throws {
         let completed = try completedDayPollingInvocation()
-        let running = try SupabaseRegenerateDayInvocation.decode(
+        let running = try SupabaseDailyGenerationInvocation.decode(
             Data(
                 #"{"generation_id":"88888888-8888-4888-8888-888888888881","weekly_plan_id":"77777777-7777-4777-8777-777777777771","status":"running","target_scheduled_date":"2026-06-10","poll_after_seconds":5}"#.utf8
             )
@@ -1329,7 +1348,7 @@ final class GenerateWeekTests: XCTestCase {
                 running: running,
                 completed: completed
             )
-            let result = try await SupabaseRegeneratedDayPoller.poll(
+            let result = try await SupabaseDailyGenerationPoller.poll(
                 deadline: now.addingTimeInterval(60),
                 now: { now },
                 initialPollAfterSeconds: 0,
@@ -1359,7 +1378,7 @@ final class GenerateWeekTests: XCTestCase {
         )
         let sleeper = RegeneratedDayPollingSleeper()
 
-        _ = try await SupabaseRegeneratedDayPoller.poll(
+        _ = try await SupabaseDailyGenerationPoller.poll(
             deadline: now.addingTimeInterval(60),
             now: { now },
             initialPollAfterSeconds: 0,
@@ -1392,7 +1411,7 @@ final class GenerateWeekTests: XCTestCase {
             )
 
             do {
-                _ = try await SupabaseRegeneratedDayPoller.poll(
+                _ = try await SupabaseDailyGenerationPoller.poll(
                     deadline: now.addingTimeInterval(60),
                     now: { now },
                     initialPollAfterSeconds: 0,
@@ -1409,7 +1428,7 @@ final class GenerateWeekTests: XCTestCase {
         }
     }
 
-    private func completedDayPollingInvocation() throws -> SupabaseRegenerateDayInvocation {
+    private func completedDayPollingInvocation() throws -> SupabaseDailyGenerationInvocation {
         let data = Data(
             """
             {
@@ -1454,7 +1473,7 @@ final class GenerateWeekTests: XCTestCase {
             }
             """.utf8
         )
-        return try SupabaseRegenerateDayInvocation.decode(data)
+        return try SupabaseDailyGenerationInvocation.decode(data)
     }
 
     func testPublishTransitionRemovesHydratedDayBriefGeneratedCards() async throws {
@@ -3194,8 +3213,8 @@ private struct BriefEchoDayGenerationRepository: DayGenerationRepository {
         scheduledDate: String,
         dayBrief: String,
         context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult {
-        RegeneratedDayResult(
+    ) async throws -> DailyGenerationResult {
+        DailyGenerationResult(
             generationID: UUID(),
             weeklyPlanID: UUID(),
             status: "draft",
@@ -3282,8 +3301,8 @@ private struct RetryPastDateFallbackRepository: WeeklyGenerationRepository {
         preserveManualEdits: Bool,
         dayGuidance: String?,
         context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult {
-        RegeneratedDayResult(
+    ) async throws -> DailyGenerationResult {
+        DailyGenerationResult(
             generationID: draft.id,
             weeklyPlanID: draft.weeklyPlanID,
             status: "draft",
@@ -3360,8 +3379,8 @@ private struct PastDateRegenerateDayOnlyRepository: WeeklyGenerationRepository {
         preserveManualEdits: Bool,
         dayGuidance: String?,
         context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult {
-        RegeneratedDayResult(
+    ) async throws -> DailyGenerationResult {
+        DailyGenerationResult(
             generationID: draft.id,
             weeklyPlanID: draft.weeklyPlanID,
             status: "draft",
@@ -3993,21 +4012,21 @@ private actor RegeneratedDayPollingScript {
     }
 
     private var steps: [Step]
-    private let running: SupabaseRegenerateDayInvocation
-    private let completed: SupabaseRegenerateDayInvocation
+    private let running: SupabaseDailyGenerationInvocation
+    private let completed: SupabaseDailyGenerationInvocation
     private(set) var invocationCount = 0
 
     init(
         steps: [Step],
-        running: SupabaseRegenerateDayInvocation,
-        completed: SupabaseRegenerateDayInvocation
+        running: SupabaseDailyGenerationInvocation,
+        completed: SupabaseDailyGenerationInvocation
     ) {
         self.steps = steps
         self.running = running
         self.completed = completed
     }
 
-    func next() throws -> SupabaseRegenerateDayInvocation {
+    func next() throws -> SupabaseDailyGenerationInvocation {
         invocationCount += 1
         let step = steps.isEmpty ? .completed : steps.removeFirst()
 
