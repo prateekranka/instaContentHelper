@@ -627,7 +627,7 @@ final class AppServices {
             logGeneration(
                 "regenerate_day started scheduled_date=\(scheduledDate) preserve_manual_edits=\(preserveManualEdits) guidance_chars=\(dayGuidance?.count ?? 0)"
             )
-            let result = try await repositories.weeklyGeneration.regenerateDay(
+            let result = try await repositories.dailyGeneration.regenerateDay(
                 creatorID: context.creatorID,
                 weeklyPlanID: weeklyPlan.id,
                 scheduledDate: scheduledDate,
@@ -847,7 +847,7 @@ final class AppServices {
         defer { generatingStoryboardThumbnailCardIDs.remove(card.id) }
 
         do {
-            let assets = try await repositories.weeklyGeneration.generateStoryboardThumbnails(
+            let assets = try await repositories.storyboardThumbnails.generateStoryboardThumbnails(
                 creatorID: context.creatorID,
                 dailyCardID: card.id,
                 rowIndexes: rowIndexes,

@@ -1639,7 +1639,8 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: PastDateRegenerateDayOnlyRepository(draft: draft),
+                weeklyGeneration: AppFixtureWeeklyGenerationUnavailableRepository(),
+                dailyGeneration: PastDateRegenerateDayOnlyRepository(draft: draft),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -3109,7 +3110,7 @@ private struct RetryPastDateFallbackRepository: WeeklyGenerationRepository {
     func cancelGeneration(generationID: UUID, context: WorkspaceContext) async throws {}
 }
 
-private struct PastDateRegenerateDayOnlyRepository: WeeklyGenerationRepository {
+private struct PastDateRegenerateDayOnlyRepository: DayGenerationRepository {
     let draft: GeneratedWeekDraft
 
     func regenerateDay(
@@ -3163,17 +3164,6 @@ private struct PastDateRegenerateDayOnlyRepository: WeeklyGenerationRepository {
             generatedAt: "2026-06-29T00:00:00Z"
         )
     }
-
-    func retryQueuedDay(
-        generationID: UUID,
-        scheduledDate: String,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        throw RepositoryError.edgeFunction("retry_queued_day_should_not_be_called_for_past_date")
-    }
-
-    func cancelGeneration(generationID: UUID, context: WorkspaceContext) async throws {}
 }
 
 private final class GenerateWeekMemoryTodayCacheStore: TodayCacheStoring {

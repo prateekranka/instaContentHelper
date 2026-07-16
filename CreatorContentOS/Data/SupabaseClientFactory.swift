@@ -78,6 +78,7 @@ struct SupabaseRepositoryBundleFactory {
             referenceImport: SupabaseReferenceImportRepository(client: client),
             weeklyGeneration: weeklyGeneration,
             dailyGeneration: weeklyGeneration,
+            storyboardThumbnails: weeklyGeneration,
             intelligence: SupabaseIntelligenceRepository(client: client, references: sourcePulse),
             creatorProfile: SupabaseCreatorProfileRepository(client: client),
             archive: SupabaseArchiveRepository(client: client),

@@ -20,6 +20,7 @@ struct AppRepositories: Sendable {
     let referenceImport: any ReferenceImportRepository
     let weeklyGeneration: any WeeklyGenerationRepository
     let dailyGeneration: any DayGenerationRepository
+    let storyboardThumbnails: any StoryboardThumbnailRepository
     let intelligence: any IntelligenceRepository
     let creatorProfile: any CreatorProfileRepository
     let archive: any ArchiveRepository
@@ -33,6 +34,7 @@ struct AppRepositories: Sendable {
         referenceImport: any ReferenceImportRepository = FixtureReferenceImportRepository(),
         weeklyGeneration: any WeeklyGenerationRepository = AppFixtureWeeklyGenerationUnavailableRepository(),
         dailyGeneration: (any DayGenerationRepository)? = nil,
+        storyboardThumbnails: (any StoryboardThumbnailRepository)? = nil,
         intelligence: any IntelligenceRepository,
         creatorProfile: any CreatorProfileRepository,
         archive: any ArchiveRepository,
@@ -45,6 +47,7 @@ struct AppRepositories: Sendable {
         self.referenceImport = referenceImport
         self.weeklyGeneration = weeklyGeneration
         self.dailyGeneration = dailyGeneration ?? weeklyGeneration
+        self.storyboardThumbnails = storyboardThumbnails ?? weeklyGeneration
         self.intelligence = intelligence
         self.creatorProfile = creatorProfile
         self.archive = archive
@@ -263,6 +266,15 @@ protocol DayGenerationRepository: Sendable {
         dayBrief: String,
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult
+
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        dayGuidance: String?,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult
 }
 
 extension DayGenerationRepository {
@@ -274,9 +286,7 @@ extension DayGenerationRepository {
     ) async throws -> DailyGenerationResult {
         throw RepositoryError.notConfigured("generate_day_not_configured")
     }
-}
 
-protocol WeeklyGenerationRepository: DayGenerationRepository {
     func regenerateDay(
         creatorID: UUID,
         weeklyPlanID: UUID,
@@ -284,8 +294,36 @@ protocol WeeklyGenerationRepository: DayGenerationRepository {
         preserveManualEdits: Bool,
         dayGuidance: String?,
         context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult
+    ) async throws -> DailyGenerationResult {
+        throw RepositoryError.notConfigured("regenerate_day_not_configured")
+    }
+}
 
+protocol StoryboardThumbnailRepository: Sendable {
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        rowIndexes: [Int]?,
+        force: Bool,
+        revisionInstructions: String?,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset]
+}
+
+extension StoryboardThumbnailRepository {
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        rowIndexes: [Int]? = nil,
+        force: Bool = false,
+        revisionInstructions: String? = nil,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset] {
+        throw RepositoryError.notConfigured("storyboard_thumbnail_generation_not_configured")
+    }
+}
+
+protocol WeeklyGenerationRepository: DayGenerationRepository, StoryboardThumbnailRepository {
     func retryQueuedDay(
         generationID: UUID,
         scheduledDate: String,
@@ -297,15 +335,6 @@ protocol WeeklyGenerationRepository: DayGenerationRepository {
         generationID: UUID,
         context: WorkspaceContext
     ) async throws
-
-    func generateStoryboardThumbnails(
-        creatorID: UUID,
-        dailyCardID: UUID,
-        rowIndexes: [Int]?,
-        force: Bool,
-        revisionInstructions: String?,
-        context: WorkspaceContext
-    ) async throws -> [StoryboardThumbnailAsset]
 
     func generateStoryboardThumbnailsForWeek(
         creatorID: UUID,
@@ -344,17 +373,6 @@ extension WeeklyPlanRepository {
 }
 
 extension WeeklyGenerationRepository {
-    func regenerateDay(
-        creatorID: UUID,
-        weeklyPlanID: UUID,
-        scheduledDate: String,
-        preserveManualEdits: Bool,
-        dayGuidance: String?,
-        context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult {
-        throw RepositoryError.notConfigured("regenerate_day_not_configured")
-    }
-
     func retryQueuedDay(
         generationID: UUID,
         scheduledDate: String,
@@ -369,17 +387,6 @@ extension WeeklyGenerationRepository {
         context: WorkspaceContext
     ) async throws {
         throw RepositoryError.notConfigured("cancel_generation_not_configured")
-    }
-
-    func generateStoryboardThumbnails(
-        creatorID: UUID,
-        dailyCardID: UUID,
-        rowIndexes: [Int]? = nil,
-        force: Bool = false,
-        revisionInstructions: String? = nil,
-        context: WorkspaceContext
-    ) async throws -> [StoryboardThumbnailAsset] {
-        throw RepositoryError.notConfigured("storyboard_thumbnail_generation_not_configured")
     }
 
     func generateStoryboardThumbnailsForWeek(
