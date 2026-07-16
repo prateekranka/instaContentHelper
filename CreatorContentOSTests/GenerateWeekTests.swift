@@ -1032,20 +1032,6 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(generatedDraft.captionBackupDetail, "Caption-only version for a busy day. Simple caption backup.")
     }
 
-    func testAppServicesFixtureGenerationThrowsNotConfigured() async throws {
-        let services = AppServices.fixtureBacked(
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
-            todayDate: { "2026-06-01" }
-        )
-
-        let generatedDraft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNil(generatedDraft)
-        XCTAssertEqual(services.generationError, "Fixture generation is unavailable. Use live generation or backend mock generation.")
-        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .failed)
-        XCTAssertEqual(services.weeklyGenerationProgress?.error, "Fixture generation is unavailable. Use live generation or backend mock generation.")
-    }
-
     func testGenerateDayCardStoresResultForTheRequestedDate() async throws {
         let services = AppServices.fixtureBacked(
             repositories: AppRepositories(
@@ -1137,122 +1123,6 @@ final class GenerateWeekTests: XCTestCase {
                 "day_brief_required"
             )
         }
-    }
-
-    func testEmptyGeneratedDraftDoesNotReplaceExistingWeek() async throws {
-        let services = AppServices.fixtureBacked(
-            repositories: AppRepositories(
-                context: .creatorFixture,
-                today: FixtureTodayCardRepository(),
-                weeklyPlans: FixtureWeeklyPlanRepository(),
-                references: FixtureReferenceRepository(),
-                referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: EmptyDraftWeeklyGenerationRepository(),
-                intelligence: FixtureIntelligenceRepository(),
-                creatorProfile: FixtureCreatorProfileRepository(),
-                archive: FixtureArchiveRepository()
-            ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
-            todayDate: { "2026-06-01" }
-        )
-        let existingDraft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: "2026-06-22",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
-        )
-        services.applyGeneratedDraft(existingDraft)
-        let existingPlanID = services.weeklyPlan.id
-        let existingDayCount = services.weeklyPlan.days.count
-
-        let draft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNil(draft)
-        XCTAssertEqual(services.weeklyPlan.id, existingPlanID)
-        XCTAssertEqual(services.weeklyPlan.days.count, existingDayCount)
-        XCTAssertEqual(services.latestGenerationSummary?.id, existingDraft.id)
-        XCTAssertEqual(services.generationError, "The AI draft did not pass validation. Try Generate again.")
-        XCTAssertFalse(services.canPublishCurrentWeek)
-    }
-
-    func testAppServicesGenerationFailureSurfacesStableError() async throws {
-        let services = AppServices.fixtureBacked(
-            repositories: AppRepositories(
-                context: .creatorFixture,
-                today: FixtureTodayCardRepository(),
-                weeklyPlans: FixtureWeeklyPlanRepository(),
-                references: FixtureReferenceRepository(),
-                referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: FailingWeeklyGenerationRepository(),
-                intelligence: FixtureIntelligenceRepository(),
-                creatorProfile: FixtureCreatorProfileRepository(),
-                archive: FixtureArchiveRepository()
-            ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
-            todayDate: { "2026-06-01" }
-        )
-
-        let draft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNil(draft)
-        XCTAssertEqual(services.generationError, "AI generation is not configured in Supabase.")
-        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .failed)
-        XCTAssertEqual(services.weeklyGenerationProgress?.error, "AI generation is not configured in Supabase.")
-    }
-
-    func testAppServicesGenerationFailureExtractsStableErrorFromWrappedMessage() async throws {
-        let services = AppServices.fixtureBacked(
-            repositories: AppRepositories(
-                context: .creatorFixture,
-                today: FixtureTodayCardRepository(),
-                weeklyPlans: FixtureWeeklyPlanRepository(),
-                references: FixtureReferenceRepository(),
-                referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: WrappedErrorWeeklyGenerationRepository(),
-                intelligence: FixtureIntelligenceRepository(),
-                creatorProfile: FixtureCreatorProfileRepository(),
-                archive: FixtureArchiveRepository()
-            ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
-            todayDate: { "2026-06-01" }
-        )
-
-        let draft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNil(draft)
-        XCTAssertEqual(services.generationError, "This week is already published and locked.")
-        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .failed)
-        XCTAssertEqual(services.weeklyGenerationProgress?.error, "This week is already published and locked.")
-    }
-
-    func testAppServicesGenerationFailurePreservesLastProgressCount() async throws {
-        let services = AppServices.fixtureBacked(
-            repositories: AppRepositories(
-                context: .creatorFixture,
-                today: FixtureTodayCardRepository(),
-                weeklyPlans: FixtureWeeklyPlanRepository(),
-                references: FixtureReferenceRepository(),
-                referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: ProgressThenFailWeeklyGenerationRepository(),
-                intelligence: FixtureIntelligenceRepository(),
-                creatorProfile: FixtureCreatorProfileRepository(),
-                archive: FixtureArchiveRepository()
-            ),
-            todayCache: GenerateWeekMemoryTodayCacheStore(),
-            todayDate: { "2026-06-01" }
-        )
-
-        let draft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNil(draft)
-        XCTAssertEqual(services.generationError, "The AI returned an incomplete draft. Try Generate again.")
-        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .failed)
-        XCTAssertEqual(services.weeklyGenerationProgress?.draftedDayCount, 4)
-        XCTAssertEqual(services.weeklyGenerationProgress?.checkedDayCount, 4)
-        XCTAssertEqual(services.weeklyGenerationProgress?.totalDayCount, 7)
-        XCTAssertEqual(services.weeklyGenerationProgress?.error, "The AI returned an incomplete draft. Try Generate again.")
     }
 
     func testGenerationRetryPolicyClassifiesNetworkConnectionLostAsTransient() {
@@ -3103,70 +2973,6 @@ final class GenerateWeekTests: XCTestCase {
     }
 }
 
-private struct EmptyDraftWeeklyGenerationRepository: WeeklyGenerationRepository {
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        await progress?(
-            WeeklyGenerationProgress(
-                phase: .draftingDays,
-                generationID: UUID(uuidString: "77777777-7777-4777-8777-777777777771"),
-                weeklyPlanID: UUID(uuidString: "77777777-7777-4777-8777-777777777772"),
-                draftedDayCount: 0,
-                checkedDayCount: 0,
-                totalDayCount: 7,
-                currentDay: nil,
-                message: "generation_complete",
-                error: nil
-            )
-        )
-
-        return GeneratedWeekDraft(
-            id: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
-            weeklyPlanID: UUID(uuidString: "77777777-7777-4777-8777-777777777772")!,
-            status: "draft",
-            strategySummary: "Empty draft fixture.",
-            warnings: [],
-            assumptions: [],
-            dailyCards: [],
-            ideaBank: [],
-            sourceSummary: "Empty draft fixture.",
-            generatedAt: "2026-06-22T00:00:00Z"
-        )
-    }
-}
-
-private struct ProgressThenFailWeeklyGenerationRepository: WeeklyGenerationRepository {
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        await progress?(
-            WeeklyGenerationProgress(
-                phase: .draftingDays,
-                generationID: UUID(uuidString: "88888888-8888-4888-8888-888888888881"),
-                weeklyPlanID: nil,
-                draftedDayCount: 4,
-                checkedDayCount: 4,
-                totalDayCount: 7,
-                currentDay: "2026-06-12",
-                message: "generation_running",
-                error: nil
-            )
-        )
-        throw RepositoryError.edgeFunction("invalid_ai_json")
-    }
-}
-
 private struct RetryCompletesQueuedDayRepository: WeeklyGenerationRepository {
     var draft: GeneratedWeekDraft
 
@@ -3189,19 +2995,6 @@ private struct RetryCompletesQueuedDayRepository: WeeklyGenerationRepository {
     ) async throws -> GeneratedWeekDraft {
         await progress?(.readyForReview(from: draft))
         return draft
-    }
-}
-
-private struct FailingWeeklyGenerationRepository: WeeklyGenerationRepository {
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        throw RepositoryError.notConfigured("missing_openai_api_key")
     }
 }
 
@@ -3255,26 +3048,6 @@ private struct BriefEchoDayGenerationRepository: DayGenerationRepository {
             assumptions: [],
             sourceSummary: "Day brief only.",
             generatedAt: "2026-06-01T00:00:00Z"
-        )
-    }
-}
-
-private struct WrappedErrorWeeklyGenerationRepository: WeeklyGenerationRepository {
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        throw NSError(
-            domain: "Supabase",
-            code: 409,
-            userInfo: [
-                NSLocalizedDescriptionKey:
-                    #"Edge Function returned a non-2xx status code: 409 {"error":"existing_published_week_locked"}"#
-            ]
         )
     }
 }

@@ -304,21 +304,6 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertNil(services.generationError)
     }
 
-    func testGenerateWeekRejectsPastWeekStart() async throws {
-        let weeklyRepository = RecordingWeeklyPlanRepository()
-        let services = makeServices(weeklyPlans: weeklyRepository)
-        // Bypass updateWeeklyStartDate guard — it also rejects past dates.
-        services.weeklyPlan.weekStartDate = "2026-05-25"
-        services.weeklyBriefDraftText = "This dirty brief must not be saved."
-
-        let draft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNil(draft)
-        XCTAssertEqual(services.generationError, "past_generation_date_not_allowed")
-        let briefRequests = await weeklyRepository.recordedBriefRequests()
-        XCTAssertTrue(briefRequests.isEmpty)
-    }
-
     func testRegenerateDailyCardRejectsPastDate() async throws {
         let services = makeServices()
 
@@ -405,51 +390,6 @@ final class ManagerAdminUsageTests: XCTestCase {
 
         XCTAssertEqual(status, .draft)
         XCTAssertEqual(status.tone, .info)
-    }
-
-    func testGenerateSavesDirtyWeeklyBriefBeforeGenerating() async throws {
-        let weeklyRepository = RecordingWeeklyPlanRepository()
-        let services = makeServices(
-            weeklyPlans: weeklyRepository,
-            weeklyGeneration: TestWeeklyGenerationRepository()
-        )
-        let brief = """
-        Weekly routine: Pilates Monday, strength Wednesday.
-        Brand/collab: Puma pickup on Saturday.
-        Family/travel: Sunday lunch.
-        """
-
-        services.weeklyBriefDraftText = brief
-        let draft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNotNil(draft)
-        XCTAssertEqual(services.weeklyPlan.weeklyBriefText, brief)
-        XCTAssertEqual(services.weeklyBriefDraftText, brief)
-        XCTAssertNil(services.weeklyBriefEditError)
-        XCTAssertNil(services.generationError)
-
-        let briefRequests = await weeklyRepository.recordedBriefRequests()
-        XCTAssertEqual(briefRequests, [brief])
-    }
-
-    func testGenerateStopsWhenDirtyWeeklyBriefSaveFails() async throws {
-        let weeklyRepository = RecordingWeeklyPlanRepository(
-            briefError: RepositoryError.edgeFunction("weekly_setup_update_failed")
-        )
-        let services = makeServices(weeklyPlans: weeklyRepository)
-        let originalPlan = services.weeklyPlan
-
-        services.weeklyBriefDraftText = "Weekly routine: save should fail."
-        let draft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNil(draft)
-        XCTAssertEqual(services.weeklyPlan, originalPlan)
-        XCTAssertEqual(services.weeklyBriefEditError, "weekly_setup_update_failed")
-        XCTAssertEqual(services.generationError, "weekly_setup_update_failed")
-        XCTAssertNil(services.latestGenerationSummary)
-
-        let briefRequests = await weeklyRepository.recordedBriefRequests()
-        XCTAssertEqual(briefRequests, ["Weekly routine: save should fail."])
     }
 
     func testManagerUpdatesCreatorProfileOutsideWeeklySetup() async throws {

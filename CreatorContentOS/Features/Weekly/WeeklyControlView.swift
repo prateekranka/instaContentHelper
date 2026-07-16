@@ -126,25 +126,6 @@ struct WeeklyControlView: View {
         }
     }
 
-    private var generateButtonTitle: String {
-        if services.isGeneratingWeek {
-            if let progress = services.weeklyGenerationProgress,
-               progress.phase == .draftingDays || progress.phase == .savingDraftWeek {
-                if progress.draftedDayCount > 0 {
-                    "Generating \(progress.draftedDayCount)/\(progress.totalDayCount)"
-                } else {
-                    "Generating"
-                }
-            } else {
-                "Generating"
-            }
-        } else if services.latestGenerationSummary != nil {
-            "Regenerate"
-        } else {
-            "Generate"
-        }
-    }
-
     private var visibleWeeklyDays: [WeeklyDay] {
         guard let selectedDayFilter else { return services.weeklyPlan.days }
         return services.weeklyPlan.days.filter { $0.state == selectedDayFilter }
@@ -315,9 +296,6 @@ struct WeeklyControlView: View {
                 onReview: {
                     isReviewingGeneratedDraft = true
                 },
-                onRegenerate: {
-                    services.generateCurrentWeek()
-                },
                 onRegenerateDay: services.regeneratedDailyCard,
                 onRetryQueuedDay: services.retryQueuedGenerationDay,
                 onCancel: { services.cancelGeneration() }
@@ -330,9 +308,6 @@ struct WeeklyControlView: View {
                 canRegenerateDay: canRegenerateDay,
                 onReview: {
                     isReviewingGeneratedDraft = true
-                },
-                onRegenerate: {
-                    services.generateCurrentWeek()
                 },
                 onRegenerateDay: services.regeneratedDailyCard,
                 onRetryQueuedDay: services.retryQueuedGenerationDay,
@@ -362,14 +337,6 @@ struct WeeklyControlView: View {
                 RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
                     .stroke(MCOTheme.Color.hairline, lineWidth: 1)
             }
-        } else if isWeeklyBriefSet {
-            PrimaryActionButton(
-                title: "Generate",
-                systemImage: "paperplane"
-            ) {
-                services.generateCurrentWeek()
-            }
-            .disabled(services.isGeneratingWeek)
         }
     }
 }
@@ -380,7 +347,6 @@ struct WeeklyGenerationStatusPanel: View {
     let weekRange: String
     let canRegenerateDay: Bool
     let onReview: () -> Void
-    let onRegenerate: () -> Void
     let onRegenerateDay: RegenerateDayAction?
     let onRetryQueuedDay: RetryQueuedDayAction?
     let onCancel: (() -> Void)?
@@ -468,31 +434,10 @@ struct WeeklyGenerationStatusPanel: View {
             }
 
             if let error = progress.error {
-                VStack(alignment: .leading, spacing: MCOSpace.s) {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.oxblood)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if progress.phase == .failed {
-                        Button {
-                            onRegenerate()
-                        } label: {
-                            HStack(spacing: MCOSpace.xs) {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text(draft == nil ? "Generate" : "Regenerate")
-                                    .font(MCOType.bodySmall.weight(.semibold))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 42)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(MCOTheme.Color.paperRaised)
-                        .background(MCOTheme.Color.oxblood, in: Capsule())
-                        .accessibilityLabel(draft == nil ? "Generate draft week again" : "Regenerate draft week")
-                    }
-                }
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if let currentDay = progress.currentDay {
                 Text("Working on \(SupabaseDateFormatting.displayDate(for: currentDay)).")
                     .font(MCOType.caption)
@@ -535,35 +480,18 @@ struct WeeklyGenerationStatusPanel: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.86)
             Spacer(minLength: MCOSpace.s)
-            VStack(spacing: MCOSpace.xs) {
-                Button {
-                    onReview()
-                } label: {
-                    Text("Review")
-                        .font(MCOType.caption)
-                        .frame(width: 78, height: 28)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(MCOTheme.Color.paperRaised)
-                .background(MCOTheme.Color.oxblood, in: Capsule())
-                .accessibilityLabel("Review generated day cards")
-                .accessibilityIdentifier("weekly.reviewGenerated")
-
-                Button {
-                    onRegenerate()
-                } label: {
-                    Text("Regenerate")
-                        .font(MCOType.caption)
-                        .frame(width: 78, height: 28)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(MCOTheme.Color.oxblood)
-                .background(MCOTheme.Color.paperRaised.opacity(0.72), in: Capsule())
-                .overlay {
-                    Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                }
-                .accessibilityLabel("Regenerate draft week")
+            Button {
+                onReview()
+            } label: {
+                Text("Review")
+                    .font(MCOType.caption)
+                    .frame(width: 78, height: 28)
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(MCOTheme.Color.paperRaised)
+            .background(MCOTheme.Color.oxblood, in: Capsule())
+            .accessibilityLabel("Review generated day cards")
+            .accessibilityIdentifier("weekly.reviewGenerated")
         }
     }
 

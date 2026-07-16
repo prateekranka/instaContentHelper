@@ -18,9 +18,8 @@ final class PublishedWeekPersistenceTests: XCTestCase {
             todayDate: { "2026-06-01" }
         )
 
-        // Generate + publish a week so a canonical published card exists.
-        let draft = await services.generateCurrentWeekImmediately()
-        XCTAssertNotNil(draft)
+        // Seed a generated draft and publish so a canonical published card exists.
+        try await seedGeneratedWeekDraft(on: services)
         for day in services.weeklyPlan.days {
             await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
@@ -58,10 +57,9 @@ final class PublishedWeekPersistenceTests: XCTestCase {
             todayDate: { "2026-06-01" }
         )
 
-        // Generate + publish drives saveTodaySnapshot(source: "week-publish")
+        // Seed a generated draft and publish drives saveTodaySnapshot(source: "week-publish")
         // through the production path, persisting the published card to cache.
-        let draft = await services.generateCurrentWeekImmediately()
-        XCTAssertNotNil(draft)
+        try await seedGeneratedWeekDraft(on: services)
         for day in services.weeklyPlan.days {
             await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
@@ -177,6 +175,21 @@ final class PublishedWeekPersistenceTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func seedGeneratedWeekDraft(
+        on services: AppServices,
+        weekStartDate: String = "2026-06-01"
+    ) async throws {
+        let draft = try await TestWeeklyGenerationRepository().generateWeek(
+            creatorID: services.context.creatorID,
+            weekStartDate: weekStartDate,
+            weeklySetupID: nil,
+            mode: .generateDraft,
+            context: services.context,
+            progress: nil
+        )
+        services.applyGeneratedDraft(draft)
+    }
 
     private func makeGeneratingFixtureRepositories() -> AppRepositories {
         let store = FixturePublishedContentStore()

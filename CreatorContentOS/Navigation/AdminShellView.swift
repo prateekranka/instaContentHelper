@@ -365,27 +365,9 @@ struct AIRunwayView: View {
                     appState.activeMode = .creator
                 }
                 .frame(maxWidth: 150)
-                PrimaryActionButton(
-                    title: generateButtonTitle,
-                    systemImage: services.isGeneratingWeek ? "hourglass" : "sparkles"
-                ) {
-                    services.generateCurrentWeek()
-                }
-                .disabled(!services.canGenerateWeek)
-                .opacity(services.canGenerateWeek ? 1 : 0.48)
             }
         }
         .navigationBarHidden(true)
-    }
-
-    private var generateButtonTitle: String {
-        if services.isGeneratingWeek {
-            "Generating"
-        } else if services.latestGenerationSummary == nil {
-            "Generate"
-        } else {
-            "Regenerate"
-        }
     }
 
     private var header: some View {
@@ -493,8 +475,8 @@ struct AIRunwayView: View {
                 }
             } else {
                 AdminSignalBlock(
-                    title: "Waiting for draft",
-                    value: "Generate a week to populate strategy, sources, warnings, and daily cards.",
+                    title: "No draft loaded",
+                    value: "Day-wise generation populates strategy, sources, warnings, and daily cards here when a draft exists.",
                     systemImage: "wand.and.stars",
                     tone: .quiet
                 )
