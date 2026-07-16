@@ -670,9 +670,23 @@ final class AppServices {
                 dayBrief: brief,
                 context: context
             )
+            guard result.targetScheduledDate == scheduledDate,
+                  result.dailyCard.scheduledDate == scheduledDate
+            else {
+                logGeneration(
+                    "generate_day rejected invalid_generated_day scheduled_date=\(scheduledDate) target=\(result.targetScheduledDate) card_date=\(result.dailyCard.scheduledDate)"
+                )
+                throw RepositoryError.edgeFunction("invalid_generated_day")
+            }
             dayBriefGeneratedCards[scheduledDate] = result.dailyCard
-            if weeklyPlan.days.contains(where: { $0.scheduledDate == scheduledDate }) {
+            let integratesWithCurrentWeeklyReview = result.weeklyPlanID == weeklyPlan.id
+                && weeklyPlan.days.contains(where: { $0.scheduledDate == scheduledDate })
+            if integratesWithCurrentWeeklyReview {
                 applyRegeneratedDay(result.dailyCard)
+                await reconcileGeneratedDayCardFromCurrentWeeklyContent(
+                    scheduledDate: scheduledDate,
+                    suppressRepositoryErrorOnFailure: true
+                )
             }
             lastRepositoryError = nil
             logGeneration("generate_day completed scheduled_date=\(scheduledDate) daily_card_id=\(result.dailyCard.id)")
@@ -736,7 +750,8 @@ final class AppServices {
     }
 
     func applyRegeneratedDay(_ card: GeneratedDailyCardDraft) {
-        if var draft = latestGenerationSummary {
+        if var draft = latestGenerationSummary,
+           draft.weeklyPlanID == weeklyPlan.id {
             if draft.replaceDailyCard(card) {
                 latestGenerationSummary = draft
             }
@@ -1024,7 +1039,10 @@ final class AppServices {
         }
     }
 
-    func reconcileGeneratedDayCardFromCurrentWeeklyContent(scheduledDate: String) async {
+    func reconcileGeneratedDayCardFromCurrentWeeklyContent(
+        scheduledDate: String,
+        suppressRepositoryErrorOnFailure: Bool = false
+    ) async {
         do {
             let content = try await repositories.weeklyPlans.currentWeeklyContent(for: context)
             guard let draft = content.generatedDraft,
@@ -1034,10 +1052,13 @@ final class AppServices {
                 return
             }
 
-            if var localDraft = latestGenerationSummary,
-               localDraft.weeklyPlanID == draft.weeklyPlanID {
-                localDraft.replaceDailyCard(canonicalCard)
-                latestGenerationSummary = localDraft
+            if var localDraft = latestGenerationSummary {
+                if localDraft.weeklyPlanID == draft.weeklyPlanID {
+                    localDraft.replaceDailyCard(canonicalCard)
+                    latestGenerationSummary = localDraft
+                }
+            } else {
+                latestGenerationSummary = draft
             }
 
             if let dayIndex = weeklyPlan.days.firstIndex(where: {
@@ -1046,9 +1067,17 @@ final class AppServices {
                 weeklyPlan.days[dayIndex] = canonicalCard.weeklyDay
                 weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
             }
+
+            dayBriefGeneratedCards[scheduledDate] = canonicalCard
             lastRepositoryError = nil
         } catch {
-            lastRepositoryError = error.localizedDescription
+            if suppressRepositoryErrorOnFailure {
+                logGeneration(
+                    "reconcile_generated_day_card_failed scheduled_date=\(scheduledDate) error=\(error.localizedDescription)"
+                )
+            } else {
+                lastRepositoryError = error.localizedDescription
+            }
         }
     }
 
@@ -1557,6 +1586,7 @@ private enum DayGenerationErrorDisplay {
     private static let userFacingMessages = [
         "invalid_ai_json": "The AI returned an incomplete draft. Try Generate again.",
         "invalid_generated_week": "The AI draft did not pass validation. Try Generate again.",
+        "invalid_generated_day": "The generated card did not match the requested date. Try Generate again.",
         "openai_request_failed": "The AI service failed. Try Generate again.",
         "missing_openai_api_key": "AI generation is not configured in Supabase.",
         "invalid_generation_payload": "The generation request could not be accepted. Refresh and try again.",
@@ -1576,6 +1606,7 @@ private enum DayGenerationErrorDisplay {
         "openai_request_failed",
         "invalid_ai_json",
         "invalid_generated_week",
+        "invalid_generated_day",
         "generation_persist_failed",
         "weekly_setup_not_found",
         "existing_published_week_locked",

@@ -1843,6 +1843,401 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertNil(services.lastRepositoryError,
                      "Reconciliation should not set repository error on success")
     }
+
+    func testGenerateDayCardSeedsLatestGenerationSummaryFromCanonicalContentWhenNil() async throws {
+        let targetDate = "2026-06-03"
+        var canonicalDraft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-06-01")
+        canonicalDraft.weeklyPlanID = WeeklyPlan.raceWeek.id
+        guard let targetIndex = canonicalDraft.dailyCards.firstIndex(where: { $0.scheduledDate == targetDate }) else {
+            XCTFail("Expected canonical draft to include \(targetDate)")
+            return
+        }
+        var canonicalCard = canonicalDraft.dailyCards[targetIndex]
+        canonicalCard.title = "Canonical persisted Wednesday"
+        canonicalCard.caption = "Canonical persisted caption."
+        canonicalDraft.dailyCards[targetIndex] = canonicalCard
+
+        var generatedCard = canonicalCard
+        generatedCard.title = "Day card: Brand unboxing at home, honest tone."
+        let contentRepo = ReconciliationContentRepository(
+            publishedPlan: WeeklyPlan.raceWeek,
+            generatedDraft: canonicalDraft,
+            weekStartDate: "2026-06-01"
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: contentRepo,
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: DeterministicDayGenerationRepository(generatedCard: generatedCard),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+
+        XCTAssertNil(services.latestGenerationSummary)
+
+        let returnedCard = try await services.generateDayCard(
+            scheduledDate: targetDate,
+            dayBrief: "Brand unboxing at home, honest tone."
+        )
+
+        XCTAssertEqual(returnedCard.id, generatedCard.id)
+        XCTAssertEqual(services.latestGenerationSummary?.id, canonicalDraft.id)
+        XCTAssertEqual(services.latestGenerationSummary?.weeklyPlanID, WeeklyPlan.raceWeek.id)
+        let weeklyReviewCard = services.latestGenerationSummary?.dailyCards
+            .first { $0.scheduledDate == targetDate }
+        XCTAssertEqual(weeklyReviewCard?.title, "Canonical persisted Wednesday")
+        XCTAssertEqual(weeklyReviewCard?.caption, "Canonical persisted caption.")
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.id, generatedCard.id)
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.title, "Canonical persisted Wednesday")
+        XCTAssertNil(services.lastRepositoryError)
+    }
+
+    func testGenerateDayCardReconcilesTargetDayWithoutOverwritingEditedCard() async throws {
+        let targetDate = "2026-06-03"
+        let editedDate = "2026-06-04"
+        var localDraft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-06-01")
+        localDraft.weeklyPlanID = WeeklyPlan.raceWeek.id
+        guard let targetIndex = localDraft.dailyCards.firstIndex(where: { $0.scheduledDate == targetDate }),
+              let editedIndex = localDraft.dailyCards.firstIndex(where: { $0.scheduledDate == editedDate })
+        else {
+            XCTFail("Expected draft to include target and edited dates")
+            return
+        }
+
+        var canonicalDraft = localDraft
+        var canonicalCard = canonicalDraft.dailyCards[targetIndex]
+        canonicalCard.title = "Canonical persisted Wednesday"
+        canonicalCard.caption = "Canonical persisted caption."
+        canonicalDraft.dailyCards[targetIndex] = canonicalCard
+
+        var generatedCard = canonicalCard
+        generatedCard.title = "Day card: Brand unboxing at home, honest tone."
+        let contentRepo = ReconciliationContentRepository(
+            publishedPlan: WeeklyPlan.raceWeek,
+            generatedDraft: canonicalDraft,
+            weekStartDate: "2026-06-01"
+        )
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: contentRepo,
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: DeterministicDayGenerationRepository(generatedCard: generatedCard),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+        services.applyGeneratedDraft(localDraft)
+        localDraft.dailyCards[editedIndex].title = "Locally edited Thursday"
+        localDraft.dailyCards[editedIndex].caption = "User edited this."
+        if var seededDraft = services.latestGenerationSummary {
+            seededDraft.replaceDailyCard(localDraft.dailyCards[editedIndex])
+            services.latestGenerationSummary = seededDraft
+        }
+        if let dayIndex = services.weeklyPlan.days.firstIndex(where: { $0.scheduledDate == editedDate }) {
+            services.weeklyPlan.days[dayIndex].title = "Locally edited Thursday"
+        }
+
+        _ = try await services.generateDayCard(
+            scheduledDate: targetDate,
+            dayBrief: "Brand unboxing at home, honest tone."
+        )
+
+        let reconciledCard = services.latestGenerationSummary?.dailyCards
+            .first { $0.scheduledDate == targetDate }
+        XCTAssertEqual(reconciledCard?.title, "Canonical persisted Wednesday")
+        XCTAssertEqual(reconciledCard?.caption, "Canonical persisted caption.")
+
+        let editedCardAfter = services.latestGenerationSummary?.dailyCards
+            .first { $0.scheduledDate == editedDate }
+        XCTAssertEqual(editedCardAfter?.title, "Locally edited Thursday")
+        XCTAssertEqual(editedCardAfter?.caption, "User edited this.")
+        XCTAssertEqual(services.latestGenerationSummary?.dailyCards.count, 7)
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.title, "Canonical persisted Wednesday")
+    }
+
+    func testGenerateDayCardSurvivesReconciliationReadFailure() async throws {
+        let targetDate = "2026-06-03"
+        let cardID = UUID()
+        let generatedCard = GeneratedDailyCardDraft(
+            id: cardID,
+            scheduledDate: targetDate,
+            status: "draft",
+            title: "Day card: Brand unboxing at home, honest tone.",
+            whyToday: "Test day-at-a-time generation.",
+            growthJob: "Consistency.",
+            contentPillar: "lifestyle",
+            shootability: "easy",
+            estimatedShootMinutes: 8,
+            energyRequired: "low",
+            languageMode: "English",
+            sceneList: [
+                ShotScene(number: 1, title: "Test scene", duration: "3 sec", symbol: "sparkles")
+            ],
+            script: "Test day script.",
+            noVoiceoverVersion: "No VO.",
+            onScreenText: ["Test"],
+            caption: "Test day caption.",
+            cta: "Save this.",
+            hashtags: ["test"],
+            coverText: "Test",
+            postInstructions: "Test instructions.",
+            brandEventNotes: "",
+            backupStory: "Backup story.",
+            backupCaptionOnly: "Backup caption.",
+            audioOptionNotes: "",
+            creatorFitScore: 90,
+            riskNotes: [],
+            assumptions: ["Test assumption."],
+            sourceNote: "Test source."
+        )
+
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FailingCurrentWeeklyContentRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: DeterministicDayGenerationRepository(generatedCard: generatedCard),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+
+        let returnedCard = try await services.generateDayCard(
+            scheduledDate: targetDate,
+            dayBrief: "Brand unboxing at home, honest tone."
+        )
+
+        XCTAssertEqual(returnedCard.id, cardID)
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.id, cardID)
+        XCTAssertNil(services.latestGenerationSummary)
+        XCTAssertNil(services.lastRepositoryError)
+        XCTAssertNil(services.dayBriefGenerationErrors[targetDate])
+    }
+
+    func testGenerateDayCardRejectsMismatchedResponseDates() async throws {
+        let requestedDate = "2026-06-03"
+        let wrongDate = "2026-06-04"
+        var localDraft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-06-01")
+        localDraft.weeklyPlanID = WeeklyPlan.raceWeek.id
+        guard let targetIndex = localDraft.dailyCards.firstIndex(where: { $0.scheduledDate == requestedDate }) else {
+            XCTFail("Expected draft to include \(requestedDate)")
+            return
+        }
+
+        let mismatches = [
+            (label: "top-level target", targetDate: wrongDate, cardDate: requestedDate),
+            (label: "daily card", targetDate: requestedDate, cardDate: wrongDate),
+        ]
+
+        for mismatch in mismatches {
+            var generatedCard = localDraft.dailyCards[targetIndex]
+            generatedCard.scheduledDate = mismatch.cardDate
+            generatedCard.title = "Wrong-date day card title"
+            let services = AppServices.fixtureBacked(
+                repositories: AppRepositories(
+                    context: .creatorFixture,
+                    today: FixtureTodayCardRepository(),
+                    weeklyPlans: ReconciliationContentRepository(
+                        publishedPlan: WeeklyPlan.raceWeek,
+                        generatedDraft: localDraft,
+                        weekStartDate: "2026-06-01"
+                    ),
+                    references: FixtureReferenceRepository(),
+                    referenceImport: FixtureReferenceImportRepository(),
+                    dailyGeneration: DeterministicDayGenerationRepository(
+                        generatedCard: generatedCard,
+                        targetScheduledDate: mismatch.targetDate
+                    ),
+                    intelligence: FixtureIntelligenceRepository(),
+                    creatorProfile: FixtureCreatorProfileRepository(),
+                    archive: FixtureArchiveRepository()
+                ),
+                todayCache: InMemoryTodayCacheStore(),
+                todayDate: { "2026-06-01" }
+            )
+            services.applyGeneratedDraft(localDraft)
+            let summaryBefore = services.latestGenerationSummary
+            let weeklyDayBefore = services.weeklyPlan.days.first { $0.scheduledDate == requestedDate }
+
+            do {
+                _ = try await services.generateDayCard(
+                    scheduledDate: requestedDate,
+                    dayBrief: "Brand unboxing at home, honest tone."
+                )
+                XCTFail("Expected \(mismatch.label) mismatch rejection")
+            } catch {
+                XCTAssertEqual(
+                    services.dayBriefGenerationErrors[requestedDate],
+                    "The generated card did not match the requested date. Try Generate again."
+                )
+            }
+
+            XCTAssertNil(services.dayBriefGeneratedCards[requestedDate])
+            XCTAssertEqual(services.latestGenerationSummary?.id, summaryBefore?.id)
+            XCTAssertEqual(
+                services.latestGenerationSummary?.dailyCards.first { $0.scheduledDate == requestedDate }?.title,
+                summaryBefore?.dailyCards.first { $0.scheduledDate == requestedDate }?.title
+            )
+            XCTAssertEqual(
+                services.weeklyPlan.days.first { $0.scheduledDate == requestedDate }?.title,
+                weeklyDayBefore?.title
+            )
+            XCTAssertFalse(services.generatingDayBriefDates.contains(requestedDate))
+        }
+    }
+
+    func testGenerateDayCardWithDifferentWeeklyPlanIDDoesNotMutateCurrentWeeklyReviewState() async throws {
+        let targetDate = "2026-06-03"
+        let otherWeeklyPlanID = UUID(uuidString: "88888888-8888-4888-8888-888888888881")!
+        var localDraft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-06-01")
+        localDraft.weeklyPlanID = WeeklyPlan.raceWeek.id
+        guard let targetIndex = localDraft.dailyCards.firstIndex(where: { $0.scheduledDate == targetDate }) else {
+            XCTFail("Expected draft to include \(targetDate)")
+            return
+        }
+
+        let originalSummaryCardTitle = localDraft.dailyCards[targetIndex].title
+        var generatedCard = localDraft.dailyCards[targetIndex]
+        generatedCard.title = "Other-plan day card title"
+        generatedCard.caption = "Other-plan day card caption."
+
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: ReconciliationContentRepository(
+                    publishedPlan: WeeklyPlan.raceWeek,
+                    generatedDraft: localDraft,
+                    weekStartDate: "2026-06-01"
+                ),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: DeterministicDayGenerationRepository(
+                    generatedCard: generatedCard,
+                    weeklyPlanID: otherWeeklyPlanID
+                ),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+        services.applyGeneratedDraft(localDraft)
+        let summaryBefore = services.latestGenerationSummary
+        let weeklyDayBefore = services.weeklyPlan.days.first { $0.scheduledDate == targetDate }
+
+        let returnedCard = try await services.generateDayCard(
+            scheduledDate: targetDate,
+            dayBrief: "Brand unboxing at home, honest tone."
+        )
+
+        XCTAssertEqual(returnedCard.id, generatedCard.id)
+        XCTAssertEqual(returnedCard.title, "Other-plan day card title")
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.id, generatedCard.id)
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.title, "Other-plan day card title")
+        XCTAssertEqual(services.latestGenerationSummary?.id, summaryBefore?.id)
+        XCTAssertEqual(
+            services.latestGenerationSummary?.dailyCards.first { $0.scheduledDate == targetDate }?.title,
+            originalSummaryCardTitle
+        )
+        XCTAssertEqual(services.weeklyPlan.days.first { $0.scheduledDate == targetDate }?.title, weeklyDayBefore?.title)
+    }
+}
+
+private struct DeterministicDayGenerationRepository: DayGenerationRepository {
+    let generatedCard: GeneratedDailyCardDraft
+    var weeklyPlanID: UUID = WeeklyPlan.raceWeek.id
+    var targetScheduledDate: String?
+
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        DailyGenerationResult(
+            generationID: UUID(),
+            weeklyPlanID: weeklyPlanID,
+            status: "draft",
+            targetScheduledDate: targetScheduledDate ?? scheduledDate,
+            dailyCard: generatedCard,
+            warnings: [],
+            assumptions: [],
+            sourceSummary: "Day brief only.",
+            generatedAt: "2026-06-01T00:00:00Z"
+        )
+    }
+}
+
+private actor FailingCurrentWeeklyContentRepository: WeeklyPlanRepository {
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
+        .raceWeek
+    }
+
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
+        nil
+    }
+
+    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
+        WeeklyIdea.raceWeekBank
+    }
+
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        throw RepositoryError.notConfigured("reconciliation read failed")
+    }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw RepositoryError.notConfigured("publish not needed")
+    }
+
+    func selectIdeaForNextOpenDay(
+        _ idea: WeeklyIdea,
+        in plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        context: WorkspaceContext
+    ) async throws -> WeeklySelectionUpdate {
+        throw RepositoryError.notConfigured("selection not needed")
+    }
+
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("setup not needed")
+    }
+
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan {
+        throw RepositoryError.notConfigured("brief not needed")
+    }
 }
 
 /// Echoes the day brief back in the generated card title so tests can prove
