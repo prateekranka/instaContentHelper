@@ -1035,7 +1035,8 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: BriefEchoDayGenerationRepository(),
+                weeklyGeneration: AppFixtureWeeklyGenerationUnavailableRepository(),
+                dailyGeneration: BriefEchoDayGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -1064,7 +1065,7 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: BriefEchoDayGenerationRepository(),
+                weeklyGeneration: AppFixtureWeeklyGenerationUnavailableRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -1096,7 +1097,7 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: BriefEchoDayGenerationRepository(),
+                weeklyGeneration: AppFixtureWeeklyGenerationUnavailableRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -3187,18 +3188,7 @@ private struct FailingWeeklyGenerationRepository: WeeklyGenerationRepository {
 
 /// Echoes the day brief back in the generated card title so tests can prove
 /// the brief reached the repository unchanged (after trimming).
-private struct BriefEchoDayGenerationRepository: WeeklyGenerationRepository {
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        throw RepositoryError.notConfigured("generate_week_not_used")
-    }
-
+private struct BriefEchoDayGenerationRepository: DayGenerationRepository {
     func generateDay(
         creatorID: UUID,
         scheduledDate: String,

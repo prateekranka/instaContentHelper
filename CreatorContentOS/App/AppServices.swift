@@ -830,7 +830,7 @@ final class AppServices {
 
         do {
             logGeneration("generate_day started scheduled_date=\(scheduledDate) brief_chars=\(brief.count)")
-            let result = try await repositories.weeklyGeneration.generateDay(
+            let result = try await repositories.dailyGeneration.generateDay(
                 creatorID: context.creatorID,
                 scheduledDate: scheduledDate,
                 dayBrief: brief,

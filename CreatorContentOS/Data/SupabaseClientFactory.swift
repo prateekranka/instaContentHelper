@@ -65,16 +65,19 @@ struct SupabaseRepositoryBundleFactory {
         let client = SupabaseClientFactory().makeClient(configuration: configuration)
         let sourcePulse = SupabaseReferenceRepository(client: client)
 
+        let weeklyGeneration = SupabaseWeeklyGenerationRepository(
+            client: client,
+            runtimeConfiguration: configuration
+        )
+
         return AppRepositories(
             context: context,
             today: SupabaseTodayCardRepository(client: client),
             weeklyPlans: SupabaseWeeklyPlanRepository(client: client),
             references: sourcePulse,
             referenceImport: SupabaseReferenceImportRepository(client: client),
-            weeklyGeneration: SupabaseWeeklyGenerationRepository(
-                client: client,
-                runtimeConfiguration: configuration
-            ),
+            weeklyGeneration: weeklyGeneration,
+            dailyGeneration: weeklyGeneration,
             intelligence: SupabaseIntelligenceRepository(client: client, references: sourcePulse),
             creatorProfile: SupabaseCreatorProfileRepository(client: client),
             archive: SupabaseArchiveRepository(client: client),

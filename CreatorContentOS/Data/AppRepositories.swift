@@ -19,6 +19,7 @@ struct AppRepositories: Sendable {
     let references: any ReferenceRepository
     let referenceImport: any ReferenceImportRepository
     let weeklyGeneration: any WeeklyGenerationRepository
+    let dailyGeneration: any DayGenerationRepository
     let intelligence: any IntelligenceRepository
     let creatorProfile: any CreatorProfileRepository
     let archive: any ArchiveRepository
@@ -31,6 +32,7 @@ struct AppRepositories: Sendable {
         references: any ReferenceRepository,
         referenceImport: any ReferenceImportRepository = FixtureReferenceImportRepository(),
         weeklyGeneration: any WeeklyGenerationRepository = AppFixtureWeeklyGenerationUnavailableRepository(),
+        dailyGeneration: (any DayGenerationRepository)? = nil,
         intelligence: any IntelligenceRepository,
         creatorProfile: any CreatorProfileRepository,
         archive: any ArchiveRepository,
@@ -42,6 +44,7 @@ struct AppRepositories: Sendable {
         self.references = references
         self.referenceImport = referenceImport
         self.weeklyGeneration = weeklyGeneration
+        self.dailyGeneration = dailyGeneration ?? weeklyGeneration
         self.intelligence = intelligence
         self.creatorProfile = creatorProfile
         self.archive = archive
@@ -253,7 +256,27 @@ protocol WeeklyPlanRepository: Sendable {
 
 typealias WeeklyGenerationProgressHandler = @MainActor (WeeklyGenerationProgress) -> Void
 
-protocol WeeklyGenerationRepository: Sendable {
+protocol DayGenerationRepository: Sendable {
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult
+}
+
+extension DayGenerationRepository {
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> RegeneratedDayResult {
+        throw RepositoryError.notConfigured("generate_day_not_configured")
+    }
+}
+
+protocol WeeklyGenerationRepository: DayGenerationRepository {
     func generateWeek(
         creatorID: UUID,
         weekStartDate: String,
@@ -269,13 +292,6 @@ protocol WeeklyGenerationRepository: Sendable {
         scheduledDate: String,
         preserveManualEdits: Bool,
         dayGuidance: String?,
-        context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult
-
-    func generateDay(
-        creatorID: UUID,
-        scheduledDate: String,
-        dayBrief: String,
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult
 
@@ -363,15 +379,6 @@ extension WeeklyGenerationRepository {
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult {
         throw RepositoryError.notConfigured("regenerate_day_not_configured")
-    }
-
-    func generateDay(
-        creatorID: UUID,
-        scheduledDate: String,
-        dayBrief: String,
-        context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult {
-        throw RepositoryError.notConfigured("generate_day_not_configured")
     }
 
     func retryQueuedDay(
