@@ -22,8 +22,9 @@ kept as a backend compatibility boundary, but testers should not need them.
 - Owner: can invite, list, resend, and revoke editor testers.
 - Editor tester: can use Manager Control and Creator mode with the existing
   owner/editor backend boundaries.
-- Creator: can use Creator mode after OTP exchange, but cannot generate weeks,
-  manage testers, or become an editor/admin through the creator binding path.
+- Creator: can use Creator mode after OTP exchange, but cannot use manager
+  generation tools, manage testers, or become an editor/admin through the
+  creator binding path.
 
 ## Edge Functions
 
@@ -94,7 +95,7 @@ Redacted evidence for live handover should capture:
 - Auth exchange check: `member_role=creator`, expected workspace/creator IDs,
   and a nonempty redacted `device_installation_id`.
 - Runtime check: ContentHelper opens Creator mode after OTP exchange and does
-  not expose Manager-only generate/tester controls.
+  not expose manager generation tools or tester-management controls.
 
 ## Troubleshooting
 
