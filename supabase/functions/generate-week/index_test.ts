@@ -80,13 +80,9 @@ Deno.test("generate-week status returns queued day-job progress", async () => {
   assertEquals(days[5].retry_action, "retry_day");
 });
 
-Deno.test("parallel generate-week status tops up retryable days when lanes are free", async () => {
+Deno.test("legacy parallel week status returns read-only running snapshot when lanes are free", async () => {
   let scheduled: Promise<void> | undefined;
   const calls: string[] = [];
-  const retryContexts = new Map<
-    string,
-    Record<string, unknown> | undefined
-  >();
   const input = generationInputSnapshot();
   const startedAt = new Date().toISOString();
   const state = dayGenerationState();
@@ -133,6 +129,7 @@ Deno.test("parallel generate-week status tops up retryable days when lanes are f
       }),
     },
   };
+  const progressBefore = JSON.stringify(state.generationRun.output_snapshot);
 
   const previousConcurrency = Deno.env.get(
     "MCO_PARALLEL_WEEK_GENERATION_CONCURRENCY",
@@ -149,18 +146,9 @@ Deno.test("parallel generate-week status tops up retryable days when lanes are f
       {
         env: fakeEnv("openai-key"),
         createAdminClient: () => fakeAdmin(state),
-        generateDayAI: async (input, _providers, scheduledDate, dayIndex) => {
+        generateDayAI: async (_input, _providers, scheduledDate) => {
           calls.push(scheduledDate);
-          retryContexts.set(scheduledDate, input.day_retry_context);
-          const card = makeMockGeneratedWeek(input).daily_cards[dayIndex];
-          return {
-            strategy_note: `Retried ${scheduledDate}`,
-            warnings: [],
-            assumptions: [],
-            daily_card: { ...card, scheduled_date: scheduledDate },
-            idea_bank: [],
-            source_summary: "retried",
-          };
+          throw new Error("generateDayAI should not be called");
         },
         runInBackground: (promise: Promise<void>) => {
           scheduled = promise;
@@ -169,30 +157,17 @@ Deno.test("parallel generate-week status tops up retryable days when lanes are f
     );
 
     assertEquals(response.status, 200);
-    if (!scheduled) {
-      throw new Error(
-        "Expected status polling to top up free generation lanes.",
-      );
-    }
-    await scheduled;
-
-    assertEquals(calls.join(","), "2026-06-09,2026-06-12");
-    const tuesdayRetry = recordValue(retryContexts.get("2026-06-09"));
-    const fridayRetry = recordValue(retryContexts.get("2026-06-12"));
-    assertEquals(tuesdayRetry.retry_kind, "failed_day_repair");
-    assertEquals(tuesdayRetry.retry_reason, "invalid_ai_json");
-    assertEquals(tuesdayRetry.scheduled_date, "2026-06-09");
-    assertEquals(tuesdayRetry.day_attempt, 2);
-    assertEquals(fridayRetry.retry_kind, "failed_day_repair");
-    assertEquals(fridayRetry.retry_reason, "invalid_ai_json");
-    assertEquals(fridayRetry.scheduled_date, "2026-06-12");
-    assertEquals(fridayRetry.day_attempt, 2);
-    const progress = recordValue(state.generationRun?.output_snapshot);
-    const days = progress.days as Record<string, unknown>[];
-    assertEquals(days[1].status, "completed");
-    assertEquals(days[4].status, "completed");
-    assertEquals(days[5].status, "running");
-    assertEquals(days[6].status, "running");
+    assertEquals(Boolean(scheduled), false);
+    assertEquals(calls.length, 0);
+    const body = await response.json();
+    assertEquals(body.status, "running");
+    assertEquals(body.completed_day_count, 3);
+    assertEquals(body.failed_day_count, 2);
+    assertEquals(
+      JSON.stringify(state.generationRun?.output_snapshot),
+      progressBefore,
+    );
+    assertEquals(state.generationRun?.status, "running");
   } finally {
     if (previousConcurrency === undefined) {
       Deno.env.delete("MCO_PARALLEL_WEEK_GENERATION_CONCURRENCY");
@@ -205,7 +180,7 @@ Deno.test("parallel generate-week status tops up retryable days when lanes are f
   }
 });
 
-Deno.test("parallel generate-week status does not dispatch recovery when lanes are full", async () => {
+Deno.test("legacy parallel week status returns read-only snapshot without dispatching recovery when lanes are full", async () => {
   let scheduled: Promise<void> | undefined;
   const state = dayGenerationState();
   const now = new Date().toISOString();
@@ -286,7 +261,7 @@ Deno.test("parallel generate-week status does not dispatch recovery when lanes a
   }
 });
 
-Deno.test("parallel generate-week releases a claimed job if a competing worker fills the last lane", async () => {
+Deno.test("legacy parallel week status returns read-only snapshot without reclaiming jobs when lanes are full", async () => {
   let scheduled: Promise<void> | undefined;
   let aiCalls = 0;
   let hookUsed = false;
@@ -343,6 +318,7 @@ Deno.test("parallel generate-week releases a claimed job if a competing worker f
       })),
     },
   };
+  const jobsBefore = state.dayJobs.map((job) => ({ ...job }));
 
   const previousConcurrency = Deno.env.get(
     "MCO_PARALLEL_WEEK_GENERATION_CONCURRENCY",
@@ -370,17 +346,13 @@ Deno.test("parallel generate-week releases a claimed job if a competing worker f
     );
 
     assertEquals(response.status, 200);
-    if (!scheduled) {
-      throw new Error("Expected recovery to be scheduled with one free lane.");
-    }
-    await scheduled;
-
+    assertEquals(Boolean(scheduled), false);
     assertEquals(aiCalls, 0);
-    assertEquals(state.dayJobRPCClaims.length, 1);
-    const releasedJob = state.dayJobs[3];
-    assertEquals(releasedJob.status, "queued");
-    assertEquals(releasedJob.attempt_count, 0);
-    assertEquals(releasedJob.lease_token, null);
+    assertEquals(state.dayJobRPCClaims.length, 0);
+    assertEquals(
+      state.dayJobs.map((job) => job.status).join(","),
+      jobsBefore.map((job) => job.status).join(","),
+    );
   } finally {
     if (previousConcurrency === undefined) {
       Deno.env.delete("MCO_PARALLEL_WEEK_GENERATION_CONCURRENCY");
@@ -448,7 +420,7 @@ Deno.test("generate-week status returns completed draft snapshot", async () => {
   assertEquals((body.daily_cards as unknown[]).length, 7);
 });
 
-Deno.test("parallel generate-week status ignores stale cards not recorded on the run", async () => {
+Deno.test("legacy parallel week status returns read-only snapshot ignoring stale unrecorded cards", async () => {
   const state = dayGenerationState();
   const startedAt = "2026-06-08T08:00:00.000Z";
   state.generationRun = {
@@ -491,7 +463,7 @@ Deno.test("parallel generate-week status ignores stale cards not recorded on the
   assertEquals((body.daily_cards as unknown[]).length, 0);
 });
 
-Deno.test("parallel generate-week status finalizes terminal partial progress", async () => {
+Deno.test("legacy parallel week status returns read-only terminal partial snapshot without finalizing", async () => {
   const state = dayGenerationState();
   const completedAt = "2026-06-08T08:05:00.000Z";
   state.generationRun = {
@@ -545,11 +517,11 @@ Deno.test("parallel generate-week status finalizes terminal partial progress", a
   assertEquals(body.saved_day_count, 5);
   assertEquals(body.failed_day_count, 2);
   assertEquals((body.daily_cards as unknown[]).length, 5);
-  assertEquals(state.generationRun?.status, "completed");
-  assertEquals(state.generationRun?.error_code, "partial_generation");
+  assertEquals(state.generationRun?.status, "running");
+  assertEquals(state.generationRun?.error_code, undefined);
 });
 
-Deno.test("parallel generate-week status reconciles saved cards over stale timeout snapshot", async () => {
+Deno.test("legacy parallel week status read-only reconciles saved cards over stale timeout snapshot", async () => {
   const state = dayGenerationState();
   const input = generationInputSnapshot();
   const startedAt = "2026-06-08T08:00:00.000Z";
@@ -624,11 +596,11 @@ Deno.test("parallel generate-week status reconciles saved cards over stale timeo
   assertEquals(body.saved_day_count, 7);
   assertEquals(body.failed_day_count, 0);
   assertEquals((body.daily_cards as unknown[]).length, 7);
-  assertEquals(state.generationRun?.status, "completed");
-  assertEquals(state.generationRun?.error_code, null);
+  assertEquals(state.generationRun?.status, "running");
+  assertEquals(state.generationRun?.error_code, undefined);
 });
 
-Deno.test("parallel generate-week status does not retry failed days at max attempts", async () => {
+Deno.test("legacy parallel week status returns read-only snapshot without retrying max-attempt failed days", async () => {
   let scheduled: Promise<void> | undefined;
   const calls: string[] = [];
   const input = generationInputSnapshot();
@@ -676,6 +648,7 @@ Deno.test("parallel generate-week status does not retry failed days at max attem
       }),
     },
   };
+  const progressBefore = JSON.stringify(state.generationRun.output_snapshot);
 
   const response = await handleGenerateWeekRequest(
     requestFor({
@@ -686,17 +659,9 @@ Deno.test("parallel generate-week status does not retry failed days at max attem
     {
       env: fakeEnv("openai-key"),
       createAdminClient: () => fakeAdmin(state),
-      generateDayAI: async (snapshot, _providers, scheduledDate, dayIndex) => {
+      generateDayAI: async (_snapshot, _providers, scheduledDate) => {
         calls.push(scheduledDate);
-        const card = makeMockGeneratedWeek(snapshot).daily_cards[dayIndex];
-        return {
-          strategy_note: `Resumed ${scheduledDate}`,
-          warnings: [],
-          assumptions: [],
-          daily_card: { ...card, scheduled_date: scheduledDate },
-          idea_bank: [],
-          source_summary: "resumed",
-        };
+        throw new Error("generateDayAI should not be called");
       },
       runInBackground: (promise: Promise<void>) => {
         scheduled = promise;
@@ -705,22 +670,21 @@ Deno.test("parallel generate-week status does not retry failed days at max attem
   );
 
   assertEquals(response.status, 200);
-  if (!scheduled) {
-    throw new Error("Expected pending day generation to be scheduled.");
-  }
-  await scheduled;
-
-  assertEquals(calls.join(","), "2026-06-10");
-  assertEquals(state.generationRun?.status, "completed");
-  assertEquals(state.generationRun?.error_code, "partial_generation");
+  assertEquals(Boolean(scheduled), false);
+  assertEquals(calls.length, 0);
+  assertEquals(state.generationRun?.status, "running");
+  assertEquals(
+    JSON.stringify(state.generationRun?.output_snapshot),
+    progressBefore,
+  );
   const progress = recordValue(state.generationRun?.output_snapshot);
   const days = progress.days as Record<string, unknown>[];
   assertEquals(days[1].status, "failed");
   assertEquals(days[1].attempts, 3);
-  assertEquals(days[2].status, "completed");
+  assertEquals(days[2].status, "pending");
 });
 
-Deno.test("generate-week status marks third-stale running days as failed", async () => {
+Deno.test("legacy per-day week status returns read-only running snapshot without marking stale days failed", async () => {
   let scheduled: Promise<void> | undefined;
   const input = generationInputSnapshot();
   const state = dayGenerationState();
@@ -801,9 +765,122 @@ Deno.test("generate-week status marks third-stale running days as failed", async
   assertEquals(response.status, 200);
   const body = await response.json();
   assertEquals(body.completed_day_count, 3);
+  assertEquals(body.failed_day_count, 0);
+  assertEquals(body.current_day, "2026-06-11");
+  assertEquals(Boolean(scheduled), false);
+  const progress = recordValue(state.generationRun?.output_snapshot);
+  const days = progress.days as Record<string, unknown>[];
+  assertEquals(days[3].status, "running");
+  assertEquals(days[3].attempts, 3);
+});
+
+Deno.test("legacy per-day week status returns read-only terminal partial snapshot with rich draft payload", async () => {
+  let generateDayAICalled = false;
+  let backgroundScheduled = false;
+  const input = generationInputSnapshot();
+  const generated = makeMockGeneratedWeek(input);
+  const completedAt = "2026-06-08T08:00:00.000Z";
+  const failedAt = "2026-06-08T08:01:00.000Z";
+  const state = dayGenerationState();
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: "openai:gpt-4.1-mini",
+    weekly_plan_id: weeklyPlanID,
+    input_snapshot: input,
+    output_snapshot: {
+      kind: "per_day_generation_v1",
+      week_start_date: "2026-06-08",
+      weekly_plan_id: weeklyPlanID,
+      strategy_summary: "Stored strategy summary.",
+      source_summary: "Stored source summary.",
+      warnings: ["Stored warning."],
+      assumptions: ["Stored assumption."],
+      updated_at: failedAt,
+      days: weekDatesForTest("2026-06-08").map((scheduledDate, index) =>
+        index === 2
+          ? {
+            scheduled_date: scheduledDate,
+            status: "failed",
+            attempts: 3,
+            error_code: "openai_request_failed",
+            completed_at: failedAt,
+          }
+          : {
+            scheduled_date: scheduledDate,
+            status: "completed",
+            attempts: 1,
+            completed_at: completedAt,
+            daily_card_id: dailyCardIDs[index],
+            output: {
+              strategy_note: `Saved ${index + 1}`,
+              warnings: [],
+              assumptions: [],
+              daily_card: generated.daily_cards[index],
+              idea_bank: [],
+              source_summary: "saved",
+            },
+          }
+      ),
+    },
+  };
+  const progressBefore = JSON.stringify(state.generationRun.output_snapshot);
+  const runStatusBefore = state.generationRun.status;
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    {
+      env: fakeEnv("openai-key"),
+      createAdminClient: () => fakeAdmin(state),
+      generateDayAI: async () => {
+        generateDayAICalled = true;
+        throw new Error("generateDayAI should not be called");
+      },
+      runInBackground: () => {
+        backgroundScheduled = true;
+      },
+    },
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.generation_id, generationRunID);
+  assertEquals(body.weekly_plan_id, weeklyPlanID);
+  assertEquals(body.status, "partial");
+  assertEquals(body.strategy_summary, "Stored strategy summary.");
+  assertEquals(body.source_summary, "Stored source summary.");
+  assertEquals((body.warnings as string[]).length, 1);
+  assertEquals((body.warnings as string[])[0], "Stored warning.");
+  assertEquals((body.assumptions as string[]).length, 1);
+  assertEquals((body.assumptions as string[])[0], "Stored assumption.");
+  assertEquals(body.generated_at, failedAt);
+  assertEquals(body.completed_day_count, 6);
   assertEquals(body.failed_day_count, 1);
-  assertEquals(body.current_day, "2026-06-12");
-  assertEquals(Boolean(scheduled), true);
+  assertEquals(body.total_day_count, 7);
+  assertEquals(body.poll_after_seconds, null);
+  assertEquals(Array.isArray(body.daily_cards), true);
+  assertEquals((body.daily_cards as unknown[]).length, 6);
+  assertEquals(Array.isArray(body.idea_bank), true);
+  assertEquals((body.idea_bank as unknown[]).length, 0);
+  assertEquals(Array.isArray(body.failed_days), true);
+  const failedDays = body.failed_days as Record<string, unknown>[];
+  assertEquals(failedDays[0].scheduled_date, "2026-06-10");
+  assertEquals(failedDays[0].status, "failed");
+  assertEquals(failedDays[0].error_code, "openai_request_failed");
+  assertEquals(generateDayAICalled, false);
+  assertEquals(backgroundScheduled, false);
+  assertEquals(
+    JSON.stringify(state.generationRun?.output_snapshot),
+    progressBefore,
+  );
+  assertEquals(state.generationRun?.status, runStatusBefore);
 });
 
 Deno.test({
@@ -3266,6 +3343,8 @@ Deno.test("full_week_generation_retired: cancel_generation returns 400 without m
 });
 
 Deno.test("full_week_generation_retired: historical status remains readable", async () => {
+  let generateAICalled = false;
+  let backgroundScheduled = false;
   const state = dayGenerationState();
   state.dayJobs = makeQueuedDayJobs([
     ["generated", dailyCardIDs[0]],
@@ -3284,6 +3363,8 @@ Deno.test("full_week_generation_retired: historical status remains readable", as
     weekly_plan_id: weeklyPlanID,
     input_snapshot: generationInputSnapshot(),
   };
+  const runBefore = JSON.stringify(state.generationRun);
+  const jobsBefore = state.dayJobs.map((job) => ({ ...job }));
 
   const response = await handleGenerateWeekRequest(
     requestFor({
@@ -3294,6 +3375,17 @@ Deno.test("full_week_generation_retired: historical status remains readable", as
     {
       env: fakeEnv("test-key"),
       createAdminClient: () => fakeAdmin(state),
+      generateAI: async () => {
+        generateAICalled = true;
+        throw new Error("generateAI should not be called");
+      },
+      generateDayAI: async () => {
+        generateAICalled = true;
+        throw new Error("generateDayAI should not be called");
+      },
+      runInBackground: () => {
+        backgroundScheduled = true;
+      },
     },
   );
 
@@ -3302,6 +3394,15 @@ Deno.test("full_week_generation_retired: historical status remains readable", as
   assertEquals(body.status, "running");
   assertEquals(body.completed_day_count, 2);
   assertEquals(body.failed_day_count, 1);
+  assertEquals(generateAICalled, false);
+  assertEquals(backgroundScheduled, false);
+  assertEquals(JSON.stringify(state.generationRun), runBefore);
+  assertEquals(
+    state.dayJobs.map((job) => job.status).join(","),
+    jobsBefore.map((job) => job.status).join(","),
+  );
+  assertEquals(state.dayJobRPCClaims.length, 0);
+  assertEquals(state.dayJobLeaseUpdates.length, 0);
 });
 
 Deno.test("full_week_generation_retired: generate_day route remains supported", async () => {

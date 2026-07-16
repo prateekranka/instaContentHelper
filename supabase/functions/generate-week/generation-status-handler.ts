@@ -14,7 +14,6 @@ import { isUUID } from "./generation-validation.ts";
 import { readQueuedDayJobsForRun } from "./generation-day-job-store.ts";
 import { generationPersistFailure } from "./generation-persistence.ts";
 import {
-  allDaysCompleted,
   allDaysTerminal,
   isParallelWeekGenerationTerminal,
   isTerminalDayGenerationState,
@@ -177,6 +176,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isDayGenerationRun(run: GenerationRunStatusRecord): boolean {
+  return run.generation_scope === "day";
+}
+
+function isLegacyGenerationStatusReadOnly(
+  run: GenerationRunStatusRecord,
+): boolean {
+  return !isDayGenerationRun(run);
+}
+
 export async function readGenerationStatus(
   admin: SupabaseAdminClient,
   session: VerifiedDeviceSession,
@@ -237,7 +246,10 @@ export async function readGenerationStatus(
         poll_after_seconds: null,
       });
     }
-    if (stringValue(runRecord.status) === "running") {
+    if (
+      stringValue(runRecord.status) === "running" &&
+      !isLegacyGenerationStatusReadOnly(runRecord)
+    ) {
       dispatchQueuedDayJobRecovery(
         admin,
         generationID,
@@ -290,6 +302,7 @@ export async function readGenerationStatus(
           progress,
           env,
           host,
+          { readOnly: isLegacyGenerationStatusReadOnly(run) },
         );
       }
       return await readCompletedPerDayGenerationStatus(
@@ -328,6 +341,11 @@ export async function readGenerationStatus(
           progress,
           env,
           host,
+          {
+            readOnly: isLegacyGenerationStatusReadOnly(
+              data as GenerationRunStatusRecord,
+            ),
+          },
         );
       }
       const summary = weekGenerationStatusSummary(
@@ -353,11 +371,13 @@ export async function readGenerationStatus(
   const run = data as GenerationRunStatusRecord;
   const inputSnapshot = normalizeStoredInputSnapshot(run.input_snapshot);
   if (!inputSnapshot) {
-    await host.markGenerationRunFailed(
-      admin,
-      generationID,
-      "invalid_generation_payload",
-    );
+    if (isDayGenerationRun(run)) {
+      await host.markGenerationRunFailed(
+        admin,
+        generationID,
+        "invalid_generation_payload",
+      );
+    }
     return jsonResponse({
       generation_id: generationID,
       status: "failed",
@@ -365,7 +385,7 @@ export async function readGenerationStatus(
     });
   }
 
-  if (run.generation_scope === "day") {
+  if (isDayGenerationRun(run)) {
     return await resumeSingleDayGeneration(
       admin,
       generationID,
@@ -377,7 +397,7 @@ export async function readGenerationStatus(
     );
   }
 
-  let progress = normalizePerDayGenerationSnapshot(
+  const progress = normalizePerDayGenerationSnapshot(
     run.output_snapshot,
     inputSnapshot.week_start_date,
   );
@@ -391,77 +411,29 @@ export async function readGenerationStatus(
       progress,
       env,
       host,
+      { readOnly: true },
     );
-  }
-  const normalizedProgress = normalizeStaleRunningDays(progress, {
-    maxAttempts: maxDayGenerationAttempts(),
-    staleThresholdMS: runningDayStaleMS(),
-    nowMS: Date.now(),
-    nowISO: new Date().toISOString(),
-  });
-  if (normalizedProgress !== progress) {
-    const updateResult = await host.updateGenerationProgress(
-      admin,
-      generationID,
-      normalizedProgress,
-    );
-    if ("response" in updateResult) {
-      return updateResult.response;
-    }
-    progress = normalizedProgress;
-  }
-  if (allDaysCompleted(progress)) {
-    const finalizeResult = await host.finalizePerDayGeneration(
-      admin,
-      generationID,
-      run,
-      session,
-      inputSnapshot,
-      progress,
-    );
-    if ("response" in finalizeResult) {
-      return finalizeResult.response;
-    }
-    return jsonResponse(finalizeResult.payload);
   }
   if (allDaysTerminal(progress, maxDayGenerationAttempts())) {
-    const finalizeResult = await host.finalizeTerminalPerDayGeneration(
+    return await readCompletedPerDayGenerationStatus(
       admin,
       generationID,
       run,
       session,
       inputSnapshot,
       progress,
+      host,
     );
-    if ("response" in finalizeResult) {
-      return finalizeResult.response;
-    }
-    return jsonResponse(finalizeResult.payload);
   }
+  return readLegacyPerDayRunningGenerationStatus(generationID, progress);
+}
 
-  const preparedResult = host.prepareGenerationFromRun(
-    env,
-    run,
-    session,
-    inputSnapshot,
-  );
-  if ("response" in preparedResult) {
-    return preparedResult.response;
-  }
-
-  const scheduleResult = await host.scheduleNextPendingDayGeneration(
-    admin,
-    generationID,
-    preparedResult.prepared,
-    progress,
-  );
-  if ("response" in scheduleResult) {
-    return scheduleResult.response;
-  }
-
-  const latestProgress = scheduleResult.progress;
+function readLegacyPerDayRunningGenerationStatus(
+  generationID: string,
+  progress: PerDayGenerationSnapshot,
+): Response {
   const summary = weekGenerationStatusSummary(
-    latestProgress,
+    progress,
     "running",
     (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
   );
@@ -696,7 +668,9 @@ async function readParallelGenerationStatus(
   progress: PerDayGenerationSnapshot,
   env: EnvReader,
   host: GenerationStatusHandlerHost,
+  options: { readOnly?: boolean } = {},
 ): Promise<Response> {
+  const readOnly = options.readOnly ?? false;
   const weeklyPlanID = stringValue(run.weekly_plan_id) ??
     progress.weekly_plan_id;
   if (!weeklyPlanID || !isUUID(weeklyPlanID)) {
@@ -723,7 +697,7 @@ async function readParallelGenerationStatus(
     });
   }
 
-  if (stringValue(run.status) === "running") {
+  if (!readOnly && stringValue(run.status) === "running") {
     const dayJobsResult = await readQueuedDayJobsForRun(
       admin,
       generationID,
@@ -778,18 +752,23 @@ async function readParallelGenerationStatus(
     new Date().toISOString(),
   );
   if (mergedProgress !== progress) {
-    const updateResult = await host.updateGenerationProgress(
-      admin,
-      generationID,
-      mergedProgress,
-    );
-    if ("response" in updateResult) {
-      return updateResult.response;
+    if (readOnly) {
+      progress = mergedProgress;
+    } else {
+      const updateResult = await host.updateGenerationProgress(
+        admin,
+        generationID,
+        mergedProgress,
+      );
+      if ("response" in updateResult) {
+        return updateResult.response;
+      }
+      progress = mergedProgress;
     }
-    progress = mergedProgress;
   }
 
   if (
+    !readOnly &&
     stringValue(run.status) === "running" &&
     isParallelWeekGenerationTerminal(progress, maxDayGenerationAttempts())
   ) {
@@ -817,6 +796,7 @@ async function readParallelGenerationStatus(
   }
 
   if (
+    !readOnly &&
     stringValue(run.status) === "running" &&
     shouldResumeParallelWeekGeneration(
       progress,
