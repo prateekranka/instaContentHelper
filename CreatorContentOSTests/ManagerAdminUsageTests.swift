@@ -162,13 +162,8 @@ final class ManagerAdminUsageTests: XCTestCase {
 
     func testWeeklyStartDatePreservesOverlappingGeneratedCardsByScheduledDate() async throws {
         let services = makeServices(todayDate: { "2026-07-02" })
-        let existingDraft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: "2026-06-30",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let existingDraft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-06-30"
         )
         services.applyGeneratedDraft(existingDraft)
 
@@ -574,7 +569,6 @@ final class ManagerAdminUsageTests: XCTestCase {
 
     private func makeServices(
         weeklyPlans: any WeeklyPlanRepository = RecordingWeeklyPlanRepository(),
-        weeklyGeneration: any WeeklyGenerationRepository = AppFixtureWeeklyGenerationUnavailableRepository(),
         referenceImport: any ReferenceImportRepository = RecordingReferenceImportRepository(),
         intelligence: any IntelligenceRepository = FixtureIntelligenceRepository(),
         creatorProfile: any CreatorProfileRepository = FixtureCreatorProfileRepository(),
@@ -588,7 +582,6 @@ final class ManagerAdminUsageTests: XCTestCase {
             weeklyPlans: weeklyPlans,
             references: FixtureReferenceRepository(),
             referenceImport: referenceImport,
-            weeklyGeneration: weeklyGeneration,
             intelligence: intelligence,
             creatorProfile: creatorProfile,
             archive: FixtureArchiveRepository()

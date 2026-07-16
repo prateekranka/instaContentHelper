@@ -3,75 +3,8 @@ import Supabase
 @testable import CreatorContentOS
 
 @MainActor
-final class GenerateWeekTests: XCTestCase {
-    func testGenerateWeekRequestEncodesEdgeFunctionContract() throws {
-        let request = SupabaseGenerateWeekRequest(
-            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
-            weekStartDate: "2026-06-08",
-            weeklySetupID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
-            mode: .generateDraft,
-            preserveManualEdits: true,
-            mock: true,
-            responseMode: .sync
-        )
+final class GenerationContractsTests: XCTestCase {
 
-        let data = try JSONEncoder().encode(request)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-        XCTAssertEqual(object["creator_id"] as? String, "33333333-3333-4333-8333-333333333333")
-        XCTAssertEqual(object["week_start_date"] as? String, "2026-06-08")
-        XCTAssertEqual(object["weekly_setup_id"] as? String, "77777777-7777-4777-8777-777777777771")
-        XCTAssertEqual(object["mode"] as? String, "generate_draft")
-        XCTAssertEqual(object["preserve_manual_edits"] as? Bool, true)
-        XCTAssertEqual(object["mock"] as? Bool, true)
-        XCTAssertEqual(object["response_mode"] as? String, "sync")
-        XCTAssertEqual(object["feature_flags"] as? [String], ["parallel_week_generation"])
-    }
-
-    func testGenerateWeekStatusRequestAndRunningResponseUseAsyncContract() throws {
-        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888881")!
-        let creatorID = UUID(uuidString: "33333333-3333-4333-8333-333333333333")!
-        let request = SupabaseGenerateWeekStatusRequest(
-            generationID: generationID,
-            creatorID: creatorID
-        )
-
-        let requestData = try JSONEncoder().encode(request)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: requestData) as? [String: Any])
-
-        XCTAssertEqual(object["action"] as? String, "status")
-        XCTAssertEqual(object["generation_id"] as? String, generationID.uuidString.lowercased())
-        XCTAssertEqual(object["creator_id"] as? String, creatorID.uuidString.lowercased())
-
-        let responseData = Data(
-            """
-            {
-              "generation_id": "\(generationID.uuidString)",
-              "weekly_plan_id": null,
-              "status": "running",
-              "message": "generation_started",
-              "completed_day_count": 3,
-              "total_day_count": 7,
-              "current_day": "2026-06-03",
-              "poll_after_seconds": 5
-            }
-            """.utf8
-        )
-
-        let invocation = try SupabaseGenerateWeekInvocation.decode(responseData)
-        guard case .running(let status) = invocation else {
-            XCTFail("Expected running generation status")
-            return
-        }
-        XCTAssertEqual(status.generationID, generationID)
-        XCTAssertEqual(status.status, "running")
-        XCTAssertEqual(status.pollAfterSeconds, 5)
-        XCTAssertEqual(status.completedDayCount, 3)
-        XCTAssertEqual(status.totalDayCount, 7)
-        XCTAssertEqual(status.currentDay, "2026-06-03")
-        XCTAssertEqual(status.weekProgress.draftedDayCount, 3)
-        XCTAssertEqual(status.weekProgress.checkedDayCount, 3)
-    }
 
     func testWeeklyReadResponseDecodesLegacyWeeklyShapeWithoutPublishedKeys() throws {
         let data = Data(
@@ -129,230 +62,49 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertTrue(response.publishedDailyCards.isEmpty)
     }
 
-    func testGenerateWeekPartialStatusDecodesIntoProgressModel() throws {
+    func testGenerationStatusRequestAndRunningResponseUseAsyncContract() throws {
         let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888881")!
-        let weeklyPlanID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
+        let creatorID = UUID(uuidString: "33333333-3333-4333-8333-333333333333")!
+        let request = SupabaseGenerationStatusRequest(
+            generationID: generationID,
+            creatorID: creatorID
+        )
+
+        let requestData = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: requestData) as? [String: Any])
+
+        XCTAssertEqual(object["action"] as? String, "status")
+        XCTAssertEqual(object["generation_id"] as? String, generationID.uuidString.lowercased())
+        XCTAssertEqual(object["creator_id"] as? String, creatorID.uuidString.lowercased())
+
         let responseData = Data(
             """
             {
               "generation_id": "\(generationID.uuidString)",
-              "weekly_plan_id": "\(weeklyPlanID.uuidString)",
-              "status": "partial",
-              "message": "six_days_saved_one_failed",
-              "completed_day_count": 6,
-              "saved_day_count": 6,
-              "failed_day_count": 1,
+              "weekly_plan_id": null,
+              "status": "running",
+              "message": "generation_started",
+              "completed_day_count": 3,
               "total_day_count": 7,
-              "current_day": "2026-06-10",
-              "poll_after_seconds": 5,
-              "failed_days": [
-                {
-                  "scheduled_date": "2026-06-10",
-                  "day_index": 2,
-                  "status": "failed",
-                  "error_code": "openai_request_failed",
-                  "retry_action": "regenerate_day"
-                }
-              ]
+              "current_day": "2026-06-03",
+              "poll_after_seconds": 5
             }
             """.utf8
         )
 
-        let invocation = try SupabaseGenerateWeekInvocation.decode(responseData)
+        let invocation = try SupabaseDailyGenerationInvocation.decode(responseData)
         guard case .running(let status) = invocation else {
-            XCTFail("Expected partial generation status to decode as a pollable status")
+            XCTFail("Expected running generation status")
             return
         }
-
         XCTAssertEqual(status.generationID, generationID)
-        XCTAssertEqual(status.weeklyPlanID, weeklyPlanID)
-        XCTAssertEqual(status.status, "partial")
-        XCTAssertEqual(status.completedDayCount, 6)
-        XCTAssertEqual(status.totalDayCount, 7)
-        XCTAssertEqual(status.currentDay, "2026-06-10")
+        XCTAssertEqual(status.status, "running")
         XCTAssertEqual(status.pollAfterSeconds, 5)
-        XCTAssertEqual(status.weekProgress.phase, .draftingDays)
-        XCTAssertEqual(status.savedDayCount, 6)
-        XCTAssertEqual(status.failedDayCount, 1)
-        XCTAssertEqual(status.dayStatuses.count, 1)
-        XCTAssertEqual(status.weekProgress.draftedDayCount, 6)
-        XCTAssertEqual(status.weekProgress.checkedDayCount, 6)
-        XCTAssertEqual(status.weekProgress.totalDayCount, 7)
-        XCTAssertEqual(status.weekProgress.currentDay, "2026-06-10")
-        XCTAssertEqual(status.weekProgress.message, "six_days_saved_one_failed")
-        XCTAssertEqual(status.weekProgress.effectiveSavedDayCount, 6)
-        XCTAssertEqual(status.weekProgress.effectiveFailedDayCount, 1)
-        XCTAssertEqual(status.weekProgress.failedDayStatuses.first?.failureDetail, "The AI service failed for this day.")
-    }
-
-    func testGenerateWeekStatusResponseAcceptsDaysMixedQueuedGenerationState() throws {
-        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888884")!
-        let weeklyPlanID = UUID(uuidString: "77777777-7777-4777-8777-777777777774")!
-        let mondayCardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
-        let tuesdayCardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA2")!
-        let responseData = Data(
-            """
-            {
-              "generation_id": "\(generationID.uuidString)",
-              "weekly_plan_id": "\(weeklyPlanID.uuidString)",
-              "status": "running",
-              "message": "generation_running",
-              "completed_day_count": 2,
-              "total_day_count": 7,
-              "current_day": "2026-07-15",
-              "days": [
-                {
-                  "scheduled_date": "2026-07-13",
-                  "day_index": 0,
-                  "status": "generated",
-                  "daily_card_id": "\(mondayCardID.uuidString)",
-                  "error_code": null,
-                  "retry_action": null
-                },
-                {
-                  "scheduled_date": "2026-07-14",
-                  "day_index": 1,
-                  "status": "generated",
-                  "daily_card_id": "\(tuesdayCardID.uuidString)",
-                  "error_code": null,
-                  "retry_action": null
-                },
-                {
-                  "scheduled_date": "2026-07-15",
-                  "day_index": 2,
-                  "status": "generating",
-                  "daily_card_id": null,
-                  "error_code": null,
-                  "retry_action": null
-                },
-                { "scheduled_date": "2026-07-16", "day_index": 3, "status": "queued" },
-                { "scheduled_date": "2026-07-17", "day_index": 4, "status": "queued" },
-                { "scheduled_date": "2026-07-18", "day_index": 5, "status": "queued" },
-                { "scheduled_date": "2026-07-19", "day_index": 6, "status": "queued" }
-              ]
-            }
-            """.utf8
-        )
-
-        let invocation = try SupabaseGenerateWeekInvocation.decode(responseData)
-        guard case .running(let status) = invocation else {
-            XCTFail("Expected running generation status")
-            return
-        }
-
-        XCTAssertEqual(status.dayStatuses.count, 7)
-        XCTAssertEqual(status.weekProgress.effectiveSavedDayCount, 2)
-        XCTAssertEqual(status.weekProgress.currentDay, "2026-07-15")
-        XCTAssertEqual(status.dayStatuses[0].displayName, "Mon")
-        XCTAssertEqual(status.dayStatuses[0].displayStatusLabel, "Generated")
-        XCTAssertEqual(status.dayStatuses[1].displayStatusLabel, "Generated")
-        XCTAssertEqual(status.dayStatuses[2].displayStatusLabel, "Generating")
-        XCTAssertEqual(status.dayStatuses[3...6].map(\.displayStatusLabel), Array(repeating: "Queued", count: 4))
-        XCTAssertTrue(status.dayStatuses[0].isCompleted)
-        XCTAssertTrue(status.dayStatuses[2].isRunning)
-        XCTAssertTrue(status.dayStatuses[3].isQueued)
-    }
-
-    func testGenerateWeekStatusResponseAcceptsPerDayStatusesAlias() throws {
-        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888883")!
-        let responseData = Data(
-            """
-            {
-              "generation_id": "\(generationID.uuidString)",
-              "status": "running",
-              "saved_day_count": 1,
-              "total_day_count": 7,
-              "per_day_statuses": [
-                {
-                  "scheduled_date": "2026-06-08",
-                  "day_index": 0,
-                  "status": "saved"
-                }
-              ]
-            }
-            """.utf8
-        )
-
-        let invocation = try SupabaseGenerateWeekInvocation.decode(responseData)
-        guard case .running(let status) = invocation else {
-            XCTFail("Expected running generation status")
-            return
-        }
-
-        XCTAssertEqual(status.dayStatuses.count, 1)
-        XCTAssertEqual(status.weekProgress.effectiveSavedDayCount, 1)
-    }
-
-    func testGenerateWeekInvocationDecodesLightweightQueuedDraftAsDraft() throws {
-        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888881")!
-        let weeklyPlanID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
-        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
-        let data = Data(
-            """
-            {
-              "generation_id": "\(generationID.uuidString)",
-              "weekly_plan_id": "\(weeklyPlanID.uuidString)",
-              "status": "draft",
-              "completed_day_count": 7,
-              "saved_day_count": 7,
-              "failed_day_count": 0,
-              "total_day_count": 7,
-              "daily_cards": [
-                {
-                  "id": "\(cardID.uuidString)",
-                  "scheduled_date": "2026-09-21",
-                  "status": "draft",
-                  "title": "Recovery walk reset",
-                  "why_today": "Keep recovery visible.",
-                  "growth_job": "Consistency.",
-                  "content_pillar": "recovery",
-                  "shootability": "easy",
-                  "estimated_shoot_minutes": 8,
-                  "energy_required": "low",
-                  "language_mode": "English",
-                  "scene_list": [{"number":1,"title":"Walking shoes","duration":"3 sec","symbol":"shoeprints.fill"}],
-                  "script": "Recovery still counts.",
-                  "no_voiceover_version": "Use three quiet clips.",
-                  "on_screen_text": ["Recovery still counts"],
-                  "caption": "A short recovery walk in New Jersey.",
-                  "cta": "Save this reminder.",
-                  "hashtags": ["recovery"],
-                  "cover_text": "Recovery counts",
-                  "post_instructions": "Use natural sound.",
-                  "brand_event_notes": "",
-                  "backup_story": "One walking clip.",
-                  "backup_caption_only": "Recovery day note.",
-                  "audio_option_notes": "No audio dependency.",
-                  "creator_fit_score": 94,
-                  "risk_notes": [],
-                  "assumptions": ["Low energy"],
-                  "source_note": "Weekly setup."
-                }
-              ],
-              "days": [
-                {
-                  "scheduled_date": "2026-09-21",
-                  "day_index": 0,
-                  "status": "generated",
-                  "daily_card_id": "\(cardID.uuidString)"
-                }
-              ]
-            }
-            """.utf8
-        )
-
-        let invocation = try SupabaseGenerateWeekInvocation.decode(data)
-        guard case .draft(let response) = invocation else {
-            XCTFail("Expected lightweight queued terminal status to decode as a draft")
-            return
-        }
-
-        XCTAssertEqual(response.generationID, generationID)
-        XCTAssertEqual(response.weeklyPlanID, weeklyPlanID)
-        XCTAssertEqual(response.dailyCards.map(\.id), [cardID])
-        XCTAssertEqual(response.ideaBank, [])
-        XCTAssertEqual(response.weekProgress.phase, .savingDraftWeek)
-        XCTAssertEqual(response.weekProgress.effectiveSavedDayCount, 7)
+        XCTAssertEqual(status.completedDayCount, 3)
+        XCTAssertEqual(status.totalDayCount, 7)
+        XCTAssertEqual(status.currentDay, "2026-06-03")
+        XCTAssertEqual(status.weekProgress.draftedDayCount, 3)
+        XCTAssertEqual(status.weekProgress.checkedDayCount, 3)
     }
 
     func testGenerateDayRequestEncodesEdgeFunctionContract() throws {
@@ -466,62 +218,7 @@ final class GenerateWeekTests: XCTestCase {
                      "client_context must be omitted when nil for backward compatibility")
     }
 
-    func testGenerateWeekRequestOmitsClientContextWhenNil() throws {
-        let request = SupabaseGenerateWeekRequest(
-            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
-            weekStartDate: "2026-06-08",
-            weeklySetupID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
-            mode: .generateDraft,
-            preserveManualEdits: true,
-            mock: true,
-            responseMode: .sync
-        )
 
-        let data = try JSONEncoder().encode(request)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertNil(object["client_context"],
-                     "client_context must be omitted when nil for backward compatibility")
-    }
-
-    func testGenerateWeekRequestEncodesClientContextWhenPresent() throws {
-        let request = SupabaseGenerateWeekRequest(
-            creatorID: UUID(uuidString: "33333333-3333-4333-8333-333333333333")!,
-            weekStartDate: "2026-06-08",
-            weeklySetupID: UUID(uuidString: "77777777-7777-4777-8777-777777777771")!,
-            mode: .generateDraft,
-            preserveManualEdits: true,
-            mock: true,
-            responseMode: .sync,
-            clientContext: SupabaseGenerationClientContext(
-                uiSurface: "weekly_manager",
-                action: "generate_week",
-                selectedWeekStart: "2026-06-08",
-                scheduledDate: nil,
-                dayGuidancePresent: nil,
-                dayGuidanceChars: nil
-            )
-        )
-
-        let data = try JSONEncoder().encode(request)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-        let context = try XCTUnwrap(object["client_context"] as? [String: Any])
-        XCTAssertEqual(context["ui_surface"] as? String, "weekly_manager")
-        XCTAssertEqual(context["action"] as? String, "generate_week")
-        XCTAssertEqual(context["selected_week_start"] as? String, "2026-06-08")
-        XCTAssertNil(context["scheduled_date"])
-        XCTAssertNil(context["day_guidance_present"])
-        XCTAssertNil(context["day_guidance_chars"])
-
-        let contextKeys = Set(context.keys)
-        let safeKeys: Set<String> = [
-            "ui_surface", "action", "selected_week_start",
-            "scheduled_date", "day_guidance_present", "day_guidance_chars"
-        ]
-        let unexpectedKeys = contextKeys.subtracting(safeKeys)
-        XCTAssertTrue(unexpectedKeys.isEmpty,
-                      "client_context must only carry safe metadata keys, found: \(unexpectedKeys)")
-    }
 
     func testRegenerateDayRequestEncodesEdgeFunctionContract() throws {
         let request = SupabaseRegenerateDayRequest(
@@ -606,144 +303,6 @@ final class GenerateWeekTests: XCTestCase {
         XCTAssertEqual(response.domainResult.warnings, ["Confirm the location"])
     }
 
-    func testGenerateWeekResponseDecodesIntoDomainDraft() throws {
-        let generationID = UUID(uuidString: "88888888-8888-4888-8888-888888888881")!
-        let weeklyPlanID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
-        let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
-        let ideaID = UUID(uuidString: "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBB1")!
-        let data = Data(
-            """
-            {
-              "generation_id": "\(generationID.uuidString)",
-              "weekly_plan_id": "\(weeklyPlanID.uuidString)",
-              "status": "draft",
-              "strategy_summary": "Seven shootable cards.",
-              "warnings": ["Check audio"],
-              "assumptions": ["Low energy"],
-              "source_summary": "Profile plus setup.",
-              "generated_at": "2026-06-06T08:00:00Z",
-              "daily_cards": [
-                {
-                  "id": "\(cardID.uuidString)",
-                  "scheduled_date": "2026-06-08",
-                  "status": "draft",
-                  "title": "Generated Monday",
-                  "why_today": "Start simple.",
-                  "growth_job": "Consistency.",
-                  "content_pillar": "lifestyle",
-                  "shootability": "easy",
-                  "estimated_shoot_minutes": 12,
-                  "energy_required": "medium",
-                  "language_mode": "English",
-                  "format": "reel",
-                  "primary_surface": "instagram_reels",
-                  "duration_seconds": 21,
-                  "hook": "Start with the shoe detail.",
-                  "save_share_reason": "Useful low-energy routine reminder.",
-                  "scene_list": [{"number":1,"title":"Shoes","duration":"3 sec","symbol":"shoeprints.fill"}],
-                  "shot_timeline": [
-                    {
-                      "timestamp": "0:00-0:03",
-                      "title": "Shoe close-up",
-                      "detail": "Film laces and first step.",
-                      "shot": "Close-up"
-                    }
-                  ],
-                  "voiceover_timeline": [
-                    {
-                      "timestamp": "0:00-0:05",
-                      "title": "Opening line",
-                      "detail": "One useful detail is enough today.",
-                      "voiceover": "One useful detail is enough today."
-                    }
-                  ],
-                  "on_screen_text_timeline": [
-                    {
-                      "timestamp": "0:00-0:03",
-                      "title": "Text beat",
-                      "detail": "Simple today",
-                      "on_screen_text": "Simple today"
-                    }
-                  ],
-                  "silent_version_timeline": [
-                    {
-                      "timestamp": "0:00-0:05",
-                      "title": "Silent opener",
-                      "detail": "Use shoe clip with text only."
-                    }
-                  ],
-                  "script": "Simple script.",
-                  "no_voiceover_version": "No VO.",
-                  "on_screen_text": ["Simple"],
-                  "caption": "Simple caption.",
-                  "cta": "Save this.",
-                  "hashtags": ["routine"],
-                  "cover_text": "Monday",
-                  "post_instructions": "Use calm audio.",
-                  "brand_event_notes": "",
-                  "backup_story": "Story backup.",
-                  "backup_caption_only": "Caption backup.",
-                  "backup_story_detail": [
-                    {
-                      "timestamp": "0:00-0:05",
-                      "title": "Story fallback",
-                      "detail": "Post the shoe clip as a story."
-                    }
-                  ],
-                  "caption_backup_detail": "Caption-only version for a busy day. Simple caption backup.",
-                  "audio_option_notes": "Calm audio.",
-                  "creator_fit_score": 90,
-                  "risk_notes": [],
-                  "assumptions": [],
-                  "source_note": "Reference."
-                }
-              ],
-              "idea_bank": [
-                {
-                  "id": "\(ideaID.uuidString)",
-                  "title": "Saved idea",
-                  "summary": "Use later.",
-                  "suggested_use": "Later",
-                  "shootability": "easy",
-                  "status": "saved"
-                }
-              ]
-            }
-            """.utf8
-        )
-
-        let response = try JSONDecoder().decode(SupabaseGenerateWeekResponse.self, from: data)
-        let draft = response.domainDraft()
-
-        XCTAssertEqual(draft.id, generationID)
-        XCTAssertEqual(draft.weeklyPlanID, weeklyPlanID)
-        XCTAssertEqual(draft.dailyCards.first?.id, cardID)
-        XCTAssertEqual(draft.dailyCards.first?.format, "reel")
-        XCTAssertEqual(draft.dailyCards.first?.primarySurface, "instagram_reels")
-        XCTAssertEqual(draft.dailyCards.first?.durationSeconds, 21)
-        XCTAssertEqual(draft.dailyCards.first?.hook, "Start with the shoe detail.")
-        XCTAssertEqual(draft.dailyCards.first?.saveShareReason, "Useful low-energy routine reminder.")
-        XCTAssertEqual(draft.dailyCards.first?.shotTimeline.first?.title, "Shoe close-up")
-        XCTAssertEqual(draft.dailyCards.first?.voiceoverTimeline.first?.voiceover, "One useful detail is enough today.")
-        XCTAssertEqual(draft.dailyCards.first?.onScreenTextTimeline.first?.onScreenText, "Simple today")
-        XCTAssertEqual(draft.dailyCards.first?.silentVersionTimeline.first?.detail, "Use shoe clip with text only.")
-        XCTAssertEqual(draft.dailyCards.first?.script, "Simple script.")
-        XCTAssertEqual(draft.dailyCards.first?.noVoiceoverVersion, "No VO.")
-        XCTAssertEqual(draft.dailyCards.first?.onScreenText, ["Simple"])
-        XCTAssertEqual(draft.dailyCards.first?.caption, "Simple caption.")
-        XCTAssertEqual(draft.dailyCards.first?.cta, "Save this.")
-        XCTAssertEqual(draft.dailyCards.first?.hashtags, ["routine"])
-        XCTAssertEqual(draft.dailyCards.first?.coverText, "Monday")
-        XCTAssertEqual(draft.dailyCards.first?.postInstructions, "Use calm audio.")
-        XCTAssertEqual(draft.dailyCards.first?.backupStory, "Story backup.")
-        XCTAssertEqual(draft.dailyCards.first?.backupCaptionOnly, "Caption backup.")
-        XCTAssertEqual(draft.dailyCards.first?.backupStoryDetail.first?.detail, "Post the shoe clip as a story.")
-        XCTAssertEqual(draft.dailyCards.first?.captionBackupDetail, "Caption-only version for a busy day. Simple caption backup.")
-        XCTAssertEqual(draft.dailyCards.first?.audioOptionNotes, "Calm audio.")
-        XCTAssertEqual(draft.dailyCards.first?.creatorFitScore, 90)
-        XCTAssertEqual(draft.dailyCards.first?.sourceNote, "Reference.")
-        XCTAssertEqual(draft.ideaBank.first?.title, "Saved idea")
-    }
 
     func testDraftDailyCardPublishRequestEncodesRichFields() throws {
         let request = SupabaseDraftDailyCardPublishRequest(
@@ -998,7 +557,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: AppFixtureWeeklyGenerationUnavailableRepository(),
                 dailyGeneration: BriefEchoDayGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
@@ -1028,7 +586,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: AppFixtureWeeklyGenerationUnavailableRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -1060,7 +617,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: AppFixtureWeeklyGenerationUnavailableRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -1306,13 +862,8 @@ final class GenerateWeekTests: XCTestCase {
 
     func testPublishTransitionRemovesHydratedDayBriefGeneratedCards() async throws {
         let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: services.weeklyPlan.weekStartDate ?? "2026-06-01",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: services.weeklyPlan.weekStartDate ?? "2026-06-01"
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
@@ -1336,13 +887,8 @@ final class GenerateWeekTests: XCTestCase {
 
     func testPublishingGeneratedDraftPreservesRichFieldsInFixtureModel() async throws {
         let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
-        var draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: services.weeklyPlan.weekStartDate ?? "2026-06-01",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        var draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: services.weeklyPlan.weekStartDate ?? "2026-06-01"
         )
         draft.dailyCards[0].caption = "Edited generated caption."
         draft.dailyCards[0].backupStory = "Edited backup story."
@@ -1361,13 +907,8 @@ final class GenerateWeekTests: XCTestCase {
 
     func testPublishCurrentWeekIsLockedWhileDayStatusesAreStillGenerating() async throws {
         let services = AppServices.fixtureBacked(todayCache: GenerateWeekMemoryTodayCacheStore())
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: "2026-06-01",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-06-01"
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
@@ -1433,13 +974,8 @@ final class GenerateWeekTests: XCTestCase {
 
 
     func testPartialFailureMergesExistingStatusesWithMissingExpectedDates() async throws {
-        var completeDraft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-06-28",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
+        var completeDraft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-06-28"
         )
         let expectedDates = completeDraft.dailyCards.map(\.scheduledDate)
         let omittedDate = try XCTUnwrap(expectedDates.first)
@@ -1554,13 +1090,8 @@ final class GenerateWeekTests: XCTestCase {
     }
 
     func testWorkingPlanFillsSevenSlotsForSixCardDraft() async throws {
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-07-06",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-07-06"
         )
         let expectedDates = draft.dailyCards.map(\.scheduledDate)
         XCTAssertEqual(expectedDates.count, 7)
@@ -1596,13 +1127,8 @@ final class GenerateWeekTests: XCTestCase {
     }
 
     func testCompleteUnpublishedDraftProducesWorkingPlanWithAllSevenDays() async throws {
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-07-06",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-07-06"
         )
         XCTAssertTrue(draft.isCompleteWeekDraft)
 
@@ -1624,13 +1150,8 @@ final class GenerateWeekTests: XCTestCase {
     }
 
     func testManagerRefreshPrefersWorkingPlanOverPublishedPlan() async throws {
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-07-06",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-07-06"
         )
         let workingPlanID = draft.weeklyPlanID
         var publishedPlan = WeeklyPlan.raceWeek
@@ -1648,7 +1169,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: weeklyRepository,
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -1685,7 +1205,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: weeklyRepository,
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -1703,13 +1222,8 @@ final class GenerateWeekTests: XCTestCase {
     }
 
     func testColdRefreshHydratesPersistedOpenDayCardAndExcludesPublished() async throws {
-        var draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-07-06",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
+        var draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-07-06"
         )
         draft.dailyCards[0].status = "open"
         draft.dailyCards[1].status = "published"
@@ -1730,7 +1244,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: weeklyRepository,
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -1750,13 +1263,8 @@ final class GenerateWeekTests: XCTestCase {
     }
 
     func testRefreshHydrationPreservesInFlightDayBriefCardOverDraftCard() async throws {
-        var draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-07-06",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
+        var draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-07-06"
         )
         let generatingDate = draft.dailyCards[0].scheduledDate
         let draftCardID = draft.dailyCards[0].id
@@ -1781,7 +1289,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: weeklyRepository,
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -1803,13 +1310,8 @@ final class GenerateWeekTests: XCTestCase {
 
     func testRefreshWithoutDraftPreservesCompletedDayBriefGeneratedCards() async throws {
         let publishedPlan = WeeklyPlan.raceWeek
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-07-06",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-07-06"
         )
         var completedCard = draft.dailyCards[1]
         completedCard.scheduledDate = "2026-07-07"
@@ -1830,7 +1332,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: weeklyRepository,
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -1850,13 +1351,8 @@ final class GenerateWeekTests: XCTestCase {
 
     func testCurrentPublishedPlanStillReturnsCanonicalPublishedPlan() async throws {
         let publishedPlan = WeeklyPlan.raceWeek
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-07-06",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-07-06"
         )
 
         let weeklyRepository = WorkingPlanPreferringWeeklyPlanRepository(
@@ -2132,7 +1628,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: repo,
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -2140,13 +1635,8 @@ final class GenerateWeekTests: XCTestCase {
             todayCache: GenerateWeekMemoryTodayCacheStore()
         )
 
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: "2026-06-01",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-06-01"
         )
         services.applyGeneratedDraft(draft)
 
@@ -2171,7 +1661,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: repo,
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -2179,13 +1668,8 @@ final class GenerateWeekTests: XCTestCase {
             todayCache: GenerateWeekMemoryTodayCacheStore()
         )
 
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: "2026-06-01",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-06-01"
         )
         await repo.seed(draft: draft)
         services.applyGeneratedDraft(draft)
@@ -2214,20 +1698,14 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: FailingPublishWeeklyPlanRepository(error: RepositoryError.edgeFunction("publish_validation_failed")),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
             todayCache: GenerateWeekMemoryTodayCacheStore()
         )
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: "2026-06-01",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-06-01"
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
@@ -2262,13 +1740,8 @@ final class GenerateWeekTests: XCTestCase {
             todayCache: GenerateWeekMemoryTodayCacheStore(),
             todayDate: { "2026-06-01" }
         )
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: "2026-06-01",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-06-01"
         )
         services.applyGeneratedDraft(draft)
         // Review only 6 of 7 days — leaves openDayCount > 0, blocking publish
@@ -2290,13 +1763,8 @@ final class GenerateWeekTests: XCTestCase {
     // MARK: — Stale Date Normalization
 
     func testNormalizeManagerWeekStartSkipsWhenWorkingDraftExists() async throws {
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-05-25",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-05-25"
         )
         let services = AppServices.fixtureBacked(
             repositories: AppRepositories(
@@ -2305,7 +1773,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -2393,20 +1860,14 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: publishRepo,
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
             todayCache: GenerateWeekMemoryTodayCacheStore()
         )
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: "2026-06-01",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-06-01"
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
@@ -2439,20 +1900,14 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: publishRepo,
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
             ),
             todayCache: GenerateWeekMemoryTodayCacheStore()
         )
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: "2026-06-01",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-06-01"
         )
         services.applyGeneratedDraft(draft)
         for day in services.weeklyPlan.days {
@@ -2473,13 +1928,8 @@ final class GenerateWeekTests: XCTestCase {
     // MARK: — Targeted Day Reconciliation
 
     func testReconcileGeneratedDayRestoresMissingDayWithoutOverwritingEditedCard() async throws {
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-07-06",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-07-06"
         )
         let reconciledDate = try XCTUnwrap(draft.dailyCards[0].scheduledDate)
         let editedDate = try XCTUnwrap(draft.dailyCards[1].scheduledDate)
@@ -2502,7 +1952,6 @@ final class GenerateWeekTests: XCTestCase {
                 weeklyPlans: contentRepo,
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()

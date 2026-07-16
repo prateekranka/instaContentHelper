@@ -106,7 +106,6 @@ final class PublishedWeekPersistenceTests: XCTestCase {
             ),
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
-            weeklyGeneration: TestWeeklyGenerationRepository(),
             intelligence: FixtureIntelligenceRepository(),
             creatorProfile: FixtureCreatorProfileRepository(),
             archive: FixtureArchiveRepository()
@@ -180,13 +179,8 @@ final class PublishedWeekPersistenceTests: XCTestCase {
         on services: AppServices,
         weekStartDate: String = "2026-06-01"
     ) async throws {
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: weekStartDate,
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: weekStartDate
         )
         services.applyGeneratedDraft(draft)
     }
@@ -199,7 +193,6 @@ final class PublishedWeekPersistenceTests: XCTestCase {
             weeklyPlans: FixtureWeeklyPlanRepository(publishedStore: store),
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
-            weeklyGeneration: TestWeeklyGenerationRepository(),
             intelligence: FixtureIntelligenceRepository(),
             creatorProfile: FixtureCreatorProfileRepository(),
             archive: FixtureArchiveRepository()
@@ -213,7 +206,6 @@ final class PublishedWeekPersistenceTests: XCTestCase {
             weeklyPlans: FailingWeeklyPlanRepository(),
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
-            weeklyGeneration: TestWeeklyGenerationRepository(),
             intelligence: FixtureIntelligenceRepository(),
             creatorProfile: FixtureCreatorProfileRepository(),
             archive: FixtureArchiveRepository()

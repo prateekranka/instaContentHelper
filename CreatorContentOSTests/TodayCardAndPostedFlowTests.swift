@@ -158,7 +158,6 @@ final class TodayCardAndPostedFlowTests: XCTestCase {
                 weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: TestWeeklyGenerationRepository(),
                 intelligence: FixtureIntelligenceRepository(),
                 creatorProfile: FixtureCreatorProfileRepository(),
                 archive: FixtureArchiveRepository()
@@ -250,7 +249,6 @@ final class TodayCardAndPostedFlowTests: XCTestCase {
             weeklyPlans: FixtureWeeklyPlanRepository(),
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
-            weeklyGeneration: TestWeeklyGenerationRepository(),
             intelligence: FixtureIntelligenceRepository(),
             creatorProfile: FixtureCreatorProfileRepository(),
             archive: FixtureArchiveRepository()

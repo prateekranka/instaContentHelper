@@ -193,7 +193,9 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
     }
 }
 
-struct AppFixtureWeeklyGenerationUnavailableRepository: WeeklyGenerationRepository {}
+struct AppFixtureDayGenerationUnavailableRepository: DayGenerationRepository {}
+
+struct AppFixtureStoryboardThumbnailUnavailableRepository: StoryboardThumbnailRepository {}
 
 struct FixtureReferenceRepository: ReferenceRepository {
     func sourcePulse(for context: WorkspaceContext) async throws -> SourcePulseSummary {

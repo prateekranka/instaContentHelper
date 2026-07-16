@@ -11,16 +11,16 @@
 		08A5B9761D3E9E189DD59638 /* ReferenceImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4C8ED51EAD5398D2832AAB4 /* ReferenceImportTests.swift */; };
 		0A7F95C8F69751E40A4E4BCD /* ContentConsistencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA13D115B3CC70D6C5F6D7BA /* ContentConsistencyTests.swift */; };
 		0AED86BDE7B6CE889E8A8298 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB9CFA44B8E7990294C9CE67 /* SignInView.swift */; };
-		1735A35118406DA9EB333617 /* GenerateWeekDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8560C60E9CBBB47E67D121F0 /* GenerateWeekDTOs.swift */; };
+		1735A35118406DA9EB333617 /* GenerationDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8560C60E9CBBB47E67D121F0 /* GenerationDTOs.swift */; };
 		1A0195CCA1D27283A79A6CA9 /* PublishedWeekPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E6B09FB76F07F297A81CAF /* PublishedWeekPersistenceTests.swift */; };
-		1AA1F586F79E031D1AE44E01 /* TestWeeklyGenerationRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 650B453B0865435AA8F1ED4C /* TestWeeklyGenerationRepository.swift */; };
+		1AA1F586F79E031D1AE44E01 /* TestGeneratedDraftFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 650B453B0865435AA8F1ED4C /* TestGeneratedDraftFactory.swift */; };
 		1AA6D4F3E2906C14EF8551DE /* RuntimeConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79C80E2B2E609414F002A71F /* RuntimeConfigurationTests.swift */; };
 		263C1FC782268B6C4E960F22 /* DevicePairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A61B6CE9B5742E20AC4A57E /* DevicePairingService.swift */; };
 		27037851C85D7F3063B6B54D /* RuntimeConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC8DC58428F1699BEB425D7 /* RuntimeConfigurationStore.swift */; };
 		2940295B3DE8A914016EBF11 /* AuthenticationDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF707A0EDF15BE1081E06761 /* AuthenticationDTOs.swift */; };
 		335C9001D35A6E577CF5B38C /* SupabaseWriteContentDTOTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8961EE41F4A381BD96FF250 /* SupabaseWriteContentDTOTests.swift */; };
 		3A5D41F83414D6D085C0C631 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42BD41A8C80F9A15CA1DAD88 /* AppServices.swift */; };
-		408E215ED566D8EFC4B6492E /* GenerateWeekTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 276ED46C5E1CE7EA7E73F8CF /* GenerateWeekTests.swift */; };
+		408E215ED566D8EFC4B6492E /* GenerationContractsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 276ED46C5E1CE7EA7E73F8CF /* GenerationContractsTests.swift */; };
 		45CD8BDB68F53E5B36BCC233 /* WriteContentDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD3FB713073CF44BD44318FC /* WriteContentDTOs.swift */; };
 		4746F35A81ED33245F39DA64 /* WeeklyControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9FDBFEC8FEBFE417DB74B96 /* WeeklyControlView.swift */; };
 		481AFA168D18FCD0037E78C0 /* GeneratedStoryboardBreakdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F58885C0A0B48C185935DBAA /* GeneratedStoryboardBreakdownTests.swift */; };
@@ -86,7 +86,7 @@
 		11ADF2B693A8CFF7257A50E4 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		18121756824E332BBFDD15A9 /* ReferenceImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportView.swift; sourceTree = "<group>"; };
 		1A61B6CE9B5742E20AC4A57E /* DevicePairingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePairingService.swift; sourceTree = "<group>"; };
-		276ED46C5E1CE7EA7E73F8CF /* GenerateWeekTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerateWeekTests.swift; sourceTree = "<group>"; };
+		276ED46C5E1CE7EA7E73F8CF /* GenerationContractsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationContractsTests.swift; sourceTree = "<group>"; };
 		2D402309616D1FCDEB1EB137 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2DE94010C1FB456F02A3D2A3 /* ContentQualityLearningLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentQualityLearningLoopTests.swift; sourceTree = "<group>"; };
 		37F9A7463B86BBE57EF99AB5 /* ContentQualityLearningLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentQualityLearningLoop.swift; sourceTree = "<group>"; };
@@ -98,7 +98,7 @@
 		4A748621CB6EAB1EBCE6C5EB /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		5BDEA975FA0D67EA735DBDCC /* AuthenticationRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationRuntimeTests.swift; sourceTree = "<group>"; };
 		62957637B4EA3A5F7E34D4CC /* InstalledContentHelperUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstalledContentHelperUITests.swift; sourceTree = "<group>"; };
-		650B453B0865435AA8F1ED4C /* TestWeeklyGenerationRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestWeeklyGenerationRepository.swift; sourceTree = "<group>"; };
+		650B453B0865435AA8F1ED4C /* TestGeneratedDraftFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestGeneratedDraftFactory.swift; sourceTree = "<group>"; };
 		674AC06A8413A366F72FD56A /* ManagerAdminUsageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerAdminUsageTests.swift; sourceTree = "<group>"; };
 		6D30B229F5943E73438D46F5 /* ArchiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveView.swift; sourceTree = "<group>"; };
 		4D2A9C8E71B3F5062A8C4E19 /* DayGenerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayGenerationView.swift; sourceTree = "<group>"; };
@@ -106,7 +106,7 @@
 		79C80E2B2E609414F002A71F /* RuntimeConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfigurationTests.swift; sourceTree = "<group>"; };
 		7CA513EE516274570D68E102 /* NotTodaySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotTodaySheet.swift; sourceTree = "<group>"; };
 		843D5A526CCBA04114C4A72A /* TodayCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayCacheStore.swift; sourceTree = "<group>"; };
-		8560C60E9CBBB47E67D121F0 /* GenerateWeekDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerateWeekDTOs.swift; sourceTree = "<group>"; };
+		8560C60E9CBBB47E67D121F0 /* GenerationDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerationDTOs.swift; sourceTree = "<group>"; };
 		87FFA552E0792F8074AA8999 /* CreatorContentOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CreatorContentOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8BC9F09F60577E7FBC7DEEBE /* LocalRuntime.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = LocalRuntime.xcconfig; sourceTree = "<group>"; };
 		8E7EEA64764CBFE7F1C70689 /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
@@ -228,7 +228,7 @@
 				B78DEF2B8258D528779DC9BB /* AuthenticationService.swift */,
 				1A61B6CE9B5742E20AC4A57E /* DevicePairingService.swift */,
 				47FD85E986A31DFFB0B5FF3F /* DeviceReadDTOs.swift */,
-				8560C60E9CBBB47E67D121F0 /* GenerateWeekDTOs.swift */,
+				8560C60E9CBBB47E67D121F0 /* GenerationDTOs.swift */,
 				C90557DA178FDB72809DE825 /* ReferenceImportDTOs.swift */,
 				1172250F68C714C25A18EE6D /* ReferenceImportRepository.swift */,
 				FEC8DC58428F1699BEB425D7 /* RuntimeConfigurationStore.swift */,
@@ -287,14 +287,14 @@
 				2DE94010C1FB456F02A3D2A3 /* ContentQualityLearningLoopTests.swift */,
 				8EF81B58FA3AF15A81BC5742 /* DevicePairingServiceTests.swift */,
 				F58885C0A0B48C185935DBAA /* GeneratedStoryboardBreakdownTests.swift */,
-				276ED46C5E1CE7EA7E73F8CF /* GenerateWeekTests.swift */,
+				276ED46C5E1CE7EA7E73F8CF /* GenerationContractsTests.swift */,
 				674AC06A8413A366F72FD56A /* ManagerAdminUsageTests.swift */,
 				C1E6B09FB76F07F297A81CAF /* PublishedWeekPersistenceTests.swift */,
 				C2AC2FDAEA55DE198383352E /* PublishWeekFixtureAcceptanceTests.swift */,
 				A4C8ED51EAD5398D2832AAB4 /* ReferenceImportTests.swift */,
 				79C80E2B2E609414F002A71F /* RuntimeConfigurationTests.swift */,
 				F8961EE41F4A381BD96FF250 /* SupabaseWriteContentDTOTests.swift */,
-				650B453B0865435AA8F1ED4C /* TestWeeklyGenerationRepository.swift */,
+				650B453B0865435AA8F1ED4C /* TestGeneratedDraftFactory.swift */,
 				0E483DCB6AAA413D2EF0C22E /* TodayCardAndPostedFlowTests.swift */,
 			);
 			path = CreatorContentOSTests;
@@ -537,7 +537,7 @@
 				DC744D8BDFF1C05E194D88F8 /* DeviceReadDTOs.swift in Sources */,
 				D36DDD7FDB3E211BD2907C92 /* FixtureRepositories.swift in Sources */,
 				767D5B64BA28E85038ACFFB5 /* Fixtures.swift in Sources */,
-				1735A35118406DA9EB333617 /* GenerateWeekDTOs.swift in Sources */,
+				1735A35118406DA9EB333617 /* GenerationDTOs.swift in Sources */,
 				DE6ECBE40B13D03BDD2F3983 /* GeneratedStoryboardBreakdown.swift in Sources */,
 				9E8E80AA9E831480188CA14A /* IntelligenceHomeView.swift in Sources */,
 				733F66CC1224251437A7D210 /* Models.swift in Sources */,
@@ -578,7 +578,7 @@
 				0A7F95C8F69751E40A4E4BCD /* ContentConsistencyTests.swift in Sources */,
 				B8A2E00D7011DA2CA0CA7D31 /* ContentQualityLearningLoopTests.swift in Sources */,
 				F53CA7EC1CC07711BCA397D4 /* DevicePairingServiceTests.swift in Sources */,
-				408E215ED566D8EFC4B6492E /* GenerateWeekTests.swift in Sources */,
+				408E215ED566D8EFC4B6492E /* GenerationContractsTests.swift in Sources */,
 				481AFA168D18FCD0037E78C0 /* GeneratedStoryboardBreakdownTests.swift in Sources */,
 				6EEAF162E6C8A36CECBD722E /* ManagerAdminUsageTests.swift in Sources */,
 				A08BD8334CD348A559F4FA21 /* PublishWeekFixtureAcceptanceTests.swift in Sources */,
@@ -586,7 +586,7 @@
 				08A5B9761D3E9E189DD59638 /* ReferenceImportTests.swift in Sources */,
 				1AA6D4F3E2906C14EF8551DE /* RuntimeConfigurationTests.swift in Sources */,
 				335C9001D35A6E577CF5B38C /* SupabaseWriteContentDTOTests.swift in Sources */,
-				1AA1F586F79E031D1AE44E01 /* TestWeeklyGenerationRepository.swift in Sources */,
+				1AA1F586F79E031D1AE44E01 /* TestGeneratedDraftFactory.swift in Sources */,
 				7EE38E606D038C7C6DA0BAEB /* TodayCardAndPostedFlowTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

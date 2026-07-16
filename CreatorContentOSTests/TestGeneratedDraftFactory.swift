@@ -1,16 +1,12 @@
 import Foundation
 @testable import CreatorContentOS
 
-/// Test-only deterministic weekly generator. Do not inject this into app fixture runtime.
-struct TestWeeklyGenerationRepository: WeeklyGenerationRepository {
-    func generateWeek(
-        creatorID: UUID,
+/// Test-only deterministic draft factory. Do not inject this into app fixture runtime.
+enum TestGeneratedDraftFactory {
+    static func makeDraft(
         weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
+        progress: WeeklyGenerationProgressHandler? = nil
+    ) async -> GeneratedWeekDraft {
         await progress?(
             WeeklyGenerationProgress(
                 phase: .draftingDays,

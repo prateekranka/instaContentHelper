@@ -318,7 +318,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
     }
 }
 
-struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
+struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumbnailRepository {
     let client: SupabaseClient
     var runtimeConfiguration: SupabaseRuntimeConfiguration?
 

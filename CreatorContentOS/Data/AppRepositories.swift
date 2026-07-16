@@ -18,7 +18,6 @@ struct AppRepositories: Sendable {
     let weeklyPlans: any WeeklyPlanRepository
     let references: any ReferenceRepository
     let referenceImport: any ReferenceImportRepository
-    let weeklyGeneration: any WeeklyGenerationRepository
     let dailyGeneration: any DayGenerationRepository
     let storyboardThumbnails: any StoryboardThumbnailRepository
     let intelligence: any IntelligenceRepository
@@ -32,9 +31,8 @@ struct AppRepositories: Sendable {
         weeklyPlans: any WeeklyPlanRepository,
         references: any ReferenceRepository,
         referenceImport: any ReferenceImportRepository = FixtureReferenceImportRepository(),
-        weeklyGeneration: any WeeklyGenerationRepository = AppFixtureWeeklyGenerationUnavailableRepository(),
-        dailyGeneration: (any DayGenerationRepository)? = nil,
-        storyboardThumbnails: (any StoryboardThumbnailRepository)? = nil,
+        dailyGeneration: any DayGenerationRepository = AppFixtureDayGenerationUnavailableRepository(),
+        storyboardThumbnails: any StoryboardThumbnailRepository = AppFixtureStoryboardThumbnailUnavailableRepository(),
         intelligence: any IntelligenceRepository,
         creatorProfile: any CreatorProfileRepository,
         archive: any ArchiveRepository,
@@ -45,9 +43,8 @@ struct AppRepositories: Sendable {
         self.weeklyPlans = weeklyPlans
         self.references = references
         self.referenceImport = referenceImport
-        self.weeklyGeneration = weeklyGeneration
-        self.dailyGeneration = dailyGeneration ?? weeklyGeneration
-        self.storyboardThumbnails = storyboardThumbnails ?? weeklyGeneration
+        self.dailyGeneration = dailyGeneration
+        self.storyboardThumbnails = storyboardThumbnails
         self.intelligence = intelligence
         self.creatorProfile = creatorProfile
         self.archive = archive
@@ -62,7 +59,6 @@ struct AppRepositories: Sendable {
             weeklyPlans: FixtureWeeklyPlanRepository(publishedStore: store),
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
-            weeklyGeneration: AppFixtureWeeklyGenerationUnavailableRepository(),
             intelligence: FixtureIntelligenceRepository(),
             creatorProfile: FixtureCreatorProfileRepository(),
             archive: FixtureArchiveRepository(),
@@ -322,8 +318,6 @@ extension StoryboardThumbnailRepository {
         throw RepositoryError.notConfigured("storyboard_thumbnail_generation_not_configured")
     }
 }
-
-protocol WeeklyGenerationRepository: DayGenerationRepository, StoryboardThumbnailRepository {}
 
 extension WeeklyPlanRepository {
     func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
