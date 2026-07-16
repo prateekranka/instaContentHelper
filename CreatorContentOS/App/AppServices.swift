@@ -582,10 +582,10 @@ final class AppServices {
                 logGeneration("regenerate_day ignored already_running returning_existing scheduled_date=\(scheduledDate)")
                 return existing
             }
-            let error = "generation_already_running"
-            regenerationDayErrors[scheduledDate] = error
+            let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
+            regenerationDayErrors[scheduledDate] = message
             logGeneration("regenerate_day rejected generation_already_running scheduled_date=\(scheduledDate)")
-            throw RepositoryError.edgeFunction(error)
+            throw RepositoryError.edgeFunction(message)
         }
 
         regeneratingDayDates.insert(scheduledDate)
@@ -653,9 +653,9 @@ final class AppServices {
                 logGeneration("generate_day ignored already_running returning_existing scheduled_date=\(scheduledDate)")
                 return existing
             }
-            let error = "generation_already_running"
-            dayBriefGenerationErrors[scheduledDate] = error
-            throw RepositoryError.edgeFunction(error)
+            let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
+            dayBriefGenerationErrors[scheduledDate] = message
+            throw RepositoryError.edgeFunction(message)
         }
 
         generatingDayBriefDates.insert(scheduledDate)
@@ -1615,7 +1615,11 @@ private enum DayGenerationErrorDisplay {
         "generation_persist_failed": "The draft could not be saved. Try Generate again.",
         "weekly_setup_not_found": "The weekly brief could not be found. Save the brief and try again.",
         "existing_published_week_locked": "This week is already published and locked.",
-        "past_generation_date_not_allowed": "You cannot generate content for a past date. Select today or a future date."
+        "past_generation_date_not_allowed": "You cannot generate content for a past date. Select today or a future date.",
+        "generation_timeout": "Generation timed out. Wait a moment, then try Generate again.",
+        "generation_cancelled": "Generation was cancelled. Try Generate again.",
+        "generation_already_running": "A generation is already in progress for this day. Wait for it to finish, then try again.",
+        "accepted_run_not_found": "Generation status is still syncing. Refresh and try Generate again."
     ]
 
     private static let stableCodes = [
@@ -1632,7 +1636,11 @@ private enum DayGenerationErrorDisplay {
         "generation_persist_failed",
         "weekly_setup_not_found",
         "existing_published_week_locked",
-        "past_generation_date_not_allowed"
+        "past_generation_date_not_allowed",
+        "generation_timeout",
+        "generation_cancelled",
+        "generation_already_running",
+        "accepted_run_not_found"
     ]
 
     static func message(for error: Error) -> String {

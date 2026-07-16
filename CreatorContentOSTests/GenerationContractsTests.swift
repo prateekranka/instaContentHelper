@@ -693,6 +693,134 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertEqual(status.error, "generation_cancelled")
     }
 
+    func testRegenerateDayFailedStatusDecodesGenerationTimeoutError() throws {
+        let data = Data(
+            #"{"generation_id":"88888888-8888-4888-8888-888888888881","weekly_plan_id":"77777777-7777-4777-8777-777777777771","status":"failed","target_scheduled_date":"2026-06-10","error":"generation_timeout"}"#.utf8
+        )
+
+        let invocation = try SupabaseDailyGenerationInvocation.decode(data)
+        guard case .failed(let status) = invocation else {
+            XCTFail("Expected failed generation status.")
+            return
+        }
+        XCTAssertEqual(status.error, "generation_timeout")
+    }
+
+    func testDailyGenerationPollerTimesOutWithGenerationTimeout() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let running = try SupabaseDailyGenerationInvocation.decode(
+            Data(
+                #"{"generation_id":"88888888-8888-4888-8888-888888888881","weekly_plan_id":"77777777-7777-4777-8777-777777777771","status":"running","target_scheduled_date":"2026-06-10","poll_after_seconds":5}"#.utf8
+            )
+        )
+
+        do {
+            _ = try await SupabaseDailyGenerationPoller.poll(
+                deadline: now,
+                now: { now },
+                initialPollAfterSeconds: 0,
+                sleep: { _ in },
+                invokeStatus: {
+                    guard case .running = running else {
+                        XCTFail("Expected running status fixture.")
+                        return running
+                    }
+                    return running
+                }
+            )
+            XCTFail("Expected polling to time out.")
+        } catch RepositoryError.edgeFunction(let code) {
+            XCTAssertEqual(code, "generation_timeout")
+        }
+    }
+
+    func testGenerateDayCardSurfacesReliabilityErrorsWithRetryGuidance() async throws {
+        let targetDate = "2026-06-03"
+        let cases: [(code: String, message: String)] = [
+            (
+                "generation_timeout",
+                "Generation timed out. Wait a moment, then try Generate again."
+            ),
+            (
+                "generation_cancelled",
+                "Generation was cancelled. Try Generate again."
+            ),
+            (
+                "accepted_run_not_found",
+                "Generation status is still syncing. Refresh and try Generate again."
+            ),
+        ]
+
+        for testCase in cases {
+            let services = AppServices.fixtureBacked(
+                repositories: AppRepositories(
+                    context: .creatorFixture,
+                    today: FixtureTodayCardRepository(),
+                    weeklyPlans: FixtureWeeklyPlanRepository(),
+                    references: FixtureReferenceRepository(),
+                    referenceImport: FixtureReferenceImportRepository(),
+                    dailyGeneration: CodeThrowingDayGenerationRepository(errorCode: testCase.code),
+                    intelligence: FixtureIntelligenceRepository(),
+                    creatorProfile: FixtureCreatorProfileRepository(),
+                    archive: FixtureArchiveRepository()
+                ),
+                todayCache: InMemoryTodayCacheStore(),
+                todayDate: { "2026-06-01" }
+            )
+
+            do {
+                _ = try await services.generateDayCard(
+                    scheduledDate: targetDate,
+                    dayBrief: "Brand unboxing at home, honest tone."
+                )
+                XCTFail("Expected \(testCase.code) to fail for generate_day.")
+            } catch RepositoryError.edgeFunction(let message) {
+                XCTAssertEqual(message, testCase.message)
+            }
+
+            XCTAssertEqual(services.dayBriefGenerationErrors[targetDate], testCase.message)
+            XCTAssertFalse(services.generatingDayBriefDates.contains(targetDate))
+        }
+    }
+
+    func testGenerateDayCardSurfacesAlreadyRunningWithRetryGuidance() async throws {
+        let targetDate = "2026-06-03"
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: CodeThrowingDayGenerationRepository(errorCode: "unused"),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+        services.generatingDayBriefDates.insert(targetDate)
+
+        do {
+            _ = try await services.generateDayCard(
+                scheduledDate: targetDate,
+                dayBrief: "Second overlapping request."
+            )
+            XCTFail("Expected generation_already_running rejection.")
+        } catch RepositoryError.edgeFunction(let message) {
+            XCTAssertEqual(
+                message,
+                "A generation is already in progress for this day. Wait for it to finish, then try again."
+            )
+        }
+
+        XCTAssertEqual(
+            services.dayBriefGenerationErrors[targetDate],
+            "A generation is already in progress for this day. Wait for it to finish, then try again."
+        )
+    }
+
     func testDailyGenerationPollerAllowsBackendRecoveryBudget() {
         XCTAssertGreaterThanOrEqual(
             SupabaseDailyGenerationPoller.defaultTimeoutSeconds,
@@ -2160,6 +2288,19 @@ final class GenerationContractsTests: XCTestCase {
             originalSummaryCardTitle
         )
         XCTAssertEqual(services.weeklyPlan.days.first { $0.scheduledDate == targetDate }?.title, weeklyDayBefore?.title)
+    }
+}
+
+private struct CodeThrowingDayGenerationRepository: DayGenerationRepository {
+    let errorCode: String
+
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        throw RepositoryError.edgeFunction(errorCode)
     }
 }
 
