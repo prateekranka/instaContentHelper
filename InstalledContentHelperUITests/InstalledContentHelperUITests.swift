@@ -68,7 +68,7 @@ final class InstalledContentHelperUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["Generated Week"].waitForExistence(timeout: 15) ||
                 app.staticTexts["Review"].waitForExistence(timeout: 15) ||
-                app.staticTexts["Draft week generated"].waitForExistence(timeout: 15),
+                app.staticTexts["Draft ready for review"].waitForExistence(timeout: 15),
             diagnostics("Generated review surface did not open", app: app)
         )
         attachScreenshot(named: "24-manager-review-surface", app: app)
@@ -173,7 +173,7 @@ final class InstalledContentHelperUITests: XCTestCase {
             app.staticTexts["Generated week"].waitForExistence(timeout: 15) ||
                 app.staticTexts["Generated Week"].waitForExistence(timeout: 15) ||
                 app.staticTexts["Review"].waitForExistence(timeout: 15) ||
-                app.staticTexts["Draft week generated"].waitForExistence(timeout: 15),
+                app.staticTexts["Draft ready for review"].waitForExistence(timeout: 15),
             diagnostics("Generated review surface did not open", app: app)
         )
         attachScreenshot(named: "63-manager-review-surface", app: app)
@@ -225,7 +225,7 @@ final class InstalledContentHelperUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["Generated Week"].waitForExistence(timeout: 15) ||
                 app.staticTexts["Review"].waitForExistence(timeout: 15) ||
-                app.staticTexts["Draft week generated"].waitForExistence(timeout: 15),
+                app.staticTexts["Draft ready for review"].waitForExistence(timeout: 15),
             diagnostics("Generated review surface did not open", app: app)
         )
         attachScreenshot(named: "41-manager-existing-review-surface", app: app)
@@ -1293,7 +1293,7 @@ final class InstalledContentHelperUITests: XCTestCase {
         let observedTextViewCount = app.textViews.allElementsBoundByIndex.count
         print("MANAGER_GENERATION_REVIEW_COUNT_MARKER text-fields(observed)=\(observedTextFieldCount) text-fields(expected)=21 text-views(observed)=\(observedTextViewCount) text-views(expected)=28")
 
-        let keyLabels = ["Generated Week", "Draft week generated", "MANAGER AI REVIEW"]
+        let keyLabels = ["Generated Week", "Draft ready for review", "MANAGER AI REVIEW"]
         for label in keyLabels {
             let element = app.staticTexts[label]
             if element.exists {

@@ -29,7 +29,7 @@ final class PublishedWeekPersistenceTests: XCTestCase {
 
         // Simulate restart: wipe in-memory state, then refresh from repositories.
         services.latestGenerationSummary = nil
-        services.weeklyGenerationProgress = nil
+        services.generationProgress = nil
         services.todayCard = DailyCard(
             title: "Cleared",
             context: "Restart",

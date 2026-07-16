@@ -103,8 +103,8 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertEqual(status.completedDayCount, 3)
         XCTAssertEqual(status.totalDayCount, 7)
         XCTAssertEqual(status.currentDay, "2026-06-03")
-        XCTAssertEqual(status.weekProgress.draftedDayCount, 3)
-        XCTAssertEqual(status.weekProgress.checkedDayCount, 3)
+        XCTAssertEqual(status.generationProgress.draftedDayCount, 3)
+        XCTAssertEqual(status.generationProgress.checkedDayCount, 3)
     }
 
     func testGenerateDayRequestEncodesEdgeFunctionContract() throws {
@@ -916,8 +916,8 @@ final class GenerationContractsTests: XCTestCase {
         }
         XCTAssertTrue(services.canPublishCurrentWeek)
 
-        services.weeklyGenerationProgress = WeeklyGenerationProgress(
-            phase: .draftingDays,
+        services.generationProgress = GenerationProgress(
+            phase: .generatingDays,
             generationID: draft.id,
             weeklyPlanID: draft.weeklyPlanID,
             draftedDayCount: 2,
@@ -981,8 +981,8 @@ final class GenerationContractsTests: XCTestCase {
         let omittedDate = try XCTUnwrap(expectedDates.first)
         completeDraft.dailyCards.removeAll { $0.scheduledDate == omittedDate }
 
-        let existingProgress = WeeklyGenerationProgress(
-            phase: .draftingDays,
+        let existingProgress = GenerationProgress(
+            phase: .generatingDays,
             generationID: completeDraft.id,
             weeklyPlanID: completeDraft.weeklyPlanID,
             draftedDayCount: 7,
@@ -1007,7 +1007,7 @@ final class GenerationContractsTests: XCTestCase {
             }
         )
 
-        let progress = WeeklyGenerationProgress.partialFailure(
+        let progress = GenerationProgress.partialFailure(
             from: completeDraft,
             message: "Some days were saved and some days failed. Retry the failed days before publishing.",
             preserving: existingProgress,
@@ -1042,7 +1042,7 @@ final class GenerationContractsTests: XCTestCase {
             generatedAt: "2026-06-30T00:00:00Z"
         )
 
-        let progress = WeeklyGenerationProgress.partialFailure(
+        let progress = GenerationProgress.partialFailure(
             from: draft,
             message: "Some days were saved and some days failed. Retry the failed days before publishing.",
             preserving: nil,
@@ -1810,7 +1810,7 @@ final class GenerationContractsTests: XCTestCase {
                           "Stale normalization should produce a new plan ID")
         XCTAssertFalse(services.weeklyPlan.isSoftLocked,
                        "Normalized plan should be unlocked")
-        XCTAssertNil(services.weeklyGenerationProgress,
+        XCTAssertNil(services.generationProgress,
                      "Progress should be cleared after normalization")
         XCTAssertNil(services.generationError,
                      "Generation error should be cleared after normalization")

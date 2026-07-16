@@ -5,11 +5,11 @@ import Foundation
 enum TestGeneratedDraftFactory {
     static func makeDraft(
         weekStartDate: String,
-        progress: WeeklyGenerationProgressHandler? = nil
+        progress: GenerationProgressHandler? = nil
     ) async -> GeneratedWeekDraft {
         await progress?(
-            WeeklyGenerationProgress(
-                phase: .draftingDays,
+            GenerationProgress(
+                phase: .generatingDays,
                 generationID: nil,
                 weeklyPlanID: nil,
                 draftedDayCount: 7,

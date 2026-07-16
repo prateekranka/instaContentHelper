@@ -65,7 +65,7 @@ struct WeeklyControlView: View {
                     onSelect: { day in
                         dayDetailSelection = makeDayDetailSelection(for: day.id)
                     },
-                    dayStatuses: services.weeklyGenerationProgress?.dayStatuses ?? [],
+                    dayStatuses: services.generationProgress?.dayStatuses ?? [],
                     retryingDayDate: retryingDayDate,
                     onRetryDay: { [self] scheduledDate in
                         retryDayInline(scheduledDate)
@@ -290,8 +290,8 @@ struct WeeklyControlView: View {
 
     @ViewBuilder
     private var generationStatusPanel: some View {
-        if let progress = services.weeklyGenerationProgress {
-            WeeklyGenerationStatusPanel(
+        if let progress = services.generationProgress {
+            GenerationStatusPanel(
                 progress: progress,
                 draft: services.latestGenerationSummary,
                 weekRange: services.weeklyPlan.weekRange,
@@ -302,7 +302,7 @@ struct WeeklyControlView: View {
                 onRegenerateDay: services.regeneratedDailyCard
             )
         } else if let draft = services.latestGenerationSummary {
-            WeeklyGenerationStatusPanel(
+            GenerationStatusPanel(
                 progress: .readyForReview(from: draft),
                 draft: draft,
                 weekRange: services.weeklyPlan.weekRange,
@@ -340,8 +340,8 @@ struct WeeklyControlView: View {
     }
 }
 
-struct WeeklyGenerationStatusPanel: View {
-    let progress: WeeklyGenerationProgress
+struct GenerationStatusPanel: View {
+    let progress: GenerationProgress
     let draft: GeneratedWeekDraft?
     let weekRange: String
     let canRegenerateDay: Bool
@@ -378,56 +378,31 @@ struct WeeklyGenerationStatusPanel: View {
                 Spacer()
                 if progress.phase == .failed {
                     StatusChip(text: "Failed", tone: .warning)
+                } else if progress.phase == .generatingDays {
+                    StatusChip(text: "Generating", tone: .info)
                 } else {
                     StatusChip(text: "Running", tone: .info)
                 }
             }
 
-            VStack(spacing: MCOSpace.xs) {
-                GenerationStatusRow(
-                    title: "Weekly brief saved",
-                    detail: nil,
-                    state: weeklyBriefRowState
-                )
-                GenerationStatusRow(
-                    title: "Strategy created",
-                    detail: nil,
-                    state: strategyRowState
-                )
-                GenerationStatusRow(
-                    title: "Drafting days",
-                    detail: "\(progress.draftedDayCount) of \(progress.totalDayCount)",
-                    state: draftingDaysRowState
-                )
-                GenerationStatusRow(
-                    title: "Saved drafts",
-                    detail: "\(progress.effectiveSavedDayCount) of \(progress.totalDayCount)",
-                    state: savedDraftsRowState
-                )
-                if !progress.dayStatuses.isEmpty {
-                    WeeklyGenerationDayProgressList(
-                        dayStatuses: progress.dayStatuses,
-                        draft: draft,
-                        canRegenerateDay: canRegenerateDay && onRegenerateDay != nil,
-                        activeRetries: activeRetries,
-                        retryQueue: retryQueue,
-                        errorMessages: failedDayRegenerationErrors,
-                        onReviewGeneratedDay: onReview,
-                        onRetryDay: retryFailedDay
-                    )
-                    .padding(.vertical, MCOSpace.xs)
-                }
-                GenerationStatusRow(
-                    title: "Saving draft week",
-                    detail: nil,
-                    state: rowState(for: .savingDraftWeek)
-                )
-                GenerationStatusRow(
-                    title: "Ready for review",
-                    detail: nil,
-                    state: rowState(for: .readyForReview)
-                )
+            if progress.phase == .generatingDays, progress.totalDayCount > 0 {
+                Text("\(progress.effectiveSavedDayCount) of \(progress.totalDayCount) days saved")
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
 
+            if !progress.dayStatuses.isEmpty {
+                WeeklyGenerationDayProgressList(
+                    dayStatuses: progress.dayStatuses,
+                    draft: draft,
+                    canRegenerateDay: canRegenerateDay && onRegenerateDay != nil,
+                    activeRetries: activeRetries,
+                    retryQueue: retryQueue,
+                    errorMessages: failedDayRegenerationErrors,
+                    onReviewGeneratedDay: onReview,
+                    onRetryDay: retryFailedDay
+                )
+                .padding(.vertical, MCOSpace.xs)
             }
 
             if let error = progress.error {
@@ -439,6 +414,12 @@ struct WeeklyGenerationStatusPanel: View {
                 Text("Working on \(SupabaseDateFormatting.displayDate(for: currentDay)).")
                     .font(MCOType.caption)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
+            } else if let message = progress.message?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !message.isEmpty,
+                      progress.phase != .readyForReview {
+                Text(message)
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
             }
         }
     }
@@ -448,7 +429,7 @@ struct WeeklyGenerationStatusPanel: View {
             Image(systemName: "checkmark.seal")
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(MCOTheme.Color.success)
-            Text("Draft week generated")
+            Text("Draft ready for review")
                 .font(MCOType.bodySmall.weight(.semibold))
                 .foregroundStyle(MCOTheme.Color.ink)
                 .lineLimit(1)
@@ -466,84 +447,6 @@ struct WeeklyGenerationStatusPanel: View {
             .background(MCOTheme.Color.oxblood, in: Capsule())
             .accessibilityLabel("Review generated day cards")
             .accessibilityIdentifier("weekly.reviewGenerated")
-        }
-    }
-
-    private func rowState(for phase: WeeklyGenerationProgress.Phase) -> GenerationStatusRow.State {
-        if progress.phase == .failed {
-            return phase == .readyForReview ? .pending : .failed
-        }
-
-        if progress.phase == phase {
-            return .active
-        }
-
-        return phaseOrder(progress.phase) > phaseOrder(phase) ? .complete : .pending
-    }
-
-    private var weeklyBriefRowState: GenerationStatusRow.State {
-        if progress.phase == .savingWeeklyBrief {
-            return .active
-        }
-        if progress.phase == .failed,
-           progress.draftedDayCount == 0,
-           progress.effectiveSavedDayCount == 0,
-           progress.dayStatuses.isEmpty {
-            return .failed
-        }
-        return .complete
-    }
-
-    private var strategyRowState: GenerationStatusRow.State {
-        if progress.strategyCreated == true {
-            return .complete
-        }
-        if progress.phase == .loadingContext {
-            return .active
-        }
-        if progress.phase == .failed,
-           progress.draftedDayCount == 0,
-           progress.effectiveSavedDayCount == 0,
-           progress.dayStatuses.isEmpty {
-            return .failed
-        }
-        return phaseOrder(progress.phase) > phaseOrder(.loadingContext) ? .complete : .pending
-    }
-
-    private var draftingDaysRowState: GenerationStatusRow.State {
-        if progress.draftedDayCount >= progress.totalDayCount && progress.totalDayCount > 0 {
-            return .complete
-        }
-        if progress.phase == .failed {
-            return .failed
-        }
-        if progress.phase == .draftingDays {
-            return .active
-        }
-        return phaseOrder(progress.phase) > phaseOrder(.draftingDays) ? .complete : .pending
-    }
-
-    private var savedDraftsRowState: GenerationStatusRow.State {
-        if progress.phase == .failed {
-            return progress.effectiveSavedDayCount > 0 ? .active : .failed
-        }
-        if progress.effectiveSavedDayCount >= progress.totalDayCount && progress.totalDayCount > 0 {
-            return .complete
-        }
-        if progress.effectiveSavedDayCount > 0 || progress.phase == .draftingDays || progress.phase == .savingDraftWeek {
-            return .active
-        }
-        return .pending
-    }
-
-    private func phaseOrder(_ phase: WeeklyGenerationProgress.Phase) -> Int {
-        switch phase {
-        case .savingWeeklyBrief: 0
-        case .loadingContext: 1
-        case .draftingDays: 2
-        case .savingDraftWeek: 4
-        case .readyForReview: 5
-        case .failed: -1
         }
     }
 
@@ -847,83 +750,6 @@ struct FailedGenerationDayRow: View {
             }
         }
         .padding(.vertical, 2)
-    }
-}
-
-struct GenerationStatusRow: View {
-    enum State {
-        case pending
-        case active
-        case complete
-        case failed
-    }
-
-    let title: String
-    let detail: String?
-    let state: State
-
-    var body: some View {
-        HStack(spacing: MCOSpace.s) {
-            icon
-                .frame(width: 18)
-            Text(title)
-                .font(MCOType.bodySmall)
-                .foregroundStyle(textColor)
-            Spacer(minLength: MCOSpace.s)
-            if let detail {
-                Text(detail)
-                    .font(MCOType.caption)
-                    .foregroundStyle(detailColor)
-                    .monospacedDigit()
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    @ViewBuilder
-    private var icon: some View {
-        switch state {
-        case .pending:
-            Image(systemName: "circle")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(MCOTheme.Color.inkMuted.opacity(0.7))
-        case .active:
-            ProgressView()
-                .controlSize(.mini)
-                .tint(MCOTheme.Color.oxblood)
-        case .complete:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(MCOTheme.Color.success)
-        case .failed:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(MCOTheme.Color.clay)
-        }
-    }
-
-    private var textColor: Color {
-        switch state {
-        case .pending:
-            MCOTheme.Color.inkMuted
-        case .active, .complete:
-            MCOTheme.Color.ink
-        case .failed:
-            MCOTheme.Color.oxblood
-        }
-    }
-
-    private var detailColor: Color {
-        switch state {
-        case .pending:
-            MCOTheme.Color.inkMuted
-        case .active:
-            MCOTheme.Color.oxblood
-        case .complete:
-            MCOTheme.Color.sageDeep
-        case .failed:
-            MCOTheme.Color.oxblood
-        }
     }
 }
 

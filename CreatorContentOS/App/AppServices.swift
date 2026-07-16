@@ -53,7 +53,7 @@ final class AppServices {
     var generatingStoryboardThumbnailCardIDs: Set<UUID> = []
     var storyboardThumbnailErrors: [UUID: String] = [:]
     var generationError: String?
-    var weeklyGenerationProgress: WeeklyGenerationProgress?
+    var generationProgress: GenerationProgress?
     var latestGenerationSummary: GeneratedWeekDraft?
     var referenceImportPreview: ReferenceImportPreview?
     var referenceImportConfirmResult: ReferenceImportConfirmResult?
@@ -356,7 +356,7 @@ final class AppServices {
             return false
         }
 
-        if let progress = weeklyGenerationProgress,
+        if let progress = generationProgress,
            !progress.dayStatuses.isEmpty,
            !progress.dayStatuses.allSatisfy(\.isCompleted) {
             return false
@@ -450,7 +450,7 @@ final class AppServices {
             setupSections: weeklyPlan.setupSections
         )
         weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
-        weeklyGenerationProgress = nil
+        generationProgress = nil
         generationError = nil
     }
 
@@ -475,7 +475,7 @@ final class AppServices {
         weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
         latestGenerationSummary = projectedDraft
         generationError = nil
-        weeklyGenerationProgress = nil
+        generationProgress = nil
         lastPublishError = nil
     }
 
@@ -793,7 +793,7 @@ final class AppServices {
         print("[ContentHelperGeneration] \(Date()) \(message)")
     }
 
-    private static func generationProgressSummary(_ progress: WeeklyGenerationProgress) -> String {
+    private static func generationProgressSummary(_ progress: GenerationProgress) -> String {
         let runningDays = progress.dayStatuses.filter { $0.isRunning || $0.isRetrying }
         let queuedDays = progress.dayStatuses.filter(\.isQueued)
         let completed = progress.dayStatuses.filter(\.isCompleted).count
@@ -827,7 +827,7 @@ final class AppServices {
     }
 
     private func markRegeneratedDayCompleted(_ card: GeneratedDailyCardDraft) {
-        guard var progress = weeklyGenerationProgress else { return }
+        guard var progress = generationProgress else { return }
 
         let index: Int
         if let existingIndex = progress.dayStatuses.firstIndex(where: { $0.scheduledDate == card.scheduledDate }) {
@@ -861,7 +861,7 @@ final class AppServices {
         if failedCount == 0, let draft = latestGenerationSummary, draft.dailyCards.count >= progress.totalDayCount {
             progress = .readyForReview(from: draft)
         }
-        weeklyGenerationProgress = progress
+        generationProgress = progress
     }
 
     func updateWeeklyDayState(dayID: UUID, state: WeeklyDayState) {
@@ -1471,23 +1471,23 @@ final class AppServices {
 
     private func reconcileGenerationProgressAfterDraftRefresh() {
         guard let draft = latestGenerationSummary, draft.weeklyPlanID == weeklyPlan.id else {
-            if weeklyGenerationProgress?.phase == .failed {
-                weeklyGenerationProgress = nil
+            if generationProgress?.phase == .failed {
+                generationProgress = nil
             }
             return
         }
 
         if draft.isCompleteWeekDraft {
-            if weeklyGenerationProgress?.phase == .failed {
-                weeklyGenerationProgress = nil
+            if generationProgress?.phase == .failed {
+                generationProgress = nil
             }
             return
         }
 
-        weeklyGenerationProgress = WeeklyGenerationProgress.partialFailure(
+        generationProgress = GenerationProgress.partialFailure(
             from: draft,
             message: "Some days were saved and some days failed. Retry the failed days before publishing.",
-            preserving: weeklyGenerationProgress,
+            preserving: generationProgress,
             expectedScheduledDates: Self.expectedGenerationScheduledDates(
                 weekStartDate: weeklyPlan.weekStartDate,
                 weeklyPlan: weeklyPlan
@@ -1499,7 +1499,7 @@ final class AppServices {
     private func isRetryableFailedGenerationDate(_ scheduledDate: String) -> Bool {
         guard latestGenerationSummary?.weeklyPlanID == weeklyPlan.id else { return false }
 
-        return weeklyGenerationProgress?.dayStatuses.contains {
+        return generationProgress?.dayStatuses.contains {
             $0.scheduledDate == scheduledDate &&
                 ($0.isFailed || $0.isRetrying) &&
                 ($0.retryAction == "retry_day" || $0.retryAction == "regenerate_day")

@@ -28,12 +28,9 @@ enum GenerationResponseMode: String, Encodable, Sendable {
     case async
 }
 
-struct WeeklyGenerationProgress: Hashable, Sendable {
+struct GenerationProgress: Hashable, Sendable {
     enum Phase: String, Hashable, Sendable {
-        case savingWeeklyBrief
-        case loadingContext
-        case draftingDays
-        case savingDraftWeek
+        case generatingDays
         case readyForReview
         case failed
     }
@@ -52,60 +49,8 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
     var strategyCreated: Bool? = nil
     var dayStatuses: [WeeklyDayGenerationStatus] = []
 
-    static let savingWeeklyBrief = WeeklyGenerationProgress(
-        phase: .savingWeeklyBrief,
-        generationID: nil,
-        weeklyPlanID: nil,
-        draftedDayCount: 0,
-        checkedDayCount: 0,
-        totalDayCount: 7,
-        currentDay: nil,
-        message: "Saving weekly brief",
-        error: nil
-    )
-
-    static let loadingContext = WeeklyGenerationProgress(
-        phase: .loadingContext,
-        generationID: nil,
-        weeklyPlanID: nil,
-        draftedDayCount: 0,
-        checkedDayCount: 0,
-        totalDayCount: 7,
-        currentDay: nil,
-        message: "Collecting context",
-        error: nil
-    )
-
-    static func savingDraftWeek(from draft: GeneratedWeekDraft) -> WeeklyGenerationProgress {
-        WeeklyGenerationProgress(
-            phase: .savingDraftWeek,
-            generationID: draft.id,
-            weeklyPlanID: draft.weeklyPlanID,
-            draftedDayCount: draft.dailyCards.count,
-            checkedDayCount: draft.dailyCards.count,
-            totalDayCount: max(draft.dailyCards.count, 7),
-            currentDay: nil,
-            message: "Saving draft week",
-            error: nil,
-            savedDayCount: draft.dailyCards.count,
-            failedDayCount: 0,
-            strategyCreated: true,
-            dayStatuses: draft.dailyCards.enumerated().map { index, card in
-                WeeklyDayGenerationStatus(
-                    scheduledDate: card.scheduledDate,
-                    dayIndex: index,
-                    status: "generated",
-                    dailyCardID: card.id,
-                    errorCode: nil,
-                    retryAction: nil,
-                    message: nil
-                )
-            }
-        )
-    }
-
-    static func readyForReview(from draft: GeneratedWeekDraft) -> WeeklyGenerationProgress {
-        WeeklyGenerationProgress(
+    static func readyForReview(from draft: GeneratedWeekDraft) -> GenerationProgress {
+        GenerationProgress(
             phase: .readyForReview,
             generationID: draft.id,
             weeklyPlanID: draft.weeklyPlanID,
@@ -113,7 +58,7 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
             checkedDayCount: draft.dailyCards.count,
             totalDayCount: max(draft.dailyCards.count, 7),
             currentDay: nil,
-            message: "Draft week generated",
+            message: "Draft ready for review",
             error: nil,
             savedDayCount: draft.dailyCards.count,
             failedDayCount: 0,
@@ -135,9 +80,9 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
     static func partialFailure(
         from draft: GeneratedWeekDraft,
         message: String,
-        preserving existingProgress: WeeklyGenerationProgress? = nil,
+        preserving existingProgress: GenerationProgress? = nil,
         expectedScheduledDates: [String] = []
-    ) -> WeeklyGenerationProgress {
+    ) -> GenerationProgress {
         let savedCount = min(draft.dailyCards.count, 7)
         let dayStatuses = partialFailureDayStatuses(
             for: draft,
@@ -147,7 +92,7 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
         let failedCount = dayStatuses.isEmpty
             ? max(7 - savedCount, 0)
             : dayStatuses.filter(\.isFailed).count
-        return WeeklyGenerationProgress(
+        return GenerationProgress(
             phase: .failed,
             generationID: existingProgress?.generationID ?? (draft.id != draft.weeklyPlanID ? draft.id : nil),
             weeklyPlanID: existingProgress?.weeklyPlanID ?? draft.weeklyPlanID,
@@ -166,7 +111,7 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
 
     private static func partialFailureDayStatuses(
         for draft: GeneratedWeekDraft,
-        preserving existingProgress: WeeklyGenerationProgress?,
+        preserving existingProgress: GenerationProgress?,
         expectedScheduledDates: [String]
     ) -> [WeeklyDayGenerationStatus] {
         let existingStatuses = existingProgress?.dayStatuses ?? []
@@ -209,8 +154,8 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
         }
     }
 
-    static func failed(_ message: String, generationID: UUID? = nil) -> WeeklyGenerationProgress {
-        WeeklyGenerationProgress(
+    static func failed(_ message: String, generationID: UUID? = nil) -> GenerationProgress {
+        GenerationProgress(
             phase: .failed,
             generationID: generationID,
             weeklyPlanID: nil,
@@ -223,8 +168,8 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
         )
     }
 
-    func failed(_ message: String) -> WeeklyGenerationProgress {
-        WeeklyGenerationProgress(
+    func failed(_ message: String) -> GenerationProgress {
+        GenerationProgress(
             phase: .failed,
             generationID: generationID,
             weeklyPlanID: weeklyPlanID,
@@ -241,8 +186,8 @@ struct WeeklyGenerationProgress: Hashable, Sendable {
         )
     }
 
-    var waitingForStatusRetry: WeeklyGenerationProgress {
-        WeeklyGenerationProgress(
+    var waitingForStatusRetry: GenerationProgress {
+        GenerationProgress(
             phase: phase,
             generationID: generationID,
             weeklyPlanID: weeklyPlanID,
@@ -616,14 +561,14 @@ struct SupabaseGenerationStatusResponse: Decodable, Hashable, Sendable {
         }
     }
 
-    var weekProgress: WeeklyGenerationProgress {
+    var generationProgress: GenerationProgress {
         let total = max(totalDayCount ?? 7, 1)
         let saved = min(max(savedDayCount ?? dayStatuses.filter(\.isCompleted).count, 0), total)
         let failed = min(max(failedDayCount ?? dayStatuses.filter(\.isFailed).count, 0), total)
         let completed = min(max(completedDayCount ?? 0, saved + failed), total)
         let effectiveSaved = savedDayCount == nil && dayStatuses.isEmpty ? completed : saved
-        return WeeklyGenerationProgress(
-            phase: completed >= total && failed == 0 ? .savingDraftWeek : .draftingDays,
+        return GenerationProgress(
+            phase: completed >= total && failed == 0 ? .readyForReview : .generatingDays,
             generationID: generationID,
             weeklyPlanID: weeklyPlanID,
             draftedDayCount: effectiveSaved,
