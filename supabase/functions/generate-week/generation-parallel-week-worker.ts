@@ -38,9 +38,9 @@ import {
   insertGeneratedIdeas,
   upsertGeneratedDailyCards,
 } from "./generation-persistence.ts";
+import { markGenerationRunFailed } from "./generation-run-completion.ts";
 import {
   completePartialGenerationRun as completePartialGenerationRunStore,
-  markGenerationRunFailed as markGenerationRunFailedStore,
   readGenerationRunCancellationState,
   updateGenerationRunProgress,
 } from "./generation-run-store.ts";
@@ -234,14 +234,6 @@ async function updateGenerationProgress(
     return generationPersistFailure("update_generation_progress", error);
   }
   return { ok: true };
-}
-
-async function markGenerationRunFailed(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  errorCode: string,
-): Promise<void> {
-  await markGenerationRunFailedStore(admin, generationID, errorCode);
 }
 
 export function isGenerationRunRecordCancelled(
