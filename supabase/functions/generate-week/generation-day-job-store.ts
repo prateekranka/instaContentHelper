@@ -3,6 +3,10 @@ import type {
   QueuedDayJobRecord,
   QueuedDayJobStatus,
 } from "./generation-status.ts";
+export {
+  markGenerationRunCancelled,
+  readQueuedActionGenerationRun,
+} from "./generation-run-store.ts";
 
 export function queuedDayJobSelect(): string {
   return [
@@ -354,40 +358,6 @@ export async function cancelActiveQueuedDayJobs(
     .in("status", ["queued", "retrying", "generating", "ready_to_persist"]);
 
   return { error: error ?? null };
-}
-
-export async function markGenerationRunCancelled(
-  admin: SupabaseAdminClient,
-  generationID: string,
-): Promise<{ error: unknown | null }> {
-  const { error } = await admin
-    .from("weekly_generation_runs")
-    .update({
-      status: "failed",
-      error_code: "generation_cancelled",
-      completed_at: new Date().toISOString(),
-    })
-    .eq("id", generationID);
-
-  return { error: error ?? null };
-}
-
-export async function readQueuedActionGenerationRun(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  workspaceID: string,
-): Promise<{ data: Record<string, unknown> | null; error: unknown }> {
-  const { data, error } = await admin
-    .from("weekly_generation_runs")
-    .select("id,workspace_id,creator_id,status,weekly_plan_id,error_code")
-    .eq("id", generationID)
-    .eq("workspace_id", workspaceID)
-    .maybeSingle();
-
-  return {
-    data: isRecord(data) ? data : null,
-    error,
-  };
 }
 
 export function normalizeQueuedDayJobRows(

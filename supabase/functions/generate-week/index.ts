@@ -59,8 +59,6 @@ import {
   isQueuedDayJobStale,
   lookupQueuedDayJobsExist,
   markFailedDayJobRetrying,
-  markGenerationRunCancelled,
-  readQueuedActionGenerationRun,
   readQueuedDayJobsForRun,
   reclaimStaleDayJob,
   releaseOverCapacityDayJob,
@@ -76,6 +74,21 @@ import {
   upsertDraftWeeklyPlan,
   upsertGeneratedDailyCards,
 } from "./generation-persistence.ts";
+import {
+  completeDayGenerationRun as completeDayGenerationRunStore,
+  completeFullWeekGenerationRun,
+  completeGenerationRunMinimal,
+  completePartialGenerationRun as completePartialGenerationRunStore,
+  insertDayGenerationRun,
+  insertWeekGenerationRun,
+  linkGenerationRunWeeklyPlan,
+  markGenerationRunCancelled,
+  markGenerationRunFailed as markGenerationRunFailedStore,
+  readGenerationRunCancellationState,
+  readGenerationRunStatus,
+  readQueuedActionGenerationRun,
+  updateGenerationRunProgress,
+} from "./generation-run-store.ts";
 
 type EnvReader = {
   get: (name: string) => string | undefined;
@@ -2653,16 +2666,15 @@ async function completePartialGenerationRun(
   progress: PerDayGenerationSnapshot,
   completedAt: string,
 ): Promise<{ ok: true } | { response: Response }> {
-  const { error } = await admin
-    .from("weekly_generation_runs")
-    .update({
+  const { error } = await completePartialGenerationRunStore(
+    admin,
+    generationID,
+    {
       weekly_plan_id: weeklyPlanID,
-      status: "completed",
       output_snapshot: progress,
-      error_code: "partial_generation",
       completed_at: completedAt,
-    })
-    .eq("id", generationID);
+    },
+  );
   if (error) {
     return generationPersistFailure("complete_partial_generation_run", error);
   }
@@ -3069,12 +3081,11 @@ async function isGenerationRunCancelled(
   admin: SupabaseAdminClient,
   generationID: string,
 ): Promise<boolean> {
-  const { data } = await admin
-    .from("weekly_generation_runs")
-    .select("status,error_code")
-    .eq("id", generationID)
-    .maybeSingle();
-  return isGenerationRunRecordCancelled(isRecord(data) ? data : null);
+  const { data } = await readGenerationRunCancellationState(
+    admin,
+    generationID,
+  );
+  return isGenerationRunRecordCancelled(data);
 }
 
 async function readGenerationStatus(
@@ -3092,14 +3103,11 @@ async function readGenerationStatus(
     return jsonResponse({ error: "invalid_generation_payload" }, 400);
   }
 
-  const { data, error } = await admin
-    .from("weekly_generation_runs")
-    .select(
-      "id,workspace_id,creator_id,weekly_setup_id,requested_by_member_id,status,weekly_plan_id,output_snapshot,input_snapshot,error_code,completed_at,model,generation_scope,target_daily_card_id,target_scheduled_date",
-    )
-    .eq("id", generationID)
-    .eq("workspace_id", session.workspaceID)
-    .maybeSingle();
+  const { data, error } = await readGenerationRunStatus(
+    admin,
+    generationID,
+    session.workspaceID,
+  );
 
   if (error) {
     return generationPersistFailure("read_generation_status", error).response;
@@ -4581,11 +4589,11 @@ async function updateGenerationProgress(
   generationID: string,
   progress: PerDayGenerationSnapshot | SingleDayGenerationSnapshot,
 ): Promise<{ ok: true } | { response: Response }> {
-  const { error } = await admin
-    .from("weekly_generation_runs")
-    .update({ output_snapshot: progress })
-    .eq("id", generationID)
-    .eq("status", "running");
+  const { error } = await updateGenerationRunProgress(
+    admin,
+    generationID,
+    progress,
+  );
 
   if (error) {
     return generationPersistFailure("update_generation_progress", error);
@@ -4993,22 +5001,18 @@ async function createGenerationRun(
   model: string,
   inputSnapshot: GenerationInputSnapshot,
 ): Promise<{ run: RunRecord } | { response: Response }> {
-  const { data, error } = await admin
-    .from("weekly_generation_runs")
-    .insert({
-      workspace_id: workspaceID,
-      creator_id: request.creator_id,
-      weekly_setup_id: request.weekly_setup_id ?? null,
-      requested_by_member_id: memberID,
-      status: "running",
-      model,
-      prompt_version: PROMPT_VERSION,
-      input_snapshot: inputSnapshot,
-      warnings: [],
-      assumptions: [],
-    })
-    .select("id")
-    .single();
+  const { data, error } = await insertWeekGenerationRun(admin, {
+    workspace_id: workspaceID,
+    creator_id: request.creator_id,
+    weekly_setup_id: request.weekly_setup_id ?? null,
+    requested_by_member_id: memberID,
+    status: "running",
+    model,
+    prompt_version: PROMPT_VERSION,
+    input_snapshot: inputSnapshot,
+    warnings: [],
+    assumptions: [],
+  });
 
   if (error || !data) {
     return generationPersistFailure("create_generation_run", error);
@@ -5022,26 +5026,22 @@ async function createDayGenerationRun(
   prepared: PreparedDayGeneration,
   memberID: string,
 ): Promise<{ run: RunRecord } | { response: Response }> {
-  const { data, error } = await admin
-    .from("weekly_generation_runs")
-    .insert({
-      workspace_id: prepared.session.workspaceID,
-      creator_id: prepared.request.creator_id,
-      weekly_setup_id: prepared.plan.weekly_setup_id ?? null,
-      weekly_plan_id: prepared.request.weekly_plan_id,
-      requested_by_member_id: memberID,
-      status: "running",
-      model: prepared.model,
-      prompt_version: PROMPT_VERSION,
-      generation_scope: "day",
-      target_daily_card_id: prepared.targetCard?.id ?? null,
-      target_scheduled_date: prepared.request.scheduled_date,
-      input_snapshot: prepared.inputSnapshot,
-      warnings: [],
-      assumptions: [],
-    })
-    .select("id")
-    .single();
+  const { data, error } = await insertDayGenerationRun(admin, {
+    workspace_id: prepared.session.workspaceID,
+    creator_id: prepared.request.creator_id,
+    weekly_setup_id: prepared.plan.weekly_setup_id ?? null,
+    weekly_plan_id: prepared.request.weekly_plan_id,
+    requested_by_member_id: memberID,
+    status: "running",
+    model: prepared.model,
+    prompt_version: PROMPT_VERSION,
+    generation_scope: "day",
+    target_daily_card_id: prepared.targetCard?.id ?? null,
+    target_scheduled_date: prepared.request.scheduled_date,
+    input_snapshot: prepared.inputSnapshot,
+    warnings: [],
+    assumptions: [],
+  });
   if (error || !data) {
     return generationPersistFailure("create_day_generation_run", error);
   }
@@ -5053,11 +5053,11 @@ async function updateGenerationRunWeeklyPlan(
   generationID: string,
   weeklyPlanID: string,
 ): Promise<{ ok: true } | { response: Response }> {
-  const { error } = await admin
-    .from("weekly_generation_runs")
-    .update({ weekly_plan_id: weeklyPlanID })
-    .eq("id", generationID)
-    .eq("status", "running");
+  const { error } = await linkGenerationRunWeeklyPlan(
+    admin,
+    generationID,
+    weeklyPlanID,
+  );
 
   if (error) {
     return generationPersistFailure("update_generation_weekly_plan", error);
@@ -5398,17 +5398,16 @@ async function completeDayGenerationRun(
   payload: RegenerateDayDraftResponse,
   completedAt: string,
 ): Promise<{ ok: true } | { response: Response }> {
-  const { error } = await admin
-    .from("weekly_generation_runs")
-    .update({
-      status: "completed",
+  const { error } = await completeDayGenerationRunStore(
+    admin,
+    generationID,
+    {
       output_snapshot: payload,
       warnings: payload.warnings,
       assumptions: payload.assumptions,
       completed_at: completedAt,
-      error_code: null,
-    })
-    .eq("id", generationID);
+    },
+  );
   if (error) {
     const fallback = await completeGenerationRunWithoutSnapshot(
       admin,
@@ -5493,18 +5492,17 @@ async function completeGenerationRun(
   payload: GenerateWeekDraftResponse,
   completedAt: string,
 ): Promise<{ ok: true } | { response: Response }> {
-  const { error } = await admin
-    .from("weekly_generation_runs")
-    .update({
+  const { error } = await completeFullWeekGenerationRun(
+    admin,
+    generationID,
+    {
       weekly_plan_id: weeklyPlanID,
-      status: "completed",
       output_snapshot: payload,
       warnings: payload.warnings,
       assumptions: payload.assumptions,
       completed_at: completedAt,
-      error_code: null,
-    })
-    .eq("id", generationID);
+    },
+  );
 
   if (error) {
     const fallback = await completeGenerationRunWithoutSnapshot(
@@ -5547,10 +5545,11 @@ async function completeGenerationRunWithoutSnapshot(
     update.weekly_plan_id = weeklyPlanID;
   }
 
-  const { error } = await admin
-    .from("weekly_generation_runs")
-    .update(update)
-    .eq("id", generationID);
+  const { error } = await completeGenerationRunMinimal(
+    admin,
+    generationID,
+    update,
+  );
 
   if (error) {
     return generationPersistFailure(step, error);
@@ -5564,14 +5563,7 @@ async function markGenerationRunFailed(
   generationID: string,
   errorCode: string,
 ): Promise<void> {
-  await admin
-    .from("weekly_generation_runs")
-    .update({
-      status: "failed",
-      error_code: errorCode,
-      completed_at: new Date().toISOString(),
-    })
-    .eq("id", generationID);
+  await markGenerationRunFailedStore(admin, generationID, errorCode);
 }
 
 function stableGenerationError(error: unknown): string {

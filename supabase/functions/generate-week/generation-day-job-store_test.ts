@@ -18,6 +18,10 @@ import {
   stageDayJobOutput,
   upsertDayJobRows,
 } from "./generation-day-job-store.ts";
+import {
+  markGenerationRunCancelled as markGenerationRunCancelledFromRunStore,
+  readQueuedActionGenerationRun as readQueuedActionGenerationRunFromRunStore,
+} from "./generation-run-store.ts";
 import type { QueuedDayJobRecord } from "./generation-status.ts";
 
 type FakeJob = Record<string, unknown>;
@@ -946,6 +950,17 @@ Deno.test("cancelActiveQueuedDayJobs cancels only active statuses with auth filt
   assertEquals(
     JSON.stringify(op.filters.status),
     JSON.stringify(["queued", "retrying", "generating", "ready_to_persist"]),
+  );
+});
+
+Deno.test("generation-day-job-store re-exports run-store cancellation helpers", () => {
+  assertEquals(
+    markGenerationRunCancelled,
+    markGenerationRunCancelledFromRunStore,
+  );
+  assertEquals(
+    readQueuedActionGenerationRun,
+    readQueuedActionGenerationRunFromRunStore,
   );
 });
 
