@@ -27,7 +27,6 @@ import {
   normalizeGenerateDayRequest,
   normalizeGenerateWeekRequest,
   normalizeRegenerateDayRequest,
-  preserveManualDailyCardEdits,
   RegenerateDayRequest,
   validateGeneratedWeek,
   weekDates,
@@ -65,12 +64,10 @@ import {
 import {
   clearExistingDraftDailyCardsForFullGeneration,
   findLatestDraftDayPlanContainer,
-  generatedDailyCardValues,
   generationPersistFailure,
   insertGeneratedIdeas,
   insertThinDraftDayPlanContainer,
-  replaceDailyCardReferences,
-  updateExistingDraftDailyCard,
+  persistRegeneratedDay,
   upsertDraftWeeklyPlan,
   upsertGeneratedDailyCards,
 } from "./generation-persistence.ts";
@@ -99,9 +96,10 @@ import {
 import {
   readCreatorRow,
   readDailyCardsForPlan,
-  readDayGenerationPlanRow,
+  readDayGenerationPlan,
   readGenerationContextRows,
   readLatestWeeklySetupForWeek,
+  readPlanCardsForDayGeneration,
   readPublishedWeekRow,
   readWeeklySetupByID,
 } from "./generation-context-store.ts";
@@ -848,47 +846,6 @@ async function prepareDayGeneration(
   };
 }
 
-async function readDayGenerationPlan(
-  admin: SupabaseAdminClient,
-  workspaceID: string,
-  request: RegenerateDayRequest,
-): Promise<{ plan: PlanRecord } | { response: Response }> {
-  const { data, error } = await readDayGenerationPlanRow(
-    admin,
-    workspaceID,
-    request.creator_id,
-    request.weekly_plan_id,
-  );
-  if (error) {
-    return {
-      response: jsonResponse({ error: "weekly_plan_lookup_failed" }, 500),
-    };
-  }
-  if (!isRecord(data)) {
-    return { response: jsonResponse({ error: "weekly_plan_not_found" }, 404) };
-  }
-  return { plan: data as PlanRecord };
-}
-
-async function readPlanCardsForDayGeneration(
-  admin: SupabaseAdminClient,
-  workspaceID: string,
-  request: RegenerateDayRequest,
-): Promise<{ cards: CardIdentityRecord[] } | { response: Response }> {
-  const { data, error } = await readDailyCardsForPlan(
-    admin,
-    workspaceID,
-    request.creator_id,
-    request.weekly_plan_id,
-  );
-  if (error) {
-    return {
-      response: jsonResponse({ error: "daily_card_lookup_failed" }, 500),
-    };
-  }
-  return { cards: data as CardIdentityRecord[] };
-}
-
 async function readSavedDailyCards(
   admin: SupabaseAdminClient,
   workspaceID: string,
@@ -1443,7 +1400,15 @@ function buildSingleDayRunnerHost(
         dependencies,
       ),
     mockOutput: mockGeneratedDayOutput,
-    persistRegeneratedDay,
+    persistRegeneratedDay: (admin, prepared, generatedCard) =>
+      persistRegeneratedDay(admin, {
+        workspaceID: prepared.session.workspaceID,
+        creatorID: prepared.request.creator_id,
+        weeklyPlanID: prepared.request.weekly_plan_id,
+        scheduledDate: prepared.request.scheduled_date,
+        preserveManualEdits: prepared.request.preserve_manual_edits,
+        targetCard: prepared.targetCard,
+      }, generatedCard),
     completeDayGenerationRun,
     markGenerationRunFailed,
     stableGenerationError,
@@ -2599,102 +2564,6 @@ async function generateRegeneratedDayOutput(
     undefined,
     instrumentation,
   );
-}
-
-async function persistRegeneratedDay(
-  admin: SupabaseAdminClient,
-  prepared: PreparedDayGeneration,
-  generatedCard: GeneratedDailyCard,
-): Promise<{ dailyCard: GeneratedDailyCard } | { response: Response }> {
-  const currentPlan = await readDayGenerationPlan(
-    admin,
-    prepared.session.workspaceID,
-    prepared.request,
-  );
-  if ("response" in currentPlan) {
-    return currentPlan;
-  }
-  if (
-    currentPlan.plan.status === "published" ||
-    currentPlan.plan.is_soft_locked
-  ) {
-    return {
-      response: jsonResponse({ error: "existing_published_week_locked" }, 409),
-    };
-  }
-  if (currentPlan.plan.status !== "draft") {
-    return {
-      response: jsonResponse({ error: "weekly_plan_not_found" }, 409),
-    };
-  }
-
-  const freshCards = await readPlanCardsForDayGeneration(
-    admin,
-    prepared.session.workspaceID,
-    prepared.request,
-  );
-  if ("response" in freshCards) {
-    return freshCards;
-  }
-  const existing = freshCards.cards.find((card) =>
-    (prepared.targetCard?.id ? card.id === prepared.targetCard.id : true) &&
-    card.scheduled_date === prepared.request.scheduled_date &&
-    card.status === "draft"
-  );
-
-  const card = prepared.request.preserve_manual_edits && existing
-    ? preserveManualDailyCardEdits(generatedCard, existing)
-    : generatedCard;
-  if (!existing) {
-    const persistResult = await upsertGeneratedDailyCards(
-      admin,
-      prepared.session.workspaceID,
-      prepared.request.creator_id,
-      prepared.request.weekly_plan_id,
-      [card],
-      false,
-    );
-    if ("response" in persistResult) {
-      return persistResult;
-    }
-    const dailyCard = persistResult.dailyCards.find((entry) =>
-      entry.scheduled_date === prepared.request.scheduled_date
-    ) ?? persistResult.dailyCards[0];
-    return dailyCard ? { dailyCard } : {
-      response: jsonResponse(
-        { error: "daily_card_not_found" },
-        404,
-      ),
-    };
-  }
-
-  const values = generatedDailyCardValues(card);
-  const { data, error } = await updateExistingDraftDailyCard(
-    admin,
-    values,
-    {
-      id: existing.id,
-      workspace_id: prepared.session.workspaceID,
-      creator_id: prepared.request.creator_id,
-      weekly_plan_id: prepared.request.weekly_plan_id,
-      scheduled_date: prepared.request.scheduled_date,
-    },
-  );
-  if (error || !isRecord(data)) {
-    return generationPersistFailure("regenerate_day_update_card", error);
-  }
-
-  const referenceResult = await replaceDailyCardReferences(
-    admin,
-    prepared.session.workspaceID,
-    prepared.request.creator_id,
-    existing.id,
-    card,
-  );
-  if ("response" in referenceResult) {
-    return referenceResult;
-  }
-  return { dailyCard: { ...card, id: existing.id } };
 }
 
 async function persistGeneratedWeek(

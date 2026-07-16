@@ -1,4 +1,22 @@
-import { SupabaseAdminClient } from "../_shared/device-auth.ts";
+import { jsonResponse, SupabaseAdminClient } from "../_shared/device-auth.ts";
+
+export type DayGenerationPlanRecord = {
+  id: string;
+  status?: string;
+  is_soft_locked?: boolean;
+  week_start_date?: string;
+  weekly_setup_id?: string | null;
+};
+
+export type DayGenerationCardRecord = {
+  id: string;
+  scheduled_date: string;
+} & Record<string, unknown>;
+
+export type DayGenerationPlanLookup = {
+  creator_id: string;
+  weekly_plan_id: string;
+};
 
 export const CREATOR_LOOKUP_SELECT = "id,display_name,default_timezone";
 
@@ -226,6 +244,51 @@ export async function readDailyCardsForPlan(
     data: Array.isArray(data) ? data.filter(isRecord) : [],
     error,
   };
+}
+
+export async function readDayGenerationPlan(
+  admin: SupabaseAdminClient,
+  workspaceID: string,
+  request: DayGenerationPlanLookup,
+): Promise<
+  { plan: DayGenerationPlanRecord } | { response: Response }
+> {
+  const { data, error } = await readDayGenerationPlanRow(
+    admin,
+    workspaceID,
+    request.creator_id,
+    request.weekly_plan_id,
+  );
+  if (error) {
+    return {
+      response: jsonResponse({ error: "weekly_plan_lookup_failed" }, 500),
+    };
+  }
+  if (!isRecord(data)) {
+    return { response: jsonResponse({ error: "weekly_plan_not_found" }, 404) };
+  }
+  return { plan: data as DayGenerationPlanRecord };
+}
+
+export async function readPlanCardsForDayGeneration(
+  admin: SupabaseAdminClient,
+  workspaceID: string,
+  request: DayGenerationPlanLookup,
+): Promise<
+  { cards: DayGenerationCardRecord[] } | { response: Response }
+> {
+  const { data, error } = await readDailyCardsForPlan(
+    admin,
+    workspaceID,
+    request.creator_id,
+    request.weekly_plan_id,
+  );
+  if (error) {
+    return {
+      response: jsonResponse({ error: "daily_card_lookup_failed" }, 500),
+    };
+  }
+  return { cards: data as DayGenerationCardRecord[] };
 }
 
 /**
