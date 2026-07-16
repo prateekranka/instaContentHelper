@@ -66,10 +66,13 @@ import {
 } from "./generation-day-job-store.ts";
 import {
   clearExistingDraftDailyCardsForFullGeneration,
+  findLatestDraftDayPlanContainer,
   generatedDailyCardValues,
   generationPersistFailure,
   insertGeneratedIdeas,
+  insertThinDraftDayPlanContainer,
   replaceDailyCardReferences,
+  updateExistingDraftDailyCard,
   upsertDraftWeeklyPlan,
   upsertGeneratedDailyCards,
 } from "./generation-persistence.ts";
@@ -668,15 +671,12 @@ async function ensureDayPlanContainer(
 ): Promise<{ weeklyPlanID: string } | { response: Response }> {
   const weekStartDate = weekStartDateForDate(request.scheduled_date);
 
-  const existingResult = await admin
-    .from("weekly_plans")
-    .select("id,status,is_soft_locked")
-    .eq("workspace_id", session.workspaceID)
-    .eq("creator_id", request.creator_id)
-    .eq("week_start_date", weekStartDate)
-    .in("status", ["draft"])
-    .order("updated_at", { ascending: false })
-    .limit(1);
+  const existingResult = await findLatestDraftDayPlanContainer(
+    admin,
+    session.workspaceID,
+    request.creator_id,
+    weekStartDate,
+  );
   if (existingResult.error) {
     return generationPersistFailure(
       "day_container_plan_lookup",
@@ -695,24 +695,20 @@ async function ensureDayPlanContainer(
   }
 
   const weeklyPlanID = crypto.randomUUID();
-  const { data, error } = await admin
-    .from("weekly_plans")
-    .insert({
-      id: weeklyPlanID,
-      workspace_id: session.workspaceID,
-      creator_id: request.creator_id,
-      weekly_setup_id: null,
-      creator_profile_id: null,
-      week_start_date: weekStartDate,
-      status: "draft",
-      strategy_summary: "Day-at-a-time container week.",
-      warnings: [],
-      assumptions: ["Created automatically for single-day generation."],
-      is_soft_locked: false,
-      created_by_member_id: session.memberID,
-    })
-    .select("id")
-    .single();
+  const { data, error } = await insertThinDraftDayPlanContainer(admin, {
+    id: weeklyPlanID,
+    workspace_id: session.workspaceID,
+    creator_id: request.creator_id,
+    weekly_setup_id: null,
+    creator_profile_id: null,
+    week_start_date: weekStartDate,
+    status: "draft",
+    strategy_summary: "Day-at-a-time container week.",
+    warnings: [],
+    assumptions: ["Created automatically for single-day generation."],
+    is_soft_locked: false,
+    created_by_member_id: session.memberID,
+  });
   if (error || !data) {
     return generationPersistFailure("day_container_plan_write", error);
   }
@@ -4998,17 +4994,17 @@ async function persistRegeneratedDay(
   }
 
   const values = generatedDailyCardValues(card);
-  const { data, error } = await admin
-    .from("daily_cards")
-    .update(values)
-    .eq("id", existing.id)
-    .eq("workspace_id", prepared.session.workspaceID)
-    .eq("creator_id", prepared.request.creator_id)
-    .eq("weekly_plan_id", prepared.request.weekly_plan_id)
-    .eq("scheduled_date", prepared.request.scheduled_date)
-    .eq("status", "draft")
-    .select("id,scheduled_date")
-    .maybeSingle();
+  const { data, error } = await updateExistingDraftDailyCard(
+    admin,
+    values,
+    {
+      id: existing.id,
+      workspace_id: prepared.session.workspaceID,
+      creator_id: prepared.request.creator_id,
+      weekly_plan_id: prepared.request.weekly_plan_id,
+      scheduled_date: prepared.request.scheduled_date,
+    },
+  );
   if (error || !isRecord(data)) {
     return generationPersistFailure("regenerate_day_update_card", error);
   }

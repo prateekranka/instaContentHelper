@@ -127,6 +127,96 @@ export function generatedDailyCardValues(
   };
 }
 
+export const DAY_PLAN_CONTAINER_SELECT = "id,status,is_soft_locked";
+export const DRAFT_DAILY_CARD_UPDATE_SELECT = "id,scheduled_date";
+
+export type ThinDraftDayPlanContainerRow = {
+  id: string;
+  workspace_id: string;
+  creator_id: string;
+  weekly_setup_id: null;
+  creator_profile_id: null;
+  week_start_date: string;
+  status: "draft";
+  strategy_summary: string;
+  warnings: unknown[];
+  assumptions: string[];
+  is_soft_locked: false;
+  created_by_member_id: string;
+};
+
+export type ExistingDraftDailyCardIdentity = {
+  id: string;
+  workspace_id: string;
+  creator_id: string;
+  weekly_plan_id: string;
+  scheduled_date: string;
+};
+
+/** Latest draft weekly_plans container for single-day generation. */
+export async function findLatestDraftDayPlanContainer(
+  admin: SupabaseAdminClient,
+  workspaceID: string,
+  creatorID: string,
+  weekStartDate: string,
+): Promise<{ data: Record<string, unknown>[] | null; error: unknown }> {
+  const { data, error } = await admin
+    .from("weekly_plans")
+    .select(DAY_PLAN_CONTAINER_SELECT)
+    .eq("workspace_id", workspaceID)
+    .eq("creator_id", creatorID)
+    .eq("week_start_date", weekStartDate)
+    .in("status", ["draft"])
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  return {
+    data: Array.isArray(data) ? data.filter(isRecord) : null,
+    error,
+  };
+}
+
+/** Thin draft weekly_plans insert used when no day container exists. */
+export async function insertThinDraftDayPlanContainer(
+  admin: SupabaseAdminClient,
+  row: ThinDraftDayPlanContainerRow,
+): Promise<{ data: { id: string } | null; error: unknown }> {
+  const { data, error } = await admin
+    .from("weekly_plans")
+    .insert(row)
+    .select("id")
+    .single();
+
+  return {
+    data: isPlanIDRecord(data) ? data : null,
+    error,
+  };
+}
+
+/** Update an existing draft daily_cards row during regenerate_day. */
+export async function updateExistingDraftDailyCard(
+  admin: SupabaseAdminClient,
+  values: Record<string, unknown>,
+  identity: ExistingDraftDailyCardIdentity,
+): Promise<{ data: Record<string, unknown> | null; error: unknown }> {
+  const { data, error } = await admin
+    .from("daily_cards")
+    .update(values)
+    .eq("id", identity.id)
+    .eq("workspace_id", identity.workspace_id)
+    .eq("creator_id", identity.creator_id)
+    .eq("weekly_plan_id", identity.weekly_plan_id)
+    .eq("scheduled_date", identity.scheduled_date)
+    .eq("status", "draft")
+    .select(DRAFT_DAILY_CARD_UPDATE_SELECT)
+    .maybeSingle();
+
+  return {
+    data: isRecord(data) ? data : null,
+    error,
+  };
+}
+
 export async function replaceDailyCardReferences(
   admin: SupabaseAdminClient,
   workspaceID: string,
@@ -632,6 +722,10 @@ export async function recoverInsertedDailyCardRow(
     id: stringValue(data.id) ?? row.id,
     scheduledDate: stringValue(data.scheduled_date) ?? row.scheduled_date,
   };
+}
+
+function isPlanIDRecord(value: unknown): value is { id: string } {
+  return isRecord(value) && typeof value.id === "string";
 }
 
 function stringValue(value: unknown): string | undefined {

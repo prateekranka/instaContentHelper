@@ -1,13 +1,18 @@
 import {
   clearExistingDraftDailyCardsForFullGeneration,
+  DAY_PLAN_CONTAINER_SELECT,
+  DRAFT_DAILY_CARD_UPDATE_SELECT,
+  findLatestDraftDayPlanContainer,
   generatedDailyCardValues,
   generationPersistFailure,
   insertGeneratedIdeas,
+  insertThinDraftDayPlanContainer,
   postgrestErrorMessage,
   recoverConflictingDailyCardRow,
   recoverInsertedDailyCardRow,
   recoverWeeklyPlanIDFromExistingCards,
   replaceDailyCardReferences,
+  updateExistingDraftDailyCard,
   upsertDailyCardRow,
   upsertDraftWeeklyPlan,
   upsertGeneratedDailyCards,
@@ -25,6 +30,7 @@ type CapturedOp = {
   operation: "select" | "insert" | "update" | "delete";
   values: unknown;
   filters: Record<string, unknown>;
+  filterOrder: string[];
   selectColumns?: string;
   inFilters?: Record<string, unknown[]>;
   order?: { column: string; ascending?: boolean };
@@ -220,6 +226,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
   private operation: CapturedOp["operation"] = "select";
   private values: unknown = null;
   private filters: Record<string, unknown> = {};
+  private filterOrder: string[] = [];
   private inFilters: Record<string, unknown[]> = {};
   private selectColumns?: string;
   private orderSpec?: { column: string; ascending?: boolean };
@@ -255,11 +262,13 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
 
   eq(column: string, value: unknown): FakeQuery {
     this.filters[column] = value;
+    this.filterOrder.push(column);
     return this;
   }
 
   in(column: string, values: unknown[]): FakeQuery {
     this.inFilters[column] = values;
+    this.filterOrder.push(column);
     return this;
   }
 
@@ -302,6 +311,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
       operation: this.operation,
       values: this.values,
       filters: { ...this.filters },
+      filterOrder: [...this.filterOrder],
       selectColumns: this.selectColumns,
       inFilters: { ...this.inFilters },
       order: this.orderSpec,
@@ -1081,4 +1091,279 @@ Deno.test("recoverInsertedDailyCardRow and recoverConflictingDailyCardRow filter
       op.filters.id === "20202020-2020-4202-8202-202020202020"
     ),
   );
+});
+
+Deno.test("findLatestDraftDayPlanContainer uses draft-only lookup chain", async () => {
+  const state: FakeState = {
+    ops: [],
+    weeklyPlans: [{
+      id: PLAN,
+      workspace_id: WORKSPACE,
+      creator_id: CREATOR,
+      week_start_date: WEEK_START,
+      status: "draft",
+      is_soft_locked: false,
+      updated_at: "2026-06-08T12:00:00.000Z",
+    }, {
+      id: "21212121-2121-4121-8121-212121212121",
+      workspace_id: WORKSPACE,
+      creator_id: CREATOR,
+      week_start_date: WEEK_START,
+      status: "draft",
+      is_soft_locked: false,
+      updated_at: "2026-06-08T10:00:00.000Z",
+    }, {
+      id: "22222222-2222-4222-8222-222222222222",
+      workspace_id: WORKSPACE,
+      creator_id: CREATOR,
+      week_start_date: WEEK_START,
+      status: "reviewed",
+      is_soft_locked: false,
+      updated_at: "2026-06-08T13:00:00.000Z",
+    }],
+    dailyCards: [],
+    references: [],
+    ideas: [],
+  };
+  const result = await findLatestDraftDayPlanContainer(
+    fakeAdmin(state) as never,
+    WORKSPACE,
+    CREATOR,
+    WEEK_START,
+  );
+  assertEquals(result.error, null);
+  assertEquals(result.data?.[0]?.id, PLAN);
+  const op = state.ops[0];
+  assertEquals(op.table, "weekly_plans");
+  assertEquals(op.operation, "select");
+  assertEquals(op.selectColumns, DAY_PLAN_CONTAINER_SELECT);
+  assertEquals(op.filters, {
+    workspace_id: WORKSPACE,
+    creator_id: CREATOR,
+    week_start_date: WEEK_START,
+  });
+  assertEquals(op.filterOrder, [
+    "workspace_id",
+    "creator_id",
+    "week_start_date",
+    "status",
+  ]);
+  assertEquals(op.inFilters, { status: ["draft"] });
+  assertEquals(op.order, { column: "updated_at", ascending: false });
+  assertEquals(op.limit, 1);
+  assertEquals(op.terminal, undefined);
+
+  const failState: FakeState = {
+    ops: [],
+    weeklyPlans: [],
+    dailyCards: [],
+    references: [],
+    ideas: [],
+    selectError: { message: "lookup failed" },
+  };
+  const failed = await findLatestDraftDayPlanContainer(
+    fakeAdmin(failState) as never,
+    WORKSPACE,
+    CREATOR,
+    WEEK_START,
+  );
+  assertEquals(failed.data, null);
+  assertEquals((failed.error as { message: string }).message, "lookup failed");
+});
+
+Deno.test("insertThinDraftDayPlanContainer writes exact thin draft payload", async () => {
+  const row = {
+    id: PLAN,
+    workspace_id: WORKSPACE,
+    creator_id: CREATOR,
+    weekly_setup_id: null,
+    creator_profile_id: null,
+    week_start_date: WEEK_START,
+    status: "draft" as const,
+    strategy_summary: "Day-at-a-time container week.",
+    warnings: [],
+    assumptions: ["Created automatically for single-day generation."],
+    is_soft_locked: false as const,
+    created_by_member_id: MEMBER,
+  };
+  const state: FakeState = {
+    ops: [],
+    weeklyPlans: [],
+    dailyCards: [],
+    references: [],
+    ideas: [],
+  };
+  const result = await insertThinDraftDayPlanContainer(
+    fakeAdmin(state) as never,
+    row,
+  );
+  assertEquals(result.error, null);
+  assertEquals(result.data, { id: PLAN });
+  const op = state.ops[0];
+  assertEquals(op.table, "weekly_plans");
+  assertEquals(op.operation, "insert");
+  assertEquals(op.values, row);
+  assertEquals(op.selectColumns, "id");
+  assertEquals(op.terminal, "single");
+
+  const failState: FakeState = {
+    ops: [],
+    weeklyPlans: [],
+    dailyCards: [],
+    references: [],
+    ideas: [],
+    writeError: { message: "insert failed" },
+  };
+  const failed = await insertThinDraftDayPlanContainer(
+    fakeAdmin(failState) as never,
+    row,
+  );
+  assertEquals(failed.data, null);
+  assertEquals((failed.error as { message: string }).message, "insert failed");
+
+  const nullState: FakeState = {
+    ops: [],
+    weeklyPlans: [],
+    dailyCards: [],
+    references: [],
+    ideas: [],
+  };
+  const nullAdmin = {
+    from(table: string) {
+      return {
+        insert(values: unknown) {
+          nullState.ops.push({
+            table,
+            operation: "insert",
+            values,
+            filters: {},
+            filterOrder: [],
+            selectColumns: "id",
+            terminal: "single",
+          });
+          return {
+            select() {
+              return {
+                single() {
+                  return Promise.resolve({ data: null, error: null });
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+  const noRow = await insertThinDraftDayPlanContainer(
+    nullAdmin as never,
+    row,
+  );
+  assertEquals(noRow.data, null);
+  assertEquals(noRow.error, null);
+});
+
+Deno.test("updateExistingDraftDailyCard uses exact payload filters and maybeSingle", async () => {
+  const card = sampleCard();
+  const values = generatedDailyCardValues(card);
+  const state: FakeState = {
+    ops: [],
+    weeklyPlans: [],
+    dailyCards: [{
+      id: CARD,
+      workspace_id: WORKSPACE,
+      creator_id: CREATOR,
+      weekly_plan_id: PLAN,
+      scheduled_date: "2026-06-08",
+      status: "draft",
+      title: "old",
+    }],
+    references: [],
+    ideas: [],
+  };
+  const result = await updateExistingDraftDailyCard(
+    fakeAdmin(state) as never,
+    values,
+    {
+      id: CARD,
+      workspace_id: WORKSPACE,
+      creator_id: CREATOR,
+      weekly_plan_id: PLAN,
+      scheduled_date: "2026-06-08",
+    },
+  );
+  assertEquals(result.error, null);
+  assertEquals(result.data, { id: CARD, scheduled_date: "2026-06-08" });
+  assertEquals(state.dailyCards[0].title, "Generated title");
+  const op = state.ops[0];
+  assertEquals(op.table, "daily_cards");
+  assertEquals(op.operation, "update");
+  assertEquals(op.values, values);
+  assertEquals(op.selectColumns, DRAFT_DAILY_CARD_UPDATE_SELECT);
+  assertEquals(op.terminal, "maybeSingle");
+  assertEquals(op.filters, {
+    id: CARD,
+    workspace_id: WORKSPACE,
+    creator_id: CREATOR,
+    weekly_plan_id: PLAN,
+    scheduled_date: "2026-06-08",
+    status: "draft",
+  });
+  assertEquals(op.filterOrder, [
+    "id",
+    "workspace_id",
+    "creator_id",
+    "weekly_plan_id",
+    "scheduled_date",
+    "status",
+  ]);
+
+  const missingState: FakeState = {
+    ops: [],
+    weeklyPlans: [],
+    dailyCards: [],
+    references: [],
+    ideas: [],
+  };
+  const missing = await updateExistingDraftDailyCard(
+    fakeAdmin(missingState) as never,
+    values,
+    {
+      id: CARD,
+      workspace_id: WORKSPACE,
+      creator_id: CREATOR,
+      weekly_plan_id: PLAN,
+      scheduled_date: "2026-06-08",
+    },
+  );
+  assertEquals(missing.data, null);
+  assertEquals(missing.error, null);
+
+  const failState: FakeState = {
+    ops: [],
+    weeklyPlans: [],
+    dailyCards: [{
+      id: CARD,
+      workspace_id: WORKSPACE,
+      creator_id: CREATOR,
+      weekly_plan_id: PLAN,
+      scheduled_date: "2026-06-08",
+      status: "draft",
+    }],
+    references: [],
+    ideas: [],
+    writeError: { message: "update failed" },
+  };
+  const failed = await updateExistingDraftDailyCard(
+    fakeAdmin(failState) as never,
+    values,
+    {
+      id: CARD,
+      workspace_id: WORKSPACE,
+      creator_id: CREATOR,
+      weekly_plan_id: PLAN,
+      scheduled_date: "2026-06-08",
+    },
+  );
+  assertEquals(failed.data, null);
+  assertEquals((failed.error as { message: string }).message, "update failed");
 });
