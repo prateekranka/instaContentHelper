@@ -51,17 +51,21 @@ import type {
   QueuedDayJobStatus,
 } from "./generation-status.ts";
 import {
+  cancelActiveQueuedDayJobs,
   claimQueuedDayJob,
   completeDayJob,
   failDayJob,
   heartbeatDayJob,
   isQueuedDayJobStale,
-  normalizeQueuedDayJobRows,
-  queuedDayJobSelect,
+  lookupQueuedDayJobsExist,
+  markFailedDayJobRetrying,
+  markGenerationRunCancelled,
+  readQueuedActionGenerationRun,
   readQueuedDayJobsForRun,
   reclaimStaleDayJob,
   releaseOverCapacityDayJob,
   stageDayJobOutput,
+  upsertDayJobRows,
 } from "./generation-day-job-store.ts";
 
 type EnvReader = {
@@ -1858,21 +1862,19 @@ async function createQueuedDayJobs(
     creator_id: prepared.request.creator_id,
     scheduled_date: scheduledDate,
     day_index: dayIndex,
-    status: "queued",
+    status: "queued" as const,
     attempt_count: 0,
   }));
 
-  const { data, error } = await admin
-    .from("weekly_generation_day_jobs")
-    .upsert(rows, { onConflict: "generation_run_id,scheduled_date" })
-    .select(queuedDayJobSelect())
-    .order("day_index", { ascending: true });
-
-  if (error) {
-    return generationPersistFailure("create_generation_day_jobs", error);
+  const upsertResult = await upsertDayJobRows(admin, rows);
+  if ("error" in upsertResult) {
+    return generationPersistFailure(
+      "create_generation_day_jobs",
+      upsertResult.error,
+    );
   }
 
-  const jobs = normalizeQueuedDayJobRows(data);
+  const jobs = upsertResult.jobs;
   for (const job of jobs) {
     logGenerationLifecycle({
       action: "generate_week",
@@ -1932,17 +1934,15 @@ async function createSeededDayJobsFromProgress(
     };
   });
 
-  const { data, error } = await admin
-    .from("weekly_generation_day_jobs")
-    .upsert(rows, { onConflict: "generation_run_id,scheduled_date" })
-    .select(queuedDayJobSelect())
-    .order("day_index", { ascending: true });
-
-  if (error) {
-    return generationPersistFailure("create_seeded_generation_day_jobs", error);
+  const upsertResult = await upsertDayJobRows(admin, rows);
+  if ("error" in upsertResult) {
+    return generationPersistFailure(
+      "create_seeded_generation_day_jobs",
+      upsertResult.error,
+    );
   }
 
-  return { jobs: normalizeQueuedDayJobRows(data) };
+  return { jobs: upsertResult.jobs };
 }
 
 async function claimedDayJobFitsLiveCapacity(
@@ -2917,27 +2917,19 @@ async function retryQueuedDayGeneration(
     return runResult.response;
   }
 
-  const { data, error } = await admin
-    .from("weekly_generation_day_jobs")
-    .update({
-      status: "retrying",
-      error_code: null,
-      error_message: null,
-      completed_at: null,
-      heartbeat_at: null,
-    })
-    .eq("generation_run_id", generationID)
-    .eq("workspace_id", session.workspaceID)
-    .eq("creator_id", runResult.run.creator_id)
-    .eq("scheduled_date", scheduledDate)
-    .eq("status", "failed")
-    .select(queuedDayJobSelect())
-    .maybeSingle();
-
-  if (error) {
-    return generationPersistFailure("retry_generation_day_job", error).response;
+  const retryResult = await markFailedDayJobRetrying(admin, {
+    generationRunID: generationID,
+    workspaceID: session.workspaceID,
+    creatorID: stringValue(runResult.run.creator_id) ?? "",
+    scheduledDate,
+  });
+  if ("error" in retryResult) {
+    return generationPersistFailure(
+      "retry_generation_day_job",
+      retryResult.error,
+    ).response;
   }
-  if (!isRecord(data)) {
+  if (!retryResult.job) {
     return jsonResponse({ error: "day_job_not_retryable" }, 409);
   }
 
@@ -2947,10 +2939,10 @@ async function retryQueuedDayGeneration(
     status: "retrying",
     generation_id: generationID,
     weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ??
-      stringValue(data.weekly_plan_id) ?? null,
+      stringValue(retryResult.job.weekly_plan_id) ?? null,
     week_start_date: null,
     scheduled_date: scheduledDate,
-    day_index: numberValue(data.day_index) ?? null,
+    day_index: numberValue(retryResult.job.day_index) ?? null,
     duration_ms: null,
     day_guidance_present: null,
     day_guidance_chars: null,
@@ -2959,11 +2951,9 @@ async function retryQueuedDayGeneration(
   return jsonResponse({
     generation_id: generationID,
     weekly_plan_id: stringValue(runResult.run.weekly_plan_id) ??
-      stringValue(data.weekly_plan_id) ?? null,
+      stringValue(retryResult.job.weekly_plan_id) ?? null,
     status: "running",
-    day: queuedDayJobStatusResponse(
-      normalizeQueuedDayJobRows([data])[0],
-    ),
+    day: queuedDayJobStatusResponse(retryResult.job),
     message: "day_retry_queued",
     poll_after_seconds: 5,
   });
@@ -2989,23 +2979,21 @@ async function cancelGeneration(
   }
 
   // Determine mode: queued runs have day jobs, parallel runs do not.
-  const { data: dayJobsData, error: dayJobsError } = await admin
-    .from("weekly_generation_day_jobs")
-    .select("id")
-    .eq("generation_run_id", generationID)
-    .eq("workspace_id", session.workspaceID)
-    .eq("creator_id", runResult.run.creator_id)
-    .limit(1);
-
-  if (dayJobsError) {
+  const lookupResult = await lookupQueuedDayJobsExist(
+    admin,
+    generationID,
+    session.workspaceID,
+    stringValue(runResult.run.creator_id) ?? "",
+  );
+  if ("error" in lookupResult) {
     return generationPersistFailure(
       "cancel_generation_day_jobs_lookup",
-      dayJobsError,
+      lookupResult.error,
     ).response;
   }
 
   // Queued mode: delegate to existing queued cancel flow.
-  if (dayJobsData && dayJobsData.length > 0) {
+  if (lookupResult.exists) {
     return await cancelQueuedGeneration(admin, session, body);
   }
 
@@ -3029,19 +3017,11 @@ async function cancelGeneration(
     }, 409);
   }
 
-  const { error: updateError } = await admin
-    .from("weekly_generation_runs")
-    .update({
-      status: "failed",
-      error_code: "generation_cancelled",
-      completed_at: new Date().toISOString(),
-    })
-    .eq("id", generationID);
-
-  if (updateError) {
+  const cancelRunResult = await markGenerationRunCancelled(admin, generationID);
+  if (cancelRunResult.error) {
     return generationPersistFailure(
       "cancel_generation_run",
-      updateError,
+      cancelRunResult.error,
     ).response;
   }
 
@@ -3072,34 +3052,25 @@ async function cancelQueuedGeneration(
     return runResult.response;
   }
 
-  const { error } = await admin
-    .from("weekly_generation_day_jobs")
-    .update({
-      status: "cancelled",
-      completed_at: new Date().toISOString(),
-    })
-    .eq("generation_run_id", generationID)
-    .eq("workspace_id", session.workspaceID)
-    .eq("creator_id", runResult.run.creator_id)
-    .in("status", ["queued", "retrying", "generating", "ready_to_persist"]);
-
-  if (error) {
-    return generationPersistFailure("cancel_generation_day_jobs", error)
-      .response;
+  const cancelJobsResult = await cancelActiveQueuedDayJobs(
+    admin,
+    generationID,
+    session.workspaceID,
+    stringValue(runResult.run.creator_id) ?? "",
+  );
+  if (cancelJobsResult.error) {
+    return generationPersistFailure(
+      "cancel_generation_day_jobs",
+      cancelJobsResult.error,
+    ).response;
   }
 
-  const { error: cancelError } = await admin
-    .from("weekly_generation_runs")
-    .update({
-      status: "failed",
-      error_code: "generation_cancelled",
-      completed_at: new Date().toISOString(),
-    })
-    .eq("id", generationID);
-
-  if (cancelError) {
-    return generationPersistFailure("cancel_generation_run", cancelError)
-      .response;
+  const cancelRunResult = await markGenerationRunCancelled(admin, generationID);
+  if (cancelRunResult.error) {
+    return generationPersistFailure(
+      "cancel_generation_run",
+      cancelRunResult.error,
+    ).response;
   }
 
   return jsonResponse({
@@ -3115,17 +3086,16 @@ async function readGenerationRunForQueuedAction(
   session: VerifiedDeviceSession,
   generationID: string,
 ): Promise<{ run: GenerationRunStatusRecord } | { response: Response }> {
-  const { data, error } = await admin
-    .from("weekly_generation_runs")
-    .select("id,workspace_id,creator_id,status,weekly_plan_id,error_code")
-    .eq("id", generationID)
-    .eq("workspace_id", session.workspaceID)
-    .maybeSingle();
+  const { data, error } = await readQueuedActionGenerationRun(
+    admin,
+    generationID,
+    session.workspaceID,
+  );
 
   if (error) {
     return generationPersistFailure("read_generation_run", error);
   }
-  if (!isRecord(data)) {
+  if (!data) {
     return {
       response: jsonResponse({ error: "invalid_generation_payload" }, 404),
     };

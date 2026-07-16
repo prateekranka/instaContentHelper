@@ -248,6 +248,148 @@ export async function readQueuedDayJobsForRun(
   return { jobs: normalizeQueuedDayJobRows(data) };
 }
 
+export type DayJobUpsertRow = {
+  generation_run_id: string;
+  weekly_plan_id: string;
+  workspace_id: string;
+  creator_id: string;
+  scheduled_date: string;
+  day_index: number;
+  status: QueuedDayJobStatus | string;
+  attempt_count: number;
+  daily_card_id?: string | null;
+  error_code?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  lease_token?: string | null;
+  heartbeat_at?: string | null;
+};
+
+export async function upsertDayJobRows(
+  admin: SupabaseAdminClient,
+  rows: DayJobUpsertRow[],
+): Promise<{ jobs: QueuedDayJobRecord[] } | { error: unknown }> {
+  const { data, error } = await admin
+    .from("weekly_generation_day_jobs")
+    .upsert(rows, { onConflict: "generation_run_id,scheduled_date" })
+    .select(queuedDayJobSelect())
+    .order("day_index", { ascending: true });
+
+  if (error) {
+    return { error };
+  }
+  return { jobs: normalizeQueuedDayJobRows(data) };
+}
+
+export async function lookupQueuedDayJobsExist(
+  admin: SupabaseAdminClient,
+  generationID: string,
+  workspaceID: string,
+  creatorID: string,
+): Promise<{ exists: boolean } | { error: unknown }> {
+  const { data, error } = await admin
+    .from("weekly_generation_day_jobs")
+    .select("id")
+    .eq("generation_run_id", generationID)
+    .eq("workspace_id", workspaceID)
+    .eq("creator_id", creatorID)
+    .limit(1);
+
+  if (error) {
+    return { error };
+  }
+  return { exists: Array.isArray(data) && data.length > 0 };
+}
+
+export async function markFailedDayJobRetrying(
+  admin: SupabaseAdminClient,
+  params: {
+    generationRunID: string;
+    workspaceID: string;
+    creatorID: string;
+    scheduledDate: string;
+  },
+): Promise<{ job: QueuedDayJobRecord | null } | { error: unknown }> {
+  const { data, error } = await admin
+    .from("weekly_generation_day_jobs")
+    .update({
+      status: "retrying",
+      error_code: null,
+      error_message: null,
+      completed_at: null,
+      heartbeat_at: null,
+    })
+    .eq("generation_run_id", params.generationRunID)
+    .eq("workspace_id", params.workspaceID)
+    .eq("creator_id", params.creatorID)
+    .eq("scheduled_date", params.scheduledDate)
+    .eq("status", "failed")
+    .select(queuedDayJobSelect())
+    .maybeSingle();
+
+  if (error) {
+    return { error };
+  }
+  if (!isRecord(data)) {
+    return { job: null };
+  }
+  return { job: normalizeQueuedDayJobRows([data])[0] ?? null };
+}
+
+export async function cancelActiveQueuedDayJobs(
+  admin: SupabaseAdminClient,
+  generationID: string,
+  workspaceID: string,
+  creatorID: string,
+): Promise<{ error: unknown | null }> {
+  const { error } = await admin
+    .from("weekly_generation_day_jobs")
+    .update({
+      status: "cancelled",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("generation_run_id", generationID)
+    .eq("workspace_id", workspaceID)
+    .eq("creator_id", creatorID)
+    .in("status", ["queued", "retrying", "generating", "ready_to_persist"]);
+
+  return { error: error ?? null };
+}
+
+export async function markGenerationRunCancelled(
+  admin: SupabaseAdminClient,
+  generationID: string,
+): Promise<{ error: unknown | null }> {
+  const { error } = await admin
+    .from("weekly_generation_runs")
+    .update({
+      status: "failed",
+      error_code: "generation_cancelled",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", generationID);
+
+  return { error: error ?? null };
+}
+
+export async function readQueuedActionGenerationRun(
+  admin: SupabaseAdminClient,
+  generationID: string,
+  workspaceID: string,
+): Promise<{ data: Record<string, unknown> | null; error: unknown }> {
+  const { data, error } = await admin
+    .from("weekly_generation_runs")
+    .select("id,workspace_id,creator_id,status,weekly_plan_id,error_code")
+    .eq("id", generationID)
+    .eq("workspace_id", workspaceID)
+    .maybeSingle();
+
+  return {
+    data: isRecord(data) ? data : null,
+    error,
+  };
+}
+
 export function normalizeQueuedDayJobRows(
   value: unknown,
 ): QueuedDayJobRecord[] {
