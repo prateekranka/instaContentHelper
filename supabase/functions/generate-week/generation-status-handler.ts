@@ -119,26 +119,6 @@ export type GenerationStatusHandlerHost = {
   ) => Promise<
     { progress: PerDayGenerationSnapshot } | { response: Response }
   >;
-  finalizePerDayGeneration: (
-    admin: SupabaseAdminClient,
-    generationID: string,
-    run: GenerationRunStatusRecord,
-    session: VerifiedDeviceSession,
-    inputSnapshot: GenerationInputSnapshot,
-    progress: PerDayGenerationSnapshot,
-  ) => Promise<
-    { payload: Record<string, unknown> } | { response: Response }
-  >;
-  finalizeTerminalPerDayGeneration: (
-    admin: SupabaseAdminClient,
-    generationID: string,
-    run: GenerationRunStatusRecord,
-    session: VerifiedDeviceSession,
-    inputSnapshot: GenerationInputSnapshot,
-    progress: PerDayGenerationSnapshot,
-  ) => Promise<
-    { payload: Record<string, unknown> } | { response: Response }
-  >;
   readSavedDailyCards: (
     admin: SupabaseAdminClient,
     workspaceID: string,

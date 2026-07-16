@@ -48,12 +48,6 @@ function stubHost(
     scheduleNextPendingDayGeneration: async () => {
       throw new Error("not used");
     },
-    finalizePerDayGeneration: async () => {
-      throw new Error("not used");
-    },
-    finalizeTerminalPerDayGeneration: async () => {
-      throw new Error("not used");
-    },
     readSavedDailyCards: async () => ({ dailyCards }),
     scheduleSingleDayGeneration: async () => ({ ok: true as const }),
     runParallelWeekGenerationInBackground: () => undefined,

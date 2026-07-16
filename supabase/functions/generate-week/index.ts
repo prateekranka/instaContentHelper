@@ -92,8 +92,6 @@ import {
 } from "./generation-status-handler.ts";
 import {
   dayGenerationRetryContext,
-  finalizePerDayGeneration as finalizePerDayGenerationRunner,
-  finalizeTerminalPerDayGeneration as finalizeTerminalPerDayGenerationRunner,
   type PerDayRunnerHost,
   scheduleNextPendingDayGeneration as scheduleNextPendingDayGenerationRunner,
   updateGenerationProgress,
@@ -1475,40 +1473,6 @@ function buildGenerationStatusHandlerHost(
         admin,
         generationID,
         prepared,
-        progress,
-        perDayRunnerHost,
-      ),
-    finalizePerDayGeneration: (
-      admin,
-      generationID,
-      run,
-      session,
-      inputSnapshot,
-      progress,
-    ) =>
-      finalizePerDayGenerationRunner(
-        admin,
-        generationID,
-        run,
-        session,
-        inputSnapshot,
-        progress,
-        perDayRunnerHost,
-      ),
-    finalizeTerminalPerDayGeneration: (
-      admin,
-      generationID,
-      run,
-      session,
-      inputSnapshot,
-      progress,
-    ) =>
-      finalizeTerminalPerDayGenerationRunner(
-        admin,
-        generationID,
-        run,
-        session,
-        inputSnapshot,
         progress,
         perDayRunnerHost,
       ),
