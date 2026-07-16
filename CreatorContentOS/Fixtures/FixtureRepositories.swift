@@ -193,20 +193,7 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
     }
 }
 
-struct AppFixtureWeeklyGenerationUnavailableRepository: WeeklyGenerationRepository {
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        throw RepositoryError.notConfigured(
-            "Fixture generation is unavailable. Use live generation or backend mock generation."
-        )
-    }
-}
+struct AppFixtureWeeklyGenerationUnavailableRepository: WeeklyGenerationRepository {}
 
 struct FixtureReferenceRepository: ReferenceRepository {
     func sourcePulse(for context: WorkspaceContext) async throws -> SourcePulseSummary {

@@ -1241,17 +1241,6 @@ private actor InlineRetryCompletesQueuedDayRepository: WeeklyGenerationRepositor
         self.draft = draft
     }
 
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        draft
-    }
-
     func retryQueuedDay(
         generationID: UUID,
         scheduledDate: String,

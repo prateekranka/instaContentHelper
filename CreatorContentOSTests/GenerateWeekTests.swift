@@ -2976,17 +2976,6 @@ final class GenerateWeekTests: XCTestCase {
 private struct RetryCompletesQueuedDayRepository: WeeklyGenerationRepository {
     var draft: GeneratedWeekDraft
 
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        draft
-    }
-
     func retryQueuedDay(
         generationID: UUID,
         scheduledDate: String,
@@ -3056,17 +3045,6 @@ private struct RetryPastDateFallbackRepository: WeeklyGenerationRepository {
     let draft: GeneratedWeekDraft
     var retryErrorCode = "past_generation_date_not_allowed"
 
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        draft
-    }
-
     func regenerateDay(
         creatorID: UUID,
         weeklyPlanID: UUID,
@@ -3133,17 +3111,6 @@ private struct RetryPastDateFallbackRepository: WeeklyGenerationRepository {
 
 private struct PastDateRegenerateDayOnlyRepository: WeeklyGenerationRepository {
     let draft: GeneratedWeekDraft
-
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        draft
-    }
 
     func regenerateDay(
         creatorID: UUID,

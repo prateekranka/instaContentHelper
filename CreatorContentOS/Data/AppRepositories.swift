@@ -277,15 +277,6 @@ extension DayGenerationRepository {
 }
 
 protocol WeeklyGenerationRepository: DayGenerationRepository {
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft
-
     func regenerateDay(
         creatorID: UUID,
         weeklyPlanID: UUID,
@@ -353,23 +344,6 @@ extension WeeklyPlanRepository {
 }
 
 extension WeeklyGenerationRepository {
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext
-    ) async throws -> GeneratedWeekDraft {
-        try await generateWeek(
-            creatorID: creatorID,
-            weekStartDate: weekStartDate,
-            weeklySetupID: weeklySetupID,
-            mode: mode,
-            context: context,
-            progress: nil
-        )
-    }
-
     func regenerateDay(
         creatorID: UUID,
         weeklyPlanID: UUID,
