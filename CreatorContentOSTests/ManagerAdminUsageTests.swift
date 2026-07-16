@@ -110,82 +110,6 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertEqual(services.lastRepositoryError, "Selection failed.")
     }
 
-    // MARK: — Inline Retry
-
-    func testRetryQueuedDayFromManagerInlineRetryUsesCentralizedService() async throws {
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-07-13",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
-        )
-        let failedDate = try XCTUnwrap(draft.dailyCards.first?.scheduledDate)
-        let retryRepo = InlineRetryCompletesQueuedDayRepository(draft: draft)
-        let services = AppServices.fixtureBacked(
-            repositories: AppRepositories(
-                context: .creatorFixture,
-                today: FixtureTodayCardRepository(),
-                weeklyPlans: FixtureWeeklyPlanRepository(),
-                references: FixtureReferenceRepository(),
-                referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: retryRepo,
-                intelligence: FixtureIntelligenceRepository(),
-                creatorProfile: FixtureCreatorProfileRepository(),
-                archive: FixtureArchiveRepository()
-            ),
-            todayCache: AdminUsageMemoryTodayCacheStore()
-        )
-        services.applyGeneratedDraft(draft)
-        services.weeklyGenerationProgress = WeeklyGenerationProgress(
-            phase: .draftingDays,
-            generationID: draft.id,
-            weeklyPlanID: draft.weeklyPlanID,
-            draftedDayCount: 7,
-            checkedDayCount: 6,
-            totalDayCount: 7,
-            message: "generation_partial",
-            savedDayCount: 6,
-            failedDayCount: 1,
-            strategyCreated: true,
-            dayStatuses: draft.dailyCards.enumerated().map { index, card in
-                WeeklyDayGenerationStatus(
-                    scheduledDate: card.scheduledDate,
-                    dayIndex: index,
-                    status: index == 0 ? "failed" : "generated",
-                    dailyCardID: index == 0 ? nil : card.id,
-                    errorCode: index == 0 ? "openai_request_failed" : nil,
-                    retryAction: index == 0 ? "retry_day" : nil,
-                    message: nil
-                )
-            }
-        )
-
-        try await services.retryQueuedGenerationDay(scheduledDate: failedDate)
-
-        XCTAssertNil(services.generationError,
-                     "Retry via centralized service should clear generationError")
-        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .readyForReview,
-                       "Retry should transition to ready for review")
-    }
-
-    func testInlineRetryPreventsDuplicateTapsWhileRetrying() async throws {
-        let services = makeServices()
-        let scheduledDate = "2026-06-01"
-
-        services.regeneratingDayDates.insert(scheduledDate)
-
-        do {
-            try await services.retryQueuedGenerationDay(scheduledDate: scheduledDate)
-            XCTFail("Should throw when day is already regenerating")
-        } catch {
-            XCTAssertTrue(error.localizedDescription.contains("generation_already_running") ||
-                          error.localizedDescription.contains("generation_not_found"),
-                          "Should reject duplicate retry")
-        }
-    }
-
     // MARK: — Manager Tab Bar
 
     func testManagerUpdatesWeeklySetupSections() async throws {
@@ -315,44 +239,12 @@ final class ManagerAdminUsageTests: XCTestCase {
         }
     }
 
-    func testRetryQueuedGenerationDayRejectsPastDate() async throws {
-        let services = makeServices()
-
-        do {
-            try await services.retryQueuedGenerationDay(scheduledDate: "2026-05-30")
-            XCTFail("Expected past_generation_date_not_allowed error")
-        } catch {
-            XCTAssertTrue(error.localizedDescription.contains("past_generation_date_not_allowed"))
-        }
-    }
-
     func testRegenerateDailyCardAcceptsToday() async throws {
         let services = makeServices()
 
         do {
             _ = try await services.regeneratedDailyCard(scheduledDate: "2026-06-01", preserveManualEdits: false)
             XCTFail("Expected repository error (regeneration not configured), not past-date guard")
-        } catch {
-            XCTAssertFalse(error.localizedDescription.contains("past_generation_date_not_allowed"),
-                           "Should pass the past-date guard and reach repository")
-        }
-    }
-
-    func testRetryQueuedDayAcceptsToday() async throws {
-        let services = makeServices()
-
-        services.weeklyGenerationProgress = WeeklyGenerationProgress(
-            phase: .draftingDays,
-            generationID: UUID(),
-            weeklyPlanID: services.weeklyPlan.id,
-            draftedDayCount: 0,
-            checkedDayCount: 0,
-            totalDayCount: 7
-        )
-
-        do {
-            try await services.retryQueuedGenerationDay(scheduledDate: "2026-06-01")
-            XCTFail("Expected repository error (retry not configured), not past-date guard")
         } catch {
             XCTAssertFalse(error.localizedDescription.contains("past_generation_date_not_allowed"),
                            "Should pass the past-date guard and reach repository")
@@ -1232,24 +1124,4 @@ private actor WorkingPlanVisibilityWeeklyPlanRepository: WeeklyPlanRepository {
     ) async throws -> WeeklyPlan {
         throw RepositoryError.notConfigured("brief not needed")
     }
-}
-
-private actor InlineRetryCompletesQueuedDayRepository: WeeklyGenerationRepository {
-    let draft: GeneratedWeekDraft
-
-    init(draft: GeneratedWeekDraft) {
-        self.draft = draft
-    }
-
-    func retryQueuedDay(
-        generationID: UUID,
-        scheduledDate: String,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        await progress?(.readyForReview(from: draft))
-        return draft
-    }
-
-    func cancelGeneration(generationID: UUID, context: WorkspaceContext) async throws {}
 }

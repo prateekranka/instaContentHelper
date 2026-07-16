@@ -323,27 +323,7 @@ extension StoryboardThumbnailRepository {
     }
 }
 
-protocol WeeklyGenerationRepository: DayGenerationRepository, StoryboardThumbnailRepository {
-    func retryQueuedDay(
-        generationID: UUID,
-        scheduledDate: String,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft
-
-    func cancelGeneration(
-        generationID: UUID,
-        context: WorkspaceContext
-    ) async throws
-
-    func generateStoryboardThumbnailsForWeek(
-        creatorID: UUID,
-        weeklyPlanID: UUID,
-        force: Bool,
-        maxRows: Int,
-        context: WorkspaceContext
-    ) async throws -> SupabaseGenerateStoryboardThumbnailsResponse
-}
+protocol WeeklyGenerationRepository: DayGenerationRepository, StoryboardThumbnailRepository {}
 
 extension WeeklyPlanRepository {
     func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
@@ -369,34 +349,6 @@ extension WeeklyPlanRepository {
         reviewState: String,
         context: WorkspaceContext
     ) async throws {
-    }
-}
-
-extension WeeklyGenerationRepository {
-    func retryQueuedDay(
-        generationID: UUID,
-        scheduledDate: String,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        throw RepositoryError.notConfigured("retry_day_not_configured")
-    }
-
-    func cancelGeneration(
-        generationID: UUID,
-        context: WorkspaceContext
-    ) async throws {
-        throw RepositoryError.notConfigured("cancel_generation_not_configured")
-    }
-
-    func generateStoryboardThumbnailsForWeek(
-        creatorID: UUID,
-        weeklyPlanID: UUID,
-        force: Bool = false,
-        maxRows: Int = 6,
-        context: WorkspaceContext
-    ) async throws -> SupabaseGenerateStoryboardThumbnailsResponse {
-        throw RepositoryError.notConfigured("storyboard_week_thumbnail_generation_not_configured")
     }
 }
 

@@ -252,7 +252,10 @@ struct WeeklyControlView: View {
         Task {
             defer { retryingDayDate = nil }
             do {
-                try await services.retryQueuedGenerationDay(scheduledDate: scheduledDate)
+                _ = try await services.regeneratedDailyCard(
+                    scheduledDate: scheduledDate,
+                    preserveManualEdits: false
+                )
                 await services.reconcileGeneratedDayCardFromCurrentWeeklyContent(scheduledDate: scheduledDate)
             } catch {
                 if services.generationError == nil {
@@ -296,9 +299,7 @@ struct WeeklyControlView: View {
                 onReview: {
                     isReviewingGeneratedDraft = true
                 },
-                onRegenerateDay: services.regeneratedDailyCard,
-                onRetryQueuedDay: services.retryQueuedGenerationDay,
-                onCancel: { services.cancelGeneration() }
+                onRegenerateDay: services.regeneratedDailyCard
             )
         } else if let draft = services.latestGenerationSummary {
             WeeklyGenerationStatusPanel(
@@ -309,9 +310,7 @@ struct WeeklyControlView: View {
                 onReview: {
                     isReviewingGeneratedDraft = true
                 },
-                onRegenerateDay: services.regeneratedDailyCard,
-                onRetryQueuedDay: services.retryQueuedGenerationDay,
-                onCancel: { services.cancelGeneration() }
+                onRegenerateDay: services.regeneratedDailyCard
             )
         } else if let error = services.generationError {
             HStack(spacing: MCOSpace.s) {
@@ -348,8 +347,6 @@ struct WeeklyGenerationStatusPanel: View {
     let canRegenerateDay: Bool
     let onReview: () -> Void
     let onRegenerateDay: RegenerateDayAction?
-    let onRetryQueuedDay: RetryQueuedDayAction?
-    let onCancel: (() -> Void)?
     @State private var activeRetries: Set<String> = []
     @State private var retryQueue: [String] = []
     @State private var failedDayRegenerationErrors: [String: String] = [:]
@@ -442,29 +439,6 @@ struct WeeklyGenerationStatusPanel: View {
                 Text("Working on \(SupabaseDateFormatting.displayDate(for: currentDay)).")
                     .font(MCOType.caption)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
-            }
-
-            if progress.phase == .draftingDays || progress.phase == .loadingContext || progress.phase == .savingDraftWeek {
-                if let onCancel {
-                    HStack {
-                        Spacer()
-                        Button(action: onCancel) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "stop.circle.fill")
-                                    .font(.system(size: 16))
-                                Text("Stop Generation")
-                                    .font(.system(size: 14, weight: .medium, design: .serif))
-                            }
-                            .foregroundStyle(MCOTheme.Color.oxblood)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(MCOTheme.Color.oxblood.opacity(0.08))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.top, MCOSpace.xs)
-                }
             }
         }
     }
@@ -584,18 +558,16 @@ struct WeeklyGenerationStatusPanel: View {
 
         if activeRetries.count < Self.maxActiveRetries {
             activeRetries.insert(scheduledDate)
-            startRetry(for: scheduledDate, dayStatus: dayStatus)
+            startRetry(for: scheduledDate)
         } else {
             retryQueue.append(scheduledDate)
         }
     }
 
-    private func startRetry(for scheduledDate: String, dayStatus: WeeklyDayGenerationStatus) {
+    private func startRetry(for scheduledDate: String) {
         Task {
             do {
-                if dayStatus.retryAction == "retry_day", let onRetryQueuedDay {
-                    try await onRetryQueuedDay(scheduledDate)
-                } else if let onRegenerateDay {
+                if let onRegenerateDay {
                     _ = try await onRegenerateDay(scheduledDate, false, nil)
                 }
             } catch {
@@ -612,11 +584,7 @@ struct WeeklyGenerationStatusPanel: View {
         guard activeRetries.count < Self.maxActiveRetries, !retryQueue.isEmpty else { return }
         let nextDate = retryQueue.removeFirst()
         activeRetries.insert(nextDate)
-        guard let dayStatus = progress.dayStatuses.first(where: { $0.scheduledDate == nextDate }) else {
-            activeRetries.remove(nextDate)
-            return
-        }
-        startRetry(for: nextDate, dayStatus: dayStatus)
+        startRetry(for: nextDate)
     }
 }
 
@@ -1202,7 +1170,6 @@ private struct WeeklyDayDetailSelection: Identifiable {
     }
 }
 
-typealias RetryQueuedDayAction = (_ scheduledDate: String) async throws -> Void
 typealias RegenerateDayAction = (_ scheduledDate: String, _ preserveManualEdits: Bool, _ dayGuidance: String?) async throws -> GeneratedDailyCardDraft
 
 struct WeeklyInputsReviewSheet: View {

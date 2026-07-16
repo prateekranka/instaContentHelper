@@ -454,51 +454,6 @@ struct SupabaseDailyGenerationRequest: Encodable, Sendable {
 
 typealias SupabaseGenerateDayRequest = SupabaseDailyGenerationRequest
 
-struct SupabaseRetryQueuedDayRequest: Encodable, Sendable {
-    var generationID: UUID
-    var scheduledDate: String
-    var action = "retry_day"
-
-    enum CodingKeys: String, CodingKey {
-        case generationID = "generation_id"
-        case scheduledDate = "scheduled_date"
-        case action
-    }
-}
-
-struct SupabaseCancelGenerationRequest: Encodable, Sendable {
-    let action = "cancel_generation"
-    let generationID: UUID
-
-    enum CodingKeys: String, CodingKey {
-        case action
-        case generationID = "generation_id"
-    }
-}
-
-struct SupabaseCancelGenerationResponse: Decodable, Hashable, Sendable {
-    var status: String
-    var message: String?
-}
-
-struct SupabaseRetryQueuedDayResponse: Decodable, Hashable, Sendable {
-    var generationID: UUID
-    var weeklyPlanID: UUID?
-    var status: String
-    var message: String?
-    var day: WeeklyDayGenerationStatus?
-    var pollAfterSeconds: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case generationID = "generation_id"
-        case weeklyPlanID = "weekly_plan_id"
-        case status
-        case message
-        case day
-        case pollAfterSeconds = "poll_after_seconds"
-    }
-}
-
 struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
     var generationID: UUID
     var weeklyPlanID: UUID
@@ -584,66 +539,6 @@ struct SupabaseGenerateStoryboardThumbnailResponse: Decodable, Hashable, Sendabl
         case cachedCount = "cached_count"
         case model
         case promptVersion = "prompt_version"
-    }
-}
-
-struct SupabaseGenerateStoryboardThumbnailsRequest: Encodable, Hashable, Sendable {
-    var creatorID: UUID
-    var weeklyPlanID: UUID
-    var force: Bool
-    var maxRows: Int
-
-    enum CodingKeys: String, CodingKey {
-        case creatorID = "creator_id"
-        case weeklyPlanID = "weekly_plan_id"
-        case force
-        case maxRows = "max_rows"
-    }
-}
-
-struct SupabaseGenerateStoryboardThumbnailsResponse: Decodable, Hashable, Sendable {
-    var weeklyPlanID: UUID
-    var cards: [SupabaseStoryboardThumbnailCardProgress]
-    var generatedCount: Int
-    var cachedCount: Int
-    var remainingCount: Int
-    var failedCount: Int
-    var complete: Bool
-    var model: String
-    var promptVersion: String
-    var lastError: String?
-
-    enum CodingKeys: String, CodingKey {
-        case weeklyPlanID = "weekly_plan_id"
-        case cards
-        case generatedCount = "generated_count"
-        case cachedCount = "cached_count"
-        case remainingCount = "remaining_count"
-        case failedCount = "failed_count"
-        case complete
-        case model
-        case promptVersion = "prompt_version"
-        case lastError = "last_error"
-    }
-}
-
-struct SupabaseStoryboardThumbnailCardProgress: Decodable, Hashable, Sendable {
-    var dailyCardID: UUID
-    var scheduledDate: String
-    var assets: [StoryboardThumbnailAsset]
-    var generatedCount: Int
-    var cachedCount: Int
-    var remainingCount: Int
-    var failedCount: Int
-
-    enum CodingKeys: String, CodingKey {
-        case dailyCardID = "daily_card_id"
-        case scheduledDate = "scheduled_date"
-        case assets
-        case generatedCount = "generated_count"
-        case cachedCount = "cached_count"
-        case remainingCount = "remaining_count"
-        case failedCount = "failed_count"
     }
 }
 

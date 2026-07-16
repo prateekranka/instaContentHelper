@@ -192,23 +192,6 @@ final class GeneratedStoryboardBreakdownTests: XCTestCase {
         XCTAssertEqual(object["revision_instructions"] as? String, "Make the gym shot brighter and closer.")
     }
 
-    func testThumbnailWeekRequestEncodesResumeBatchFields() throws {
-        let request = SupabaseGenerateStoryboardThumbnailsRequest(
-            creatorID: UUID(uuidString: "22222222-2222-4222-8222-222222222222")!,
-            weeklyPlanID: UUID(uuidString: "44444444-4444-4444-8444-444444444444")!,
-            force: false,
-            maxRows: 6
-        )
-
-        let data = try JSONEncoder().encode(request)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-        XCTAssertEqual(object["creator_id"] as? String, "22222222-2222-4222-8222-222222222222")
-        XCTAssertEqual(object["weekly_plan_id"] as? String, "44444444-4444-4444-8444-444444444444")
-        XCTAssertEqual(object["force"] as? Bool, false)
-        XCTAssertEqual(object["max_rows"] as? Int, 6)
-    }
-
     func testDirectDailyCardSelectIncludesStoryboardThumbnailAssets() {
         XCTAssertTrue(
             SupabaseSelect.dailyCard.contains("storyboard_thumbnail_assets"),

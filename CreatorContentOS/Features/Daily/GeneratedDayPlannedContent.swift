@@ -150,8 +150,7 @@ struct GeneratedStoryboardBreakdownContent: View {
     }
 
     private var isGeneratingThumbnails: Bool {
-        services.generatingStoryboardThumbnailCardIDs.contains(card.id) ||
-            (services.isPrewarmingStoryboardThumbnails && missingThumbnailCount > 0)
+        services.generatingStoryboardThumbnailCardIDs.contains(card.id)
     }
 
     private var effectiveCard: GeneratedDailyCardDraft {
