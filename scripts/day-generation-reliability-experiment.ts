@@ -1,14 +1,14 @@
-// Generation Reliability Experiment Harness
+// Day Generation Reliability Experiment Harness
 //
-// Dry-run-first harness for planning and measuring 20+20 generation
-// reliability experiments against the hosted `generate-week` Supabase
-// Edge Function. Dry-run is the default. The live path is implemented
-// but gated behind `--live` AND `EXPERIMENT_LIVE_APPROVED=1`; do not run
-// it without separate user approval (see
-// docs/generation-reliability-experiment-plan.md).
+// Dry-run-first harness for planning and measuring day-at-a-time
+// generation reliability experiments against the hosted `generate-week`
+// Supabase Edge Function (`generate_day` / `regenerate_day` actions).
+// Dry-run is the default. The live path is implemented but gated behind
+// `--live` AND `EXPERIMENT_LIVE_APPROVED=1`; do not run it without
+// separate user approval (see
+// docs/day-generation-reliability-experiment-plan.md).
 //
 // Modes:
-//   --mode plan-full-week       Plan N full-week generation attempts.
 //   --mode plan-regenerate-day  Plan N regenerate-day attempts with a guidance string.
 //   --mode plan-generate-day    Plan N day-at-a-time generate_day attempts with a
 //                               day brief (--brief). Add --optimize-brief to run the
@@ -31,34 +31,34 @@
 //
 // Run (dry-run):
 //   deno run --allow-env --allow-read --allow-write \
-//     scripts/generation-reliability-experiment.ts \
-//     --mode plan-full-week --runs 20 --dry-run \
-//     --output build-logs/opencode-generation-reliability/experiment-harness/full-week-dry-run.jsonl
-//
-//   deno run --allow-env --allow-read --allow-write \
-//     scripts/generation-reliability-experiment.ts \
+//     scripts/day-generation-reliability-experiment.ts \
 //     --mode plan-regenerate-day --runs 20 --dry-run \
 //     --guidance "Keep the hook under 2 seconds. Mention Bombay. Avoid weight-loss framing." \
 //     --output .../regenerate-day-dry-run.jsonl
 //
-//   deno run --allow-read --allow-write \
-//     scripts/generation-reliability-experiment.ts \
-//     --mode summary --input .../full-week-dry-run.jsonl
+//   deno run --allow-env --allow-read --allow-write \
+//     scripts/day-generation-reliability-experiment.ts \
+//     --mode plan-generate-day --runs 20 --dry-run \
+//     --brief "Back in Bombay, restarting gym routine." \
+//     --output .../generate-day-dry-run.jsonl
 //
 //   deno run --allow-read --allow-write \
-//     scripts/generation-reliability-experiment.ts \
+//     scripts/day-generation-reliability-experiment.ts \
+//     --mode summary --input .../regenerate-day-dry-run.jsonl
+//
+//   deno run --allow-read --allow-write \
+//     scripts/day-generation-reliability-experiment.ts \
 //     --mode evaluate-guidance --input .../regenerate-day-dry-run.outputs.jsonl \
 //     --required-terms Bombay,hook --forbidden-terms "weight loss,guaranteed" \
 //     --target-sections daily_card,shot_timeline,voiceover_timeline
 
 type Mode =
-  | "plan-full-week"
   | "plan-regenerate-day"
   | "plan-generate-day"
   | "summary"
   | "evaluate-guidance";
 type JsonObject = Record<string, unknown>;
-type ExperimentKind = "full-week" | "regenerate-day" | "generate-day";
+type ExperimentKind = "regenerate-day" | "generate-day";
 type QualityCategory =
   | "opening_attention"
   | "retention_architecture"
@@ -89,7 +89,6 @@ type ResultRow = {
   generation_id: string | null;
   weekly_plan_id: string | null;
   creator_id_present: boolean;
-  week_start_date: string;
   scheduled_date: string | null;
   weekly_plan_id_present: boolean;
   guidance: string | null;
@@ -267,18 +266,6 @@ await main();
 
 async function main(): Promise<void> {
   switch (mode) {
-    case "plan-full-week":
-      await runExperimentPlan(
-        "full-week",
-        runs,
-        dryRun,
-        guidance,
-        output,
-        outputsPath,
-        seed,
-        stopAfterFailures,
-      );
-      break;
     case "plan-regenerate-day":
       if (!guidance) {
         fail("--guidance is required for --mode plan-regenerate-day");
@@ -330,7 +317,7 @@ async function main(): Promise<void> {
       break;
     default:
       fail(
-        `--mode must be one of: plan-full-week, plan-regenerate-day, plan-generate-day, summary, evaluate-guidance (got "${
+        `--mode must be one of: plan-regenerate-day, plan-generate-day, summary, evaluate-guidance (got "${
           String(args.mode ?? "")
         }")`,
       );
@@ -350,9 +337,7 @@ async function runExperimentPlan(
 ): Promise<void> {
   const rng = mulberry32(rngSeed);
   const liveEnv = readLiveEnv(experiment);
-  const action = experiment === "full-week"
-    ? "generate_week"
-    : experiment === "generate-day"
+  const action = experiment === "generate-day"
     ? "generate_day"
     : "regenerate_day";
   const functionName = "generate-week";
@@ -422,12 +407,9 @@ async function runExperimentPlan(
       generation_id: measurement.generationID,
       weekly_plan_id: measurement.weeklyPlanID,
       creator_id_present: liveEnv.creatorIdPresent,
-      week_start_date: liveEnv.weekStartDate ?? "2026-08-24",
-      scheduled_date: experiment === "full-week"
-        ? null
-        : (liveEnv.regenerateDate ?? "2026-08-25"),
+      scheduled_date: liveEnv.regenerateDate ?? "2026-08-25",
       weekly_plan_id_present: liveEnv.weeklyPlanIdPresent,
-      guidance: experiment === "full-week" ? null : currentBrief,
+      guidance: currentBrief,
       request_payload_shape: requestShape,
       http_status: measurement.httpStatus,
       duration_ms: measurement.durationMs,
@@ -842,10 +824,8 @@ type LiveEnv = {
   deviceToken: string | null;
   creatorID: string | null;
   weeklyPlanID: string | null;
-  weeklySetupID: string | null;
   creatorIdPresent: boolean;
   weeklyPlanIdPresent: boolean;
-  weekStartDate: string | null;
   regenerateDate: string | null;
   requestTimeoutMs: number;
   pollTimeoutMs: number;
@@ -860,21 +840,17 @@ function readLiveEnv(experiment: ExperimentKind): LiveEnv {
   ];
   const required = experiment === "generate-day"
     ? [...baseRequired, "MCO_LIVE_GENERATE_DATE"]
-    : experiment === "regenerate-day"
-    ? [
+    : [
       ...baseRequired,
-      "MCO_LIVE_AI_WEEK_START_DATE",
       "MCO_LIVE_WEEKLY_PLAN_ID",
       "MCO_LIVE_REGENERATE_DATE",
-    ]
-    : [...baseRequired, "MCO_LIVE_AI_WEEK_START_DATE"];
+    ];
   const missing = required.filter((name) => !Deno.env.get(name));
   const requestTimeoutMs =
     parsePositiveInt(Deno.env.get("MCO_LIVE_REQUEST_TIMEOUT_MS")) ??
       240_000;
   const pollTimeoutMs =
-    parsePositiveInt(Deno.env.get("MCO_LIVE_POLL_TIMEOUT_MS")) ??
-      (experiment === "full-week" ? 1_800_000 : 600_000);
+    parsePositiveInt(Deno.env.get("MCO_LIVE_POLL_TIMEOUT_MS")) ?? 600_000;
   return {
     hasAllRequired: missing.length === 0,
     missingNames: missing,
@@ -883,10 +859,8 @@ function readLiveEnv(experiment: ExperimentKind): LiveEnv {
     deviceToken: envValue("MCO_LIVE_DEVICE_TOKEN"),
     creatorID: envValue("MCO_LIVE_CREATOR_ID"),
     weeklyPlanID: envValue("MCO_LIVE_WEEKLY_PLAN_ID"),
-    weeklySetupID: envValue("MCO_LIVE_AI_WEEKLY_SETUP_ID"),
     creatorIdPresent: Boolean(Deno.env.get("MCO_LIVE_CREATOR_ID")),
     weeklyPlanIdPresent: Boolean(Deno.env.get("MCO_LIVE_WEEKLY_PLAN_ID")),
-    weekStartDate: envValue("MCO_LIVE_AI_WEEK_START_DATE"),
     regenerateDate: experiment === "generate-day"
       ? envValue("MCO_LIVE_GENERATE_DATE")
       : envValue("MCO_LIVE_REGENERATE_DATE"),
@@ -898,9 +872,6 @@ function readLiveEnv(experiment: ExperimentKind): LiveEnv {
 function describeRequestShape(
   experiment: ExperimentKind,
 ): string {
-  if (experiment === "full-week") {
-    return '{"creator_id":uuid,"week_start_date":YYYY-MM-DD,"weekly_setup_id":uuid?,"mode":"generate_draft","preserve_manual_edits":false,"response_mode":"async","feature_flags":["parallel_week_generation"],"client_context":{...}}';
-  }
   if (experiment === "generate-day") {
     return '{"action":"generate_day","creator_id":uuid,"scheduled_date":YYYY-MM-DD,"day_brief":string,"response_mode":"async","client_context":{...}}';
   }
@@ -947,9 +918,7 @@ async function liveRunResult(
   logExperimentProgress(
     `run ${runIndex} invoking generate-week action=${
       stringValue(payload.action) ??
-        (experiment === "full-week" ? "generate_week" : "regenerate_day")
-    } week_start=${
-      stringValue(payload.week_start_date) ?? "n/a"
+        (experiment === "generate-day" ? "generate_day" : "regenerate_day")
     } scheduled_date=${stringValue(payload.scheduled_date) ?? "n/a"}`,
   );
   const initial = await invokeLiveGenerateWeek(liveEnv, payload);
@@ -974,7 +943,6 @@ async function liveRunResult(
   const weeklyPlanID = stringValue(terminal.initialData?.weekly_plan_id) ??
     stringValue(finalData?.weekly_plan_id);
   const validation = validateLiveGeneration(
-    experiment,
     finalData,
     finalResponse,
   );
@@ -986,7 +954,6 @@ async function liveRunResult(
     } polls=${terminal.pollCount} ${summarizeLiveStatus(finalData)}`,
   );
   const assessment = assessLiveQuality(
-    experiment,
     finalData,
     validation,
     durationMs,
@@ -1032,26 +999,6 @@ function liveRequestPayload(options: LivePayloadOptions): JsonObject {
     "MCO_LIVE_CREATOR_ID",
     options.liveEnv.creatorID,
   );
-  if (options.experiment === "full-week") {
-    const weekStartDate = requireLiveValue(
-      "MCO_LIVE_AI_WEEK_START_DATE",
-      options.liveEnv.weekStartDate,
-    );
-    return compactObject({
-      creator_id: creatorID,
-      week_start_date: weekStartDate,
-      weekly_setup_id: options.liveEnv.weeklySetupID ?? undefined,
-      mode: "generate_draft",
-      preserve_manual_edits: false,
-      response_mode: "async",
-      feature_flags: ["parallel_week_generation"],
-      client_context: compactObject({
-        ui_surface: "generation_reliability_experiment",
-        action: "generate_week",
-        selected_week_start: weekStartDate,
-      }),
-    });
-  }
 
   if (options.experiment === "generate-day") {
     const scheduledDate = requireLiveValue(
@@ -1065,7 +1012,7 @@ function liveRequestPayload(options: LivePayloadOptions): JsonObject {
       day_brief: options.guidanceString,
       response_mode: "async",
       client_context: compactObject({
-        ui_surface: "generation_reliability_experiment",
+        ui_surface: "day_generation_reliability_experiment",
         action: "generate_day",
         scheduled_date: scheduledDate,
         day_guidance_present: options.guidanceString.trim().length > 0,
@@ -1090,7 +1037,7 @@ function liveRequestPayload(options: LivePayloadOptions): JsonObject {
     response_mode: "async",
     day_guidance: options.guidanceString,
     client_context: compactObject({
-      ui_surface: "generation_reliability_experiment",
+      ui_surface: "day_generation_reliability_experiment",
       action: "regenerate_day",
       scheduled_date: scheduledDate,
       day_guidance_present: options.guidanceString.trim().length > 0,
@@ -1288,7 +1235,6 @@ async function invokeLiveGenerateWeek(
 }
 
 function validateLiveGeneration(
-  experiment: ExperimentKind,
   data: JsonObject | null,
   response: LiveHTTPResult,
 ): LiveValidationResult {
@@ -1307,31 +1253,6 @@ function validateLiveGeneration(
   }
 
   const status = stringValue(data.status);
-  if (experiment === "full-week") {
-    const dailyCards = arrayValue(data.daily_cards);
-    const failedDayCount = numberValue(data.failed_day_count) ??
-      arrayValue(data.failed_days)?.length ??
-      arrayValue(data.day_statuses)?.filter((day) =>
-        isRecord(day) && stringValue(day.status) === "failed"
-      ).length ??
-      0;
-    if (
-      status === "draft" && dailyCards?.length === 7 && failedDayCount === 0
-    ) {
-      return { passed: true, failureCode: "" };
-    }
-    if (status === "partial" || failedDayCount > 0) {
-      return { passed: false, failureCode: "partial_generation" };
-    }
-    if (status === "failed") {
-      return {
-        passed: false,
-        failureCode: stringValue(data.error) ?? "generation_failed",
-      };
-    }
-    return { passed: false, failureCode: "invalid_generated_week" };
-  }
-
   if (
     (status === "draft" || status === "completed") &&
     isRecord(data.daily_card)
@@ -1348,7 +1269,6 @@ function validateLiveGeneration(
 }
 
 function assessLiveQuality(
-  experiment: ExperimentKind,
   data: JsonObject | null,
   validation: LiveValidationResult,
   durationMs: number,
@@ -1531,7 +1451,7 @@ function zeroQualityBreakdown(
 }
 
 function liveStatusKind(
-  experiment: ExperimentKind,
+  _experiment: ExperimentKind,
   data: JsonObject | null,
 ): LiveStatusKind {
   const status = stringValue(data?.status);
@@ -1544,14 +1464,7 @@ function liveStatusKind(
   if (status === "cancelled" || status === "canceled") {
     return "cancelled";
   }
-  if (experiment === "full-week") {
-    if (status === "draft") {
-      return "success";
-    }
-    if (status === "partial") {
-      return "partial";
-    }
-  } else if (status === "draft" || status === "completed") {
+  if (status === "draft" || status === "completed") {
     return "success";
   }
   return "unknown";
@@ -1580,7 +1493,7 @@ function liveHeaders(liveEnv: LiveEnv): HeadersInit {
     Authorization: `Bearer ${publishableKey}`,
     apikey: publishableKey,
     "Content-Type": "application/json",
-    "x-client": "generation-reliability-experiment",
+    "x-client": "day-generation-reliability-experiment",
     "x-mco-device-token": requireLiveValue(
       "MCO_LIVE_DEVICE_TOKEN",
       liveEnv.deviceToken,
@@ -1601,12 +1514,6 @@ function validateLiveEnv(
   }
   if (liveEnv.creatorID && !isUUID(liveEnv.creatorID)) {
     errors.push("MCO_LIVE_CREATOR_ID must be a UUID");
-  }
-  if (liveEnv.weekStartDate && !isDateString(liveEnv.weekStartDate)) {
-    errors.push("MCO_LIVE_AI_WEEK_START_DATE must be YYYY-MM-DD");
-  }
-  if (liveEnv.weeklySetupID && !isUUID(liveEnv.weeklySetupID)) {
-    errors.push("MCO_LIVE_AI_WEEKLY_SETUP_ID must be a UUID");
   }
   if (experiment === "regenerate-day") {
     if (liveEnv.weeklyPlanID && !isUUID(liveEnv.weeklyPlanID)) {
@@ -1845,7 +1752,7 @@ function renderSummary(stats: SummaryStats): string {
       ([code, count]) => `- ${code}: ${count}`,
     );
   return [
-    "# Generation Reliability Experiment Summary",
+    "# Day Generation Reliability Experiment Summary",
     "",
     `Source: ${stats.input_file}`,
     `Generated: ${new Date().toISOString()}`,
@@ -1963,7 +1870,9 @@ function requireLiveValue(name: string, value: string | null): string {
 }
 
 function logExperimentProgress(message: string): void {
-  console.log(`[generation-harness ${new Date().toISOString()}] ${message}`);
+  console.log(
+    `[day-generation-harness ${new Date().toISOString()}] ${message}`,
+  );
 }
 
 function summarizeLiveStatus(data: JsonObject | null): string {
@@ -2165,9 +2074,6 @@ function envValue(name: string): string | null {
 
 function defaultOutputPath(mode: Mode, isDryRun: boolean): string {
   const slug = isDryRun ? "dry-run" : "live";
-  if (mode === "plan-full-week") {
-    return `${DEFAULT_OUTPUT_DIR}/full-week-${slug}.jsonl`;
-  }
   if (mode === "plan-regenerate-day") {
     return `${DEFAULT_OUTPUT_DIR}/regenerate-day-${slug}.jsonl`;
   }

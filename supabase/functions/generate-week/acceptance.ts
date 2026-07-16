@@ -17,12 +17,52 @@ const ids = {
 };
 
 const inviteCodes = {
-  owner: "AIWEEKOWNER",
-  editor: "AIWEEKEDITOR",
-  creator: "AIWEEKCREATOR",
+  owner: "DAYGENOWNER",
+  editor: "DAYGENEDITOR",
+  creator: "DAYGENCREATOR",
 };
 
-const weekStartDate = "2026-06-08";
+const weekStartDate = nextUtcMondayStrictlyAfterToday();
+const boundaryWeekStartDate = nextWeek(weekStartDate);
+
+function nextUtcMondayStrictlyAfterToday(): string {
+  const now = new Date();
+  const today = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  ));
+  const weekday = today.getUTCDay();
+  const daysUntilNextMonday = weekday === 1
+    ? 7
+    : weekday === 0
+    ? 1
+    : 8 - weekday;
+  today.setUTCDate(today.getUTCDate() + daysUntilNextMonday);
+  return today.toISOString().slice(0, 10);
+}
+
+function nextWeek(dateString: string): string {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + 7));
+  return date.toISOString().slice(0, 10);
+}
+
+function weekDayDates(weekStart: string): string[] {
+  const [year, month, day] = weekStart.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day));
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+function acceptanceDayBrief(scheduledDate: string, dayIndex: number): string {
+  return `Acceptance day brief ${
+    dayIndex + 1
+  } for ${scheduledDate}: calm practical Mumbai content.`;
+}
 
 const supabaseURL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("API_URL") ??
@@ -56,33 +96,48 @@ assertEquals(editorSession.member_role, "editor", "editor pairing role");
 assertEquals(creatorSession.member_role, "creator", "creator pairing role");
 console.log("PASS pair-device created owner/editor/creator device tokens");
 
-const generation = await callFunction(
-  "generate-week",
-  ownerSession.device_token,
-  {
-    creator_id: ids.creator,
-    week_start_date: weekStartDate,
-    weekly_setup_id: ids.setup,
-    mode: "generate_draft",
-  },
-);
-if (generation.status !== 200) {
-  console.log("generate-week response", generation.status, generation.json);
+let weeklyPlanID: string | undefined;
+for (const [index, scheduledDate] of weekDayDates(weekStartDate).entries()) {
+  const dayGeneration = await callFunction(
+    "generate-week",
+    ownerSession.device_token,
+    {
+      action: "generate_day",
+      creator_id: ids.creator,
+      scheduled_date: scheduledDate,
+      day_brief: acceptanceDayBrief(scheduledDate, index),
+    },
+  );
+  if (dayGeneration.status !== 200) {
+    console.log(
+      "generate_day response",
+      scheduledDate,
+      dayGeneration.status,
+      dayGeneration.json,
+    );
+  }
+  assertEquals(
+    dayGeneration.status,
+    200,
+    `generate_day status for ${scheduledDate}`,
+  );
+  assertEquals(
+    dayGeneration.json.target_scheduled_date,
+    scheduledDate,
+    `generate_day target date for ${scheduledDate}`,
+  );
+  const dayCard = dayGeneration.json.daily_card as Record<string, unknown>;
+  assert(
+    typeof dayCard.script === "string" &&
+      typeof dayCard.caption === "string" &&
+      typeof dayCard.backup_story === "string",
+    `generated rich fields present for ${scheduledDate}`,
+  );
+  weeklyPlanID = dayGeneration.json.weekly_plan_id as string;
 }
-assertEquals(generation.status, 200, "generate-week status");
-assertEquals(generation.json.status, "draft", "generation response status");
-assertEquals(generation.json.daily_cards.length, 7, "generation card count");
-assert(
-  generation.json.daily_cards.every((card: Record<string, unknown>) =>
-    typeof card.script === "string" &&
-    typeof card.caption === "string" &&
-    typeof card.backup_story === "string"
-  ),
-  "generated rich fields present",
-);
-console.log("PASS generate-week mock created a rich seven-card draft");
+assertTruthy(weeklyPlanID, "assembled weekly_plan_id");
+console.log("PASS generate_day assembled a rich seven-card draft");
 
-const weeklyPlanID = generation.json.weekly_plan_id as string;
 const draftPlans = await rows(
   admin.from("weekly_plans")
     .select("id,status")
@@ -187,38 +242,43 @@ const regeneration = await callFunction(
   "generate-week",
   ownerSession.device_token,
   {
+    action: "regenerate_day",
     creator_id: ids.creator,
-    week_start_date: weekStartDate,
-    weekly_setup_id: ids.setup,
-    mode: "regenerate_draft",
+    weekly_plan_id: weeklyPlanID,
+    scheduled_date: weekStartDate,
     preserve_manual_edits: true,
   },
 );
-assertEquals(regeneration.status, 200, "regenerate draft status");
+assertEquals(regeneration.status, 200, "regenerate_day status");
 assertEquals(
   regeneration.json.weekly_plan_id,
   weeklyPlanID,
-  "regenerate reuses draft plan",
+  "regenerate_day reuses draft plan",
 );
-const regeneratedFirstCard = regeneration.json.daily_cards.find(
-  (card: Record<string, unknown>) => card.scheduled_date === weekStartDate,
+assertEquals(
+  regeneration.json.target_scheduled_date,
+  weekStartDate,
+  "regenerate_day target date",
 );
+const regeneratedFirstCard = regeneration.json.daily_card as
+  | Record<string, unknown>
+  | undefined;
 assertEquals(
   regeneratedFirstCard?.caption,
   "Edited acceptance caption.",
-  "regenerate response preserved caption",
+  "regenerate_day response preserved caption",
 );
 assertEquals(
   regeneratedFirstCard?.backup_story,
   "Edited acceptance backup story.",
-  "regenerate response preserved backup story",
+  "regenerate_day response preserved backup story",
 );
 const regeneratedFirstCardSourceIDs = regeneratedFirstCard
   ?.source_reference_ids;
 assert(
   Array.isArray(regeneratedFirstCardSourceIDs) &&
     regeneratedFirstCardSourceIDs.includes(ids.replacementReference),
-  "regenerate response used replacement source reference",
+  "regenerate_day response used replacement source reference",
 );
 
 const regeneratedDraftCards = await rows(
@@ -231,19 +291,19 @@ const regeneratedDraftCards = await rows(
 assertEquals(
   regeneratedDraftCards[0].title,
   "Edited acceptance title",
-  "regenerate persisted edited title",
+  "regenerate_day persisted edited title",
 );
 assertEquals(
   regeneratedDraftCards[0].scene_list?.[0]?.title,
   "Edited acceptance scene",
-  "regenerate persisted edited scene",
+  "regenerate_day persisted edited scene",
 );
 assertEquals(
   regeneratedDraftCards[0].caption,
   "Edited acceptance caption.",
-  "regenerate persisted edited caption",
+  "regenerate_day persisted edited caption",
 );
-console.log("PASS regenerate draft preserves manual review edits");
+console.log("PASS regenerate_day preserves manual review edits");
 
 const regeneratedCardReferences = await rows(
   admin.from("daily_card_references")
@@ -257,15 +317,39 @@ assertEquals(
   7,
   "regenerated source reference link count",
 );
-assert(
-  regeneratedCardReferences.every((reference: Record<string, unknown>) =>
-    reference.source_reference_id === ids.replacementReference &&
-    typeof reference.reason === "string" &&
-    reference.reason.includes("Replacement confirmed shoe transition")
-  ),
-  "regenerate replaced stale source references",
+const firstCardReferences = regeneratedCardReferences.filter(
+  (reference: Record<string, unknown>) =>
+    reference.daily_card_id === draftCards[0].id,
 );
-console.log("PASS regenerate replaces stale source reference links");
+assert(
+  firstCardReferences.length > 0 &&
+    firstCardReferences.every((reference: Record<string, unknown>) =>
+      reference.source_reference_id === ids.replacementReference &&
+      typeof reference.reason === "string" &&
+      reference.reason.includes("Replacement confirmed shoe transition")
+    ),
+  "regenerate_day replaced stale source references on targeted day",
+);
+for (const unaffectedCard of draftCards.slice(1)) {
+  const unaffectedReferences = regeneratedCardReferences.filter(
+    (reference: Record<string, unknown>) =>
+      reference.daily_card_id === unaffectedCard.id,
+  );
+  assert(
+    unaffectedReferences.length > 0 &&
+      unaffectedReferences.every((reference: Record<string, unknown>) =>
+        reference.source_reference_id === ids.reference &&
+        typeof reference.reason === "string" &&
+        reference.reason.includes("Confirmed towel transition")
+      ),
+    `unaffected day ${
+      String(unaffectedCard.id)
+    } retained original source links`,
+  );
+}
+console.log(
+  "PASS regenerate_day replaces stale links on targeted day only",
+);
 
 const weeklyRead = await callFunction(
   "read-content",
@@ -362,7 +446,7 @@ const decision = await callFunction(
       output_line: "Used backup from generated card",
       has_post_thumbnail: false,
     },
-    decision_at: "2026-06-08T08:00:00Z",
+    decision_at: `${weekStartDate}T08:00:00Z`,
   },
 );
 assertEquals(decision.status, 200, "creator write decision status");
@@ -372,8 +456,10 @@ const creatorRejected = await callFunction(
   "generate-week",
   creatorSession.device_token,
   {
+    action: "generate_day",
     creator_id: ids.creator,
-    week_start_date: "2026-06-15",
+    scheduled_date: boundaryWeekStartDate,
+    day_brief: acceptanceDayBrief(boundaryWeekStartDate, 0),
   },
 );
 assertEquals(
@@ -386,14 +472,16 @@ assertEquals(
   "role_not_allowed",
   "creator rejection error",
 );
-console.log("PASS creator role is rejected for generate-week");
+console.log("PASS creator role is rejected for generate_day");
 
 const crossWorkspace = await callFunction(
   "generate-week",
   ownerSession.device_token,
   {
+    action: "generate_day",
     creator_id: ids.otherCreator,
-    week_start_date: "2026-06-15",
+    scheduled_date: boundaryWeekStartDate,
+    day_brief: acceptanceDayBrief(boundaryWeekStartDate, 0),
   },
 );
 assertEquals(crossWorkspace.status, 404, "cross workspace creator status");
@@ -408,8 +496,10 @@ const locked = await callFunction(
   "generate-week",
   ownerSession.device_token,
   {
+    action: "generate_day",
     creator_id: ids.creator,
-    week_start_date: weekStartDate,
+    scheduled_date: weekStartDate,
+    day_brief: acceptanceDayBrief(weekStartDate, 0),
   },
 );
 assertEquals(locked.status, 409, "published week lock status");
@@ -419,10 +509,10 @@ assertEquals(
   "published week lock error",
 );
 console.log(
-  "PASS published week lock prevents accidental regeneration overwrite",
+  "PASS published week lock prevents accidental generate_day overwrite",
 );
 
-console.log("PASS ai-weekly local acceptance");
+console.log("PASS day generation local acceptance");
 
 async function seedData() {
   await must(
@@ -435,7 +525,11 @@ async function seedData() {
 
   await must(
     admin.from("workspaces").insert([
-      { id: ids.workspace, name: "AI Weekly Acceptance", status: "active" },
+      {
+        id: ids.workspace,
+        name: "Day Generation Acceptance",
+        status: "active",
+      },
       { id: ids.otherWorkspace, name: "Other Workspace", status: "active" },
     ]),
     "seed workspaces",
@@ -564,7 +658,7 @@ async function seedData() {
     "seed device invites",
   );
 
-  console.log("PASS seeded ai-weekly acceptance data");
+  console.log("PASS seeded day generation acceptance data");
 }
 
 async function pair(role: string, inviteCode: string) {
@@ -635,6 +729,12 @@ async function must(query: PromiseLike<any>, label: string) {
   const { error } = await query;
   if (error) {
     throw new Error(`${label} failed: ${error.message}`);
+  }
+}
+
+function assertTruthy(value: unknown, message?: string): asserts value {
+  if (!value) {
+    throw new Error(message ?? "Assertion failed");
   }
 }
 

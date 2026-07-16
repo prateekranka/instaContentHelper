@@ -6,11 +6,11 @@ const config = {
   supabaseURL: requiredEnv("MCO_SUPABASE_URL").replace(/\/+$/, ""),
   publishableKey: requiredEnv("MCO_SUPABASE_PUBLISHABLE_KEY"),
   serviceRoleKey: requiredEnv("MCO_SUPABASE_SERVICE_ROLE_KEY"),
-  weekStartDate: env("MCO_QA_WEEK_START_DATE") ?? "2026-07-06",
+  weekStartDate: env("MCO_QA_WEEK_START_DATE") ??
+    nextUtcMondayStrictlyAfterToday(),
   idSuffix: env("MCO_QA_ID_SUFFIX") ?? "e2",
   useMockAI: env("MCO_QA_GENERATE_MOCK") === "1",
   responseMode: env("MCO_QA_GENERATION_RESPONSE_MODE") ?? "sync",
-  parallelWeekGeneration: env("MCO_QA_PARALLEL_WEEK_GENERATION") === "1",
   cleanupOnly: env("MCO_QA_CLEANUP_ONLY") === "1",
 };
 
@@ -328,7 +328,7 @@ async function runAdminE2E() {
   assertArray(intelligence.ideas, "ideas");
   console.log("PASS admin read-content intelligence");
 
-  const generation = await generateWeek();
+  const generation = await assembleDraftWeekByDay();
   const weeklyPlanID = requiredString(
     generation.weekly_plan_id,
     "generated weekly_plan_id",
@@ -339,7 +339,9 @@ async function runAdminE2E() {
   );
   assertEquals(generatedCards.length, 7, "generated card count");
   assertGeneratedCards(generatedCards, weekDates(config.weekStartDate));
-  console.log(`PASS admin generated draft week ${weeklyPlanID}`);
+  console.log(
+    `PASS admin assembled draft week ${weeklyPlanID} via generate_day`,
+  );
 
   const weeklyAfterGenerate = await invoke("read-content", tokens.owner, {
     action: "weekly",
@@ -544,7 +546,7 @@ async function runCreatorE2E() {
       output_line: "QA creator used backup path after reviewing Shoot Folio.",
       has_post_thumbnail: false,
     },
-    decision_at: new Date().toISOString(),
+    decision_at: `${config.weekStartDate}T08:00:00Z`,
   });
   assertEquals(
     stringValue(objectValue(decision.daily_card)?.status),
@@ -596,9 +598,10 @@ async function runRoleAndBoundaryChecks() {
     "generate-week",
     tokens.creator,
     {
+      action: "generate_day",
       creator_id: ids.creator,
-      week_start_date: nextWeek(config.weekStartDate),
-      weekly_setup_id: ids.setup,
+      scheduled_date: nextWeek(config.weekStartDate),
+      day_brief: qaDayBrief(nextWeek(config.weekStartDate), 0),
     },
     "role_not_allowed",
   );
@@ -616,9 +619,10 @@ async function runRoleAndBoundaryChecks() {
     "generate-week",
     tokens.owner,
     {
+      action: "generate_day",
       creator_id: ids.creator,
-      week_start_date: config.weekStartDate,
-      weekly_setup_id: ids.setup,
+      scheduled_date: config.weekStartDate,
+      day_brief: qaDayBrief(config.weekStartDate, 0),
     },
     "existing_published_week_locked",
   );
@@ -626,17 +630,77 @@ async function runRoleAndBoundaryChecks() {
   console.log("PASS live QA role and boundary checks");
 }
 
-async function generateWeek(): Promise<JsonObject> {
-  const response = await invoke("generate-week", tokens.owner, {
+function qaDayBrief(scheduledDate: string, dayIndex: number): string {
+  return `QA live E2E day ${
+    dayIndex + 1
+  } for ${scheduledDate}: recovery-focused practical reel with family and New Jersey context.`;
+}
+
+async function assembleDraftWeekByDay(): Promise<JsonObject> {
+  const dates = weekDates(config.weekStartDate);
+  let weeklyPlanID: string | null = null;
+
+  for (const [index, scheduledDate] of dates.entries()) {
+    const dayResult = await generateDay(
+      scheduledDate,
+      qaDayBrief(scheduledDate, index),
+    );
+    weeklyPlanID = requiredString(
+      dayResult.weekly_plan_id,
+      "generate_day weekly_plan_id",
+    );
+    assertEquals(
+      stringValue(dayResult.target_scheduled_date),
+      scheduledDate,
+      `generate_day target date ${scheduledDate}`,
+    );
+    const dayCard = requireObject(
+      dayResult.daily_card,
+      `generate_day card ${scheduledDate}`,
+    );
+    assertEquals(
+      requiredString(
+        dayCard.scheduled_date,
+        `generate_day card date ${scheduledDate}`,
+      ),
+      scheduledDate,
+      `generate_day card scheduled date ${scheduledDate}`,
+    );
+    requiredString(dayCard.title, `generate_day card title ${scheduledDate}`);
+    requiredString(
+      dayCard.caption,
+      `generate_day card caption ${scheduledDate}`,
+    );
+    requiredString(dayCard.script, `generate_day card script ${scheduledDate}`);
+  }
+
+  const weeklyRead = await invoke("read-content", tokens.owner, {
+    action: "weekly",
     creator_id: ids.creator,
-    week_start_date: config.weekStartDate,
-    weekly_setup_id: ids.setup,
-    mode: "generate_draft",
-    preserve_manual_edits: true,
+  });
+  assertEquals(
+    stringValue(objectValue(weeklyRead.weekly_plan)?.id),
+    weeklyPlanID,
+    "assembled weekly_plan_id",
+  );
+
+  return {
+    weekly_plan_id: weeklyPlanID,
+    daily_cards: requiredArray(weeklyRead.daily_cards, "assembled daily cards"),
+    status: "draft",
+  };
+}
+
+async function generateDay(
+  scheduledDate: string,
+  dayBrief: string,
+): Promise<JsonObject> {
+  const response = await invoke("generate-week", tokens.owner, {
+    action: "generate_day",
+    creator_id: ids.creator,
+    scheduled_date: scheduledDate,
+    day_brief: dayBrief,
     response_mode: config.responseMode,
-    ...(config.parallelWeekGeneration
-      ? { feature_flags: ["parallel_week_generation"] }
-      : {}),
     ...(config.useMockAI ? { mock: true } : {}),
   }, { allowAccepted: true });
   return await resolveGenerationResponse(response);
@@ -845,6 +909,23 @@ function assertGeneratedCards(cards: unknown[], dates: string[]) {
       `generated card ${index} minutes`,
     );
   }
+}
+
+function nextUtcMondayStrictlyAfterToday(): string {
+  const now = new Date();
+  const today = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  ));
+  const weekday = today.getUTCDay();
+  const daysUntilNextMonday = weekday === 1
+    ? 7
+    : weekday === 0
+    ? 1
+    : 8 - weekday;
+  today.setUTCDate(today.getUTCDate() + daysUntilNextMonday);
+  return today.toISOString().slice(0, 10);
 }
 
 function weekDates(weekStartDate: string): string[] {

@@ -115,8 +115,4 @@ if [ "${RUN_LIVE_SMOKE:-0}" = "1" ]; then
   deno run --allow-env --allow-net scripts/live-write-boundary-smoke.ts
 fi
 
-if [ "${RUN_LIVE_AI_SMOKE:-0}" = "1" ]; then
-  deno run --allow-env --allow-net scripts/ai-weekly-generation-smoke.ts
-fi
-
 echo "Live Supabase deploy script completed for project $SUPABASE_PROJECT_REF."
