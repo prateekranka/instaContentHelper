@@ -28,103 +28,6 @@ enum GenerationResponseMode: String, Encodable, Sendable {
     case async
 }
 
-struct WeeklyDayGenerationStatus: Decodable, Hashable, Sendable {
-    var scheduledDate: String?
-    var dayIndex: Int?
-    var status: String
-    var dailyCardID: UUID?
-    var errorCode: String?
-    var retryAction: String?
-    var message: String?
-
-    enum CodingKeys: String, CodingKey {
-        case scheduledDate = "scheduled_date"
-        case dayIndex = "day_index"
-        case status
-        case dailyCardID = "daily_card_id"
-        case errorCode = "error_code"
-        case retryAction = "retry_action"
-        case message
-    }
-
-    var normalizedStatus: String {
-        status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-
-    var isCompleted: Bool {
-        ["generated", "completed", "complete", "ready", "saved", "draft", "drafted"].contains(normalizedStatus)
-    }
-
-    var isFailed: Bool {
-        ["failed", "error", "errored"].contains(normalizedStatus)
-    }
-
-    var isRunning: Bool {
-        ["running", "generating", "drafting", "saving"].contains(normalizedStatus)
-    }
-
-    var isQueued: Bool {
-        ["queued", "pending", "waiting"].contains(normalizedStatus)
-    }
-
-    var isRetrying: Bool {
-        ["retrying", "retry", "retry_queued"].contains(normalizedStatus)
-    }
-
-    var isCancelled: Bool {
-        ["cancelled", "canceled"].contains(normalizedStatus)
-    }
-
-    var statusSortKey: Int {
-        if let dayIndex { return dayIndex }
-        return Int.max
-    }
-
-    var displayStatusLabel: String {
-        if isCompleted { return "Generated" }
-        if isRunning { return "Generating" }
-        if isRetrying { return "Retrying" }
-        if isQueued { return "Queued" }
-        if isCancelled { return "Cancelled" }
-        if isFailed { return "Needs retry" }
-        return "Pending"
-    }
-
-    var displayName: String {
-        if let scheduledDate {
-            return SupabaseDateFormatting.weekdayAbbreviation(for: scheduledDate).capitalized
-        }
-
-        if let dayIndex {
-            return "Day \(dayIndex + 1)"
-        }
-
-        return "Day"
-    }
-
-    var failureDetail: String {
-        let detail = errorCode ?? message
-        switch detail {
-        case "openai_request_failed":
-            return "The AI service failed for this day."
-        case "invalid_ai_json", "invalid_generated_week":
-            return "The draft for this day did not pass validation."
-        case "generation_persist_failed":
-            return "The draft for this day could not be saved."
-        case "weekly_setup_not_found":
-            return "Save the weekly brief, then try this day again."
-        case "generation_timeout":
-            return "Generation took too long. Try this day again."
-        case .some(let detail) where detail.contains("_"):
-            return "This day needs another attempt."
-        case .some(let detail):
-            return detail
-        case nil:
-            return "This day needs another attempt."
-        }
-    }
-}
-
 struct SupabaseRegenerateDayRequest: Encodable, Sendable {
     var creatorID: UUID
     var weeklyPlanID: UUID
@@ -303,62 +206,18 @@ struct SupabaseGenerationStatusResponse: Decodable, Hashable, Sendable {
     var status: String
     var weeklyPlanID: UUID?
     var message: String?
-    var completedDayCount: Int?
-    var totalDayCount: Int?
-    var currentDay: String?
     var targetScheduledDate: String?
     var pollAfterSeconds: Int?
     var error: String?
-    var savedDayCount: Int?
-    var failedDayCount: Int?
-    var strategyCreated: Bool?
-    var dayStatuses: [WeeklyDayGenerationStatus]
 
     enum CodingKeys: String, CodingKey {
         case generationID = "generation_id"
         case status
         case weeklyPlanID = "weekly_plan_id"
         case message
-        case completedDayCount = "completed_day_count"
-        case totalDayCount = "total_day_count"
-        case currentDay = "current_day"
         case targetScheduledDate = "target_scheduled_date"
         case pollAfterSeconds = "poll_after_seconds"
         case error
-        case savedDayCount = "saved_day_count"
-        case failedDayCount = "failed_day_count"
-        case strategyCreated = "strategy_created"
-        case days
-        case dayStatuses = "day_statuses"
-        case perDayStatuses = "per_day_statuses"
-        case failedDays = "failed_days"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        generationID = try container.decode(UUID.self, forKey: .generationID)
-        status = try container.decode(String.self, forKey: .status)
-        weeklyPlanID = try container.decodeIfPresent(UUID.self, forKey: .weeklyPlanID)
-        message = try container.decodeIfPresent(String.self, forKey: .message)
-        completedDayCount = try container.decodeIfPresent(Int.self, forKey: .completedDayCount)
-        totalDayCount = try container.decodeIfPresent(Int.self, forKey: .totalDayCount)
-        currentDay = try container.decodeIfPresent(String.self, forKey: .currentDay)
-        targetScheduledDate = try container.decodeIfPresent(String.self, forKey: .targetScheduledDate)
-        pollAfterSeconds = try container.decodeIfPresent(Int.self, forKey: .pollAfterSeconds)
-        error = try container.decodeIfPresent(String.self, forKey: .error)
-        savedDayCount = try container.decodeIfPresent(Int.self, forKey: .savedDayCount)
-        failedDayCount = try container.decodeIfPresent(Int.self, forKey: .failedDayCount)
-        strategyCreated = try container.decodeIfPresent(Bool.self, forKey: .strategyCreated)
-
-        if let statuses = try container.decodeIfPresent([WeeklyDayGenerationStatus].self, forKey: .days) {
-            dayStatuses = statuses
-        } else if let statuses = try container.decodeIfPresent([WeeklyDayGenerationStatus].self, forKey: .dayStatuses) {
-            dayStatuses = statuses
-        } else if let statuses = try container.decodeIfPresent([WeeklyDayGenerationStatus].self, forKey: .perDayStatuses) {
-            dayStatuses = statuses
-        } else {
-            dayStatuses = try container.decodeIfPresent([WeeklyDayGenerationStatus].self, forKey: .failedDays) ?? []
-        }
     }
 }
 

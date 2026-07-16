@@ -555,31 +555,17 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
     }
 
     private func statusSummary(_ status: SupabaseGenerationStatusResponse) -> String {
-        let runningDays = status.dayStatuses.filter { $0.isRunning || $0.isRetrying }
-        let queuedDays = status.dayStatuses.filter(\.isQueued)
-        let completed = status.dayStatuses.filter(\.isCompleted).count
-        let failedDays = status.dayStatuses.filter(\.isFailed).compactMap { day -> String? in
-            guard let date = day.scheduledDate else { return nil }
-            if let error = day.errorCode?.nilIfBlank {
-                return "\(date):\(error)"
-            }
-            return date
-        }
-        return [
+        [
             "generation_id=\(status.generationID)",
             "weekly_plan_id=\(status.weeklyPlanID?.uuidString ?? "none")",
             "status=\(status.status)",
-            "saved=\(status.savedDayCount.map(String.init) ?? "unknown")",
-            "failed=\(status.failedDayCount.map(String.init) ?? "unknown")",
-            "completed=\(completed)",
-            "running=\(runningDays.count)",
-            runningDays.isEmpty ? "" : "running_days=\(runningDays.compactMap(\.scheduledDate).joined(separator: ","))",
-            "queued=\(queuedDays.count)",
-            queuedDays.isEmpty ? "" : "queued_days=\(queuedDays.compactMap(\.scheduledDate).joined(separator: ","))",
-            "poll_after=\(status.pollAfterSeconds.map(String.init) ?? "unknown")",
-            status.error.map { "error=\($0)" } ?? "",
-            failedDays.isEmpty ? "" : "failed_days=\(failedDays.joined(separator: ","))"
-        ].filter { !$0.isEmpty }.joined(separator: " ")
+            status.targetScheduledDate.map { "target_scheduled_date=\($0)" },
+            status.message.map { "message=\($0)" },
+            status.pollAfterSeconds.map { "poll_after=\($0)" },
+            status.error.map { "error=\($0)" }
+        ]
+            .compactMap { $0 }
+            .joined(separator: " ")
     }
 
     private func invokeGenerateWeekDirectly<Response>(

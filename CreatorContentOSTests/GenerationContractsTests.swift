@@ -77,16 +77,15 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertEqual(object["generation_id"] as? String, generationID.uuidString.lowercased())
         XCTAssertEqual(object["creator_id"] as? String, creatorID.uuidString.lowercased())
 
+        let weeklyPlanID = UUID(uuidString: "77777777-7777-4777-8777-777777777771")!
         let responseData = Data(
             """
             {
               "generation_id": "\(generationID.uuidString)",
-              "weekly_plan_id": null,
+              "weekly_plan_id": "\(weeklyPlanID.uuidString)",
               "status": "running",
               "message": "generation_started",
-              "completed_day_count": 3,
-              "total_day_count": 7,
-              "current_day": "2026-06-03",
+              "target_scheduled_date": "2026-06-10",
               "poll_after_seconds": 5
             }
             """.utf8
@@ -98,11 +97,11 @@ final class GenerationContractsTests: XCTestCase {
             return
         }
         XCTAssertEqual(status.generationID, generationID)
+        XCTAssertEqual(status.weeklyPlanID, weeklyPlanID)
         XCTAssertEqual(status.status, "running")
+        XCTAssertEqual(status.message, "generation_started")
+        XCTAssertEqual(status.targetScheduledDate, "2026-06-10")
         XCTAssertEqual(status.pollAfterSeconds, 5)
-        XCTAssertEqual(status.completedDayCount, 3)
-        XCTAssertEqual(status.totalDayCount, 7)
-        XCTAssertEqual(status.currentDay, "2026-06-03")
     }
 
     func testGenerateDayRequestEncodesEdgeFunctionContract() throws {
