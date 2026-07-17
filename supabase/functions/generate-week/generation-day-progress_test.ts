@@ -12,6 +12,7 @@ import {
   isRunningDayStale,
   isSingleDayGenerationRunActive,
   isTerminalDayGenerationState,
+  SINGLE_DAY_STARTED_AT_STALE_MS,
   liveParallelDayJobCount,
   mergeSavedDailyCardsIntoProgress,
   nextParallelDayGenerationIndex,
@@ -706,7 +707,7 @@ Deno.test("public availableParallelDayJobSlots compatibility shape", () => {
   );
 });
 
-Deno.test("isSingleDayGenerationRunActive uses heartbeat before started_at", () => {
+Deno.test("isSingleDayGenerationRunActive uses heartbeat threshold when heartbeat exists", () => {
   const staleHeartbeat = "2026-06-10T09:00:00.000Z";
   const freshStartedAt = "2026-06-10T11:00:00.000Z";
   assertEquals(
@@ -720,32 +721,64 @@ Deno.test("isSingleDayGenerationRunActive uses heartbeat before started_at", () 
       NOW_MS,
     ),
     false,
-    "stale heartbeat should mark the run inactive",
+    "stale heartbeat should mark the run inactive even when started_at is fresh",
   );
   assertEquals(
     isSingleDayGenerationRunActive(
       {
         status: "running",
         started_at: staleHeartbeat,
-      },
-      STALE_MS,
-      NOW_MS,
-    ),
-    false,
-    "stale started_at without heartbeat should mark the run inactive",
-  );
-  assertEquals(
-    isSingleDayGenerationRunActive(
-      {
-        status: "running",
-        started_at: NOW_ISO,
         heartbeat_at: NOW_ISO,
       },
       STALE_MS,
       NOW_MS,
     ),
     true,
-    "fresh liveness should keep the run active",
+    "fresh heartbeat should keep the run active even when started_at is stale",
+  );
+});
+
+Deno.test("isSingleDayGenerationRunActive falls back to 10-minute started_at without heartbeat", () => {
+  const fourMinutesAgo = new Date(NOW_MS - 4 * 60 * 1000).toISOString();
+  const elevenMinutesAgo = new Date(
+    NOW_MS - SINGLE_DAY_STARTED_AT_STALE_MS - 60_000,
+  ).toISOString();
+
+  assertEquals(
+    isSingleDayGenerationRunActive(
+      {
+        status: "running",
+        started_at: fourMinutesAgo,
+      },
+      STALE_MS,
+      NOW_MS,
+    ),
+    true,
+    "no heartbeat and a 4-minute started_at should remain active",
+  );
+  assertEquals(
+    isSingleDayGenerationRunActive(
+      {
+        status: "running",
+        started_at: elevenMinutesAgo,
+      },
+      STALE_MS,
+      NOW_MS,
+    ),
+    false,
+    "no heartbeat and a greater-than-10-minute started_at should become recoverable",
+  );
+});
+
+Deno.test("isSingleDayGenerationRunActive treats running without valid timestamps as active", () => {
+  assertEquals(
+    isSingleDayGenerationRunActive(
+      { status: "running" },
+      STALE_MS,
+      NOW_MS,
+    ),
+    true,
+    "running without valid timestamps should stay active",
   );
   assertEquals(
     isSingleDayGenerationRunActive(

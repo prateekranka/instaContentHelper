@@ -331,27 +331,41 @@ export function isRunningDayStale(
   return nowMS - Date.parse(lastLiveness) > staleThresholdMS;
 }
 
+/** Fallback when heartbeat writes have not landed yet (best-effort). */
+export const SINGLE_DAY_STARTED_AT_STALE_MS = 10 * 60 * 1000;
+
+function parseTimestampMS(value: string | undefined): number | null {
+  if (!value || value.trim().length === 0) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function isSingleDayGenerationRunActive(
   progress: {
     status: string;
     started_at?: string;
     heartbeat_at?: string;
   },
-  staleThresholdMS: number,
+  heartbeatStaleThresholdMS: number,
   nowMS: number = Date.now(),
+  startedAtStaleThresholdMS: number = SINGLE_DAY_STARTED_AT_STALE_MS,
 ): boolean {
   if (progress.status !== "running") {
     return false;
   }
-  return !isRunningDayStale(
-    {
-      scheduled_date: "",
-      status: "running",
-      attempts: 0,
-      started_at: progress.started_at,
-      heartbeat_at: progress.heartbeat_at,
-    },
-    staleThresholdMS,
-    nowMS,
-  );
+
+  const heartbeatMS = parseTimestampMS(progress.heartbeat_at);
+  if (heartbeatMS !== null) {
+    return nowMS - heartbeatMS <= heartbeatStaleThresholdMS;
+  }
+
+  const startedAtMS = parseTimestampMS(progress.started_at);
+  if (startedAtMS !== null) {
+    return nowMS - startedAtMS <= startedAtStaleThresholdMS;
+  }
+
+  // No valid liveness timestamps — keep the in-flight run active.
+  return true;
 }

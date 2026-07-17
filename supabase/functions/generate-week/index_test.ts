@@ -3,6 +3,7 @@ import {
   handleGenerateWeekRequest,
   overrideTodayISO,
 } from "./index.ts";
+import { SINGLE_DAY_STARTED_AT_STALE_MS } from "./generation-day-progress.ts";
 import {
   AIProviderConfig,
   GenerateWeekValidationError,
@@ -2486,6 +2487,48 @@ function generationInputSnapshot(): GenerationInputSnapshot {
   };
 }
 
+function singleDayRunningGenerationRun(
+  outputSnapshot: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    generation_scope: "day",
+    status: "running",
+    weekly_plan_id: weeklyPlanID,
+    target_scheduled_date: "2026-06-10",
+    target_daily_card_id: null,
+    input_snapshot: generationInputSnapshot(),
+    output_snapshot: {
+      kind: "single_day_generation_v1",
+      scheduled_date: "2026-06-10",
+      status: "running",
+      preserve_manual_edits: false,
+      ...outputSnapshot,
+    },
+    model: "openai:gpt-4.1-mini",
+  };
+}
+
+function singleDayStatusPollDeps(
+  state: FakeState,
+  onBackground: () => void,
+): {
+  env: ReturnType<typeof fakeEnv>;
+  createAdminClient: () => ReturnType<typeof fakeAdmin>;
+  runInBackground: (promise: Promise<void>) => void;
+} {
+  return {
+    env: fakeEnv("openai-key", true),
+    createAdminClient: () => fakeAdmin(state),
+    runInBackground: (promise: Promise<void>) => {
+      onBackground();
+      void promise;
+    },
+  };
+}
+
 async function errorCode(response: Response): Promise<string | undefined> {
   return (await response.json()).error;
 }
@@ -3406,37 +3449,18 @@ Deno.test("full_week_generation_retired: historical status remains readable", as
 });
 
 Deno.test("single-day status poll reschedules stale running generation once", async () => {
-  const staleStartedAt = new Date(Date.now() - 400_000).toISOString();
+  const staleStartedAt = new Date(
+    Date.now() - SINGLE_DAY_STARTED_AT_STALE_MS - 60_000,
+  ).toISOString();
   const state = dayGenerationState();
-  state.generationRun = {
-    id: generationRunID,
-    workspace_id: workspaceID,
-    creator_id: creatorID,
-    generation_scope: "day",
-    status: "running",
-    weekly_plan_id: weeklyPlanID,
-    target_scheduled_date: "2026-06-10",
-    target_daily_card_id: null,
-    input_snapshot: generationInputSnapshot(),
-    output_snapshot: {
-      kind: "single_day_generation_v1",
-      scheduled_date: "2026-06-10",
-      status: "running",
-      started_at: staleStartedAt,
-      preserve_manual_edits: false,
-      updated_at: staleStartedAt,
-    },
-    model: "openai:gpt-4.1-mini",
-  };
+  state.generationRun = singleDayRunningGenerationRun({
+    started_at: staleStartedAt,
+    updated_at: staleStartedAt,
+  });
   let backgroundCount = 0;
-  const deps = {
-    env: fakeEnv("openai-key", true),
-    createAdminClient: () => fakeAdmin(state),
-    runInBackground: (promise: Promise<void>) => {
-      backgroundCount += 1;
-      void promise;
-    },
-  };
+  const deps = singleDayStatusPollDeps(state, () => {
+    backgroundCount += 1;
+  });
 
   const first = await handleGenerateWeekRequest(
     requestFor({
@@ -3463,6 +3487,81 @@ Deno.test("single-day status poll reschedules stale running generation once", as
     1,
     "fresh restart must not duplicate dispatch",
   );
+});
+
+Deno.test("single-day status poll reschedules stale heartbeat even when started_at is fresh", async () => {
+  const freshStartedAt = new Date().toISOString();
+  const staleHeartbeat = new Date(Date.now() - 400_000).toISOString();
+  const state = dayGenerationState();
+  state.generationRun = singleDayRunningGenerationRun({
+    started_at: freshStartedAt,
+    heartbeat_at: staleHeartbeat,
+    updated_at: staleHeartbeat,
+  });
+  let backgroundCount = 0;
+  const deps = singleDayStatusPollDeps(state, () => {
+    backgroundCount += 1;
+  });
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    deps,
+  );
+  assertEquals(response.status, 200);
+  assertEquals(backgroundCount, 1);
+});
+
+Deno.test("single-day status poll keeps active run without heartbeat when started_at is only 4 minutes old", async () => {
+  const recentStartedAt = new Date(Date.now() - 4 * 60 * 1000).toISOString();
+  const state = dayGenerationState();
+  state.generationRun = singleDayRunningGenerationRun({
+    started_at: recentStartedAt,
+    updated_at: recentStartedAt,
+  });
+  let backgroundCount = 0;
+  const deps = singleDayStatusPollDeps(state, () => {
+    backgroundCount += 1;
+  });
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    deps,
+  );
+  assertEquals(response.status, 200);
+  assertEquals(backgroundCount, 0);
+});
+
+Deno.test("single-day status poll never dispatches while run liveness is fresh", async () => {
+  const freshStartedAt = new Date().toISOString();
+  const state = dayGenerationState();
+  state.generationRun = singleDayRunningGenerationRun({
+    started_at: freshStartedAt,
+    heartbeat_at: freshStartedAt,
+    updated_at: freshStartedAt,
+  });
+  let backgroundCount = 0;
+  const deps = singleDayStatusPollDeps(state, () => {
+    backgroundCount += 1;
+  });
+
+  const response = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    deps,
+  );
+  assertEquals(response.status, 200);
+  assertEquals(backgroundCount, 0);
 });
 
 Deno.test("full_week_generation_retired: generate_day route remains supported", async () => {
