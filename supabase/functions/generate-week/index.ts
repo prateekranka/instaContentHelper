@@ -360,23 +360,6 @@ export async function handleGenerateWeekRequest(
     day_guidance_chars: null,
   });
 
-  if (isQueuedWeekGenerationEnabled(rawBody, env)) {
-    return await handleQueuedWeekGeneration(
-      admin,
-      prepared,
-      runResult.run.id,
-    );
-  }
-
-  if (isParallelWeekGenerationEnabled(rawBody, env)) {
-    return await handleParallelWeekGeneration(
-      admin,
-      prepared,
-      runResult.run.id,
-      dependencies,
-    );
-  }
-
   if (prepared.request.response_mode === "async") {
     const progress = initialPerDayGenerationSnapshot(
       prepared.request.week_start_date,
@@ -1315,46 +1298,6 @@ function makeGenerateWeekDraftResponse(
     source_summary: generated.source_summary,
     generated_at: generatedAt,
   };
-}
-
-function isParallelWeekGenerationEnabled(
-  rawBody: unknown,
-  env: EnvReader,
-): boolean {
-  if (env.get("MCO_PARALLEL_WEEK_GENERATION") === "1") {
-    return true;
-  }
-  if (!isRecord(rawBody)) {
-    return false;
-  }
-  const flags = rawBody.feature_flags;
-  if (Array.isArray(flags)) {
-    return flags.includes("parallel_week_generation");
-  }
-  if (isRecord(flags)) {
-    return flags.parallel_week_generation === true;
-  }
-  return false;
-}
-
-function isQueuedWeekGenerationEnabled(
-  rawBody: unknown,
-  env: EnvReader,
-): boolean {
-  if (env.get("MCO_QUEUED_WEEK_GENERATION") === "1") {
-    return true;
-  }
-  if (!isRecord(rawBody)) {
-    return false;
-  }
-  const flags = rawBody.feature_flags;
-  if (Array.isArray(flags)) {
-    return flags.includes("queued_week_generation");
-  }
-  if (isRecord(flags)) {
-    return flags.queued_week_generation === true;
-  }
-  return false;
 }
 
 function buildSingleDayRunnerHost(
