@@ -13,6 +13,7 @@ import type {
   RegenerateDayDraftResponse,
   SingleDayGenerationSnapshot,
 } from "./generation-run-snapshot.ts";
+import { runningDayStaleMS } from "./generation-parallel-week-worker.ts";
 
 export type SingleDayRunnerPreparedGeneration = {
   request: RegenerateDayRequest;
@@ -81,7 +82,54 @@ export type SingleDayRunnerHost = {
   ) => Promise<{ ok: true } | { response: Response }>;
   scheduleBackgroundTask: (promise: Promise<unknown>) => void;
   emitLifecycleEvent: (event: SingleDayGenerationLifecycleEvent) => void;
+  dayHeartbeatIntervalMS?: number;
 };
+
+const DAY_GENERATION_HEARTBEAT_MIN_MS = 10;
+const DAY_GENERATION_HEARTBEAT_MAX_MS = 60_000;
+
+function singleDayHeartbeatIntervalMS(host: SingleDayRunnerHost): number {
+  const configured = host.dayHeartbeatIntervalMS;
+  if (
+    typeof configured === "number" && Number.isFinite(configured) &&
+    configured > 0
+  ) {
+    return Math.max(Math.trunc(configured), DAY_GENERATION_HEARTBEAT_MIN_MS);
+  }
+  return Math.max(
+    DAY_GENERATION_HEARTBEAT_MIN_MS,
+    Math.min(
+      Math.floor(runningDayStaleMS() / 4),
+      DAY_GENERATION_HEARTBEAT_MAX_MS,
+    ),
+  );
+}
+
+async function withSingleDayGenerationHeartbeat<T>(
+  admin: SupabaseAdminClient,
+  generationID: string,
+  progress: SingleDayGenerationSnapshot,
+  host: SingleDayRunnerHost,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let latestProgress = progress;
+  const heartbeatID = setInterval(() => {
+    const now = new Date().toISOString();
+    latestProgress = {
+      ...latestProgress,
+      heartbeat_at: now,
+      updated_at: now,
+    };
+    host.updateGenerationProgress(admin, generationID, latestProgress).catch(
+      () => undefined,
+    );
+  }, singleDayHeartbeatIntervalMS(host));
+  try {
+    return await operation();
+  } finally {
+    clearInterval(heartbeatID);
+  }
+}
 
 function guidanceMetadata(
   prepared: SingleDayRunnerPreparedGeneration,
@@ -153,7 +201,8 @@ export async function runDayGenerationPipeline(
     };
   }
 
-  const pipelineStartedAt = Date.now();
+  const pipelineStartedAtISO = new Date().toISOString();
+  const pipelineStartedAt = Date.parse(pipelineStartedAtISO);
   host.emitLifecycleEvent({
     phase: "generation_started",
     status: "running",
@@ -166,11 +215,27 @@ export async function runDayGenerationPipeline(
     ...guidance,
   });
 
+  const runningProgress: SingleDayGenerationSnapshot = {
+    kind: "single_day_generation_v1",
+    scheduled_date: prepared.request.scheduled_date,
+    preserve_manual_edits: prepared.request.preserve_manual_edits,
+    status: "running",
+    started_at: pipelineStartedAtISO,
+    updated_at: pipelineStartedAtISO,
+  };
+
   let generated: GeneratedDayOutput;
   try {
-    const rawOutput = prepared.mockEnabled
-      ? host.mockOutput(prepared.inputSnapshot, dayIndex)
-      : await host.generateOutput(prepared, generationID, dayIndex);
+    const rawOutput = await withSingleDayGenerationHeartbeat(
+      admin,
+      generationID,
+      runningProgress,
+      host,
+      async () =>
+        prepared.mockEnabled
+          ? host.mockOutput(prepared.inputSnapshot, dayIndex)
+          : await host.generateOutput(prepared, generationID, dayIndex),
+    );
     generated = validateGeneratedDayOutput(
       rawOutput,
       prepared.request.scheduled_date,

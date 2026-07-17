@@ -250,12 +250,17 @@ Deno.test("normalizeSingleDayGenerationSnapshot normalizes pending and running s
       scheduled_date: SCHEDULED_DATE,
       status: "running",
       started_at: "2026-06-10T08:00:00.000Z",
+      heartbeat_at: "2026-06-10T08:05:00.000Z",
     },
     runRecord(),
     NOW_ISO,
   );
   assertEquals(running?.status, "running");
   assertEquals(running?.started_at, "2026-06-10T08:00:00.000Z");
+  assertEquals(
+    running?.heartbeat_at,
+    "2026-06-10T08:05:00.000Z",
+  );
 });
 
 Deno.test("normalizeSingleDayGenerationSnapshot defaults preserve_manual_edits and updated_at", () => {

@@ -388,3 +388,56 @@ Deno.test("runDayGenerationPipeline marks failed on persistence and completion e
     "generation_failed",
   ]);
 });
+
+Deno.test("runDayGenerationPipeline records heartbeat progress while generating", async () => {
+  const progressWrites: SingleDayGenerationSnapshot[] = [];
+  let releaseGenerate: (() => void) | undefined;
+  const generateGate = new Promise<void>((resolve) => {
+    releaseGenerate = resolve;
+  });
+  const prepared = minimalPrepared({ mockEnabled: false });
+  const host = stubHost({
+    dayHeartbeatIntervalMS: 15,
+    generateOutput: async () => {
+      await generateGate;
+      return stubHost().mockOutput(prepared.inputSnapshot, 2);
+    },
+    updateGenerationProgress: async (_admin, _generationID, progress) => {
+      progressWrites.push(progress);
+      return { ok: true as const };
+    },
+    persistRegeneratedDay: async () => ({
+      dailyCard: {
+        ...stubHost().mockOutput(prepared.inputSnapshot, 2).daily_card,
+        id: "card-123",
+      },
+    }),
+  });
+
+  const pipelinePromise = runDayGenerationPipeline(
+    fakeAdmin(),
+    generationID,
+    prepared,
+    host,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  releaseGenerate?.();
+  await pipelinePromise;
+
+  assert(
+    progressWrites.some((progress) =>
+      typeof progress.heartbeat_at === "string" &&
+      progress.started_at === progressWrites[0]?.started_at
+    ),
+    "expected at least one heartbeat write that preserves started_at",
+  );
+});
+
+function assert(
+  condition: unknown,
+  message = "Assertion failed",
+): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}

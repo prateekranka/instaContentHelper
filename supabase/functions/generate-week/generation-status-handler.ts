@@ -16,6 +16,7 @@ import { generationPersistFailure } from "./generation-persistence.ts";
 import {
   allDaysTerminal,
   isParallelWeekGenerationTerminal,
+  isSingleDayGenerationRunActive,
   isTerminalDayGenerationState,
   mergeSavedDailyCardsIntoProgress,
   normalizeStaleRunningDays,
@@ -535,15 +536,22 @@ async function resumeSingleDayGeneration(
     return preparedResult.response;
   }
 
-  const isActive = progress.status === "running" &&
-    progress.started_at &&
-    Date.now() - Date.parse(progress.started_at) <= 10 * 60 * 1000;
+  const isActive = isSingleDayGenerationRunActive(
+    progress,
+    runningDayStaleMS(),
+    Date.now(),
+  );
   if (!isActive) {
     const scheduleResult = await host.scheduleSingleDayGeneration(
       admin,
       generationID,
       preparedResult.prepared,
-      { ...progress, status: "pending", started_at: undefined },
+      {
+        ...progress,
+        status: "pending",
+        started_at: undefined,
+        heartbeat_at: undefined,
+      },
     );
     if ("response" in scheduleResult) {
       return scheduleResult.response;

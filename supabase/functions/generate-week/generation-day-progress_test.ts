@@ -10,6 +10,7 @@ import {
   isAttemptedDayGenerationState,
   isParallelWeekGenerationTerminal,
   isRunningDayStale,
+  isSingleDayGenerationRunActive,
   isTerminalDayGenerationState,
   liveParallelDayJobCount,
   mergeSavedDailyCardsIntoProgress,
@@ -702,5 +703,57 @@ Deno.test("public availableParallelDayJobSlots compatibility shape", () => {
     typeof availableParallelDayJobSlotsFromWorker(jobs, 2, STALE_MS),
     "number",
     "worker export keeps optional now default",
+  );
+});
+
+Deno.test("isSingleDayGenerationRunActive uses heartbeat before started_at", () => {
+  const staleHeartbeat = "2026-06-10T09:00:00.000Z";
+  const freshStartedAt = "2026-06-10T11:00:00.000Z";
+  assertEquals(
+    isSingleDayGenerationRunActive(
+      {
+        status: "running",
+        started_at: freshStartedAt,
+        heartbeat_at: staleHeartbeat,
+      },
+      STALE_MS,
+      NOW_MS,
+    ),
+    false,
+    "stale heartbeat should mark the run inactive",
+  );
+  assertEquals(
+    isSingleDayGenerationRunActive(
+      {
+        status: "running",
+        started_at: staleHeartbeat,
+      },
+      STALE_MS,
+      NOW_MS,
+    ),
+    false,
+    "stale started_at without heartbeat should mark the run inactive",
+  );
+  assertEquals(
+    isSingleDayGenerationRunActive(
+      {
+        status: "running",
+        started_at: NOW_ISO,
+        heartbeat_at: NOW_ISO,
+      },
+      STALE_MS,
+      NOW_MS,
+    ),
+    true,
+    "fresh liveness should keep the run active",
+  );
+  assertEquals(
+    isSingleDayGenerationRunActive(
+      { status: "pending", started_at: NOW_ISO },
+      STALE_MS,
+      NOW_MS,
+    ),
+    false,
+    "pending runs are never active",
   );
 });

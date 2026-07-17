@@ -330,3 +330,28 @@ export function isRunningDayStale(
   }
   return nowMS - Date.parse(lastLiveness) > staleThresholdMS;
 }
+
+export function isSingleDayGenerationRunActive(
+  progress: {
+    status: string;
+    started_at?: string;
+    heartbeat_at?: string;
+  },
+  staleThresholdMS: number,
+  nowMS: number = Date.now(),
+): boolean {
+  if (progress.status !== "running") {
+    return false;
+  }
+  return !isRunningDayStale(
+    {
+      scheduled_date: "",
+      status: "running",
+      attempts: 0,
+      started_at: progress.started_at,
+      heartbeat_at: progress.heartbeat_at,
+    },
+    staleThresholdMS,
+    nowMS,
+  );
+}

@@ -56,6 +56,8 @@ export type SingleDayGenerationSnapshot = {
   preserve_manual_edits: boolean;
   status: "pending" | "running";
   started_at?: string;
+  // Last proof-of-life write from the worker owning this run.
+  heartbeat_at?: string;
   updated_at: string;
 };
 
@@ -130,6 +132,7 @@ export function normalizeSingleDayGenerationSnapshot(
     preserve_manual_edits: value.preserve_manual_edits !== false,
     status,
     started_at: stringValue(value.started_at),
+    heartbeat_at: stringValue(value.heartbeat_at),
     updated_at: stringValue(value.updated_at) ?? nowISO,
   };
 }

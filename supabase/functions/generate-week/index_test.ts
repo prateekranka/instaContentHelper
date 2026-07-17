@@ -3405,6 +3405,66 @@ Deno.test("full_week_generation_retired: historical status remains readable", as
   assertEquals(state.dayJobLeaseUpdates.length, 0);
 });
 
+Deno.test("single-day status poll reschedules stale running generation once", async () => {
+  const staleStartedAt = new Date(Date.now() - 400_000).toISOString();
+  const state = dayGenerationState();
+  state.generationRun = {
+    id: generationRunID,
+    workspace_id: workspaceID,
+    creator_id: creatorID,
+    generation_scope: "day",
+    status: "running",
+    weekly_plan_id: weeklyPlanID,
+    target_scheduled_date: "2026-06-10",
+    target_daily_card_id: null,
+    input_snapshot: generationInputSnapshot(),
+    output_snapshot: {
+      kind: "single_day_generation_v1",
+      scheduled_date: "2026-06-10",
+      status: "running",
+      started_at: staleStartedAt,
+      preserve_manual_edits: false,
+      updated_at: staleStartedAt,
+    },
+    model: "openai:gpt-4.1-mini",
+  };
+  let backgroundCount = 0;
+  const deps = {
+    env: fakeEnv("openai-key", true),
+    createAdminClient: () => fakeAdmin(state),
+    runInBackground: (promise: Promise<void>) => {
+      backgroundCount += 1;
+      void promise;
+    },
+  };
+
+  const first = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    deps,
+  );
+  assertEquals(first.status, 200);
+  assertEquals(backgroundCount, 1);
+
+  const second = await handleGenerateWeekRequest(
+    requestFor({
+      action: "status",
+      generation_id: generationRunID,
+      creator_id: creatorID,
+    }),
+    deps,
+  );
+  assertEquals(second.status, 200);
+  assertEquals(
+    backgroundCount,
+    1,
+    "fresh restart must not duplicate dispatch",
+  );
+});
+
 Deno.test("full_week_generation_retired: generate_day route remains supported", async () => {
   const state = dayGenerationState();
   state.weeklyPlan = null;
