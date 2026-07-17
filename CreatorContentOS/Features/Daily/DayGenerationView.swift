@@ -288,6 +288,12 @@ struct DayGenerationView: View {
                 GeneratedDayPlannedContent(card: card) { assets in
                     services.dayBriefGeneratedCards[card.scheduledDate]?.storyboardThumbnailAssets = assets
                 }
+                AdminSignalBlock(
+                    title: "Draft saved for \(shortLabel(for: card.scheduledDate))",
+                    value: "This storyboard stays in Daily under Generated days, so you can return and refine it later. Nothing is published automatically.",
+                    systemImage: "checkmark.circle",
+                    tone: .ready
+                )
             }
         } else {
             AdminSignalBlock(
