@@ -111,14 +111,6 @@ export type GenerationStatusHandlerHost = {
     generationID: string,
     progress: PerDayGenerationSnapshot | SingleDayGenerationSnapshot,
   ) => Promise<{ ok: true } | { response: Response }>;
-  scheduleNextPendingDayGeneration: (
-    admin: SupabaseAdminClient,
-    generationID: string,
-    prepared: ParallelWeekWorkerPreparedGeneration,
-    progress: PerDayGenerationSnapshot,
-  ) => Promise<
-    { progress: PerDayGenerationSnapshot } | { response: Response }
-  >;
   readSavedDailyCards: (
     admin: SupabaseAdminClient,
     workspaceID: string,

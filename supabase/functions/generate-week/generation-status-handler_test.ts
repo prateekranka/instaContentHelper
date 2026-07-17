@@ -45,9 +45,6 @@ function stubHost(
     },
     markGenerationRunFailed: async () => undefined,
     updateGenerationProgress: async () => ({ ok: true as const }),
-    scheduleNextPendingDayGeneration: async () => {
-      throw new Error("not used");
-    },
     readSavedDailyCards: async () => ({ dailyCards }),
     scheduleSingleDayGeneration: async () => ({ ok: true as const }),
     runParallelWeekGenerationInBackground: () => undefined,

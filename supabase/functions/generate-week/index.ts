@@ -1457,25 +1457,11 @@ function buildParallelWeekWorkerHost(
 function buildGenerationStatusHandlerHost(
   dependencies: GenerateWeekDependencies,
 ): GenerationStatusHandlerHost {
-  const perDayRunnerHost = buildPerDayRunnerHost(dependencies);
   return {
     prepareGenerationFromRun,
     prepareSingleDayGenerationFromRun,
     markGenerationRunFailed,
     updateGenerationProgress,
-    scheduleNextPendingDayGeneration: (
-      admin,
-      generationID,
-      prepared,
-      progress,
-    ) =>
-      scheduleNextPendingDayGenerationRunner(
-        admin,
-        generationID,
-        prepared,
-        progress,
-        perDayRunnerHost,
-      ),
     readSavedDailyCards,
     scheduleSingleDayGeneration: (
       admin,
