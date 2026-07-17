@@ -5,9 +5,6 @@ export const GENERATION_RUN_STATUS_SELECT =
 
 export const GENERATION_RUN_CANCELLATION_SELECT = "status,error_code";
 
-export const QUEUED_ACTION_GENERATION_RUN_SELECT =
-  "id,workspace_id,creator_id,status,weekly_plan_id,error_code";
-
 export async function readGenerationRunStatus(
   admin: SupabaseAdminClient,
   generationID: string,
@@ -203,40 +200,6 @@ export async function markGenerationRunFailed(
       completed_at: new Date().toISOString(),
     })
     .eq("id", generationID);
-}
-
-export async function markGenerationRunCancelled(
-  admin: SupabaseAdminClient,
-  generationID: string,
-): Promise<{ error: unknown | null }> {
-  const { error } = await admin
-    .from("weekly_generation_runs")
-    .update({
-      status: "failed",
-      error_code: "generation_cancelled",
-      completed_at: new Date().toISOString(),
-    })
-    .eq("id", generationID);
-
-  return { error: error ?? null };
-}
-
-export async function readQueuedActionGenerationRun(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  workspaceID: string,
-): Promise<{ data: Record<string, unknown> | null; error: unknown }> {
-  const { data, error } = await admin
-    .from("weekly_generation_runs")
-    .select(QUEUED_ACTION_GENERATION_RUN_SELECT)
-    .eq("id", generationID)
-    .eq("workspace_id", workspaceID)
-    .maybeSingle();
-
-  return {
-    data: isRecord(data) ? data : null,
-    error,
-  };
 }
 
 function isRunIDRecord(value: unknown): value is { id: string } {

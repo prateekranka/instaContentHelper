@@ -3,10 +3,6 @@ import type {
   QueuedDayJobRecord,
   QueuedDayJobStatus,
 } from "./generation-status.ts";
-export {
-  markGenerationRunCancelled,
-  readQueuedActionGenerationRun,
-} from "./generation-run-store.ts";
 
 export function queuedDayJobSelect(): string {
   return [
@@ -283,81 +279,6 @@ export async function upsertDayJobRows(
     return { error };
   }
   return { jobs: normalizeQueuedDayJobRows(data) };
-}
-
-export async function lookupQueuedDayJobsExist(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  workspaceID: string,
-  creatorID: string,
-): Promise<{ exists: boolean } | { error: unknown }> {
-  const { data, error } = await admin
-    .from("weekly_generation_day_jobs")
-    .select("id")
-    .eq("generation_run_id", generationID)
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", creatorID)
-    .limit(1);
-
-  if (error) {
-    return { error };
-  }
-  return { exists: Array.isArray(data) && data.length > 0 };
-}
-
-export async function markFailedDayJobRetrying(
-  admin: SupabaseAdminClient,
-  params: {
-    generationRunID: string;
-    workspaceID: string;
-    creatorID: string;
-    scheduledDate: string;
-  },
-): Promise<{ job: QueuedDayJobRecord | null } | { error: unknown }> {
-  const { data, error } = await admin
-    .from("weekly_generation_day_jobs")
-    .update({
-      status: "retrying",
-      error_code: null,
-      error_message: null,
-      completed_at: null,
-      heartbeat_at: null,
-    })
-    .eq("generation_run_id", params.generationRunID)
-    .eq("workspace_id", params.workspaceID)
-    .eq("creator_id", params.creatorID)
-    .eq("scheduled_date", params.scheduledDate)
-    .eq("status", "failed")
-    .select(queuedDayJobSelect())
-    .maybeSingle();
-
-  if (error) {
-    return { error };
-  }
-  if (!isRecord(data)) {
-    return { job: null };
-  }
-  return { job: normalizeQueuedDayJobRows([data])[0] ?? null };
-}
-
-export async function cancelActiveQueuedDayJobs(
-  admin: SupabaseAdminClient,
-  generationID: string,
-  workspaceID: string,
-  creatorID: string,
-): Promise<{ error: unknown | null }> {
-  const { error } = await admin
-    .from("weekly_generation_day_jobs")
-    .update({
-      status: "cancelled",
-      completed_at: new Date().toISOString(),
-    })
-    .eq("generation_run_id", generationID)
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", creatorID)
-    .in("status", ["queued", "retrying", "generating", "ready_to_persist"]);
-
-  return { error: error ?? null };
 }
 
 export function normalizeQueuedDayJobRows(

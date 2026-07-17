@@ -8,12 +8,9 @@ import {
   insertDayGenerationRun,
   insertWeekGenerationRun,
   linkGenerationRunWeeklyPlan,
-  markGenerationRunCancelled,
   markGenerationRunFailed,
-  QUEUED_ACTION_GENERATION_RUN_SELECT,
   readGenerationRunCancellationState,
   readGenerationRunStatus,
-  readQueuedActionGenerationRun,
   updateGenerationRunProgress,
 } from "./generation-run-store.ts";
 
@@ -560,77 +557,6 @@ Deno.test("markGenerationRunFailed writes failed payload by id", async () => {
   assertEquals(op.filters, { id: RUN_ID });
 });
 
-Deno.test("markGenerationRunCancelled writes failed/cancelled payload by id", async () => {
-  const state: FakeState = {
-    ops: [],
-    runs: [{
-      id: RUN_ID,
-      workspace_id: WORKSPACE,
-      creator_id: CREATOR,
-      status: "running",
-      weekly_plan_id: PLAN,
-      error_code: null,
-    }],
-  };
-  const result = await markGenerationRunCancelled(
-    fakeAdmin(state) as never,
-    RUN_ID,
-  );
-  assertEquals(result.error, null);
-  assertEquals(state.runs[0].status, "failed");
-  assertEquals(state.runs[0].error_code, "generation_cancelled");
-  assertEquals(typeof state.runs[0].completed_at, "string");
-
-  const op = state.ops[0];
-  assertEquals(op.table, "weekly_generation_runs");
-  assertEquals(op.operation, "update");
-  assertEquals((op.values as Record<string, unknown>).status, "failed");
-  assertEquals(
-    (op.values as Record<string, unknown>).error_code,
-    "generation_cancelled",
-  );
-  assertEquals(
-    typeof (op.values as Record<string, unknown>).completed_at,
-    "string",
-  );
-  assertEquals(op.filterOrder, ["id"]);
-  assertEquals(op.filters, { id: RUN_ID });
-});
-
-Deno.test("readQueuedActionGenerationRun selects auth-scoped run columns", async () => {
-  const state: FakeState = {
-    ops: [],
-    runs: [{
-      id: RUN_ID,
-      workspace_id: WORKSPACE,
-      creator_id: CREATOR,
-      status: "running",
-      weekly_plan_id: PLAN,
-      error_code: null,
-    }],
-  };
-  const result = await readQueuedActionGenerationRun(
-    fakeAdmin(state) as never,
-    RUN_ID,
-    WORKSPACE,
-  );
-  assertEquals(result.error, null);
-  assertEquals(result.data?.id, RUN_ID);
-  assertEquals(result.data?.creator_id, CREATOR);
-
-  const op = state.ops[0];
-  assertEquals(op.table, "weekly_generation_runs");
-  assertEquals(op.operation, "select");
-  assertEquals(op.selectColumns, QUEUED_ACTION_GENERATION_RUN_SELECT);
-  assertEquals(
-    QUEUED_ACTION_GENERATION_RUN_SELECT,
-    "id,workspace_id,creator_id,status,weekly_plan_id,error_code",
-  );
-  assertEquals(op.filterOrder, ["id", "workspace_id"]);
-  assertEquals(op.filters, { id: RUN_ID, workspace_id: WORKSPACE });
-  assertEquals(op.terminal, "maybeSingle");
-});
-
 Deno.test("update helpers surface raw write errors without HTTP mapping", async () => {
   const state: FakeState = {
     ops: [],
@@ -680,10 +606,6 @@ Deno.test("update helpers surface raw write errors without HTTP mapping", async 
       completed_at: "2026-06-08T15:00:00.000Z",
       error_code: null,
     })).error,
-    { message: "db_down" },
-  );
-  assertEquals(
-    (await markGenerationRunCancelled(admin, RUN_ID)).error,
     { message: "db_down" },
   );
 });
