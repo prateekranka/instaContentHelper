@@ -262,6 +262,57 @@ Deno.test("runDayGenerationPipeline mock path validates persists completes and e
   assertEquals(lifecycleEvents[1].status, "completed");
 });
 
+Deno.test("runDayGenerationPipeline attaches Gemini storyboard assets before completion", async () => {
+  const prepared = minimalPrepared({ mockEnabled: false });
+  const mockOutput = stubHost().mockOutput(prepared.inputSnapshot, 2);
+  const persistedCard = { ...mockOutput.daily_card, id: "card-storyboard" };
+  const storyboardAssets = [{
+    row_index: 0,
+    prompt_hash: "hash-1",
+    public_url: "https://example.com/row-0.jpg",
+    status: "generated",
+  }];
+  let attachCalled = false;
+  let completedCard: unknown;
+
+  const host = stubHost({
+    generateOutput: async () => mockOutput,
+    persistRegeneratedDay: async () => ({ dailyCard: persistedCard }),
+    attachDayStoryboardThumbnails: async (_admin, _prepared, dailyCard) => {
+      attachCalled = true;
+      return {
+        ...dailyCard,
+        storyboard_thumbnail_assets: storyboardAssets,
+      };
+    },
+    completeDayGenerationRun: async (_admin, _generationID, payload) => {
+      completedCard = payload.daily_card;
+      return { ok: true as const };
+    },
+  });
+
+  const result = await runDayGenerationPipeline(
+    fakeAdmin(),
+    generationID,
+    prepared,
+    host,
+  );
+
+  assertEquals(attachCalled, true);
+  assertEquals("payload" in result, true);
+  if ("payload" in result) {
+    assertEquals(
+      result.payload.daily_card.storyboard_thumbnail_assets,
+      storyboardAssets,
+    );
+  }
+  assertEquals(
+    (completedCard as { storyboard_thumbnail_assets: unknown })
+      .storyboard_thumbnail_assets,
+    storyboardAssets,
+  );
+});
+
 Deno.test("runDayGenerationPipeline maps provider and validation failures to 400 vs 502", async () => {
   const cases: Array<{
     name: string;
@@ -412,6 +463,9 @@ Deno.test("runDayGenerationPipeline records heartbeat progress while generating"
         id: "card-123",
       },
     }),
+    // Keep heartbeat coverage off the live Gemini path.
+    attachDayStoryboardThumbnails: async (_admin, _prepared, dailyCard) =>
+      dailyCard,
   });
 
   const pipelinePromise = runDayGenerationPipeline(

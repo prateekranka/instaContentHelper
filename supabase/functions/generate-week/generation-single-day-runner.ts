@@ -1,6 +1,11 @@
 import { jsonResponse, SupabaseAdminClient } from "../_shared/device-auth.ts";
 import type { VerifiedDeviceSession } from "../_shared/device-auth.ts";
 import {
+  generateStoryboardThumbnailsForCard,
+  StorageCapableAdminClient,
+  StoryboardThumbnailGenerationError,
+} from "../_shared/storyboard-thumbnail-generation.ts";
+import {
   GeneratedDailyCard,
   GeneratedDayOutput,
   GenerationInputSnapshot,
@@ -14,6 +19,7 @@ import type {
   SingleDayGenerationSnapshot,
 } from "./generation-run-snapshot.ts";
 import { runningDayStaleMS } from "./generation-parallel-week-worker.ts";
+import { generatedDailyCardValues } from "./generation-persistence.ts";
 
 export type SingleDayRunnerPreparedGeneration = {
   request: RegenerateDayRequest;
@@ -83,6 +89,15 @@ export type SingleDayRunnerHost = {
   scheduleBackgroundTask: (promise: Promise<unknown>) => void;
   emitLifecycleEvent: (event: SingleDayGenerationLifecycleEvent) => void;
   dayHeartbeatIntervalMS?: number;
+  /**
+   * Optional override for tests. Default attaches Gemini storyboard
+   * thumbnails as part of day generation (soft-fails if unavailable).
+   */
+  attachDayStoryboardThumbnails?: (
+    admin: SupabaseAdminClient,
+    prepared: SingleDayRunnerPreparedGeneration,
+    dailyCard: GeneratedDailyCard,
+  ) => Promise<GeneratedDailyCard>;
 };
 
 const DAY_GENERATION_HEARTBEAT_MIN_MS = 10;
@@ -288,13 +303,27 @@ export async function runDayGenerationPipeline(
     return persistResult;
   }
 
+  const attachStoryboard = host.attachDayStoryboardThumbnails ??
+    defaultAttachDayStoryboardThumbnails;
+  const dailyCardWithStoryboard = await withSingleDayGenerationHeartbeat(
+    admin,
+    generationID,
+    {
+      ...runningProgress,
+      status: "running",
+      updated_at: new Date().toISOString(),
+    },
+    host,
+    () => attachStoryboard(admin, prepared, persistResult.dailyCard),
+  );
+
   const completedAt = new Date().toISOString();
   const payload: RegenerateDayDraftResponse = {
     generation_id: generationID,
     weekly_plan_id: prepared.request.weekly_plan_id,
     status: "draft",
     target_scheduled_date: prepared.request.scheduled_date,
-    daily_card: persistResult.dailyCard,
+    daily_card: dailyCardWithStoryboard,
     warnings: generated.warnings,
     assumptions: generated.assumptions,
     source_summary: generated.source_summary,
@@ -337,4 +366,86 @@ export async function runDayGenerationPipeline(
     ...guidance,
   });
   return { payload };
+}
+
+export async function defaultAttachDayStoryboardThumbnails(
+  admin: SupabaseAdminClient,
+  prepared: SingleDayRunnerPreparedGeneration,
+  dailyCard: GeneratedDailyCard,
+): Promise<GeneratedDailyCard> {
+  if (prepared.mockEnabled) {
+    return dailyCard;
+  }
+
+  const dailyCardID = typeof dailyCard.id === "string" && dailyCard.id.trim()
+    ? dailyCard.id.trim()
+    : null;
+  if (!dailyCardID) {
+    console.warn(JSON.stringify({
+      event: "day_storyboard_skipped",
+      reason: "missing_daily_card_id",
+      scheduled_date: prepared.request.scheduled_date,
+    }));
+    return dailyCard;
+  }
+
+  const cardRecord: Record<string, unknown> = {
+    ...generatedDailyCardValues(dailyCard),
+    id: dailyCardID,
+    hook: dailyCard.hook,
+    shot_timeline: dailyCard.shot_timeline,
+    voiceover_timeline: dailyCard.voiceover_timeline,
+    on_screen_text_timeline: dailyCard.on_screen_text_timeline,
+    storyboard_thumbnail_assets: dailyCard.storyboard_thumbnail_assets ?? [],
+  };
+
+  try {
+    const result = await generateStoryboardThumbnailsForCard({
+      admin: admin as StorageCapableAdminClient,
+      workspaceID: prepared.session.workspaceID,
+      creatorID: prepared.request.creator_id,
+      dailyCardID,
+      cardRecord,
+      persist: true,
+    });
+
+    if (result.skippedReason) {
+      console.warn(JSON.stringify({
+        event: "day_storyboard_skipped",
+        reason: result.skippedReason,
+        daily_card_id: dailyCardID,
+        scheduled_date: prepared.request.scheduled_date,
+      }));
+      return dailyCard;
+    }
+
+    console.log(JSON.stringify({
+      event: "day_storyboard_attached",
+      daily_card_id: dailyCardID,
+      scheduled_date: prepared.request.scheduled_date,
+      generated_count: result.generatedCount,
+      cached_count: result.cachedCount,
+      model: result.model,
+    }));
+
+    return {
+      ...dailyCard,
+      storyboard_thumbnail_assets: result.assets as Array<
+        Record<string, unknown>
+      >,
+    };
+  } catch (error) {
+    const code = error instanceof StoryboardThumbnailGenerationError
+      ? error.code
+      : "storyboard_thumbnail_gemini_failed";
+    // Soft-fail: day copy/storyboard text still ships; manager can retry visuals.
+    console.error(JSON.stringify({
+      event: "day_storyboard_attach_failed",
+      daily_card_id: dailyCardID,
+      scheduled_date: prepared.request.scheduled_date,
+      error: code,
+      detail: error instanceof Error ? error.message : String(error),
+    }));
+    return dailyCard;
+  }
 }

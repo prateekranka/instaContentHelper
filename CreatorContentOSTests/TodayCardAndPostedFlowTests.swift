@@ -55,6 +55,112 @@ final class TodayCardAndPostedFlowTests: XCTestCase {
         XCTAssertEqual(plan, ["1. Setup", "2. Lift", "3. Reset", "4. Payoff"])
     }
 
+    func testShootFolioDefaultsToStoryboardTabAndSurfacesGeminiThumbnails() {
+        XCTAssertEqual(PackageSection.allCases.first, .storyboard)
+
+        let card = DailyCard(
+            title: "Gym day",
+            context: "Tuesday",
+            effortLabel: "Medium",
+            whyToday: "One movement.",
+            scenes: [
+                ShotScene(number: 1, title: "Setup", duration: "3 sec", symbol: "dumbbell")
+            ],
+            shotTimeline: [
+                ProductionTimelineItem(
+                    timestamp: "0-3 sec",
+                    title: "Setup shot",
+                    detail: "Frame the setup.",
+                    shot: "Wide setup",
+                    videoPortion: "Show the starting position clearly."
+                )
+            ],
+            storyboardThumbnailAssets: [
+                StoryboardThumbnailAsset(
+                    rowIndex: 0,
+                    promptHash: "hash",
+                    publicURL: "https://example.com/final-shot.jpg",
+                    status: "generated"
+                )
+            ]
+        )
+        let rows = GeneratedStoryboardBreakdown.rows(for: card)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].visualShot, "Wide setup")
+        XCTAssertEqual(rows[0].thumbnailURL?.absoluteString, "https://example.com/final-shot.jpg")
+    }
+
+    func testShootFolioScenesScriptAndCaptionShareStoryboardThumbnailsAndTimestamps() {
+        let thumbnailURL = "https://example.com/storyboard/row-0.jpg"
+        let card = DailyCard(
+            title: "Gym day",
+            context: "Tuesday",
+            effortLabel: "Medium",
+            whyToday: "One movement.",
+            scenes: [
+                ShotScene(number: 1, title: "Setup", duration: "3 sec", symbol: "dumbbell"),
+                ShotScene(number: 2, title: "Lift", duration: "4 sec", symbol: "figure.strengthtraining")
+            ],
+            shotTimeline: [
+                ProductionTimelineItem(
+                    timestamp: "0-3 sec",
+                    title: "Setup shot",
+                    detail: "Frame the setup.",
+                    shot: "Wide setup",
+                    videoPortion: "Show the starting position clearly."
+                ),
+                ProductionTimelineItem(
+                    timestamp: "3-7 sec",
+                    title: "Lift shot",
+                    detail: "Capture the lift.",
+                    shot: "Action lift",
+                    videoPortion: "Controlled strength movement."
+                )
+            ],
+            voiceoverTimeline: [
+                ProductionTimelineItem(timestamp: "0-3 sec", title: "Hook", detail: "", voiceover: "Start here."),
+                ProductionTimelineItem(timestamp: "3-7 sec", title: "Payoff", detail: "", voiceover: "Finish strong.")
+            ],
+            onScreenTextTimeline: [
+                ProductionTimelineItem(timestamp: "0-3 sec", title: "Hook text", detail: "", onScreenText: "START HERE"),
+                ProductionTimelineItem(timestamp: "3-7 sec", title: "Payoff text", detail: "", onScreenText: "FINISH STRONG")
+            ],
+            script: """
+            Start here.
+            Finish strong.
+            """,
+            caption: "A quiet gym reminder.",
+            storyboardThumbnailAssets: [
+                StoryboardThumbnailAsset(
+                    rowIndex: 0,
+                    promptHash: "hash-0",
+                    publicURL: thumbnailURL,
+                    status: "generated"
+                ),
+                StoryboardThumbnailAsset(
+                    rowIndex: 1,
+                    promptHash: "hash-1",
+                    publicURL: "https://example.com/storyboard/row-1.jpg",
+                    status: "generated"
+                )
+            ]
+        )
+
+        let rows = GeneratedStoryboardBreakdown.rows(for: card)
+        XCTAssertEqual(rows.count, 2)
+
+        // Scenes, Script, and Caption packages all read the same breakdown rows.
+        XCTAssertEqual(rows[0].timecode, "0-3 sec")
+        XCTAssertEqual(rows[0].thumbnailURL?.absoluteString, thumbnailURL)
+        XCTAssertEqual(rows[0].audioDialogue, "Start here.")
+        XCTAssertEqual(rows[0].onScreenText, "START HERE")
+        XCTAssertEqual(rows[1].timecode, "3-7 sec")
+        XCTAssertEqual(rows[1].audioDialogue, "Finish strong.")
+        XCTAssertEqual(rows[1].onScreenText, "FINISH STRONG")
+        XCTAssertEqual(card.caption, "A quiet gym reminder.")
+        XCTAssertEqual(card.scenes.count, rows.count)
+    }
+
     // MARK: - Posted state flow (Subagent C)
 
     func testMarkAllAsShotFlipsToMarkAsPostedEligibility() {

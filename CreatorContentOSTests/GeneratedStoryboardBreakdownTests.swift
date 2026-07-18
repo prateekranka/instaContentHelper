@@ -3,6 +3,92 @@ import XCTest
 
 @MainActor
 final class GeneratedStoryboardBreakdownTests: XCTestCase {
+    func testPublishedDailyCardRowsMatchManagerDraftStoryboardIncludingThumbnails() {
+        let assets = [
+            StoryboardThumbnailAsset(
+                rowIndex: 0,
+                promptHash: "hash-0",
+                publicURL: "https://example.com/row-0.jpg",
+                status: "generated"
+            ),
+            StoryboardThumbnailAsset(
+                rowIndex: 1,
+                promptHash: "hash-1",
+                publicURL: "https://example.com/row-1.jpg",
+                status: "generated"
+            )
+        ]
+        let draft = makeCard(
+            sceneList: [
+                ShotScene(number: 1, title: "Talking head hook", duration: "3 sec", symbol: "person.crop.rectangle"),
+                ShotScene(number: 2, title: "Gym b-roll", duration: "4 sec", symbol: "dumbbell")
+            ],
+            shotTimeline: [
+                ProductionTimelineItem(
+                    timestamp: "0-3 sec",
+                    title: "Close-up talking head",
+                    detail: "Hook frame.",
+                    shot: "Close-up",
+                    videoPortion: "Direct eye contact.",
+                    voiceover: nil,
+                    onScreenText: nil,
+                    placement: nil,
+                    durationSeconds: 3
+                ),
+                ProductionTimelineItem(
+                    timestamp: "3-7 sec",
+                    title: "Wide gym shot",
+                    detail: "Walk-in.",
+                    shot: "B-roll",
+                    videoPortion: "Gym entrance.",
+                    voiceover: nil,
+                    onScreenText: nil,
+                    placement: nil,
+                    durationSeconds: 4
+                )
+            ],
+            voiceoverTimeline: [
+                ProductionTimelineItem(
+                    timestamp: "0-3 sec",
+                    title: "Hook line",
+                    detail: "",
+                    voiceover: "The biggest lie after 40."
+                ),
+                ProductionTimelineItem(
+                    timestamp: "3-7 sec",
+                    title: "Belief line",
+                    detail: "",
+                    voiceover: "I believed that too."
+                )
+            ],
+            onScreenTextTimeline: [
+                ProductionTimelineItem(
+                    timestamp: "0-3 sec",
+                    title: "Hook text",
+                    detail: "",
+                    onScreenText: "THE BIGGEST LIE"
+                ),
+                ProductionTimelineItem(
+                    timestamp: "3-7 sec",
+                    title: "Belief text",
+                    detail: "",
+                    onScreenText: "I BELIEVED THAT TOO"
+                )
+            ],
+            storyboardThumbnailAssets: assets
+        )
+        let published = draft.dailyCard(completionState: nil)
+        let draftRows = GeneratedStoryboardBreakdown.rows(for: draft)
+        let publishedRows = GeneratedStoryboardBreakdown.rows(for: published)
+
+        XCTAssertEqual(published.storyboardThumbnailAssets, assets)
+        XCTAssertEqual(publishedRows.count, draftRows.count)
+        XCTAssertEqual(publishedRows.map(\.visualShot), draftRows.map(\.visualShot))
+        XCTAssertEqual(publishedRows.map(\.audioDialogue), draftRows.map(\.audioDialogue))
+        XCTAssertEqual(publishedRows.map(\.thumbnailURL), draftRows.map(\.thumbnailURL))
+        XCTAssertEqual(publishedRows[0].thumbnailURL?.absoluteString, "https://example.com/row-0.jpg")
+    }
+
     func testRowsAlignSceneShotVoiceoverAndOnScreenTextByIndex() {
         let card = makeCard(
             sceneList: [

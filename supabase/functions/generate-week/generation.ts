@@ -243,6 +243,8 @@ export type GeneratedDailyCard = {
   assumptions: string[];
   source_note: string;
   source_reference_ids: string[];
+  /** Gemini storyboard visuals attached during/after day generation. */
+  storyboard_thumbnail_assets?: Array<Record<string, unknown>>;
 };
 
 export type GeneratedIdea = {
