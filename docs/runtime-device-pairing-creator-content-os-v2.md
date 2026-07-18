@@ -95,7 +95,7 @@ The current schema RLS helpers are Supabase Auth based. Device-token authorizati
 
 Recommended next backend slice:
 
-1. Deploy and verify `pair-device` and `publish-week`.
+1. Deploy and verify `pair-device` and `publish-day`.
 2. Move creator daily decisions behind Edge Functions.
 3. Decide whether live read paths use device-token Edge Functions or a narrow RLS policy strategy.
 4. Add a hidden/dev pairing surface or admin-only pairing command after the backend path is verified.

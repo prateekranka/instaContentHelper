@@ -890,111 +890,24 @@ struct SupabaseArchiveEntryUpsert: Encodable, Sendable {
     }
 }
 
-struct SupabasePublishWeekRequest: Encodable, Sendable {
+struct SupabasePublishDayRequest: Encodable, Sendable {
     var creatorID: UUID
-    var memberID: UUID
-    var weeklyPlanID: UUID
-    var weekStartDate: String
-    var strategySummary: String
-    var days: [SupabasePublishWeekDayRequest]?
-    var draftDailyCards: [SupabaseDraftDailyCardPublishRequest]?
+    var dailyCardID: UUID
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
-        case memberID = "member_id"
-        case weeklyPlanID = "weekly_plan_id"
-        case weekStartDate = "week_start_date"
-        case strategySummary = "strategy_summary"
-        case days
-        case draftDailyCards = "draft_daily_cards"
-    }
-
-    init(plan: WeeklyPlan, generatedDraft: GeneratedWeekDraft?, context: WorkspaceContext) {
-        creatorID = context.creatorID
-        memberID = context.memberID
-        weeklyPlanID = plan.id
-        weekStartDate = plan.weekStartDate
-            ?? plan.days.compactMap(\.scheduledDate).first
-            ?? SupabaseDateFormatting.todayDateString()
-        strategySummary = generatedDraft?.strategySummary ?? plan.readinessSummary
-
-        if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
-            days = nil
-            draftDailyCards = generatedDraft.dailyCards.map {
-                SupabaseDraftDailyCardPublishRequest(card: $0)
-            }
-        } else {
-            days = plan.days.map { SupabasePublishWeekDayRequest(day: $0) }
-            draftDailyCards = nil
-        }
+        case dailyCardID = "daily_card_id"
     }
 }
 
-struct SupabasePublishWeekDayRequest: Encodable, Sendable {
-    var id: UUID
+struct SupabasePublishDayResponse: Decodable, Hashable, Sendable {
+    var dailyCardID: UUID
     var scheduledDate: String
-    var title: String
-    var whyToday: String
-    var source: String
-    var state: String
-    var shootability: String
-    var estimatedShootMinutes: Int
-    var sceneList: [SupabasePublishSceneRequest]
+    var publishedAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id
+        case dailyCardID = "daily_card_id"
         case scheduledDate = "scheduled_date"
-        case title
-        case whyToday = "why_today"
-        case source
-        case state
-        case shootability
-        case estimatedShootMinutes = "estimated_shoot_minutes"
-        case sceneList = "scene_list"
-    }
-
-    init(day: WeeklyDay) {
-        id = day.id
-        scheduledDate = day.scheduledDate ?? SupabaseDateFormatting.todayDateString()
-        title = day.title
-        whyToday = day.reason
-        source = day.source.rawValue.lowercased()
-        state = day.state.rawValue
-        shootability = switch day.state {
-        case .planned: "easy"
-        case .backup: "backup"
-        case .open: "open"
-        }
-        estimatedShootMinutes = switch day.state {
-        case .planned: 12
-        case .backup: 8
-        case .open: 0
-        }
-        sceneList = [
-            SupabasePublishSceneRequest(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
-            SupabasePublishSceneRequest(number: 2, title: day.title, duration: "5 sec", symbol: "figure.run"),
-            SupabasePublishSceneRequest(number: 3, title: "One useful takeaway", duration: "4 sec", symbol: "text.quote")
-        ]
-    }
-}
-
-struct SupabasePublishSceneRequest: Encodable, Sendable {
-    var number: Int
-    var title: String
-    var duration: String
-    var symbol: String
-}
-
-struct SupabasePublishWeekResponse: Decodable, Hashable, Sendable {
-    var weeklyPlanID: UUID
-    var dailyCardCount: Int
-    var isSoftLocked: Bool
-    var publishedAt: String?
-
-    enum CodingKeys: String, CodingKey {
-        case weeklyPlanID = "weekly_plan_id"
-        case dailyCardCount = "daily_card_count"
-        case isSoftLocked = "is_soft_locked"
         case publishedAt = "published_at"
     }
 }

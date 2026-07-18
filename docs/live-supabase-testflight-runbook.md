@@ -42,7 +42,7 @@ The script deploys:
 - `revoke-device-session`
 - `send-auth-email`
 - `manage-testers`
-- `publish-week`
+- `publish-day`
 - `read-content`
 - `write-content`
 - `import-references`

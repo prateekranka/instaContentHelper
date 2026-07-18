@@ -138,45 +138,6 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        let response: SupabasePublishWeekResponse = try await client.functions.invoke(
-            "publish-week",
-            options: FunctionInvokeOptions(
-                body: SupabasePublishWeekRequest(
-                    plan: plan,
-                    generatedDraft: generatedDraft,
-                    context: context
-                )
-            )
-        )
-
-        let publishedPlan = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
-            generatedDraft.markedPublished.weeklyPlan(
-                setupSections: plan.setupSections,
-                weeklyBriefText: plan.weeklyBriefText
-            ).softLockedForPublish
-        } else {
-            plan.softLockedForPublish
-        }
-        let cards = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
-            generatedDraft.markedPublished.publishedWeekCards
-        } else {
-            DailyCard.publishedCards(from: publishedPlan)
-        }
-
-        return WeeklyPublishResult(
-            weeklyPlan: publishedPlan,
-            weekCards: cards,
-            todayCard: DailyCard.bestTodayCard(from: cards),
-            summary: "Published \(response.dailyCardCount) cards to Creator Today."
-        )
-    }
-
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,
@@ -326,6 +287,34 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
 
     let client: SupabaseClient
     var runtimeConfiguration: SupabaseRuntimeConfiguration?
+
+    func publishDay(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        context: WorkspaceContext
+    ) async throws -> DailyPublishResult {
+        do {
+            let response: SupabasePublishDayResponse = try await client.functions.invoke(
+                "publish-day",
+                options: FunctionInvokeOptions(
+                    body: SupabasePublishDayRequest(
+                        creatorID: creatorID,
+                        dailyCardID: dailyCardID
+                    )
+                )
+            )
+            return DailyPublishResult(
+                dailyCardID: response.dailyCardID,
+                scheduledDate: response.scheduledDate,
+                publishedAt: response.publishedAt
+            )
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
 
     func regenerateDay(
         creatorID: UUID,

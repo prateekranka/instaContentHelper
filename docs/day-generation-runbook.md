@@ -176,7 +176,7 @@ want OpenAI to be available as the fallback provider.
 6. Confirm the draft `daily_card` includes rich fields such as `script`,
    `caption`, and `backup_story`.
 7. Confirm `read-content` returns the draft card for Manager review.
-8. Publish with `publish-week` using `weekly_plan_id` when the week is ready.
+8. Publish the reviewed date with `publish-day` using its `daily_card_id`.
 9. Confirm `read-content` today returns the published generated card.
 10. Confirm a Creator decision still writes through `write-content`.
 
@@ -328,9 +328,8 @@ live runs require `EXPERIMENT_LIVE_APPROVED=1` and all `MCO_LIVE_*` env vars.
 
 - Unset `DEEPSEEK_API_KEY` and `OPENAI_API_KEY` to stop real generation.
 - Disable the Generate button through app config if needed.
-- Leave existing fixture runtime and legacy `publish-week` caller-supplied
-  payload behavior available.
-- Existing published weeks remain soft locked.
+- Keep existing fixture runtime available for offline UI development.
+- Existing published daily cards remain readable in Today.
 
 ## Troubleshooting
 

@@ -38,17 +38,17 @@ The script simulates the admin path through live Edge Functions:
    device sessions, creator profile, weekly setup, confirmed reference, and
    idea.
 2. Reads creator profile and intelligence through `read-content`.
-3. Calls `generate-week` for a future QA week.
-4. Polls generation status until a draft week is available.
-5. Verifies seven generated daily cards with rich fields.
-6. Edits Weekly Brief through `write-content.update_weekly_setup`.
+3. Calls `generate-week` with `action: generate_day` for one future QA date.
+4. Polls generation status until the daily draft is available.
+5. Verifies the generated daily card has rich fields and storyboard assets.
+6. Keeps the day brief and selected date as the generation source of truth.
 7. Imports and approves a QA reference through `import-references` and
    `review-reference`.
 8. Regenerates one draft day through `generate-week` with
    `action: regenerate_day`.
-9. Publishes the draft through `publish-week`, including an edited card payload.
-10. Verifies published plan, cards, Weekly Brief edits, and reference
-    persistence through `read-content`.
+9. Publishes the selected draft through `publish-day` using `daily_card_id`.
+10. Verifies the selected card, Today, and reference persistence through
+    `read-content`.
 
 ## Creator Coverage
 

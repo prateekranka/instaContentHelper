@@ -36,7 +36,7 @@ Migration `20260605090000_allow_shot_archive_decisions.sql` adds `shot` as an al
 
 ## Acceptance
 
-Covered in `CreatorContentOSTests/PublishWeekFixtureAcceptanceTests.swift`:
+Covered in `CreatorContentOSTests/TodayCardAndPostedFlowTests.swift`:
 
 - Backup decision writes a specific Archive output line.
 - Shot decision writes a positive Archive entry.

@@ -122,6 +122,23 @@ struct JournalBlock<Content: View>: View {
     }
 }
 
+struct WeeklySectionTitle: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.xs) {
+            Text(title)
+                .font(.system(size: 26, weight: .regular, design: .serif))
+                .foregroundStyle(MCOTheme.Color.ink)
+            Text(subtitle)
+                .font(MCOType.bodySmall)
+                .foregroundStyle(MCOTheme.Color.inkMuted)
+        }
+        .padding(.top, MCOSpace.s)
+    }
+}
+
 struct GlassCommandBar<Content: View>: View {
     @ViewBuilder let content: Content
 

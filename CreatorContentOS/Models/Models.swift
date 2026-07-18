@@ -644,6 +644,16 @@ enum WeeklyDayState: String, CaseIterable, Codable, Hashable, Sendable {
 }
 
 extension WeeklyDayState {
+    var sourceTone: ChipTone {
+        switch self {
+        case .planned: .ready
+        case .backup: .warning
+        case .open: .quiet
+        }
+    }
+}
+
+extension WeeklyDayState {
     init(generatedDraftStatus status: String) {
         switch status.lowercased() {
         case "published", "planned", "ready":

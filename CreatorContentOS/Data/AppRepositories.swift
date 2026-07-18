@@ -224,12 +224,6 @@ protocol WeeklyPlanRepository: Sendable {
     func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft?
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea]
     func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,
@@ -269,6 +263,12 @@ protocol DayGenerationRepository: Sendable {
         dayGuidance: String?,
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult
+
+    func publishDay(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        context: WorkspaceContext
+    ) async throws -> DailyPublishResult
 }
 
 extension DayGenerationRepository {
@@ -290,6 +290,14 @@ extension DayGenerationRepository {
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult {
         throw RepositoryError.notConfigured("regenerate_day_not_configured")
+    }
+
+    func publishDay(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        context: WorkspaceContext
+    ) async throws -> DailyPublishResult {
+        throw RepositoryError.notConfigured("publish_day_not_configured")
     }
 }
 
@@ -378,11 +386,10 @@ struct WeeklySelectionUpdate: Hashable, Sendable {
     var ideaBank: [WeeklyIdea]
 }
 
-struct WeeklyPublishResult: Hashable, Sendable {
-    var weeklyPlan: WeeklyPlan
-    var weekCards: [DailyCard]
-    var todayCard: DailyCard?
-    var summary: String
+struct DailyPublishResult: Hashable, Sendable {
+    var dailyCardID: UUID
+    var scheduledDate: String
+    var publishedAt: String
 }
 
 struct CreatorProfileSummary: Hashable, Sendable {
