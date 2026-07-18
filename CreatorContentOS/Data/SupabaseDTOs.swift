@@ -322,6 +322,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
                 scene.domainScene(fallbackNumber: index + 1)
             },
             shotTimeline: shotTimeline,
+            voiceoverTimeline: voiceoverTimeline,
             onScreenTextTimeline: onScreenTextTimeline,
             completionState: CompletionState(supabaseStatus: status),
             script: script,
@@ -338,7 +339,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             audioOptionNotes: postInstructions?.audioOptionNotes,
             creatorFitScore: creatorFitScore,
             riskNotes: riskNotes?.compactMap(\.displayText),
-            assumptions: assumptions?.compactMap(\.displayText)
+            assumptions: assumptions?.compactMap(\.displayText),
+            storyboardThumbnailAssets: storyboardThumbnailAssets
         )
     }
 

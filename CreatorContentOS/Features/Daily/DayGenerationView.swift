@@ -324,7 +324,7 @@ struct DayGenerationView: View {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 WeeklySectionTitle(
                     title: "Storyboard & caption",
-                    subtitle: "\(shortLabel(for: card.scheduledDate)) — \(card.status.lowercased() == "published" ? "published" : "draft")"
+                    subtitle: "\(shortLabel(for: card.scheduledDate)) — \(card.status.lowercased() == "published" ? "published" : "draft"). Gemini shot visuals generate with the day so creators see the same reference on Today."
                 )
                 GeneratedDayPlannedContent(card: card) { assets in
                     if var updated = services.dayBriefGeneratedCards[card.scheduledDate] {

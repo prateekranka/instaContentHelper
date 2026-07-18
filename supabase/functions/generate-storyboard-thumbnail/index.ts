@@ -2,24 +2,14 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
   corsHeaders,
   jsonResponse,
-  sha256Hex,
-  SupabaseAdminClient,
   verifyDeviceSession,
 } from "../_shared/device-auth.ts";
 import {
-  DEFAULT_GEMINI_IMAGE_MODEL,
-  GeminiImageGenerationError,
-  generateGeminiImageWithFallback,
-} from "../_shared/gemini-image.ts";
-import {
-  buildStoryboardThumbnailPrompt,
-  cachedAssetForRow,
-  mergeStoryboardThumbnailAsset,
-  normalizeStoryboardThumbnailAssets,
-  STORYBOARD_THUMBNAIL_PROMPT_VERSION,
-  storyboardRowsForCard,
-  StoryboardThumbnailAsset,
-} from "./storyboard-thumbnail.ts";
+  generateStoryboardThumbnailsForCard,
+  StorageCapableAdminClient,
+  StoryboardThumbnailGenerationError,
+} from "../_shared/storyboard-thumbnail-generation.ts";
+import { STORYBOARD_THUMBNAIL_PROMPT_VERSION } from "../_shared/storyboard-thumbnail.ts";
 
 type GenerateStoryboardThumbnailRequest = {
   creator_id?: string;
@@ -28,21 +18,6 @@ type GenerateStoryboardThumbnailRequest = {
   row_indexes?: number[];
   force?: boolean;
   revision_instructions?: string;
-};
-
-type StorageCapableAdminClient = SupabaseAdminClient & {
-  storage: {
-    from: (bucket: string) => {
-      upload: (
-        path: string,
-        body: Uint8Array,
-        options: Record<string, unknown>,
-      ) => Promise<{ data: unknown; error: { message?: string } | null }>;
-      getPublicUrl: (path: string) => {
-        data: { publicUrl: string };
-      };
-    };
-  };
 };
 
 const CARD_SELECT = [
@@ -58,8 +33,6 @@ const CARD_SELECT = [
   "post_instructions",
   "storyboard_thumbnail_assets",
 ].join(",");
-
-const BUCKET_NAME = "storyboard-thumbnails";
 
 if (import.meta.main) {
   Deno.serve((request) => handleGenerateStoryboardThumbnailRequest(request));
@@ -78,15 +51,9 @@ export async function handleGenerateStoryboardThumbnailRequest(
 
   const supabaseURL = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const geminiAPIKey = Deno.env.get("GEMINI_API_KEY");
-  const model = Deno.env.get("GEMINI_IMAGE_MODEL")?.trim() ||
-    DEFAULT_GEMINI_IMAGE_MODEL;
 
   if (!supabaseURL || !serviceRoleKey) {
     return jsonResponse({ error: "missing_function_secrets" }, 500);
-  }
-  if (!geminiAPIKey) {
-    return jsonResponse({ error: "gemini_api_key_missing" }, 500);
   }
 
   const admin = createClient(supabaseURL, serviceRoleKey, {
@@ -118,9 +85,6 @@ export async function handleGenerateStoryboardThumbnailRequest(
   if (rowIndexes === null) {
     return jsonResponse({ error: "invalid_thumbnail_payload" }, 400);
   }
-  const revisionInstructions = normalizedRevisionInstructions(
-    body.revision_instructions,
-  );
 
   const { data: card, error: cardError } = await admin
     .from("daily_cards")
@@ -137,161 +101,43 @@ export async function handleGenerateStoryboardThumbnailRequest(
     return jsonResponse({ error: "daily_card_not_found" }, 404);
   }
 
-  const cardRecord = card as Record<string, unknown>;
-  const rows = storyboardRowsForCard(cardRecord);
-  const targets = (rowIndexes ?? rows.map((row) => row.row_index))
-    .filter((rowIndex) => rowIndex >= 0 && rowIndex < rows.length);
-  if (targets.length === 0) {
-    return jsonResponse({ error: "storyboard_row_not_found" }, 404);
-  }
-
-  let assets = normalizeStoryboardThumbnailAssets(
-    cardRecord.storyboard_thumbnail_assets,
-  );
-  let generatedCount = 0;
-  let cachedCount = 0;
-
-  for (const rowIndex of targets) {
-    const row = rows[rowIndex];
-    const prompt = buildStoryboardThumbnailPrompt(
-      cardRecord,
-      row,
-      revisionInstructions,
-    );
-    const promptHash = await sha256Hex(JSON.stringify({
-      version: STORYBOARD_THUMBNAIL_PROMPT_VERSION,
-      model,
-      daily_card_id: dailyCardID,
-      row,
-      prompt,
-      revision_instructions: revisionInstructions,
-    }));
-
-    const cached = body.force
-      ? null
-      : cachedAssetForRow(assets, rowIndex, promptHash, model);
-    if (cached) {
-      cachedCount += 1;
-      continue;
-    }
-
-    const start = performance.now();
-    let image: { data: string; mimeType: string; model: string };
-    try {
-      image = await generateGeminiImageWithFallback({
-        apiKey: geminiAPIKey,
-        model,
-        prompt,
-      });
-    } catch (error) {
-      const code = error instanceof GeminiImageGenerationError
-        ? error.code
-        : "storyboard_thumbnail_gemini_failed";
-      console.error(JSON.stringify({
-        event: "storyboard_thumbnail_gemini_failed",
-        daily_card_id: dailyCardID,
-        row_index: rowIndex,
-        model: error instanceof GeminiImageGenerationError
-          ? error.model
-          : model,
-        upstream_status: error instanceof GeminiImageGenerationError
-          ? error.status
-          : undefined,
-        provider_code: error instanceof GeminiImageGenerationError
-          ? error.providerCode
-          : undefined,
-        error: code,
-        detail: error instanceof GeminiImageGenerationError
-          ? error.providerMessage ??
-            String((error as Error & { cause?: unknown }).cause ?? "")
-          : undefined,
-      }));
-      return jsonResponse({ error: code }, 502);
-    }
-    const latencyMs = Math.round(performance.now() - start);
-    const bytes = base64ToBytes(image.data);
-    const extension = image.mimeType === "image/png" ? "png" : "jpg";
-    const storagePath = [
-      authResult.session.workspaceID,
+  try {
+    const result = await generateStoryboardThumbnailsForCard({
+      admin,
+      workspaceID: authResult.session.workspaceID,
       creatorID,
       dailyCardID,
-      `row-${rowIndex}-${promptHash.slice(0, 12)}.${extension}`,
-    ].join("/");
+      cardRecord: card as Record<string, unknown>,
+      rowIndexes: rowIndexes ?? undefined,
+      force: body.force === true,
+      revisionInstructions: body.revision_instructions,
+      persist: true,
+    });
 
-    const { error: uploadError } = await admin.storage
-      .from(BUCKET_NAME)
-      .upload(storagePath, bytes, {
-        contentType: image.mimeType,
-        upsert: true,
-      });
-    if (uploadError) {
-      console.error(JSON.stringify({
-        event: "storyboard_thumbnail_upload_failed",
-        daily_card_id: dailyCardID,
-        row_index: rowIndex,
-        error: uploadError.message ?? "upload_failed",
-      }));
-      return jsonResponse({ error: "storyboard_thumbnail_upload_failed" }, 500);
+    if (result.skippedReason === "gemini_api_key_missing") {
+      return jsonResponse({ error: "gemini_api_key_missing" }, 500);
     }
 
-    const publicURL = admin.storage.from(BUCKET_NAME)
-      .getPublicUrl(storagePath)
-      .data.publicUrl;
-    const asset: StoryboardThumbnailAsset = {
-      row_index: rowIndex,
-      prompt_hash: promptHash,
-      storage_path: storagePath,
-      public_url: publicURL,
-      model: image.model,
-      prompt_version: STORYBOARD_THUMBNAIL_PROMPT_VERSION,
-      status: "generated",
-      generated_at: new Date().toISOString(),
-    };
-    assets = mergeStoryboardThumbnailAsset(assets, asset);
-    generatedCount += 1;
-    console.log(JSON.stringify({
-      event: "storyboard_thumbnail_generated",
+    return jsonResponse({
       daily_card_id: dailyCardID,
-      row_index: rowIndex,
-      model,
-      prompt_version: STORYBOARD_THUMBNAIL_PROMPT_VERSION,
-      prompt_chars: prompt.length,
-      has_revision_instructions: Boolean(revisionInstructions),
-      latency_ms: latencyMs,
-      bytes: bytes.byteLength,
-    }));
+      assets: result.assets,
+      generated_count: result.generatedCount,
+      cached_count: result.cachedCount,
+      model: result.model,
+      prompt_version: result.promptVersion ?? STORYBOARD_THUMBNAIL_PROMPT_VERSION,
+    });
+  } catch (error) {
+    const code = error instanceof StoryboardThumbnailGenerationError
+      ? error.code
+      : "storyboard_thumbnail_gemini_failed";
+    const status = code === "storyboard_row_not_found"
+      ? 404
+      : code === "storyboard_thumbnail_upload_failed" ||
+          code === "storyboard_thumbnail_save_failed"
+      ? 500
+      : 502;
+    return jsonResponse({ error: code }, status);
   }
-
-  const { error: updateError } = await admin
-    .from("daily_cards")
-    .update({ storyboard_thumbnail_assets: assets })
-    .eq("workspace_id", authResult.session.workspaceID)
-    .eq("creator_id", creatorID)
-    .eq("id", dailyCardID);
-
-  if (updateError) {
-    return jsonResponse({ error: "storyboard_thumbnail_save_failed" }, 500);
-  }
-
-  return jsonResponse({
-    daily_card_id: dailyCardID,
-    assets,
-    generated_count: generatedCount,
-    cached_count: cachedCount,
-    model,
-    prompt_version: STORYBOARD_THUMBNAIL_PROMPT_VERSION,
-  });
-}
-
-function normalizedRevisionInstructions(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim().replace(/\s+/g, " ");
-  if (!trimmed) {
-    return undefined;
-  }
-  return trimmed.slice(0, 600);
 }
 
 function normalizedRowIndexes(
@@ -312,13 +158,4 @@ function normalizedRowIndexes(
   return Number.isInteger(body.row_index) && body.row_index >= 0
     ? [body.row_index]
     : null;
-}
-
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
 }

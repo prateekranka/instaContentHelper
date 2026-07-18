@@ -6,7 +6,7 @@ import UIKit
 struct ShootFolioView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
-    @State private var selection: PackageSection = .scenes
+    @State private var selection: PackageSection = .storyboard
 
     var body: some View {
         EditorialScreen {
@@ -18,13 +18,15 @@ struct ShootFolioView: View {
                     sectionTabs
 
                     switch selection {
+                    case .storyboard:
+                        CreatorStoryboardPackageView(card: services.todayCard)
                     case .scenes:
                         sceneProgress
                         SceneListView(card: services.todayCard)
                     case .script:
-                        CopyBlock(title: "Script", bodyText: services.todayCard.script ?? "No script recorded for today.")
+                        CreatorScriptPackageView(card: services.todayCard)
                     case .caption:
-                        CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "No caption recorded for today.")
+                        CreatorCaptionPackageView(card: services.todayCard)
                     case .audio:
                         CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "No audio notes recorded for today.")
                     }
@@ -148,6 +150,72 @@ struct ShootFolioView: View {
     }
 }
 
+/// Read-only storyboard package for creators — same Gemini visuals and row
+/// breakdown as the manager Daily preview, without edit/refresh controls.
+struct CreatorStoryboardPackageView: View {
+    let card: DailyCard
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.m) {
+            if rows.isEmpty {
+                JournalBlock {
+                    VStack(alignment: .leading, spacing: MCOSpace.s) {
+                        Text("Storyboard")
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(MCOTheme.Color.oxblood)
+                        Text("This published day does not include a storyboard yet.")
+                            .font(MCOType.bodySmall)
+                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                JournalBlock {
+                    VStack(alignment: .leading, spacing: MCOSpace.s) {
+                        HStack(spacing: MCOSpace.s) {
+                            Image(systemName: "rectangle.stack.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Storyboard")
+                                .font(MCOType.tinyLabel)
+                            Spacer(minLength: MCOSpace.s)
+                            Text(durationLabel)
+                                .font(MCOType.caption)
+                        }
+                        .foregroundStyle(MCOTheme.Color.paperRaised)
+                        .padding(.horizontal, MCOSpace.s)
+                        .frame(minHeight: 38)
+                        .background(MCOTheme.Color.ink, in: RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+
+                        Text(card.effectiveHook?.nilIfBlank ?? card.title)
+                            .font(MCOType.headline)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        GeneratedStoryboardTable(rows: rows)
+
+                        if let filmingTip = card.postInstructions?.nilIfBlank {
+                            GeneratedStoryboardTip(text: filmingTip)
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier("today.shootFolio.storyboard")
+    }
+
+    private var rows: [GeneratedStoryboardBreakdownRow] {
+        GeneratedStoryboardBreakdown.rows(for: card)
+    }
+
+    private var durationLabel: String {
+        if let seconds = SceneTiming.totalSeconds(for: card.scenes), seconds > 0 {
+            return "\(seconds)s"
+        }
+        return "\(rows.count) scenes"
+    }
+}
+
 private struct ShootFolioEmptyState: View {
     let state: TodayContentState
 
@@ -188,12 +256,15 @@ struct SceneListView: View {
     var body: some View {
         VStack(spacing: MCOSpace.m) {
             ForEach(Array(card.scenes.enumerated()), id: \.element.id) { index, scene in
+                let row = storyboardRows[safe: index]
                 NavigationLink {
                     SceneDetailView(card: card, scene: scene)
                 } label: {
                     JournalBlock {
                         VStack(alignment: .leading, spacing: MCOSpace.s) {
                             HStack(alignment: .top, spacing: MCOSpace.s) {
+                                FolioStoryboardThumbnail(url: row?.thumbnailURL, height: 72)
+
                                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                                     Text("SCENE \(String(format: "%02d", scene.number))")
                                         .font(MCOType.tinyLabel)
@@ -201,10 +272,13 @@ struct SceneListView: View {
                                     Text(scene.title)
                                         .font(MCOType.headline)
                                         .foregroundStyle(MCOTheme.Color.ink)
+                                    Text(row?.timecode ?? scene.duration)
+                                        .font(MCOType.caption)
+                                        .foregroundStyle(MCOTheme.Color.inkMuted)
                                 }
                                 Spacer(minLength: MCOSpace.s)
                                 StatusChip(
-                                    text: services.isSceneShot(scene) ? "Shot" : scene.duration,
+                                    text: services.isSceneShot(scene) ? "Shot" : (row?.timecode ?? scene.duration),
                                     tone: services.isSceneShot(scene) ? .ready : .info
                                 )
                             }
@@ -220,9 +294,15 @@ struct SceneListView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Scene \(scene.number), \(scene.title), \(services.isSceneShot(scene) ? "shot" : "not shot")")
+                .accessibilityLabel(
+                    "Scene \(scene.number), \(scene.title), \(row?.timecode ?? scene.duration), \(services.isSceneShot(scene) ? "shot" : "not shot")"
+                )
             }
         }
+    }
+
+    private var storyboardRows: [GeneratedStoryboardBreakdownRow] {
+        GeneratedStoryboardBreakdown.rows(for: card)
     }
 }
 
@@ -242,11 +322,18 @@ struct SceneDetailView: View {
                         .font(MCOType.screenTitle)
                         .foregroundStyle(MCOTheme.Color.ink)
                     HStack(spacing: MCOSpace.s) {
-                        StatusChip(text: scene.duration)
+                        StatusChip(text: storyboardRow?.timecode ?? scene.duration)
                         StatusChip(
                             text: services.isSceneShot(scene) ? "Shot" : "Not shot",
                             tone: services.isSceneShot(scene) ? .ready : .warning
                         )
+                    }
+                }
+
+                if let thumbnailURL = storyboardRow?.thumbnailURL {
+                    JournalBlock {
+                        FolioStoryboardThumbnail(url: thumbnailURL, height: 168)
+                            .frame(maxWidth: .infinity)
                     }
                 }
 
@@ -255,6 +342,10 @@ struct SceneDetailView: View {
 
                 if let onScreenText = SceneGuidance.onScreenText(at: sceneIndex, in: card) {
                     detailBlock(title: "On-screen text", text: onScreenText)
+                }
+                if let dialogue = storyboardRow?.audioDialogue.nilIfBlank,
+                   dialogue != "No voiceover specified." {
+                    detailBlock(title: "Script line", text: dialogue)
                 }
                 if let postInstructions = services.todayCard.postInstructions?.nilIfBlank {
                     detailBlock(title: "Post guidance", text: postInstructions)
@@ -294,6 +385,136 @@ struct SceneDetailView: View {
 
     private var sceneIndex: Int {
         card.scenes.firstIndex { $0.id == scene.id } ?? max(scene.number - 1, 0)
+    }
+
+    private var storyboardRow: GeneratedStoryboardBreakdownRow? {
+        GeneratedStoryboardBreakdown.rows(for: card)[safe: sceneIndex]
+    }
+}
+
+/// Script package: voiceover lines with the same storyboard thumbnails + timestamps
+/// as the Storyboard tab, plus a full-script copy action.
+struct CreatorScriptPackageView: View {
+    let card: DailyCard
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.m) {
+            if rows.isEmpty {
+                CopyBlock(
+                    title: "Script",
+                    bodyText: card.script?.nilIfBlank ?? "No script recorded for today."
+                )
+            } else {
+                ForEach(rows) { row in
+                    FolioTimedContentRow(
+                        eyebrow: "SCENE \(String(format: "%02d", row.sceneNumber))",
+                        timecode: row.timecode,
+                        thumbnailURL: row.thumbnailURL,
+                        bodyText: row.audioDialogue
+                    )
+                }
+
+                CopyBlock(
+                    title: "Full script",
+                    bodyText: card.script?.nilIfBlank ?? rows.map(\.audioDialogue).joined(separator: "\n")
+                )
+            }
+        }
+        .accessibilityIdentifier("today.shootFolio.script")
+    }
+
+    private var rows: [GeneratedStoryboardBreakdownRow] {
+        GeneratedStoryboardBreakdown.rows(for: card)
+    }
+}
+
+/// Caption package: Instagram post caption plus timed on-screen captions that
+/// reuse storyboard thumbnails and timeline timestamps.
+struct CreatorCaptionPackageView: View {
+    let card: DailyCard
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.m) {
+            CopyBlock(
+                title: "Caption",
+                bodyText: card.caption?.nilIfBlank ?? "No caption recorded for today."
+            )
+
+            if !onScreenRows.isEmpty {
+                Text("On-screen captions")
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .padding(.top, MCOSpace.xxs)
+
+                ForEach(onScreenRows) { row in
+                    FolioTimedContentRow(
+                        eyebrow: "SCENE \(String(format: "%02d", row.sceneNumber))",
+                        timecode: row.timecode,
+                        thumbnailURL: row.thumbnailURL,
+                        bodyText: row.onScreenText,
+                        secondaryText: row.onScreenTextPlacement
+                    )
+                }
+            }
+        }
+        .accessibilityIdentifier("today.shootFolio.caption")
+    }
+
+    private var onScreenRows: [GeneratedStoryboardBreakdownRow] {
+        GeneratedStoryboardBreakdown.rows(for: card).filter { row in
+            row.onScreenText.nilIfBlank != nil && row.onScreenText != "No on-screen text."
+        }
+    }
+}
+
+private struct FolioTimedContentRow: View {
+    let eyebrow: String
+    let timecode: String
+    let thumbnailURL: URL?
+    let bodyText: String
+    var secondaryText: String? = nil
+
+    var body: some View {
+        JournalBlock {
+            HStack(alignment: .top, spacing: MCOSpace.s) {
+                FolioStoryboardThumbnail(url: thumbnailURL, height: 88)
+
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    HStack(alignment: .firstTextBaseline, spacing: MCOSpace.s) {
+                        Text(eyebrow)
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(MCOTheme.Color.oxblood)
+                        Spacer(minLength: MCOSpace.s)
+                        Text(timecode)
+                            .font(MCOType.caption.weight(.semibold))
+                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                    }
+                    Text(bodyText)
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let secondaryText = secondaryText?.nilIfBlank {
+                        Text(secondaryText)
+                            .font(MCOType.caption)
+                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(eyebrow), \(timecode), \(bodyText)")
+    }
+}
+
+private struct FolioStoryboardThumbnail: View {
+    let url: URL?
+    var height: CGFloat = 88
+
+    var body: some View {
+        GeneratedStoryboardThumbnail(url: url)
+            .frame(width: height * 16 / 9, height: height)
+            .clipped()
     }
 }
 
