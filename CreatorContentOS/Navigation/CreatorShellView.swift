@@ -32,6 +32,7 @@ struct CreatorShellView: View {
 struct ProfileModeView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isSigningOut = false
     @State private var isCreatorProfileExpanded = false
 
@@ -59,6 +60,7 @@ struct ProfileModeView: View {
     private var header: some View {
         Text("Profile")
             .font(MCOType.screenTitle)
+            .tracking(MCOType.screenTitleTracking)
             .foregroundStyle(MCOTheme.Color.ink)
     }
 
@@ -86,8 +88,8 @@ struct ProfileModeView: View {
                         .transition(.opacity)
                 }
             }
-            .animation(.snappy(duration: 0.2), value: services.isRefreshingRepository)
-            .animation(.snappy(duration: 0.2), value: refreshFeedbackMessage)
+            .animation(MCOMotion.easeOut(duration: 0.18), value: services.isRefreshingRepository)
+            .animation(MCOMotion.easeOut(duration: 0.18), value: refreshFeedbackMessage)
         }
     }
 
@@ -112,7 +114,7 @@ struct ProfileModeView: View {
             }
             .opacity(services.isRefreshingRepository ? 0.6 : 1)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable(scale: 0.96))
         .disabled(services.isRefreshingRepository)
         .accessibilityLabel(services.isRefreshingRepository ? "Refreshing" : "Refresh profile data")
     }
@@ -178,7 +180,7 @@ struct ProfileModeView: View {
     private var creatorProfileSection: some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation(.snappy(duration: 0.22)) {
+                withAnimation(MCOMotion.preferential(reduceMotion, MCOMotion.easeOut(duration: 0.2))) {
                     isCreatorProfileExpanded.toggle()
                 }
             } label: {
@@ -200,7 +202,7 @@ struct ProfileModeView: View {
                 .padding(.vertical, MCOSpace.xs)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable(scale: 0.99))
             .accessibilityLabel(isCreatorProfileExpanded ? "Close Creator Profile" : "Open Creator Profile")
 
             if isCreatorProfileExpanded {
@@ -225,11 +227,12 @@ struct ProfileModeView: View {
                             .font(MCOType.caption)
                             .foregroundStyle(MCOTheme.Color.oxblood)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable(scale: 0.98))
                     .accessibilityLabel("Edit creator profile")
                 }
                 .padding(.bottom, MCOSpace.s)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                // Accordion: opacity only under reduced motion; otherwise light collapse feel.
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
         }
     }

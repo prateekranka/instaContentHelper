@@ -23,7 +23,7 @@ struct TodayView: View {
                     NavigationLink(value: CreatorRoute.shootFolio) {
                         TodayHeroCard(card: services.todayCard)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable(scale: 0.985))
                     .accessibilityLabel("Open today's Shoot Folio")
                 case .loading:
                     TodayLoadingCard()
@@ -51,8 +51,9 @@ struct TodayView: View {
             switch item {
             case .notToday:
                 NotTodaySheet()
-                    .presentationDetents([.height(560)])
+                    .presentationDetents([.height(560), .large])
                     .presentationDragIndicator(.visible)
+                    .presentationContentInteraction(.scrolls)
             }
         }
         .navigationBarHidden(true)
@@ -63,6 +64,7 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                 Text("Today")
                     .font(MCOType.display)
+                    .tracking(MCOType.displayTracking)
                     .foregroundStyle(MCOTheme.Color.ink)
                 Text(todayDateLine)
                     .font(.system(size: 17, weight: .regular, design: .serif))
@@ -147,19 +149,61 @@ struct TodayView: View {
 }
 
 private struct TodayLoadingCard: View {
+    @State private var shimmerPhase: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         JournalBlock {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 ProgressView()
+                    .controlSize(.regular)
                 Text("Checking today's plan")
                     .font(MCOType.headline)
                     .foregroundStyle(MCOTheme.Color.ink)
                 Text("The app is loading the latest published card.")
                     .font(MCOType.bodySmall)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
+
+                VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                    skeletonBar(widthFraction: 0.72)
+                    skeletonBar(widthFraction: 0.9)
+                    skeletonBar(widthFraction: 0.54)
+                }
+                .padding(.top, MCOSpace.xs)
+                .opacity(0.85)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
+                shimmerPhase = 1
+            }
+        }
+    }
+
+    private func skeletonBar(widthFraction: CGFloat) -> some View {
+        GeometryReader { proxy in
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(MCOTheme.Color.hairline.opacity(0.55))
+                .frame(width: proxy.size.width * widthFraction, height: 10)
+                .overlay {
+                    if !reduceMotion {
+                        LinearGradient(
+                            colors: [
+                                .clear,
+                                MCOTheme.Color.paperRaised.opacity(0.55),
+                                .clear
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .offset(x: (shimmerPhase * 2 - 1) * proxy.size.width)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        }
+        .frame(height: 10)
     }
 }
 
@@ -244,65 +288,42 @@ struct TodayHeroCard: View {
                                 .stroke(MCOTheme.Color.paperRaised.opacity(0.28), lineWidth: 1)
                         }
                     Spacer()
+                    Text("See what to shoot")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.72))
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.7))
                 }
 
                 Text(card.title)
                     .font(.system(size: 31, weight: .regular, design: .serif))
+                    .tracking(-0.4)
                     .foregroundStyle(MCOTheme.Color.paperRaised)
                     .multilineTextAlignment(.leading)
                     .lineLimit(3)
                     .minimumScaleFactor(0.85)
 
-                if let hook = card.effectiveHook?.nilIfBlank {
-                    HStack(alignment: .top, spacing: MCOSpace.xs) {
-                        Text("Hook")
-                            .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.6))
-                            .padding(.top, 2)
-                        Text(hook)
-                            .font(.system(size: 17, weight: .regular, design: .serif))
-                            .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.9))
-                            .multilineTextAlignment(.leading)
-                            .lineLimit(3)
-                    }
-                }
-
-                if !scenePlanLines.isEmpty {
-                    VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                        ForEach(Array(scenePlanLines.enumerated()), id: \.offset) { _, sceneLine in
-                            HStack(alignment: .top, spacing: MCOSpace.xs) {
-                            Text("\(sceneLine.number)")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.5))
-                                    .frame(width: 16, alignment: .leading)
-                                Text(sceneLine.text)
-                                    .font(MCOType.caption)
-                                    .lineLimit(2)
-                                    .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.78))
-                            }
-                        }
-                    }
-                    .padding(.top, MCOSpace.xs)
+                if let whyLine = glanceSupportingLine {
+                    Text(whyLine)
+                        .font(.system(size: 17, weight: .regular, design: .serif))
+                        .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.88))
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
                 }
 
                 Spacer(minLength: 0)
             }
             .padding(MCOSpace.l)
         }
-        .frame(minHeight: 300)
+        .frame(minHeight: 240)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: Color.black.opacity(0.14), radius: 18, x: 0, y: 10)
     }
 
-    /// Ordered scene plan shown on the Today card: every meaningful scene as an
-    /// action line (not just the first two), so the creator sees the full shape
-    /// of the shoot before opening the folio.
-    private var scenePlanLines: [(number: Int, text: String)] {
-        card.scenes.map { scene in
-            (scene.number, scene.title.nilIfBlank ?? "Scene \(scene.number)")
-        }
+    /// Glance density: one supporting sentence. Prefer why-today; fall back to hook.
+    private var glanceSupportingLine: String? {
+        card.whyToday.nilIfBlank ?? card.effectiveHook?.nilIfBlank
     }
 }
 

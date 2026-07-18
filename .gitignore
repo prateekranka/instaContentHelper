@@ -3,6 +3,7 @@ DerivedData/
 .build/
 build/
 build-logs/
+.worktrees/
 .commandcode/
 .omo/
 *.xcuserstate
