@@ -318,182 +318,14 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
     }
 }
 
-struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
+struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumbnailRepository {
+    private enum DailyGenerationLogAction: String {
+        case generateDay = "generate_day"
+        case regenerateDay = "regenerate_day"
+    }
+
     let client: SupabaseClient
     var runtimeConfiguration: SupabaseRuntimeConfiguration?
-
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        let asyncRequest = SupabaseGenerateWeekRequest(
-            creatorID: creatorID,
-            weekStartDate: weekStartDate,
-            weeklySetupID: weeklySetupID,
-            mode: mode,
-            preserveManualEdits: false,
-            mock: nil,
-            responseMode: .async,
-            featureFlags: ["parallel_week_generation"],
-            clientContext: SupabaseGenerationClientContext(
-                uiSurface: "weekly_manager",
-                action: "generate_week",
-                selectedWeekStart: weekStartDate,
-                scheduledDate: nil,
-                dayGuidancePresent: nil,
-                dayGuidanceChars: nil
-            )
-        )
-        do {
-            logGeneration("generate_week invoke_initial mode=\(mode.rawValue) week_start=\(weekStartDate)")
-            let initial = try await invokeInitialGenerateWeek(asyncRequest)
-            logGeneration("generate_week initial \(generateWeekInvocationSummary(initial))")
-
-            switch initial {
-            case .draft(let response):
-                let draft = response.domainDraft()
-                if response.status == "partial" || (response.failedDayCount ?? 0) > 0 {
-                    await progress?(response.weekProgress)
-                } else {
-                    await progress?(.savingDraftWeek(from: draft))
-                    await progress?(.readyForReview(from: draft))
-                }
-                return draft
-            case .running(let status):
-                let currentProgress = status.weekProgress
-                await progress?(currentProgress)
-                logGeneration("generate_week polling_start \(statusSummary(status))")
-                return try await pollGeneratedWeek(
-                    generationID: status.generationID,
-                    creatorID: creatorID,
-                    progress: progress,
-                    lastProgress: currentProgress
-                )
-            case .failed(let status):
-                logGeneration("generate_week initial_failed \(statusSummary(status))")
-                throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_week")
-            }
-        } catch {
-            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
-                logGeneration("generate_week failed mapped_error=\(code)")
-                throw RepositoryError.edgeFunction(code)
-            }
-            logGeneration("generate_week failed error=\(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    private func invokeInitialGenerateWeek(
-        _ request: SupabaseGenerateWeekRequest
-    ) async throws -> SupabaseGenerateWeekInvocation {
-        var attempts = 0
-        while true {
-            do {
-                return try await invokeGenerateWeek(request)
-            } catch {
-                attempts += 1
-                guard attempts < 3, SupabaseGenerationRetryPolicy.isTransientPollingError(error) else {
-                    throw error
-                }
-                logGeneration("generate_week initial transient_error attempt=\(attempts) retrying_after=2s error=\(error.localizedDescription)")
-                try await Task.sleep(nanoseconds: 2_000_000_000)
-            }
-        }
-    }
-
-    private func pollGeneratedWeek(
-        generationID: UUID,
-        creatorID: UUID,
-        progress: WeeklyGenerationProgressHandler?,
-        lastProgress initialProgress: WeeklyGenerationProgress? = nil
-    ) async throws -> GeneratedWeekDraft {
-        let deadline = Date().addingTimeInterval(1_800)
-        var pollAfterSeconds = 5
-        var lastProgress = initialProgress
-        var acceptedRunNotFoundCount = 0
-        var ambiguousFailedStatusCount = 0
-
-        while Date() < deadline {
-            logGeneration("generate_week poll_wait generation_id=\(generationID) seconds=\(pollAfterSeconds)")
-            try await Task.sleep(nanoseconds: UInt64(pollAfterSeconds) * 1_000_000_000)
-            let invocation: SupabaseGenerateWeekInvocation
-            do {
-                invocation = try await invokeGenerateWeek(
-                    statusRequest(generationID: generationID, creatorID: creatorID)
-                )
-                logGeneration("generate_week poll_result \(generateWeekInvocationSummary(invocation))")
-            } catch {
-                if SupabaseFunctionErrorMapper.errorCode(from: error) == "invalid_generated_week",
-                   ambiguousFailedStatusCount < 12,
-                   let lastProgress,
-                   lastProgress.phase != .failed {
-                    ambiguousFailedStatusCount += 1
-                    await progress?(lastProgress.waitingForStatusRetry)
-                    pollAfterSeconds = 5
-                    logGeneration("generate_week poll ambiguous_failed_status count=\(ambiguousFailedStatusCount) retrying_after=\(pollAfterSeconds)s")
-                    continue
-                }
-                if SupabaseGenerationRetryPolicy.isAcceptedRunNotFoundStatusError(error) {
-                    acceptedRunNotFoundCount += 1
-                    if let lastProgress {
-                        await progress?(lastProgress.waitingForStatusRetry)
-                    }
-                    pollAfterSeconds = acceptedRunNotFoundCount < 6 ? 2 : 5
-                    logGeneration("generate_week poll accepted_run_not_found count=\(acceptedRunNotFoundCount) retrying_after=\(pollAfterSeconds)s")
-                    continue
-                }
-                guard SupabaseGenerationRetryPolicy.isRetryableStatusPollingError(error) else {
-                    logGeneration("generate_week poll failed_non_retryable error=\(error.localizedDescription)")
-                    throw error
-                }
-                if let lastProgress {
-                    await progress?(lastProgress.waitingForStatusRetry)
-                }
-                pollAfterSeconds = 2
-                logGeneration("generate_week poll transient_error retrying_after=\(pollAfterSeconds)s error=\(error.localizedDescription)")
-                continue
-            }
-
-            switch invocation {
-            case .draft(let response):
-                let draft = response.domainDraft()
-                logGeneration("generate_week poll_terminal draft \(draftSummary(response))")
-                if response.status == "partial" || (response.failedDayCount ?? 0) > 0 {
-                    await progress?(response.weekProgress)
-                } else {
-                    await progress?(.savingDraftWeek(from: draft))
-                }
-                return draft
-            case .running(let status):
-                acceptedRunNotFoundCount = 0
-                ambiguousFailedStatusCount = 0
-                let currentProgress = status.weekProgress
-                lastProgress = currentProgress
-                await progress?(currentProgress)
-                pollAfterSeconds = max(2, min(status.pollAfterSeconds ?? 5, 15))
-            case .failed(let status):
-                if status.isAmbiguousEarlyWeekFailure,
-                   ambiguousFailedStatusCount < 12,
-                   let lastProgress,
-                   lastProgress.phase != .failed {
-                    ambiguousFailedStatusCount += 1
-                    await progress?(lastProgress.waitingForStatusRetry)
-                    pollAfterSeconds = 5
-                    logGeneration("generate_week poll ambiguous_terminal_failure count=\(ambiguousFailedStatusCount) retrying_after=\(pollAfterSeconds)s \(statusSummary(status))")
-                    continue
-                }
-                logGeneration("generate_week poll_terminal failed \(statusSummary(status))")
-                throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_week")
-            }
-        }
-
-        logGeneration("generate_week poll_timeout generation_id=\(generationID)")
-        throw RepositoryError.edgeFunction("generation_timeout")
-    }
 
     func regenerateDay(
         creatorID: UUID,
@@ -523,16 +355,17 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
                     )
                 )
             )
-            logGeneration("regenerate_day initial \(regenerateInvocationSummary(initial))")
+            logGeneration("regenerate_day initial \(dailyGenerationInvocationSummary(initial))")
 
             switch initial {
             case .completed(let response):
                 return response.domainResult
             case .running(let status):
                 logGeneration("regenerate_day polling_start \(statusSummary(status))")
-                return try await pollRegeneratedDay(
+                return try await pollDailyGeneration(
                     generationID: status.generationID,
-                    creatorID: creatorID
+                    creatorID: creatorID,
+                    logAction: .regenerateDay
                 )
             case .failed(let status):
                 logGeneration("regenerate_day initial_failed \(statusSummary(status))")
@@ -553,11 +386,11 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         scheduledDate: String,
         dayBrief: String,
         context: WorkspaceContext
-    ) async throws -> RegeneratedDayResult {
+    ) async throws -> DailyGenerationResult {
         do {
             logGeneration("generate_day invoke_initial scheduled_date=\(scheduledDate) brief_chars=\(dayBrief.count)")
-            let initial = try await invokeRegenerateDay(
-                SupabaseGenerateDayRequest(
+            let initial = try await invokeDailyGeneration(
+                SupabaseDailyGenerationRequest(
                     creatorID: creatorID,
                     scheduledDate: scheduledDate,
                     dayBrief: dayBrief,
@@ -572,16 +405,17 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
                     )
                 )
             )
-            logGeneration("generate_day initial \(regenerateInvocationSummary(initial))")
+            logGeneration("generate_day initial \(dailyGenerationInvocationSummary(initial))")
 
             switch initial {
             case .completed(let response):
                 return response.domainResult
             case .running(let status):
                 logGeneration("generate_day polling_start \(statusSummary(status))")
-                return try await pollRegeneratedDay(
+                return try await pollDailyGeneration(
                     generationID: status.generationID,
-                    creatorID: creatorID
+                    creatorID: creatorID,
+                    logAction: .generateDay
                 )
             case .failed(let status):
                 logGeneration("generate_day initial_failed \(statusSummary(status))")
@@ -593,63 +427,6 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
                 throw RepositoryError.edgeFunction(code)
             }
             logGeneration("generate_day failed error=\(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    func retryQueuedDay(
-        generationID: UUID,
-        scheduledDate: String,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        do {
-            logGeneration("retry_day invoke generation_id=\(generationID) scheduled_date=\(scheduledDate)")
-            let response = try await client.functions.invoke(
-                "generate-week",
-                options: FunctionInvokeOptions(
-                    body: SupabaseRetryQueuedDayRequest(
-                        generationID: generationID,
-                        scheduledDate: scheduledDate
-                    )
-                )
-            ) { data, _ in
-                try JSONDecoder().decode(SupabaseRetryQueuedDayResponse.self, from: data)
-            }
-            logGeneration("retry_day accepted generation_id=\(response.generationID) status=\(response.status) poll_after=\(response.pollAfterSeconds ?? -1)")
-            return try await pollGeneratedWeek(
-                generationID: response.generationID,
-                creatorID: context.creatorID,
-                progress: progress
-            )
-        } catch {
-            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
-                logGeneration("retry_day failed mapped_error=\(code)")
-                throw RepositoryError.edgeFunction(code)
-            }
-            logGeneration("retry_day failed error=\(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    func cancelGeneration(
-        generationID: UUID,
-        context: WorkspaceContext
-    ) async throws {
-        do {
-            logGeneration("cancel_generation invoke generation_id=\(generationID)")
-            let _: SupabaseCancelGenerationResponse = try await client.functions.invoke(
-                "generate-week",
-                options: FunctionInvokeOptions(
-                    body: SupabaseCancelGenerationRequest(generationID: generationID)
-                )
-            )
-        } catch {
-            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
-                logGeneration("cancel_generation failed mapped_error=\(code)")
-                throw RepositoryError.edgeFunction(code)
-            }
-            logGeneration("cancel_generation failed error=\(error.localizedDescription)")
             throw error
         }
     }
@@ -684,83 +461,38 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         }
     }
 
-    func generateStoryboardThumbnailsForWeek(
-        creatorID: UUID,
-        weeklyPlanID: UUID,
-        force: Bool,
-        maxRows: Int,
-        context: WorkspaceContext
-    ) async throws -> SupabaseGenerateStoryboardThumbnailsResponse {
-        do {
-            return try await client.functions.invoke(
-                "generate-storyboard-thumbnails",
-                options: FunctionInvokeOptions(
-                    body: SupabaseGenerateStoryboardThumbnailsRequest(
-                        creatorID: creatorID,
-                        weeklyPlanID: weeklyPlanID,
-                        force: force,
-                        maxRows: maxRows
-                    )
-                )
-            )
-        } catch {
-            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
-                throw RepositoryError.edgeFunction(code)
-            }
-            throw error
-        }
-    }
-
-    private func invokeGenerateWeek<Body: Encodable>(
-        _ body: Body
-    ) async throws -> SupabaseGenerateWeekInvocation {
-        if let statusBody = body as? SupabaseGenerateWeekStatusRequest,
-           let runtimeConfiguration {
-            return try await invokeGenerateWeekDirectly(
-                statusBody,
-                runtimeConfiguration: runtimeConfiguration,
-                decode: { try SupabaseGenerateWeekInvocation.decode($0) }
-            )
-        }
-
-        return try await client.functions.invoke(
-            "generate-week",
-            options: FunctionInvokeOptions(body: body)
-        ) { data, _ in
-            try SupabaseGenerateWeekInvocation.decode(data)
-        }
-    }
-
-    private func pollRegeneratedDay(
+    private func pollDailyGeneration(
         generationID: UUID,
-        creatorID: UUID
-    ) async throws -> RegeneratedDayResult {
-        try await SupabaseRegeneratedDayPoller.poll(
-            deadline: Date().addingTimeInterval(SupabaseRegeneratedDayPoller.defaultTimeoutSeconds),
+        creatorID: UUID,
+        logAction: DailyGenerationLogAction
+    ) async throws -> DailyGenerationResult {
+        let action = logAction.rawValue
+        return try await SupabaseDailyGenerationPoller.poll(
+            deadline: Date().addingTimeInterval(SupabaseDailyGenerationPoller.defaultTimeoutSeconds),
             sleep: { nanoseconds in
                 try await Task.sleep(nanoseconds: nanoseconds)
             },
             invokeStatus: {
-                let invocation = try await invokeRegenerateDay(
+                let invocation = try await invokeDailyGeneration(
                     statusRequest(generationID: generationID, creatorID: creatorID)
                 )
-                logGeneration("regenerate_day poll_result \(regenerateInvocationSummary(invocation))")
+                logGeneration("\(action) poll_result \(dailyGenerationInvocationSummary(invocation))")
                 return invocation
             },
             observe: { event in
                 switch event {
                 case .waiting(let seconds):
-                    logGeneration("regenerate_day poll_wait generation_id=\(generationID) seconds=\(seconds)")
+                    logGeneration("\(action) poll_wait generation_id=\(generationID) seconds=\(seconds)")
                 case .acceptedRunNotFound(let count, let retryAfterSeconds):
-                    logGeneration("regenerate_day poll accepted_run_not_found count=\(count) retrying_after=\(retryAfterSeconds)s")
+                    logGeneration("\(action) poll accepted_run_not_found count=\(count) retrying_after=\(retryAfterSeconds)s")
                 case .retryableStatusFailure(let count, let retryAfterSeconds):
-                    logGeneration("regenerate_day poll retryable_status_failure count=\(count) retrying_after=\(retryAfterSeconds)s")
+                    logGeneration("\(action) poll retryable_status_failure count=\(count) retrying_after=\(retryAfterSeconds)s")
                 case .completed(let completedGenerationID, let scheduledDate):
-                    logGeneration("regenerate_day poll_terminal completed generation_id=\(completedGenerationID) scheduled_date=\(scheduledDate)")
+                    logGeneration("\(action) poll_terminal completed generation_id=\(completedGenerationID) scheduled_date=\(scheduledDate)")
                 case .failed(let status):
-                    logGeneration("regenerate_day poll_terminal failed \(statusSummary(status))")
+                    logGeneration("\(action) poll_terminal failed \(statusSummary(status))")
                 case .timedOut:
-                    logGeneration("regenerate_day poll_timeout generation_id=\(generationID)")
+                    logGeneration("\(action) poll_timeout generation_id=\(generationID)")
                 }
             }
         )
@@ -769,12 +501,18 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
     private func invokeRegenerateDay<Body: Encodable>(
         _ body: Body
     ) async throws -> SupabaseRegenerateDayInvocation {
-        if let statusBody = body as? SupabaseGenerateWeekStatusRequest,
+        try await invokeDailyGeneration(body)
+    }
+
+    private func invokeDailyGeneration<Body: Encodable>(
+        _ body: Body
+    ) async throws -> SupabaseDailyGenerationInvocation {
+        if let statusBody = body as? SupabaseGenerationStatusRequest,
            let runtimeConfiguration {
-            return try await invokeGenerateWeekDirectly(
+            return try await invokeGenerationEdgeFunctionDirectly(
                 statusBody,
                 runtimeConfiguration: runtimeConfiguration,
-                decode: { try SupabaseRegenerateDayInvocation.decode($0) }
+                decode: { try SupabaseDailyGenerationInvocation.decode($0) }
             )
         }
 
@@ -782,15 +520,15 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
             "generate-week",
             options: FunctionInvokeOptions(body: body)
         ) { data, _ in
-            try SupabaseRegenerateDayInvocation.decode(data)
+            try SupabaseDailyGenerationInvocation.decode(data)
         }
     }
 
     private func statusRequest(
         generationID: UUID,
         creatorID: UUID
-    ) -> SupabaseGenerateWeekStatusRequest {
-        SupabaseGenerateWeekStatusRequest(
+    ) -> SupabaseGenerationStatusRequest {
+        SupabaseGenerationStatusRequest(
             generationID: generationID,
             creatorID: creatorID
         )
@@ -800,18 +538,7 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         print("[ContentHelperGenerationRepository] \(Date()) \(message)")
     }
 
-    private func generateWeekInvocationSummary(_ invocation: SupabaseGenerateWeekInvocation) -> String {
-        switch invocation {
-        case .draft(let response):
-            return "draft \(draftSummary(response))"
-        case .running(let status):
-            return "running \(statusSummary(status))"
-        case .failed(let status):
-            return "failed \(statusSummary(status))"
-        }
-    }
-
-    private func regenerateInvocationSummary(_ invocation: SupabaseRegenerateDayInvocation) -> String {
+    private func dailyGenerationInvocationSummary(_ invocation: SupabaseDailyGenerationInvocation) -> String {
         switch invocation {
         case .completed(let response):
             return "completed generation_id=\(response.generationID) weekly_plan_id=\(response.weeklyPlanID) scheduled_date=\(response.targetScheduledDate) status=\(response.status)"
@@ -822,54 +549,21 @@ struct SupabaseWeeklyGenerationRepository: WeeklyGenerationRepository {
         }
     }
 
-    private func draftSummary(_ response: SupabaseGenerateWeekResponse) -> String {
-        let failedDays = response.dayStatuses.filter(\.isFailed).compactMap { status -> String? in
-            guard let date = status.scheduledDate else { return nil }
-            if let error = status.errorCode?.nilIfBlank {
-                return "\(date):\(error)"
-            }
-            return date
-        }
-        return [
-            "generation_id=\(response.generationID)",
-            "weekly_plan_id=\(response.weeklyPlanID)",
-            "status=\(response.status)",
-            "cards=\(response.dailyCards.count)",
-            "saved=\(response.savedDayCount.map(String.init) ?? "unknown")",
-            "failed=\(response.failedDayCount.map(String.init) ?? "unknown")",
-            failedDays.isEmpty ? "" : "failed_days=\(failedDays.joined(separator: ","))"
-        ].filter { !$0.isEmpty }.joined(separator: " ")
-    }
-
-    private func statusSummary(_ status: SupabaseGenerateWeekStatusResponse) -> String {
-        let runningDays = status.dayStatuses.filter { $0.isRunning || $0.isRetrying }
-        let queuedDays = status.dayStatuses.filter(\.isQueued)
-        let completed = status.dayStatuses.filter(\.isCompleted).count
-        let failedDays = status.dayStatuses.filter(\.isFailed).compactMap { day -> String? in
-            guard let date = day.scheduledDate else { return nil }
-            if let error = day.errorCode?.nilIfBlank {
-                return "\(date):\(error)"
-            }
-            return date
-        }
-        return [
+    private func statusSummary(_ status: SupabaseGenerationStatusResponse) -> String {
+        [
             "generation_id=\(status.generationID)",
             "weekly_plan_id=\(status.weeklyPlanID?.uuidString ?? "none")",
             "status=\(status.status)",
-            "saved=\(status.savedDayCount.map(String.init) ?? "unknown")",
-            "failed=\(status.failedDayCount.map(String.init) ?? "unknown")",
-            "completed=\(completed)",
-            "running=\(runningDays.count)",
-            runningDays.isEmpty ? "" : "running_days=\(runningDays.compactMap(\.scheduledDate).joined(separator: ","))",
-            "queued=\(queuedDays.count)",
-            queuedDays.isEmpty ? "" : "queued_days=\(queuedDays.compactMap(\.scheduledDate).joined(separator: ","))",
-            "poll_after=\(status.pollAfterSeconds.map(String.init) ?? "unknown")",
-            status.error.map { "error=\($0)" } ?? "",
-            failedDays.isEmpty ? "" : "failed_days=\(failedDays.joined(separator: ","))"
-        ].filter { !$0.isEmpty }.joined(separator: " ")
+            status.targetScheduledDate.map { "target_scheduled_date=\($0)" },
+            status.message.map { "message=\($0)" },
+            status.pollAfterSeconds.map { "poll_after=\($0)" },
+            status.error.map { "error=\($0)" }
+        ]
+            .compactMap { $0 }
+            .joined(separator: " ")
     }
 
-    private func invokeGenerateWeekDirectly<Response>(
+    private func invokeGenerationEdgeFunctionDirectly<Response>(
         _ body: some Encodable,
         runtimeConfiguration: SupabaseRuntimeConfiguration,
         decode: (Data) throws -> Response
@@ -909,13 +603,13 @@ private struct DirectFunctionHTTPError: Error {
     let data: Data
 }
 
-enum SupabaseRegeneratedDayPoller {
+enum SupabaseDailyGenerationPoller {
     enum Event: Sendable {
         case waiting(seconds: Int)
         case acceptedRunNotFound(count: Int, retryAfterSeconds: Int)
         case retryableStatusFailure(count: Int, retryAfterSeconds: Int)
         case completed(generationID: UUID, scheduledDate: String)
-        case failed(SupabaseGenerateWeekStatusResponse)
+        case failed(SupabaseGenerationStatusResponse)
         case timedOut
     }
 
@@ -926,9 +620,9 @@ enum SupabaseRegeneratedDayPoller {
         now: @Sendable () -> Date = Date.init,
         initialPollAfterSeconds: Int = 3,
         sleep: @Sendable (UInt64) async throws -> Void,
-        invokeStatus: @Sendable () async throws -> SupabaseRegenerateDayInvocation,
+        invokeStatus: @Sendable () async throws -> SupabaseDailyGenerationInvocation,
         observe: @Sendable (Event) -> Void = { _ in }
-    ) async throws -> RegeneratedDayResult {
+    ) async throws -> DailyGenerationResult {
         var pollAfterSeconds = initialPollAfterSeconds
         var acceptedRunNotFoundCount = 0
         var retryableStatusFailureCount = 0
@@ -936,7 +630,7 @@ enum SupabaseRegeneratedDayPoller {
         while now() < deadline {
             observe(.waiting(seconds: pollAfterSeconds))
             try await sleep(UInt64(max(pollAfterSeconds, 0)) * 1_000_000_000)
-            let invocation: SupabaseRegenerateDayInvocation
+            let invocation: SupabaseDailyGenerationInvocation
             do {
                 invocation = try await invokeStatus()
             } catch {

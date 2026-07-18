@@ -191,10 +191,19 @@ export async function handleGenerateStoryboardThumbnailRequest(
         event: "storyboard_thumbnail_gemini_failed",
         daily_card_id: dailyCardID,
         row_index: rowIndex,
-        model,
+        model: error instanceof GeminiImageGenerationError
+          ? error.model
+          : model,
+        upstream_status: error instanceof GeminiImageGenerationError
+          ? error.status
+          : undefined,
+        provider_code: error instanceof GeminiImageGenerationError
+          ? error.providerCode
+          : undefined,
         error: code,
         detail: error instanceof GeminiImageGenerationError
-          ? String((error as Error & { cause?: unknown }).cause ?? "")
+          ? error.providerMessage ??
+            String((error as Error & { cause?: unknown }).cause ?? "")
           : undefined,
       }));
       return jsonResponse({ error: code }, 502);

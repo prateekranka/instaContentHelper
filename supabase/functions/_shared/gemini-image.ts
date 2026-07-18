@@ -21,17 +21,26 @@ export class GeminiImageGenerationError extends Error {
   readonly code: string;
   readonly status?: number;
   readonly model: string;
+  readonly providerCode?: string;
+  readonly providerMessage?: string;
 
   constructor(
     code: string,
     model: string,
-    options: { status?: number; cause?: unknown } = {},
+    options: {
+      status?: number;
+      cause?: unknown;
+      providerCode?: string;
+      providerMessage?: string;
+    } = {},
   ) {
     super(code);
     this.name = "GeminiImageGenerationError";
     this.code = code;
     this.model = model;
     this.status = options.status;
+    this.providerCode = options.providerCode;
+    this.providerMessage = options.providerMessage;
     if (options.cause !== undefined) {
       (this as Error & { cause?: unknown }).cause = options.cause;
     }
@@ -93,9 +102,6 @@ export async function generateGeminiImage(
           mime_type: options.mimeType ?? "image/jpeg",
           aspect_ratio: options.aspectRatio ?? "16:9",
           image_size: options.imageSize ?? "1K",
-          // Force inline bytes. URI delivery leaves `data` empty and breaks
-          // our storage upload path.
-          delivery: "inline",
         },
       }),
     },
@@ -103,12 +109,15 @@ export async function generateGeminiImage(
 
   const responseBody = await response.json().catch(() => null);
   if (!response.ok) {
+    const providerError = geminiErrorDetails(responseBody);
     throw new GeminiImageGenerationError(
       "storyboard_thumbnail_gemini_failed",
       options.model,
       {
         status: response.status,
-        cause: geminiErrorCode(responseBody),
+        cause: providerError.code,
+        providerCode: providerError.code,
+        providerMessage: providerError.message,
       },
     );
   }
@@ -144,18 +153,35 @@ export async function resolveGeneratedImage(
 }
 
 export function geminiErrorCode(value: unknown): string {
+  return geminiErrorDetails(value).code;
+}
+
+function geminiErrorDetails(
+  value: unknown,
+): { code: string; message?: string } {
   if (!value || typeof value !== "object") {
-    return "unknown";
+    return { code: "unknown" };
   }
   const error = (value as Record<string, unknown>).error;
   if (!error || typeof error !== "object") {
-    return "unknown";
+    return { code: "unknown" };
   }
   const record = error as Record<string, unknown>;
   const code = record.status ?? record.code ?? record.message;
-  return typeof code === "string" && code.trim()
+  const normalizedCode = typeof code === "string" && code.trim()
     ? code.trim()
     : String(code ?? "unknown");
+  const message = typeof record.message === "string" && record.message.trim()
+    ? sanitizeProviderMessage(record.message)
+    : undefined;
+  return { code: normalizedCode, message };
+}
+
+function sanitizeProviderMessage(message: string): string {
+  return message
+    .replace(/AIza[\w-]{20,}/g, "[REDACTED]")
+    .replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]")
+    .slice(0, 500);
 }
 
 function shouldFallbackToNextModel(error: GeminiImageGenerationError): boolean {

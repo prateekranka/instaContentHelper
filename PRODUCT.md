@@ -8,7 +8,7 @@ product
 
 Creator is the primary daily user. She opens the iPhone app from a morning routine, sees the prepared content card for today, decides whether she can shoot it, copies the package she needs, requests an easier option when needed, and marks the day state. She should not have to prompt, research, or manage a content calendar.
 
-Manager is the admin/operator. Manager maintains the creator profile, prepares the weekly context, imports references, generates a draft week, reviews and edits daily cards, publishes the week, and monitors whether Creator has usable content.
+Manager is the admin/operator. Manager maintains the creator profile, prepares weekly context, imports references, generates one daily card at a time from an explicit daily brief and target date, reviews and edits daily cards, publishes when ready, and monitors whether Creator has usable content.
 
 Future users may include editors, helpers, coaches, scouts, and additional creators inside workspaces, but the V1 surface remains bespoke and role-focused.
 
@@ -16,7 +16,17 @@ Future users may include editors, helpers, coaches, scouts, and additional creat
 
 Content Helper turns a weekly setup pass by Manager into a clear daily content workflow for Creator. It replaces scattered planning across ChatGPT, screenshots, links, notes, and manual coordination with one shared native iPhone app backed by Supabase.
 
-Success means Manager can generate and publish a high-quality seven-day Instagram content week, and Creator can open the app each day and know exactly what to shoot, say, caption, post, or use as a backup without entering strategy mode.
+Success means Manager can generate and publish high-quality daily Instagram content cards, and Creator can open the app each day and know exactly what to shoot, say, caption, post, or use as a backup without entering strategy mode.
+
+## Generation
+
+Supported generation is **day-wise only**. Users generate one daily card at a time from an explicit daily brief and target date (today, tomorrow, or another chosen date).
+
+Weekly batch generation, seven-day fan-out, and parallel day lanes are **removed** — not paused or hidden behind a flag. There is no supported path to generate a full week in one request.
+
+`weekly_plans` remains only as a storage and publishing container when the product groups daily cards by Monday-anchored week. It is not a generation unit.
+
+Historical note: full-week parallel generation existed on branch `archive/full-week-parallel-generation` and is documented in `docs/day-at-a-time-pivot-brief.md`.
 
 ## Brand Personality
 

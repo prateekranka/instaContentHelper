@@ -836,7 +836,7 @@ struct ReferenceLibrarySectionDetailView: View {
                         Text("What belongs here")
                             .font(MCOType.tinyLabel)
                             .foregroundStyle(MCOTheme.Color.oxblood)
-                        Text("This section groups references that can inform weekly generation. The next useful layer is a filtered list of all saved references in this bucket.")
+                        Text("This section groups references that can inform daily content generation. The next useful layer is a filtered list of all saved references in this bucket.")
                             .font(MCOType.bodySmall)
                             .foregroundStyle(MCOTheme.Color.ink)
                             .fixedSize(horizontal: false, vertical: true)

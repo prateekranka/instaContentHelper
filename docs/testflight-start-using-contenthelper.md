@@ -15,37 +15,42 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
    Owner sessions can use the Testers tab in Manager Control to invite, resend,
    or revoke tester access. Editors can use Manager tools but cannot manage
    testers.
-6. Open Weekly.
-7. Confirm this week's plan:
+6. Open Daily to generate content one day at a time when the week is not
+   published:
+   - Keep all target dates inside one Monday-Sunday range. Check the range in
+     Weekly first if needed; a date in another week belongs to a different
+     weekly plan draft container.
+   - Pick the target date.
+   - Write a non-empty day brief for that date, including one-off asks such as
+     brand deliverables.
+   - Tap Generate for that date.
+   - Review the returned storyboard and caption. Generated cards accumulate in
+     the current weekly plan draft container as you add more days.
+   - Repeat for the other dates in that same range until the week has seven
+     reviewed cards.
+7. Open Weekly to review, edit, regenerate, and publish:
    - Check that the week range is correct.
-   - Use Edit brief to update the Weekly Brief before generating or publishing.
-   - Confirm the seven day cards are useful for Creator.
-   - Soft-lock or publish the week.
-   - Verify that Today has a current card after publish.
-8. Generate a weekly AI draft when the week is not published:
-   - Confirm the weekly setup context looks current.
-   - Tap Generate week.
-   - Review the generated strategy, warnings, and assumptions.
-   - Inspect all seven generated cards. Expand Full generated card to check the
-     script, no-voiceover version, on-screen text, CTA, hashtags, cover, post
-     instructions, audio notes, assumptions, and source.
+   - Use Edit brief to update the Weekly Brief and setup context.
+   - Inspect generated cards for each day. Expand Full generated card to check
+     the script, no-voiceover version, on-screen text, CTA, hashtags, cover,
+     post instructions, audio notes, assumptions, and source.
    - Edit any card title, why-today note, shootability, shoot time, scene list,
      caption, backup story, or backup caption-only text that needs correction.
    - Regenerate an individual day when only one card is weak. The app updates
      that day only and keeps the rest of the reviewed draft intact.
-   - Publish only after review.
+   - Publish only after all seven cards are reviewed.
    - Verify that Today shows the generated card after publish.
-9. Open References.
-10. Use Reference Import:
+8. Open References.
+9. Use Reference Import:
    - Paste Instagram account, reel, or audio URLs, or upload a CSV.
    - Preview the import.
    - Confirm the import.
    - Review any Needs your call items.
-11. Weekly Sunday setup: capture location, workout or race schedule, family,
+10. Weekly Sunday setup: capture location, workout or race schedule, family,
     travel or school moments, brand or collaboration obligations, trend and
     audio options worth considering, and no-go topics.
-12. Daily check: verify Creator has a useful Today card, and intervene only if the
-    card is wrong or no card appears.
+11. Daily check: verify Creator has a useful Today card, and intervene only if
+    the card is wrong or no card appears.
 
 ### Manager troubleshooting
 
@@ -60,9 +65,10 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
   `xcodebuild` before uploading the next TestFlight build.
 - No Today card: publish the current week, then refresh the app. Confirm the
   daily card date matches today.
-- Generate button disabled: confirm the device role is owner or editor,
-  generation is not already running, and the week is not soft locked or
-  published.
+- Daily Generate button disabled: confirm the device role is owner or editor,
+  the day brief is non-empty, and generation is not already running for that
+  date. If the backend rejects a date in a published week, choose a date in an
+  open future week.
 - Weekly Brief edit failed: confirm the device role is owner or editor and the
   week has a matching weekly setup row in Supabase.
 - Regenerate day disabled: confirm a draft weekly plan exists, the week is not
@@ -70,12 +76,12 @@ rebuild, use `docs/live-supabase-testflight-runbook.md`.
 - Missing AI provider key: set `DEEPSEEK_API_KEY` as the primary Supabase Edge
   Function secret, with `OPENAI_API_KEY` optional as fallback. The app must not
   contain these keys.
-- Generation failed: check the stable error shown in Weekly, then inspect the
-  `generate-week` Edge Function logs.
-- Draft exists but is not published: open Weekly, review the generated draft,
-  then publish.
-- Published week is locked: create or generate a future week. Do not overwrite a
-  published week.
+- Generation failed: check the stable error shown on Daily or Weekly, then inspect
+  the `generate-week` Edge Function logs for `generate_day` or `regenerate_day`.
+- Draft exists but is not published: open Weekly, finish reviewing all seven
+  cards, then publish.
+- Published week is locked: plan or generate days for a future week. Do not
+  overwrite a published week.
 - Ideas are too generic: add better Reference Import sources, update weekly
   setup details, and add no-go topics before regenerating a draft.
 - Import disabled: confirm the app is live and the device role is owner or

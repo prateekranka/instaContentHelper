@@ -1,6 +1,7 @@
 import XCTest
 @testable import CreatorContentOS
 
+@MainActor
 final class GeneratedStoryboardBreakdownTests: XCTestCase {
     func testRowsAlignSceneShotVoiceoverAndOnScreenTextByIndex() {
         let card = makeCard(
@@ -192,28 +193,155 @@ final class GeneratedStoryboardBreakdownTests: XCTestCase {
         XCTAssertEqual(object["revision_instructions"] as? String, "Make the gym shot brighter and closer.")
     }
 
-    func testThumbnailWeekRequestEncodesResumeBatchFields() throws {
-        let request = SupabaseGenerateStoryboardThumbnailsRequest(
-            creatorID: UUID(uuidString: "22222222-2222-4222-8222-222222222222")!,
-            weeklyPlanID: UUID(uuidString: "44444444-4444-4444-8444-444444444444")!,
-            force: false,
-            maxRows: 6
-        )
-
-        let data = try JSONEncoder().encode(request)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-        XCTAssertEqual(object["creator_id"] as? String, "22222222-2222-4222-8222-222222222222")
-        XCTAssertEqual(object["weekly_plan_id"] as? String, "44444444-4444-4444-8444-444444444444")
-        XCTAssertEqual(object["force"] as? Bool, false)
-        XCTAssertEqual(object["max_rows"] as? Int, 6)
-    }
-
     func testDirectDailyCardSelectIncludesStoryboardThumbnailAssets() {
         XCTAssertTrue(
             SupabaseSelect.dailyCard.contains("storyboard_thumbnail_assets"),
             "Direct weekly reads must include storyboard thumbnail assets so refreshed app state cannot hide DB-backed thumbnails."
         )
+    }
+
+    func testPrepareStoryboardThumbnailsForDailyOnlyCardGeneratesAndPersistsAssets() async {
+        let card = makeCard(
+            sceneList: [
+                ShotScene(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
+                ShotScene(number: 2, title: "Action detail", duration: "5 sec", symbol: "figure.run")
+            ]
+        )
+        let repository = RecordingStoryboardThumbnailRepository(
+            assets: Self.sampleThumbnailAssets(forRowCount: 2)
+        )
+        let services = makeServices(storyboardThumbnails: repository)
+        services.dayBriefGeneratedCards[card.scheduledDate] = card
+        XCTAssertNil(services.latestGenerationSummary)
+
+        await services.prepareStoryboardThumbnailsForVisibleCard(dailyCardID: card.id)
+
+        let callCount = await repository.callCount
+        XCTAssertEqual(callCount, 1)
+        XCTAssertEqual(
+            services.dayBriefGeneratedCards[card.scheduledDate]?.storyboardThumbnailAssets,
+            Self.sampleThumbnailAssets(forRowCount: 2)
+        )
+        XCTAssertNil(services.latestGenerationSummary)
+    }
+
+    func testPrepareStoryboardThumbnailsUpdatesBothDailyAndSummaryStores() async {
+        let card = makeCard(
+            sceneList: [
+                ShotScene(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
+                ShotScene(number: 2, title: "Action detail", duration: "5 sec", symbol: "figure.run")
+            ]
+        )
+        let repository = RecordingStoryboardThumbnailRepository(
+            assets: Self.sampleThumbnailAssets(forRowCount: 2)
+        )
+        let services = makeServices(storyboardThumbnails: repository)
+        services.dayBriefGeneratedCards[card.scheduledDate] = card
+        services.applyGeneratedDraft(
+            GeneratedWeekDraft(
+                id: UUID(),
+                weeklyPlanID: WeeklyPlan.raceWeek.id,
+                strategySummary: "Dual-store thumbnail test.",
+                warnings: [],
+                assumptions: [],
+                dailyCards: [card],
+                ideaBank: [],
+                sourceSummary: "Test",
+                generatedAt: "2026-07-06T00:00:00Z"
+            )
+        )
+
+        await services.prepareStoryboardThumbnailsForVisibleCard(dailyCardID: card.id)
+
+        let expectedAssets = Self.sampleThumbnailAssets(forRowCount: 2)
+        let callCount = await repository.callCount
+        XCTAssertEqual(callCount, 1)
+        XCTAssertEqual(
+            services.dayBriefGeneratedCards[card.scheduledDate]?.storyboardThumbnailAssets,
+            expectedAssets
+        )
+        XCTAssertEqual(
+            services.latestGenerationSummary?.dailyCards.first { $0.id == card.id }?.storyboardThumbnailAssets,
+            expectedAssets
+        )
+    }
+
+    func testPrepareStoryboardThumbnailsSkipsDuplicateWhenDailyCopyAlreadyHasAssets() async {
+        let cardID = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
+        let scheduledDate = "2026-07-06"
+        let sceneList = [
+            ShotScene(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
+            ShotScene(number: 2, title: "Action detail", duration: "5 sec", symbol: "figure.run")
+        ]
+        let assets = Self.sampleThumbnailAssets(forRowCount: 2)
+        let dailyCard = makeCard(
+            sceneList: sceneList,
+            storyboardThumbnailAssets: assets
+        )
+        let staleSummaryCard = makeCard(sceneList: sceneList)
+
+        let repository = RecordingStoryboardThumbnailRepository(assets: assets)
+        let services = makeServices(storyboardThumbnails: repository)
+        services.dayBriefGeneratedCards[scheduledDate] = dailyCard
+        services.applyGeneratedDraft(
+            GeneratedWeekDraft(
+                id: UUID(),
+                weeklyPlanID: WeeklyPlan.raceWeek.id,
+                strategySummary: "Stale summary thumbnail test.",
+                warnings: [],
+                assumptions: [],
+                dailyCards: [staleSummaryCard],
+                ideaBank: [],
+                sourceSummary: "Test",
+                generatedAt: "2026-07-06T00:00:00Z"
+            )
+        )
+
+        await services.prepareStoryboardThumbnailsForVisibleCard(dailyCardID: cardID)
+
+        let callCount = await repository.callCount
+        XCTAssertEqual(callCount, 0)
+        XCTAssertEqual(
+            services.dayBriefGeneratedCards[scheduledDate]?.storyboardThumbnailAssets,
+            assets
+        )
+        XCTAssertEqual(
+            services.latestGenerationSummary?.dailyCards.first { $0.id == cardID }?.storyboardThumbnailAssets,
+            assets
+        )
+    }
+
+    private func makeServices(
+        storyboardThumbnails: any StoryboardThumbnailRepository
+    ) -> AppServices {
+        AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                storyboardThumbnails: storyboardThumbnails,
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            )
+        )
+    }
+
+    private static func sampleThumbnailAssets(forRowCount rowCount: Int) -> [StoryboardThumbnailAsset] {
+        (0..<rowCount).map { rowIndex in
+            StoryboardThumbnailAsset(
+                rowIndex: rowIndex,
+                promptHash: "hash-\(rowIndex)",
+                storagePath: "path/row-\(rowIndex).jpg",
+                publicURL: "https://example.com/storyboard/row-\(rowIndex).jpg",
+                model: "gemini-3.1-flash-lite-image",
+                promptVersion: "storyboard_thumbnail_v1",
+                status: "generated",
+                generatedAt: "2026-07-01T09:00:00Z"
+            )
+        }
     }
 
     private func makeCard(
@@ -264,5 +392,26 @@ final class GeneratedStoryboardBreakdownTests: XCTestCase {
             sourceNote: "Test",
             storyboardThumbnailAssets: storyboardThumbnailAssets
         )
+    }
+}
+
+private actor RecordingStoryboardThumbnailRepository: StoryboardThumbnailRepository {
+    private(set) var callCount = 0
+    let assets: [StoryboardThumbnailAsset]
+
+    init(assets: [StoryboardThumbnailAsset]) {
+        self.assets = assets
+    }
+
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        rowIndexes: [Int]?,
+        force: Bool,
+        revisionInstructions: String?,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset] {
+        callCount += 1
+        return assets
     }
 }

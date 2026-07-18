@@ -9,7 +9,6 @@ struct DayGenerationView: View {
     @State private var selectedDate = Date()
     @State private var dayBrief = ""
     @State private var generationStartTime: Date?
-    @State private var displayedCardDate: String?
 
     var body: some View {
         EditorialScreen {
@@ -28,7 +27,7 @@ struct DayGenerationView: View {
                 if isGenerating {
                     generationProgressBlock
                 }
-                if let error = services.dayBriefGenerationErrors[scheduledDateString] {
+                if let error = surfacedGenerationError {
                     AdminSignalBlock(
                         title: "Generation error",
                         value: error,
@@ -61,8 +60,12 @@ struct DayGenerationView: View {
         services.memberRole == "owner" || services.memberRole == "editor"
     }
 
+    private var activeGenerationDate: String? {
+        services.generatingDayBriefDates.sorted().first
+    }
+
     private var isGenerating: Bool {
-        services.generatingDayBriefDates.contains(scheduledDateString)
+        activeGenerationDate != nil
     }
 
     private var canSubmit: Bool {
@@ -71,8 +74,9 @@ struct DayGenerationView: View {
     }
 
     private var generateButtonTitle: String {
+        let labelDate = activeGenerationDate ?? scheduledDateString
         if isGenerating {
-            return "Generating \(shortLabel(for: scheduledDateString))"
+            return "Generating \(shortLabel(for: labelDate))"
         }
         return "Generate \(shortLabel(for: scheduledDateString))"
     }
@@ -81,11 +85,15 @@ struct DayGenerationView: View {
         Self.dateString(from: selectedDate)
     }
 
-    private var displayedCard: GeneratedDailyCardDraft? {
-        if let displayedCardDate, let card = services.dayBriefGeneratedCards[displayedCardDate] {
-            return card
+    private var surfacedGenerationError: String? {
+        if let activeGenerationDate {
+            return services.dayBriefGenerationErrors[activeGenerationDate]
         }
-        return services.dayBriefGeneratedCards[scheduledDateString]
+        return services.dayBriefGenerationErrors[scheduledDateString]
+    }
+
+    private var displayedCard: GeneratedDailyCardDraft? {
+        services.dayBriefGeneratedCards[scheduledDateString]
     }
 
     private var generatedDates: [String] {
@@ -138,6 +146,7 @@ struct DayGenerationView: View {
                     .font(MCOType.bodySmall)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .tint(MCOTheme.Color.oxblood)
+                    .disabled(isGenerating)
                     .accessibilityIdentifier("daily.generate.datePicker")
                 }
             }
@@ -173,6 +182,7 @@ struct DayGenerationView: View {
             }
         }
         .buttonStyle(.plain)
+        .disabled(isGenerating)
         .accessibilityIdentifier("daily.generate.day.\(option.title)")
     }
 
@@ -216,7 +226,7 @@ struct DayGenerationView: View {
                 ProgressView()
                     .controlSize(.small)
                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                    Text("Drafting \(shortLabel(for: scheduledDateString))")
+                    Text("Drafting \(shortLabel(for: activeGenerationDate ?? scheduledDateString))")
                         .font(MCOType.headline)
                         .foregroundStyle(MCOTheme.Color.ink)
                     Text("Deep reasoning takes a couple of minutes. Validation may retry once or twice.")
@@ -248,14 +258,17 @@ struct DayGenerationView: View {
                     HStack(spacing: MCOSpace.s) {
                         ForEach(generatedDates, id: \.self) { date in
                             Button {
-                                displayedCardDate = date
+                                if let parsedDate = Self.parseLocalDate(date) {
+                                    selectedDate = parsedDate
+                                }
                             } label: {
                                 StatusChip(
                                     text: shortLabel(for: date),
-                                    tone: date == (displayedCardDate ?? scheduledDateString) ? .ready : .quiet
+                                    tone: date == scheduledDateString ? .ready : .quiet
                                 )
                             }
                             .buttonStyle(.plain)
+                            .disabled(isGenerating)
                             .accessibilityIdentifier("daily.generated.\(date)")
                         }
                     }
@@ -278,6 +291,12 @@ struct DayGenerationView: View {
                         services.dayBriefGeneratedCards[card.scheduledDate] = updated
                     }
                 }
+                AdminSignalBlock(
+                    title: "Draft saved for \(shortLabel(for: card.scheduledDate))",
+                    value: "This storyboard stays in Daily under Generated days, so you can return and refine it later. Nothing is published automatically.",
+                    systemImage: "checkmark.circle",
+                    tone: .ready
+                )
             }
         } else {
             AdminSignalBlock(
@@ -294,7 +313,6 @@ struct DayGenerationView: View {
     private func generate() {
         let dateString = scheduledDateString
         generationStartTime = Date()
-        displayedCardDate = dateString
         Task { @MainActor in
             defer { generationStartTime = nil }
             do {

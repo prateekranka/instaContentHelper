@@ -69,7 +69,7 @@ Deno.test("processJob stub path returns a stable failure without network", async
   const result = await processJob(job, {
     stub: true,
     serviceRoleKey: "test-service-role",
-    generateWeekFunctionURL: "http://127.0.0.1/functions/v1/generate-week",
+    dayGenerationEndpointURL: "http://127.0.0.1/functions/v1/generate-week",
     mock: false,
   });
 
@@ -327,7 +327,7 @@ function stubProcessContext() {
   return {
     stub: true,
     serviceRoleKey: "test-service-role",
-    generateWeekFunctionURL: "http://127.0.0.1/functions/v1/generate-week",
+    dayGenerationEndpointURL: "http://127.0.0.1/functions/v1/generate-week",
     mock: false,
   };
 }

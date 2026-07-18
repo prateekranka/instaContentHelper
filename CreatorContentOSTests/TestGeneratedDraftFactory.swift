@@ -1,30 +1,11 @@
 import Foundation
 @testable import CreatorContentOS
 
-/// Test-only deterministic weekly generator. Do not inject this into app fixture runtime.
-struct TestWeeklyGenerationRepository: WeeklyGenerationRepository {
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        await progress?(
-            WeeklyGenerationProgress(
-                phase: .draftingDays,
-                generationID: nil,
-                weeklyPlanID: nil,
-                draftedDayCount: 7,
-                checkedDayCount: 7,
-                totalDayCount: 7,
-                currentDay: nil,
-                message: "Test deterministic draft generated",
-                error: nil
-            )
-        )
-
+/// Test-only deterministic draft factory. Do not inject this into app fixture runtime.
+enum TestGeneratedDraftFactory {
+    static func makeDraft(
+        weekStartDate: String
+    ) async -> GeneratedWeekDraft {
         let cards = SupabaseDateFormatting.weekDates(starting: weekStartDate).enumerated().map { index, date in
             GeneratedDailyCardDraft(
                 id: UUID(),
@@ -66,7 +47,7 @@ struct TestWeeklyGenerationRepository: WeeklyGenerationRepository {
                 creatorFitScore: 88,
                 riskNotes: [],
                 assumptions: ["Test helper used deterministic local context."],
-                sourceNote: "Test-only deterministic weekly generation."
+                sourceNote: "Test-only deterministic generated draft fixture."
             )
         }
 
