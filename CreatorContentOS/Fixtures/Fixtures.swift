@@ -1,21 +1,122 @@
 import Foundation
 
 extension DailyCard {
-    static let raceWeekToday = DailyCard(
-        title: "Race week has entered the house",
-        context: "Friday, Race Week",
-        effortLabel: "Easy - 12 min",
-        whyToday: "Stay visible without overthinking it.",
-        hook: "The tiny thing I changed this race week.",
-        sourceNote: "Inspired by a race-week discipline pattern.",
-        scheduledDate: "2026-06-05",
-        scenes: [
-            ShotScene(number: 1, title: "Shoes by the door", duration: "3 sec", symbol: "shoeprints.fill"),
-            ShotScene(number: 2, title: "Open the journal", duration: "4 sec", symbol: "book.closed"),
-            ShotScene(number: 3, title: "Bottle, timer, breath", duration: "3 sec", symbol: "waterbottle"),
-            ShotScene(number: 4, title: "One steady stride", duration: "2 sec", symbol: "figure.run")
-        ]
-    )
+    /// Family-safe sample day used by fixture / preview UI for how-tos and QA.
+    static let raceWeekToday = makeRaceWeekToday()
+
+    /// Short Manager Daily brief that matches `raceWeekToday`.
+    static let raceWeekDayBrief = """
+    Saturday morning at home in Mumbai. Keep it calm and phone-only in natural window light.
+
+    Hook: the tiny thing I changed this race week.
+    4 quick shots: shoes by the door, open the journal, bottle + timer + breath, one steady stride.
+    Warm voiceover, short caption, soft CTA. No brand ask. Keep all claims non-medical and kind.
+    """
+
+    private static func makeRaceWeekToday() -> DailyCard {
+        DailyCard(
+            title: "Race week has entered the house",
+            context: "Friday, Race Week",
+            effortLabel: "Easy - 12 min",
+            whyToday: "Stay visible without overthinking it.",
+            hook: "The tiny thing I changed this race week.",
+            sourceNote: "Inspired by a race-week discipline pattern.",
+            scheduledDate: "2026-06-05",
+            scenes: [
+                ShotScene(number: 1, title: "Shoes by the door", duration: "3 sec", symbol: "shoeprints.fill"),
+                ShotScene(number: 2, title: "Open the journal", duration: "4 sec", symbol: "book.closed"),
+                ShotScene(number: 3, title: "Bottle, timer, breath", duration: "3 sec", symbol: "waterbottle"),
+                ShotScene(number: 4, title: "One steady stride", duration: "2 sec", symbol: "figure.run")
+            ],
+            shotTimeline: [
+                ProductionTimelineItem(
+                    timestamp: "0:00-0:03",
+                    title: "Shoes by the door",
+                    detail: "Steady 3-sec clip of shoes waiting by the door. Leave room for on-screen text.",
+                    shot: "Wide setup",
+                    videoPortion: "Natural window light, phone-only, calm home frame."
+                ),
+                ProductionTimelineItem(
+                    timestamp: "0:03-0:07",
+                    title: "Open the journal",
+                    detail: "Hands open the journal and settle on today’s note.",
+                    shot: "Close detail",
+                    videoPortion: "Soft desk or sofa light; keep the page readable."
+                ),
+                ProductionTimelineItem(
+                    timestamp: "0:07-0:10",
+                    title: "Bottle, timer, breath",
+                    detail: "Bottle, phone timer, and one calm breath before the walk.",
+                    shot: "Still life",
+                    videoPortion: "Hold the final frame briefly for an easy edit."
+                ),
+                ProductionTimelineItem(
+                    timestamp: "0:10-0:12",
+                    title: "One steady stride",
+                    detail: "One easy stride outside or in the corridor — no rush.",
+                    shot: "Action finish",
+                    videoPortion: "Keep it gentle and honest; end with a soft smile."
+                )
+            ],
+            voiceoverTimeline: [
+                ProductionTimelineItem(timestamp: "0:00-0:03", title: "Hook", detail: "", voiceover: "The tiny thing I changed this race week."),
+                ProductionTimelineItem(timestamp: "0:03-0:07", title: "Setup", detail: "", voiceover: "Shoes ready. Journal open. No drama."),
+                ProductionTimelineItem(timestamp: "0:07-0:10", title: "Breath", detail: "", voiceover: "Bottle, timer, one slow breath."),
+                ProductionTimelineItem(timestamp: "0:10-0:12", title: "Close", detail: "", voiceover: "Then one steady stride — that is enough for today.")
+            ],
+            onScreenTextTimeline: [
+                ProductionTimelineItem(timestamp: "0:00-0:03", title: "Hook text", detail: "", onScreenText: "The tiny thing I changed"),
+                ProductionTimelineItem(timestamp: "0:03-0:07", title: "Setup text", detail: "", onScreenText: "Shoes. Journal. Ready."),
+                ProductionTimelineItem(timestamp: "0:07-0:10", title: "Breath text", detail: "", onScreenText: "One slow breath"),
+                ProductionTimelineItem(timestamp: "0:10-0:12", title: "Close text", detail: "", onScreenText: "One steady stride")
+            ],
+            script: """
+            The tiny thing I changed this race week.
+            Shoes ready. Journal open. No drama.
+            Bottle, timer, one slow breath.
+            Then one steady stride — that is enough for today.
+            """,
+            noVoiceoverVersion: "Use the on-screen lines as bold captions over the same four shots.",
+            onScreenText: [
+                "The tiny thing I changed",
+                "Shoes. Journal. Ready.",
+                "One slow breath",
+                "One steady stride"
+            ],
+            caption: "Race week does not need a perfect plan. One calm setup, one honest stride, and you are already showing up. Save this for the morning you want to keep it simple.",
+            cta: "Save this for race week mornings.",
+            hashtags: ["raceweek", "simplemornings", "showup"],
+            coverText: "The tiny thing I changed",
+            postInstructions: "Film phone-only in natural light. Keep edits gentle. Match captions to the four scenes.",
+            backupStory: "Post one still of shoes by the door with the line: Starting simple today.",
+            backupCaptionOnly: "One steady stride is still a start.",
+            audioOptionNotes: "Soft morning audio under the voiceover — calm, not dramatic.",
+            creatorFitScore: 92,
+            assumptions: ["Home window light is available.", "Phone-only shoot is fine."],
+            storyboardThumbnailAssets: raceWeekThumbnailAssets()
+        )
+    }
+
+    private static func raceWeekThumbnailAssets() -> [StoryboardThumbnailAsset] {
+        (1...4).compactMap { index in
+            guard let url = Bundle.main.url(
+                forResource: "fixture-storyboard-\(String(format: "%02d", index))",
+                withExtension: "png"
+            ) else {
+                return nil
+            }
+            return StoryboardThumbnailAsset(
+                rowIndex: index - 1,
+                promptHash: "fixture-race-week-\(index)",
+                storagePath: "FixtureStoryboard/fixture-storyboard-\(String(format: "%02d", index)).png",
+                publicURL: url.absoluteString,
+                model: "fixture",
+                promptVersion: "howto_seed_v1",
+                status: "generated",
+                generatedAt: "2026-07-18T00:00:00Z"
+            )
+        }
+    }
 
     static let weekFixtures: [DailyCard] = [
         DailyCard(title: "Reset Monday", context: "Monday, Race Week", effortLabel: "Easy - 10 min", whyToday: "Start clean.", scheduledDate: "2026-06-01", scenes: []),

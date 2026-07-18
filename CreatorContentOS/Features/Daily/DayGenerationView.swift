@@ -7,8 +7,18 @@ struct DayGenerationView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @State private var selectedDate = Date()
-    @State private var dayBrief = ""
+    @State private var dayBrief = Self.initialDayBrief
     @State private var generationStartTime: Date?
+
+    /// Seed a realistic brief in fixture UI so Manager Daily screenshots look full.
+    private static var initialDayBrief: String {
+#if DEBUG
+        if ProcessInfo.processInfo.environment["MCO_FORCE_FIXTURE_UI"] == "1" {
+            return DailyCard.raceWeekDayBrief
+        }
+#endif
+        return ""
+    }
 
     var body: some View {
         EditorialScreen {
