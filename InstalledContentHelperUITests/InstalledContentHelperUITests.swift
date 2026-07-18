@@ -19,6 +19,31 @@ final class InstalledContentHelperUITests: XCTestCase {
     }
 
     @MainActor
+    func testDebugFixtureManagerUsesDayOnlyNavigation() throws {
+        let app = launchInstalledApp(environment: [
+            "MCO_FORCE_FIXTURE_UI": "1",
+            "MCO_FORCE_APP_MODE": "admin"
+        ])
+
+        XCTAssertTrue(
+            app.tabBars.buttons["Daily"].waitForExistence(timeout: 20),
+            diagnostics("Manager Daily tab is missing", app: app)
+        )
+        XCTAssertTrue(
+            app.staticTexts["Daily Content"].waitForExistence(timeout: 10),
+            diagnostics("Manager did not open on daily content generation", app: app)
+        )
+        XCTAssertTrue(
+            app.tabBars.buttons["References"].exists,
+            diagnostics("Manager References tab is missing", app: app)
+        )
+        XCTAssertFalse(
+            app.tabBars.buttons["Weekly"].exists,
+            diagnostics("Retired Weekly generation tab is still visible", app: app)
+        )
+    }
+
+    @MainActor
     func testInstalledManagerGenerateReviewPublishAndCreatorToday() throws {
         let startedAt = Date()
         let app = launchInstalledApp()
@@ -68,7 +93,7 @@ final class InstalledContentHelperUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["Generated Week"].waitForExistence(timeout: 15) ||
                 app.staticTexts["Review"].waitForExistence(timeout: 15) ||
-                app.staticTexts["Draft week generated"].waitForExistence(timeout: 15),
+                app.staticTexts["Draft ready for review"].waitForExistence(timeout: 15),
             diagnostics("Generated review surface did not open", app: app)
         )
         attachScreenshot(named: "24-manager-review-surface", app: app)
@@ -173,7 +198,7 @@ final class InstalledContentHelperUITests: XCTestCase {
             app.staticTexts["Generated week"].waitForExistence(timeout: 15) ||
                 app.staticTexts["Generated Week"].waitForExistence(timeout: 15) ||
                 app.staticTexts["Review"].waitForExistence(timeout: 15) ||
-                app.staticTexts["Draft week generated"].waitForExistence(timeout: 15),
+                app.staticTexts["Draft ready for review"].waitForExistence(timeout: 15),
             diagnostics("Generated review surface did not open", app: app)
         )
         attachScreenshot(named: "63-manager-review-surface", app: app)
@@ -225,7 +250,7 @@ final class InstalledContentHelperUITests: XCTestCase {
         XCTAssertTrue(
             app.staticTexts["Generated Week"].waitForExistence(timeout: 15) ||
                 app.staticTexts["Review"].waitForExistence(timeout: 15) ||
-                app.staticTexts["Draft week generated"].waitForExistence(timeout: 15),
+                app.staticTexts["Draft ready for review"].waitForExistence(timeout: 15),
             diagnostics("Generated review surface did not open", app: app)
         )
         attachScreenshot(named: "41-manager-existing-review-surface", app: app)
@@ -1293,7 +1318,7 @@ final class InstalledContentHelperUITests: XCTestCase {
         let observedTextViewCount = app.textViews.allElementsBoundByIndex.count
         print("MANAGER_GENERATION_REVIEW_COUNT_MARKER text-fields(observed)=\(observedTextFieldCount) text-fields(expected)=21 text-views(observed)=\(observedTextViewCount) text-views(expected)=28")
 
-        let keyLabels = ["Generated Week", "Draft week generated", "MANAGER AI REVIEW"]
+        let keyLabels = ["Generated Week", "Draft ready for review", "MANAGER AI REVIEW"]
         for label in keyLabels {
             let element = app.staticTexts[label]
             if element.exists {

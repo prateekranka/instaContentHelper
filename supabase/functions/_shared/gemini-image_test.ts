@@ -1,6 +1,7 @@
 import {
   FALLBACK_GEMINI_IMAGE_MODEL,
   GEMINI_API_REVISION,
+  GeminiImageGenerationError,
   generateGeminiImage,
   generateGeminiImageWithFallback,
   resolveGeneratedImage,
@@ -67,7 +68,7 @@ Deno.test("resolveGeneratedImage fetches uri delivery when data is absent", asyn
   assertEquals(image?.data, btoa(String.fromCharCode(1, 2, 3, 4)));
 });
 
-Deno.test("generateGeminiImage requests inline delivery and Api-Revision", async () => {
+Deno.test("generateGeminiImage uses documented image response format and Api-Revision", async () => {
   let seenBody: Record<string, unknown> = {};
   let seenApiRevision: string | null = null;
   let seenApiKey: string | null = null;
@@ -104,9 +105,44 @@ Deno.test("generateGeminiImage requests inline delivery and Api-Revision", async
   assertEquals(seenApiKey, "test-key");
   const responseFormat = seenBody.response_format as Record<string, unknown>;
   assertEquals(responseFormat.type, "image");
-  assertEquals(responseFormat.delivery, "inline");
+  assertEquals("delivery" in responseFormat, false);
   assertEquals(responseFormat.image_size, "1K");
   assertEquals(responseFormat.aspect_ratio, "16:9");
+});
+
+Deno.test("generateGeminiImage preserves sanitized provider failure details", async () => {
+  const secret = `AIza${"x".repeat(32)}`;
+  const fetchImpl = (() =>
+    Promise.resolve(
+      Response.json({
+        error: {
+          status: "INVALID_ARGUMENT",
+          message: `Unsupported response field delivery; key=${secret}`,
+        },
+      }, { status: 400 }),
+    )) as typeof fetch;
+
+  let thrown: unknown;
+  try {
+    await generateGeminiImage({
+      apiKey: "test-key",
+      model: "gemini-3.1-flash-lite-image",
+      prompt: "storyboard frame",
+      fetchImpl,
+    });
+  } catch (error) {
+    thrown = error;
+  }
+
+  if (!(thrown instanceof GeminiImageGenerationError)) {
+    throw new Error("Expected GeminiImageGenerationError");
+  }
+  assertEquals(thrown.status, 400);
+  assertEquals(thrown.providerCode, "INVALID_ARGUMENT");
+  assertEquals(
+    thrown.providerMessage,
+    "Unsupported response field delivery; key=[REDACTED]",
+  );
 });
 
 Deno.test("generateGeminiImageWithFallback switches model after primary failure", async () => {

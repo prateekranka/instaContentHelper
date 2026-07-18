@@ -11,11 +11,6 @@ struct AdminShellView: View {
             .tabItem { Label("Daily", systemImage: "calendar.badge.plus") }
 
             NavigationStack {
-                WeeklyControlView()
-            }
-            .tabItem { Label("Weekly", systemImage: "calendar") }
-
-            NavigationStack {
                 IntelligenceHomeView()
             }
             .tabItem { Label("References", systemImage: "bookmark") }
@@ -365,27 +360,9 @@ struct AIRunwayView: View {
                     appState.activeMode = .creator
                 }
                 .frame(maxWidth: 150)
-                PrimaryActionButton(
-                    title: generateButtonTitle,
-                    systemImage: services.isGeneratingWeek ? "hourglass" : "sparkles"
-                ) {
-                    services.generateCurrentWeek()
-                }
-                .disabled(!services.canGenerateWeek)
-                .opacity(services.canGenerateWeek ? 1 : 0.48)
             }
         }
         .navigationBarHidden(true)
-    }
-
-    private var generateButtonTitle: String {
-        if services.isGeneratingWeek {
-            "Generating"
-        } else if services.latestGenerationSummary == nil {
-            "Generate"
-        } else {
-            "Regenerate"
-        }
     }
 
     private var header: some View {
@@ -445,9 +422,7 @@ struct AIRunwayView: View {
     }
 
     private var generationStateLine: String {
-        if services.isGeneratingWeek {
-            "In progress"
-        } else if let draft = services.latestGenerationSummary {
+        if let draft = services.latestGenerationSummary {
             draft.status.capitalized
         } else {
             "No run this session"
@@ -493,8 +468,8 @@ struct AIRunwayView: View {
                 }
             } else {
                 AdminSignalBlock(
-                    title: "Waiting for draft",
-                    value: "Generate a week to populate strategy, sources, warnings, and daily cards.",
+                    title: "No draft loaded",
+                    value: "Day-wise generation populates strategy, sources, warnings, and daily cards here when a draft exists.",
                     systemImage: "wand.and.stars",
                     tone: .quiet
                 )

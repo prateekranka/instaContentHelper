@@ -18,9 +18,8 @@ final class PublishedWeekPersistenceTests: XCTestCase {
             todayDate: { "2026-06-01" }
         )
 
-        // Generate + publish a week so a canonical published card exists.
-        let draft = await services.generateCurrentWeekImmediately()
-        XCTAssertNotNil(draft)
+        // Seed a generated draft and publish so a canonical published card exists.
+        try await seedGeneratedWeekDraft(on: services)
         for day in services.weeklyPlan.days {
             await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
@@ -30,7 +29,6 @@ final class PublishedWeekPersistenceTests: XCTestCase {
 
         // Simulate restart: wipe in-memory state, then refresh from repositories.
         services.latestGenerationSummary = nil
-        services.weeklyGenerationProgress = nil
         services.todayCard = DailyCard(
             title: "Cleared",
             context: "Restart",
@@ -58,10 +56,9 @@ final class PublishedWeekPersistenceTests: XCTestCase {
             todayDate: { "2026-06-01" }
         )
 
-        // Generate + publish drives saveTodaySnapshot(source: "week-publish")
+        // Seed a generated draft and publish drives saveTodaySnapshot(source: "week-publish")
         // through the production path, persisting the published card to cache.
-        let draft = await services.generateCurrentWeekImmediately()
-        XCTAssertNotNil(draft)
+        try await seedGeneratedWeekDraft(on: services)
         for day in services.weeklyPlan.days {
             await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
         }
@@ -108,7 +105,6 @@ final class PublishedWeekPersistenceTests: XCTestCase {
             ),
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
-            weeklyGeneration: TestWeeklyGenerationRepository(),
             intelligence: FixtureIntelligenceRepository(),
             creatorProfile: FixtureCreatorProfileRepository(),
             archive: FixtureArchiveRepository()
@@ -178,6 +174,16 @@ final class PublishedWeekPersistenceTests: XCTestCase {
 
     // MARK: - Helpers
 
+    private func seedGeneratedWeekDraft(
+        on services: AppServices,
+        weekStartDate: String = "2026-06-01"
+    ) async throws {
+        let draft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: weekStartDate
+        )
+        services.applyGeneratedDraft(draft)
+    }
+
     private func makeGeneratingFixtureRepositories() -> AppRepositories {
         let store = FixturePublishedContentStore()
         return AppRepositories(
@@ -186,7 +192,6 @@ final class PublishedWeekPersistenceTests: XCTestCase {
             weeklyPlans: FixtureWeeklyPlanRepository(publishedStore: store),
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
-            weeklyGeneration: TestWeeklyGenerationRepository(),
             intelligence: FixtureIntelligenceRepository(),
             creatorProfile: FixtureCreatorProfileRepository(),
             archive: FixtureArchiveRepository()
@@ -200,7 +205,6 @@ final class PublishedWeekPersistenceTests: XCTestCase {
             weeklyPlans: FailingWeeklyPlanRepository(),
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
-            weeklyGeneration: TestWeeklyGenerationRepository(),
             intelligence: FixtureIntelligenceRepository(),
             creatorProfile: FixtureCreatorProfileRepository(),
             archive: FixtureArchiveRepository()

@@ -725,11 +725,6 @@ struct WeeklyIdea: Identifiable, Hashable, Sendable {
     }
 }
 
-enum GenerateWeekMode: String, Codable, Hashable, Sendable {
-    case generateDraft = "generate_draft"
-    case regenerateDraft = "regenerate_draft"
-}
-
 struct GeneratedWeekDraft: Identifiable, Hashable, Sendable {
     let id: UUID
     var weeklyPlanID: UUID

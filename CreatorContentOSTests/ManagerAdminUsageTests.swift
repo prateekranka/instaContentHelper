@@ -110,82 +110,6 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertEqual(services.lastRepositoryError, "Selection failed.")
     }
 
-    // MARK: — Inline Retry
-
-    func testRetryQueuedDayFromManagerInlineRetryUsesCentralizedService() async throws {
-        let draft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: WorkspaceContext.creatorFixture.creatorID,
-            weekStartDate: "2026-07-13",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: .creatorFixture,
-            progress: nil
-        )
-        let failedDate = try XCTUnwrap(draft.dailyCards.first?.scheduledDate)
-        let retryRepo = InlineRetryCompletesQueuedDayRepository(draft: draft)
-        let services = AppServices.fixtureBacked(
-            repositories: AppRepositories(
-                context: .creatorFixture,
-                today: FixtureTodayCardRepository(),
-                weeklyPlans: FixtureWeeklyPlanRepository(),
-                references: FixtureReferenceRepository(),
-                referenceImport: FixtureReferenceImportRepository(),
-                weeklyGeneration: retryRepo,
-                intelligence: FixtureIntelligenceRepository(),
-                creatorProfile: FixtureCreatorProfileRepository(),
-                archive: FixtureArchiveRepository()
-            ),
-            todayCache: AdminUsageMemoryTodayCacheStore()
-        )
-        services.applyGeneratedDraft(draft)
-        services.weeklyGenerationProgress = WeeklyGenerationProgress(
-            phase: .draftingDays,
-            generationID: draft.id,
-            weeklyPlanID: draft.weeklyPlanID,
-            draftedDayCount: 7,
-            checkedDayCount: 6,
-            totalDayCount: 7,
-            message: "generation_partial",
-            savedDayCount: 6,
-            failedDayCount: 1,
-            strategyCreated: true,
-            dayStatuses: draft.dailyCards.enumerated().map { index, card in
-                WeeklyDayGenerationStatus(
-                    scheduledDate: card.scheduledDate,
-                    dayIndex: index,
-                    status: index == 0 ? "failed" : "generated",
-                    dailyCardID: index == 0 ? nil : card.id,
-                    errorCode: index == 0 ? "openai_request_failed" : nil,
-                    retryAction: index == 0 ? "retry_day" : nil,
-                    message: nil
-                )
-            }
-        )
-
-        try await services.retryQueuedGenerationDay(scheduledDate: failedDate)
-
-        XCTAssertNil(services.generationError,
-                     "Retry via centralized service should clear generationError")
-        XCTAssertEqual(services.weeklyGenerationProgress?.phase, .readyForReview,
-                       "Retry should transition to ready for review")
-    }
-
-    func testInlineRetryPreventsDuplicateTapsWhileRetrying() async throws {
-        let services = makeServices()
-        let scheduledDate = "2026-06-01"
-
-        services.regeneratingDayDates.insert(scheduledDate)
-
-        do {
-            try await services.retryQueuedGenerationDay(scheduledDate: scheduledDate)
-            XCTFail("Should throw when day is already regenerating")
-        } catch {
-            XCTAssertTrue(error.localizedDescription.contains("generation_already_running") ||
-                          error.localizedDescription.contains("generation_not_found"),
-                          "Should reject duplicate retry")
-        }
-    }
-
     // MARK: — Manager Tab Bar
 
     func testManagerUpdatesWeeklySetupSections() async throws {
@@ -238,13 +162,8 @@ final class ManagerAdminUsageTests: XCTestCase {
 
     func testWeeklyStartDatePreservesOverlappingGeneratedCardsByScheduledDate() async throws {
         let services = makeServices(todayDate: { "2026-07-02" })
-        let existingDraft = try await TestWeeklyGenerationRepository().generateWeek(
-            creatorID: services.context.creatorID,
-            weekStartDate: "2026-06-30",
-            weeklySetupID: nil,
-            mode: .generateDraft,
-            context: services.context,
-            progress: nil
+        let existingDraft = await TestGeneratedDraftFactory.makeDraft(
+            weekStartDate: "2026-06-30"
         )
         services.applyGeneratedDraft(existingDraft)
 
@@ -304,37 +223,11 @@ final class ManagerAdminUsageTests: XCTestCase {
         XCTAssertNil(services.generationError)
     }
 
-    func testGenerateWeekRejectsPastWeekStart() async throws {
-        let weeklyRepository = RecordingWeeklyPlanRepository()
-        let services = makeServices(weeklyPlans: weeklyRepository)
-        // Bypass updateWeeklyStartDate guard — it also rejects past dates.
-        services.weeklyPlan.weekStartDate = "2026-05-25"
-        services.weeklyBriefDraftText = "This dirty brief must not be saved."
-
-        let draft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNil(draft)
-        XCTAssertEqual(services.generationError, "past_generation_date_not_allowed")
-        let briefRequests = await weeklyRepository.recordedBriefRequests()
-        XCTAssertTrue(briefRequests.isEmpty)
-    }
-
     func testRegenerateDailyCardRejectsPastDate() async throws {
         let services = makeServices()
 
         do {
             _ = try await services.regeneratedDailyCard(scheduledDate: "2026-05-30", preserveManualEdits: false)
-            XCTFail("Expected past_generation_date_not_allowed error")
-        } catch {
-            XCTAssertTrue(error.localizedDescription.contains("past_generation_date_not_allowed"))
-        }
-    }
-
-    func testRetryQueuedGenerationDayRejectsPastDate() async throws {
-        let services = makeServices()
-
-        do {
-            try await services.retryQueuedGenerationDay(scheduledDate: "2026-05-30")
             XCTFail("Expected past_generation_date_not_allowed error")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("past_generation_date_not_allowed"))
@@ -347,27 +240,6 @@ final class ManagerAdminUsageTests: XCTestCase {
         do {
             _ = try await services.regeneratedDailyCard(scheduledDate: "2026-06-01", preserveManualEdits: false)
             XCTFail("Expected repository error (regeneration not configured), not past-date guard")
-        } catch {
-            XCTAssertFalse(error.localizedDescription.contains("past_generation_date_not_allowed"),
-                           "Should pass the past-date guard and reach repository")
-        }
-    }
-
-    func testRetryQueuedDayAcceptsToday() async throws {
-        let services = makeServices()
-
-        services.weeklyGenerationProgress = WeeklyGenerationProgress(
-            phase: .draftingDays,
-            generationID: UUID(),
-            weeklyPlanID: services.weeklyPlan.id,
-            draftedDayCount: 0,
-            checkedDayCount: 0,
-            totalDayCount: 7
-        )
-
-        do {
-            try await services.retryQueuedGenerationDay(scheduledDate: "2026-06-01")
-            XCTFail("Expected repository error (retry not configured), not past-date guard")
         } catch {
             XCTAssertFalse(error.localizedDescription.contains("past_generation_date_not_allowed"),
                            "Should pass the past-date guard and reach repository")
@@ -405,51 +277,6 @@ final class ManagerAdminUsageTests: XCTestCase {
 
         XCTAssertEqual(status, .draft)
         XCTAssertEqual(status.tone, .info)
-    }
-
-    func testGenerateSavesDirtyWeeklyBriefBeforeGenerating() async throws {
-        let weeklyRepository = RecordingWeeklyPlanRepository()
-        let services = makeServices(
-            weeklyPlans: weeklyRepository,
-            weeklyGeneration: TestWeeklyGenerationRepository()
-        )
-        let brief = """
-        Weekly routine: Pilates Monday, strength Wednesday.
-        Brand/collab: Puma pickup on Saturday.
-        Family/travel: Sunday lunch.
-        """
-
-        services.weeklyBriefDraftText = brief
-        let draft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNotNil(draft)
-        XCTAssertEqual(services.weeklyPlan.weeklyBriefText, brief)
-        XCTAssertEqual(services.weeklyBriefDraftText, brief)
-        XCTAssertNil(services.weeklyBriefEditError)
-        XCTAssertNil(services.generationError)
-
-        let briefRequests = await weeklyRepository.recordedBriefRequests()
-        XCTAssertEqual(briefRequests, [brief])
-    }
-
-    func testGenerateStopsWhenDirtyWeeklyBriefSaveFails() async throws {
-        let weeklyRepository = RecordingWeeklyPlanRepository(
-            briefError: RepositoryError.edgeFunction("weekly_setup_update_failed")
-        )
-        let services = makeServices(weeklyPlans: weeklyRepository)
-        let originalPlan = services.weeklyPlan
-
-        services.weeklyBriefDraftText = "Weekly routine: save should fail."
-        let draft = await services.generateCurrentWeekImmediately()
-
-        XCTAssertNil(draft)
-        XCTAssertEqual(services.weeklyPlan, originalPlan)
-        XCTAssertEqual(services.weeklyBriefEditError, "weekly_setup_update_failed")
-        XCTAssertEqual(services.generationError, "weekly_setup_update_failed")
-        XCTAssertNil(services.latestGenerationSummary)
-
-        let briefRequests = await weeklyRepository.recordedBriefRequests()
-        XCTAssertEqual(briefRequests, ["Weekly routine: save should fail."])
     }
 
     func testManagerUpdatesCreatorProfileOutsideWeeklySetup() async throws {
@@ -742,7 +569,6 @@ final class ManagerAdminUsageTests: XCTestCase {
 
     private func makeServices(
         weeklyPlans: any WeeklyPlanRepository = RecordingWeeklyPlanRepository(),
-        weeklyGeneration: any WeeklyGenerationRepository = AppFixtureWeeklyGenerationUnavailableRepository(),
         referenceImport: any ReferenceImportRepository = RecordingReferenceImportRepository(),
         intelligence: any IntelligenceRepository = FixtureIntelligenceRepository(),
         creatorProfile: any CreatorProfileRepository = FixtureCreatorProfileRepository(),
@@ -756,7 +582,6 @@ final class ManagerAdminUsageTests: XCTestCase {
             weeklyPlans: weeklyPlans,
             references: FixtureReferenceRepository(),
             referenceImport: referenceImport,
-            weeklyGeneration: weeklyGeneration,
             intelligence: intelligence,
             creatorProfile: creatorProfile,
             archive: FixtureArchiveRepository()
@@ -1292,35 +1117,4 @@ private actor WorkingPlanVisibilityWeeklyPlanRepository: WeeklyPlanRepository {
     ) async throws -> WeeklyPlan {
         throw RepositoryError.notConfigured("brief not needed")
     }
-}
-
-private actor InlineRetryCompletesQueuedDayRepository: WeeklyGenerationRepository {
-    let draft: GeneratedWeekDraft
-
-    init(draft: GeneratedWeekDraft) {
-        self.draft = draft
-    }
-
-    func generateWeek(
-        creatorID: UUID,
-        weekStartDate: String,
-        weeklySetupID: UUID?,
-        mode: GenerateWeekMode,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        draft
-    }
-
-    func retryQueuedDay(
-        generationID: UUID,
-        scheduledDate: String,
-        context: WorkspaceContext,
-        progress: WeeklyGenerationProgressHandler?
-    ) async throws -> GeneratedWeekDraft {
-        await progress?(.readyForReview(from: draft))
-        return draft
-    }
-
-    func cancelGeneration(generationID: UUID, context: WorkspaceContext) async throws {}
 }
