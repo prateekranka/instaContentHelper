@@ -76,7 +76,7 @@ Current live repository coverage:
 - Today reads `daily_cards` for the current date.
 - Week reads the latest published `weekly_plans` row plus its `daily_cards`.
 - Idea bank reads `ideas`.
-- Weekly publish invokes the `publish-week` Edge Function, then reflects a soft-locked plan in app state.
+- Selected-day publish invokes the `publish-day` Edge Function and reflects that card in Today on its scheduled date.
 - Source pulse reads `source_references`.
 - Intelligence reads `patterns`, `trends`, `audio_options`, and `ideas`.
 - Creator profile reads the active `creator_profiles` row.
@@ -94,7 +94,7 @@ Device pairing path:
 Still needed before relying on live device runtime:
 
 - Deploy and verify `pair-device` against a real Supabase project.
-- Deploy and verify `publish-week` against a real Supabase project.
+- Deploy and verify `publish-day` plus its atomic database function against a real Supabase project.
 - Add Edge Functions for privileged creator daily decisions.
 - RLS grants or function read paths reviewed against the exact device-token access model.
 

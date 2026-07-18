@@ -74,7 +74,7 @@ Latest local validation:
 - RLS policies created: 126
 - Indexes created: 143
 - `pair-device` Edge Function succeeded against the local stack.
-- `publish-week` Edge Function succeeded against the local stack and wrote seven daily cards.
+- `publish-day` contract tests verify one selected daily card is published without rewriting its content fields.
 
 ## Next Slice
 

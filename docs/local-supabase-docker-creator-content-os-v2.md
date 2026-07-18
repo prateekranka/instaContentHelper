@@ -70,12 +70,12 @@ The local stack was tested with:
    - 143 public indexes
 3. seeded local workspace, creator, and device invite
 4. called `pair-device`
-5. called `publish-week` with the returned device token
+5. called `publish-day` with the returned device token and selected daily card
 6. verified:
    - invite `used_count = 1`
    - one device installation created
-   - weekly plan status `published`
-   - weekly plan `is_soft_locked = true`
+   - selected daily card status `published`
+   - other generated daily cards remained drafts
    - seven daily cards written
    - `2026-06-05` Creator Today card exists and is published
 

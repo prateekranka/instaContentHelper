@@ -37,7 +37,7 @@ final class AppServices {
     var todayContentState: TodayContentState
     var lastNotificationSchedule: TodayNotificationSchedule?
     var lastNotificationError: String?
-    var isPublishingWeek = false
+    var publishingDayCardIDs: Set<UUID> = []
     var isSavingWeeklyBrief = false
     var weeklyBriefEditError: String?
     var isSavingCreatorProfile = false
@@ -341,32 +341,6 @@ final class AppServices {
 
     var nextOpenWeeklyDay: WeeklyDay? {
         weeklyPlan.days.first { $0.state == .open }
-    }
-
-    var canPublishCurrentWeek: Bool {
-        guard memberRole == "owner" || memberRole == "editor",
-              !isPublishingWeek,
-              !weeklyPlan.isSoftLocked,
-              weeklyPlan.days.count == 7,
-              weeklyPlan.openDayCount == 0
-        else {
-            return false
-        }
-
-        guard let draft = latestGenerationSummary else {
-            return weeklyPlan.days.allSatisfy { $0.state != .open }
-        }
-
-        guard draft.weeklyPlanID == weeklyPlan.id,
-              draft.isCompleteWeekDraft,
-              weeklyPlan.openDayCount == 0
-        else {
-            return false
-        }
-
-        let planDates = Set(weeklyPlan.days.compactMap(\.scheduledDate))
-        let draftDates = Set(draft.dailyCards.map(\.scheduledDate))
-        return planDates.count == 7 && planDates == draftDates
     }
 
     var isWeeklyBriefDirty: Bool {
@@ -982,74 +956,67 @@ final class AppServices {
         }
     }
 
-    func publishCurrentWeek() {
-        Task {
-            await publishCurrentWeekImmediately()
-        }
+    func canPublishDay(_ card: GeneratedDailyCardDraft) -> Bool {
+        (memberRole == "owner" || memberRole == "editor") &&
+            !publishingDayCardIDs.contains(card.id) &&
+            card.status.lowercased() != "published"
     }
 
-    func publishCurrentWeekImmediately() async {
-        guard !isPublishingWeek else { return }
-        guard canPublishCurrentWeek else {
-            lastPublishError = "Review all seven generated days before publishing."
-            return
+    @discardableResult
+    func publishDayCard(_ card: GeneratedDailyCardDraft) async -> Bool {
+        guard canPublishDay(card) else {
+            if card.status.lowercased() != "published" {
+                lastPublishError = "This daily card cannot be published from the current session."
+            }
+            return false
         }
 
-        isPublishingWeek = true
-        defer { isPublishingWeek = false }
+        publishingDayCardIDs.insert(card.id)
+        lastPublishError = nil
+        defer { publishingDayCardIDs.remove(card.id) }
 
         do {
-            let result = try await publishWeekWithOneTransientRetry(
-                weeklyPlan,
-                ideaBank: weeklyIdeas,
-                generatedDraft: latestGenerationSummary,
+            let result = try await repositories.dailyGeneration.publishDay(
+                creatorID: context.creatorID,
+                dailyCardID: card.id,
                 context: context
             )
-            weeklyPlan = result.weeklyPlan
-            weekCards = result.weekCards
-            if let draft = latestGenerationSummary, draft.weeklyPlanID == result.weeklyPlan.id {
-                latestGenerationSummary = draft.markedPublished
-                hydrateDayBriefGeneratedCardsFromLatestDraft()
+            guard result.dailyCardID == card.id,
+                  result.scheduledDate == card.scheduledDate
+            else {
+                throw RepositoryError.edgeFunction("invalid_publish_day_response")
             }
-            if let todayCard = result.todayCard {
-                self.todayCard = todayCard
-            }
-            lastPublishSummary = result.summary
-            lastActionMessage = "Week published. Creator Today is updated."
+
+            markGeneratedDayPublished(dailyCardID: card.id)
+            let dateLabel = SupabaseDateFormatting.displayDate(for: result.scheduledDate)
+            lastPublishSummary = "Published \(dateLabel) to Creator Today."
+            lastActionMessage = result.scheduledDate == currentTodayDateString
+                ? "Published for today. Today is ready."
+                : "Published \(dateLabel). It will appear in Today on that date."
             lastRepositoryError = nil
             lastPublishError = nil
             await refreshPublishedContentAfterPublishImmediately()
-            saveTodaySnapshot(source: "week-publish")
-            await scheduleTodayNotificationIfNeededImmediately()
+            if result.scheduledDate == currentTodayDateString {
+                saveTodaySnapshot(source: "day-publish")
+                await scheduleTodayNotificationIfNeededImmediately()
+            }
+            return true
         } catch {
             lastPublishError = error.localizedDescription
+            return false
         }
     }
 
-    private func publishWeekWithOneTransientRetry(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        let effectiveDraft = generatedDraft?.weeklyPlanID == plan.id ? generatedDraft : nil
-        do {
-            return try await repositories.weeklyPlans.publishWeek(
-                plan,
-                ideaBank: ideaBank,
-                generatedDraft: effectiveDraft,
-                context: context
-            )
-        } catch {
-            guard SupabaseGenerationRetryPolicy.isTransientPollingError(error) else {
-                throw error
-            }
-            return try await repositories.weeklyPlans.publishWeek(
-                plan,
-                ideaBank: ideaBank,
-                generatedDraft: effectiveDraft,
-                context: context
-            )
+    private func markGeneratedDayPublished(dailyCardID: UUID) {
+        for (date, card) in dayBriefGeneratedCards where card.id == dailyCardID {
+            var publishedCard = card
+            publishedCard.status = "published"
+            dayBriefGeneratedCards[date] = publishedCard
+        }
+        if var draft = latestGenerationSummary,
+           let index = draft.dailyCards.firstIndex(where: { $0.id == dailyCardID }) {
+            draft.dailyCards[index].status = "published"
+            latestGenerationSummary = draft
         }
     }
 
@@ -1360,13 +1327,6 @@ final class AppServices {
             refreshError = refreshError ?? error
         }
 
-        do {
-            weeklyPlan = try await repositories.weeklyPlans.currentPublishedPlan(for: context)
-            weeklyBriefDraftText = weeklyPlan.weeklyBriefText
-        } catch {
-            refreshError = refreshError ?? error
-        }
-
         lastRepositoryError = refreshError?.localizedDescription
     }
 
@@ -1408,7 +1368,7 @@ final class AppServices {
             return
         }
 
-        for card in draft.dailyCards where card.status.lowercased() != "published" {
+        for card in draft.dailyCards {
             guard !generatingDayBriefDates.contains(card.scheduledDate) else { continue }
             hydratedCards[card.scheduledDate] = card
         }

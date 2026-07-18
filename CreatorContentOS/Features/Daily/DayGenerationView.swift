@@ -35,20 +35,51 @@ struct DayGenerationView: View {
                         tone: .warning
                     )
                 }
+                if let error = services.lastPublishError?.nilIfBlank {
+                    AdminSignalBlock(
+                        title: "Publish error",
+                        value: error,
+                        systemImage: "exclamationmark.triangle",
+                        tone: .warning
+                    )
+                }
+                ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
                 generatedDaysStrip
                 resultBlock
             }
         } bottomBar: {
             GlassCommandBar {
-                PrimaryActionButton(
-                    title: generateButtonTitle,
-                    systemImage: isGenerating ? "hourglass" : "sparkles"
-                ) {
-                    generate()
+                if let card = displayedCard {
+                    VStack(spacing: MCOSpace.s) {
+                        PrimaryActionButton(
+                            title: publishButtonTitle(for: card),
+                            systemImage: card.status.lowercased() == "published" ? "checkmark.circle.fill" : "paperplane.fill"
+                        ) {
+                            publish(card)
+                        }
+                        .disabled(!services.canPublishDay(card))
+                        .opacity(services.canPublishDay(card) ? 1 : 0.55)
+                        .accessibilityIdentifier("daily.publish.selectedDay")
+
+                        SecondaryActionButton(title: isGenerating ? "Generating…" : "Generate again") {
+                            generate()
+                        }
+                        .disabled(!canSubmit)
+                        .opacity(canSubmit ? 1 : 0.48)
+                        .accessibilityIdentifier("daily.generate.submit")
+                    }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    PrimaryActionButton(
+                        title: generateButtonTitle,
+                        systemImage: isGenerating ? "hourglass" : "sparkles"
+                    ) {
+                        generate()
+                    }
+                    .disabled(!canSubmit)
+                    .opacity(canSubmit ? 1 : 0.48)
+                    .accessibilityIdentifier("daily.generate.submit")
                 }
-                .disabled(!canSubmit)
-                .opacity(canSubmit ? 1 : 0.48)
-                .accessibilityIdentifier("daily.generate.submit")
             }
         }
         .navigationBarHidden(true)
@@ -98,6 +129,16 @@ struct DayGenerationView: View {
 
     private var generatedDates: [String] {
         services.dayBriefGeneratedCards.keys.sorted()
+    }
+
+    private func publishButtonTitle(for card: GeneratedDailyCardDraft) -> String {
+        if card.status.lowercased() == "published" {
+            return "Published"
+        }
+        if services.publishingDayCardIDs.contains(card.id) {
+            return "Publishing…"
+        }
+        return "Publish selected day"
     }
 
     // MARK: - Sections
@@ -252,7 +293,7 @@ struct DayGenerationView: View {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 WeeklySectionTitle(
                     title: "Generated days",
-                    subtitle: "Draft cards stay until you publish or generate that day again."
+                    subtitle: "Choose one date to review or publish. Published days stay clearly marked."
                 )
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: MCOSpace.s) {
@@ -263,7 +304,7 @@ struct DayGenerationView: View {
                                 }
                             } label: {
                                 StatusChip(
-                                    text: shortLabel(for: date),
+                                    text: generatedDateLabel(date),
                                     tone: date == scheduledDateString ? .ready : .quiet
                                 )
                             }
@@ -283,7 +324,7 @@ struct DayGenerationView: View {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 WeeklySectionTitle(
                     title: "Storyboard & caption",
-                    subtitle: "\(shortLabel(for: card.scheduledDate)) — review, then shoot from the storyboard."
+                    subtitle: "\(shortLabel(for: card.scheduledDate)) — \(card.status.lowercased() == "published" ? "published" : "draft")"
                 )
                 GeneratedDayPlannedContent(card: card) { assets in
                     if var updated = services.dayBriefGeneratedCards[card.scheduledDate] {
@@ -327,6 +368,12 @@ struct DayGenerationView: View {
         }
     }
 
+    private func publish(_ card: GeneratedDailyCardDraft) {
+        Task { @MainActor in
+            _ = await services.publishDayCard(card)
+        }
+    }
+
     // MARK: - Dates
 
     private struct QuickDayOption {
@@ -361,6 +408,14 @@ struct DayGenerationView: View {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "EEE d MMM"
         return formatter.string(from: date)
+    }
+
+    private func generatedDateLabel(_ dateString: String) -> String {
+        let label = shortLabel(for: dateString)
+        guard services.dayBriefGeneratedCards[dateString]?.status.lowercased() == "published" else {
+            return label
+        }
+        return "\(label) · Published"
     }
 
     private static func dateString(from date: Date) -> String {

@@ -380,15 +380,19 @@ assertEquals(
 console.log("PASS read-content creator profile returns live profile data");
 
 const publish = await callFunction(
-  "publish-week",
+  "publish-day",
   ownerSession.device_token,
   {
     creator_id: ids.creator,
-    weekly_plan_id: weeklyPlanID,
+    daily_card_id: weeklyRead.json.daily_cards[0].id,
   },
 );
 assertEquals(publish.status, 200, "publish existing draft status");
-assertEquals(publish.json.daily_card_count, 7, "published card count");
+assertEquals(
+  publish.json.daily_card_id,
+  weeklyRead.json.daily_cards[0].id,
+  "published selected card",
+);
 
 const publishedCards = await rows(
   admin.from("daily_cards")
@@ -398,10 +402,11 @@ const publishedCards = await rows(
   "published daily cards",
 );
 assert(
-  publishedCards.every((card: Record<string, unknown>) =>
-    card.status === "published"
-  ),
-  "all published",
+  publishedCards[0].status === "published" &&
+    publishedCards.slice(1).every((card: Record<string, unknown>) =>
+      card.status === "draft"
+    ),
+  "only selected day published",
 );
 assert(
   publishedCards.every((card: Record<string, unknown>) =>
@@ -410,7 +415,7 @@ assert(
   "published rich fields preserved",
 );
 console.log(
-  "PASS publish-week published existing draft and preserved rich fields",
+  "PASS publish-day published the selected draft and preserved rich fields",
 );
 
 const todayRead = await callFunction(

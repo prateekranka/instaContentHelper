@@ -391,6 +391,13 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
     }
 }
 
+struct SupabasePublishSceneRequest: Encodable, Sendable {
+    var number: Int
+    var title: String
+    var duration: String
+    var symbol: String
+}
+
 struct SupabaseDraftDailyCardPublishRequest: Encodable, Sendable {
     var id: UUID
     var scheduledDate: String

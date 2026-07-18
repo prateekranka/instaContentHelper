@@ -32,7 +32,7 @@ This preserves the multi-creator/workspace model while v1 still exposes only Cre
 
 ## Acceptance
 
-Covered in `CreatorContentOSTests/PublishWeekFixtureAcceptanceTests.swift`:
+Covered in `CreatorContentOSTests/TodayCardAndPostedFlowTests.swift` and `CreatorContentOSTests/AuthenticationRuntimeTests.swift`:
 
 - Publishing a week stores the published Today card and seven week cards in cache.
 - Creator Today loads a cached published card.

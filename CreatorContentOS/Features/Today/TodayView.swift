@@ -30,8 +30,8 @@ struct TodayView: View {
                 case .missingPublishedCard(let date):
                     MissingTodayCardView(
                         date: date,
-                        canOpenWeekly: canOpenManagerWeekly,
-                        onOpenWeekly: openManagerWeekly,
+                        canOpenDaily: canOpenManagerDaily,
+                        onOpenDaily: openManagerDaily,
                         onOpenProfile: onOpenProfile
                     )
                 }
@@ -72,11 +72,11 @@ struct TodayView: View {
         }
     }
 
-    private var canOpenManagerWeekly: Bool {
+    private var canOpenManagerDaily: Bool {
         services.memberRole == "owner" || services.memberRole == "editor"
     }
 
-    private func openManagerWeekly() {
+    private func openManagerDaily() {
         appState.activeMode = .admin
     }
 
@@ -165,8 +165,8 @@ private struct TodayLoadingCard: View {
 
 private struct MissingTodayCardView: View {
     let date: String
-    let canOpenWeekly: Bool
-    let onOpenWeekly: () -> Void
+    let canOpenDaily: Bool
+    let onOpenDaily: () -> Void
     let onOpenProfile: () -> Void
 
     var body: some View {
@@ -185,9 +185,9 @@ private struct MissingTodayCardView: View {
                         .lineSpacing(4)
                 }
 
-                if canOpenWeekly {
-                    PrimaryActionButton(title: "Open Weekly", systemImage: "calendar") {
-                        onOpenWeekly()
+                if canOpenDaily {
+                    PrimaryActionButton(title: "Open Daily", systemImage: "calendar.badge.plus") {
+                        onOpenDaily()
                     }
                 } else {
                     SecondaryActionButton(title: "Open Profile") {
@@ -200,10 +200,10 @@ private struct MissingTodayCardView: View {
     }
 
     private var message: String {
-        if canOpenWeekly {
-            return "There is no published plan for \(date). Open Weekly, publish the right day, then return here."
+        if canOpenDaily {
+            return "There is no published card for \(date). Open Daily, choose the date, and publish that card."
         }
-        return "Your manager has not published a plan for \(date) yet. Check back after the week is ready."
+        return "Your manager has not published a card for \(date) yet. Check back after that day is ready."
     }
 }
 

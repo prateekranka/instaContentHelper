@@ -1,6 +1,13 @@
 import XCTest
 @testable import CreatorContentOS
 
+private struct WeeklyPublishResult: Sendable {
+    var weeklyPlan: WeeklyPlan
+    var weekCards: [DailyCard]
+    var todayCard: DailyCard?
+    var summary: String
+}
+
 @MainActor
 final class ManagerAdminUsageTests: XCTestCase {
     func testWeeklyDayDetailHeaderDateUsesFullReadableFormat() {
@@ -244,39 +251,6 @@ final class ManagerAdminUsageTests: XCTestCase {
             XCTAssertFalse(error.localizedDescription.contains("past_generation_date_not_allowed"),
                            "Should pass the past-date guard and reach repository")
         }
-    }
-
-    func testWorkflowStatusIsPublishedOnlyForSelectedPublishedWeek() async throws {
-        let status = WeeklyWorkflowWindowStatus(
-            plan: WeeklyPlan.raceWeek.softLockedForPublish,
-            startDate: "2026-06-01",
-            endDate: "2026-06-07"
-        )
-
-        XCTAssertEqual(status, .published)
-        XCTAssertEqual(status.tone, .ready)
-    }
-
-    func testWorkflowStatusIsPlannedWhenSelectedWeekHasPlannedContent() async throws {
-        let status = WeeklyWorkflowWindowStatus(
-            plan: WeeklyPlan.raceWeek,
-            startDate: "2026-06-01",
-            endDate: "2026-06-07"
-        )
-
-        XCTAssertEqual(status, .planned)
-        XCTAssertEqual(status.tone, .warning)
-    }
-
-    func testWorkflowStatusDoesNotPublishDifferentSelectedWeek() async throws {
-        let status = WeeklyWorkflowWindowStatus(
-            plan: WeeklyPlan.raceWeek.softLockedForPublish,
-            startDate: "2026-07-13",
-            endDate: "2026-07-19"
-        )
-
-        XCTAssertEqual(status, .draft)
-        XCTAssertEqual(status.tone, .info)
     }
 
     func testManagerUpdatesCreatorProfileOutsideWeeklySetup() async throws {
@@ -647,7 +621,7 @@ private actor RecordingWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
-    func publishWeek(
+    func retiredFixturePublication(
         _ plan: WeeklyPlan,
         ideaBank: [WeeklyIdea],
         generatedDraft: GeneratedWeekDraft?,
@@ -794,7 +768,7 @@ private actor SingleFetchWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
-    func publishWeek(
+    func retiredFixturePublication(
         _ plan: WeeklyPlan,
         ideaBank: [WeeklyIdea],
         generatedDraft: GeneratedWeekDraft?,
@@ -1084,7 +1058,7 @@ private actor WorkingPlanVisibilityWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
-    func publishWeek(
+    func retiredFixturePublication(
         _ plan: WeeklyPlan,
         ideaBank: [WeeklyIdea],
         generatedDraft: GeneratedWeekDraft?,
