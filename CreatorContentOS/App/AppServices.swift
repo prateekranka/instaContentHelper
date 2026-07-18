@@ -346,6 +346,8 @@ final class AppServices {
     var canPublishCurrentWeek: Bool {
         guard memberRole == "owner" || memberRole == "editor",
               !isPublishingWeek,
+              regeneratingDayDates.isEmpty,
+              generatingDayBriefDates.isEmpty,
               !weeklyPlan.isSoftLocked,
               weeklyPlan.days.count == 7,
               weeklyPlan.openDayCount == 0
