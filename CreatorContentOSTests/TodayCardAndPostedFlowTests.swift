@@ -36,7 +36,7 @@ final class TodayCardAndPostedFlowTests: XCTestCase {
         XCTAssertEqual(card.effectiveHook, "A quiet reset after a heavy week.")
     }
 
-    func testTodayCardShowsAllScenesNotJustFirstTwo() {
+    func testTodayCardKeepsFullSceneListForShootFolio() {
         let card = DailyCard(
             title: "Gym day",
             context: "Tuesday",
@@ -49,10 +49,11 @@ final class TodayCardAndPostedFlowTests: XCTestCase {
                 ShotScene(number: 4, title: "Payoff", duration: "2 sec", symbol: "checkmark.seal")
             ]
         )
-        // The hero card's scene plan is built from ALL scenes, not .prefix(2).
+        // Glance Today hero no longer lists scenes; Shoot Folio still receives the full plan.
         let plan = card.scenes.map { "\($0.number). \($0.title)" }
         XCTAssertEqual(plan.count, 4)
         XCTAssertEqual(plan, ["1. Setup", "2. Lift", "3. Reset", "4. Payoff"])
+        XCTAssertEqual(card.whyToday, "One movement.")
     }
 
     func testShootFolioDefaultsToStoryboardTabAndSurfacesGeminiThumbnails() {

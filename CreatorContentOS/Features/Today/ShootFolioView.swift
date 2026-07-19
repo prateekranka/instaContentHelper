@@ -6,7 +6,9 @@ import UIKit
 struct ShootFolioView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selection: PackageSection = .storyboard
+    @State private var postedPulse = false
 
     var body: some View {
         EditorialScreen {
@@ -17,19 +19,16 @@ struct ShootFolioView: View {
                     ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
                     sectionTabs
 
-                    switch selection {
-                    case .storyboard:
-                        CreatorStoryboardPackageView(card: services.todayCard)
-                    case .scenes:
-                        sceneProgress
-                        SceneListView(card: services.todayCard)
-                    case .script:
-                        CreatorScriptPackageView(card: services.todayCard)
-                    case .caption:
-                        CreatorCaptionPackageView(card: services.todayCard)
-                    case .audio:
-                        CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "No audio notes recorded for today.")
+                    ZStack(alignment: .topLeading) {
+                        FolioContentSwap(identity: selection) {
+                            packageContent
+                        }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
+                    .animation(
+                        MCOMotion.preferential(reduceMotion, MCOMotion.crossfade),
+                        value: selection
+                    )
                 } else {
                     ShootFolioEmptyState(state: services.todayContentState)
                 }
@@ -44,15 +43,36 @@ struct ShootFolioView: View {
                     ) {
                         if services.canMarkPosted {
                             services.markPosted()
+                            postedPulse.toggle()
                         } else {
                             services.markAllScenesShot()
                         }
                     }
                     .disabled(services.areAllScenesShot && !services.canMarkPosted)
+                    .sensoryFeedback(.success, trigger: postedPulse)
                 }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private var packageContent: some View {
+        switch selection {
+        case .storyboard:
+            CreatorStoryboardPackageView(card: services.todayCard)
+        case .scenes:
+            VStack(alignment: .leading, spacing: MCOSpace.l) {
+                sceneProgress
+                SceneListView(card: services.todayCard)
+            }
+        case .script:
+            CreatorScriptPackageView(card: services.todayCard)
+        case .caption:
+            CreatorCaptionPackageView(card: services.todayCard)
+        case .audio:
+            CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "No audio notes recorded for today.")
+        }
     }
 
     private var sceneProgress: some View {
@@ -126,27 +146,12 @@ struct ShootFolioView: View {
     }
 
     private var sectionTabs: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: MCOSpace.s) {
-                ForEach(PackageSection.allCases) { section in
-                    Button {
-                        selection = section
-                    } label: {
-                        Text(section.rawValue)
-                            .font(MCOType.bodySmall)
-                            .foregroundStyle(selection == section ? MCOTheme.Color.paperRaised : MCOTheme.Color.ink)
-                            .padding(.horizontal, MCOSpace.s)
-                            .frame(height: 34)
-                            .background(selection == section ? MCOTheme.Color.oxblood : MCOTheme.Color.paperRaised.opacity(0.62))
-                            .clipShape(Capsule())
-                            .overlay {
-                                Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
+        FolioPillBar(
+            items: PackageSection.allCases.map { ($0, $0.rawValue) },
+            selection: $selection,
+            height: 34,
+            font: MCOType.bodySmall
+        )
     }
 }
 
@@ -281,6 +286,8 @@ struct SceneListView: View {
                                     text: services.isSceneShot(scene) ? "Shot" : (row?.timecode ?? scene.duration),
                                     tone: services.isSceneShot(scene) ? .ready : .info
                                 )
+                                .scaleEffect(services.isSceneShot(scene) ? 1 : 0.98)
+                                .animation(MCOMotion.press, value: services.isSceneShot(scene))
                             }
 
                             FolioDetailLine(title: "What to capture", text: SceneGuidance.capture(for: scene, at: index, in: card))
@@ -293,7 +300,7 @@ struct SceneListView: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable(scale: 0.985))
                 .accessibilityLabel(
                     "Scene \(scene.number), \(scene.title), \(row?.timecode ?? scene.duration), \(services.isSceneShot(scene) ? "shot" : "not shot")"
                 )
@@ -310,6 +317,7 @@ struct SceneDetailView: View {
     @Environment(AppServices.self) private var services
     let card: DailyCard
     let scene: ShotScene
+    @State private var markShotPulse = false
 
     var body: some View {
         EditorialScreen {
@@ -320,6 +328,7 @@ struct SceneDetailView: View {
                         .foregroundStyle(MCOTheme.Color.oxblood)
                     Text(scene.title)
                         .font(MCOType.screenTitle)
+                        .tracking(MCOType.screenTitleTracking)
                         .foregroundStyle(MCOTheme.Color.ink)
                     HStack(spacing: MCOSpace.s) {
                         StatusChip(text: storyboardRow?.timecode ?? scene.duration)
@@ -327,6 +336,8 @@ struct SceneDetailView: View {
                             text: services.isSceneShot(scene) ? "Shot" : "Not shot",
                             tone: services.isSceneShot(scene) ? .ready : .warning
                         )
+                        .scaleEffect(services.isSceneShot(scene) ? 1 : 0.97)
+                        .animation(MCOMotion.press, value: services.isSceneShot(scene))
                     }
                 }
 
@@ -361,8 +372,10 @@ struct SceneDetailView: View {
                     systemImage: services.isSceneShot(scene) ? "checkmark.circle.fill" : "checkmark.seal"
                 ) {
                     services.markSceneShot(scene)
+                    markShotPulse.toggle()
                 }
                 .disabled(services.isSceneShot(scene))
+                .sensoryFeedback(.success, trigger: markShotPulse)
             }
         }
         .navigationTitle("Scene \(scene.number)")

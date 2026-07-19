@@ -23,6 +23,7 @@ struct ArchiveSection: View {
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
                 Text("Archive")
                     .font(MCOType.screenTitle)
+                    .tracking(MCOType.screenTitleTracking)
                     .foregroundStyle(MCOTheme.Color.ink)
                 Text("Past decisions and outputs.")
                     .font(.system(size: 17, weight: .regular, design: .serif))
@@ -39,15 +40,16 @@ struct ArchiveSection: View {
                         ArchiveTimelineRow(entry: entry)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable(scale: 0.99))
                     Hairline()
                 }
             }
         }
         .sheet(item: $selectedEntry) { entry in
             ArchiveEntryDetailView(entry: entry)
-                .presentationDetents([.medium])
+                .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .presentationContentInteraction(.scrolls)
         }
     }
 
@@ -82,27 +84,12 @@ private struct ArchiveFilterBar: View {
     @Binding var selectedFilter: ArchiveFilter
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: MCOSpace.s) {
-                ForEach(ArchiveFilter.allCases) { filter in
-                    Button {
-                        selectedFilter = filter
-                    } label: {
-                        Text(filter.rawValue)
-                            .font(MCOType.caption)
-                            .foregroundStyle(selectedFilter == filter ? MCOTheme.Color.paperRaised : MCOTheme.Color.ink)
-                            .padding(.horizontal, MCOSpace.s)
-                            .frame(height: 32)
-                            .background(selectedFilter == filter ? MCOTheme.Color.oxblood : MCOTheme.Color.paperRaised.opacity(0.62))
-                            .clipShape(Capsule())
-                            .overlay {
-                                Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
+        FolioPillBar(
+            items: ArchiveFilter.allCases.map { ($0, $0.rawValue) },
+            selection: $selectedFilter,
+            height: 32,
+            font: MCOType.caption
+        )
     }
 }
 

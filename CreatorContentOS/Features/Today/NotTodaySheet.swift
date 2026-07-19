@@ -1,83 +1,121 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct NotTodaySheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var detail: BackupDetail?
 
     var body: some View {
         ZStack {
             MCOTheme.Color.paper.ignoresSafeArea()
-            VStack(spacing: MCOSpace.l) {
-                VStack(spacing: MCOSpace.s) {
-                    Text("Other ideas")
-                        .font(MCOType.screenTitle)
-                        .foregroundStyle(MCOTheme.Color.ink)
-                    Rectangle()
-                        .fill(MCOTheme.Color.brass)
-                        .frame(width: 32, height: 1)
-                    Text("Choose the smallest useful win.")
-                        .font(.system(size: 17, weight: .regular, design: .serif))
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+            Group {
+                if let detail {
+                    BackupDecisionContent(
+                        detail: detail,
+                        onBack: {
+                            withAnimation(MCOMotion.preferential(reduceMotion, MCOMotion.sheet())) {
+                                self.detail = nil
+                            }
+                        },
+                        onUseBackup: {
+                            complete(detail.decision)
+                        }
+                    )
+                    .transition(panelTransition)
+                } else {
+                    optionsContent
+                        .transition(panelTransition)
                 }
-                .padding(.top, MCOSpace.l)
+            }
+        }
+        .animation(
+            MCOMotion.preferential(reduceMotion, MCOMotion.sheet()),
+            value: detail
+        )
+    }
 
-                VStack(spacing: MCOSpace.m) {
-                    BackupOptionRow(
-                        symbol: "10.circle",
-                        title: "10-second story",
-                        subtitle: backupStorySubtitle
-                    ) {
+    private var panelTransition: AnyTransition {
+        if reduceMotion {
+            return .opacity
+        }
+        return .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.97)),
+            removal: .opacity.combined(with: .scale(scale: 0.99))
+        )
+    }
+
+    private var optionsContent: some View {
+        VStack(spacing: MCOSpace.l) {
+            VStack(spacing: MCOSpace.s) {
+                Text("Other ideas")
+                    .font(MCOType.screenTitle)
+                    .tracking(MCOType.screenTitleTracking)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                Rectangle()
+                    .fill(MCOTheme.Color.brass)
+                    .frame(width: 32, height: 1)
+                Text("Choose the smallest useful win.")
+                    .font(.system(size: 17, weight: .regular, design: .serif))
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+            }
+            .padding(.top, MCOSpace.l)
+
+            VStack(spacing: MCOSpace.m) {
+                BackupOptionRow(
+                    symbol: "10.circle",
+                    title: "10-second story",
+                    subtitle: backupStorySubtitle
+                ) {
+                    withAnimation(MCOMotion.preferential(reduceMotion, MCOMotion.sheet())) {
                         detail = .story
                     }
-                    BackupOptionRow(
-                        symbol: "feather",
-                        title: "Caption-only post",
-                        subtitle: backupCaptionSubtitle
-                    ) {
+                }
+                BackupOptionRow(
+                    symbol: "feather",
+                    title: "Caption-only post",
+                    subtitle: backupCaptionSubtitle
+                ) {
+                    withAnimation(MCOMotion.preferential(reduceMotion, MCOMotion.sheet())) {
                         detail = .captionOnly
                     }
-                    BackupOptionRow(
-                        symbol: "bookmark",
-                        title: "Save for tomorrow",
-                        subtitle: "Keep the card ready."
-                    ) {
-                        complete(.savedForTomorrow)
-                    }
                 }
-
-                Spacer()
-
-                GlassCommandBar {
-                    Button {
-                        complete(.skippedIntentionally)
-                    } label: {
-                        Text("Skip intentionally")
-                            .font(.system(size: 16, weight: .medium, design: .serif))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 54)
-                            .foregroundStyle(MCOTheme.Color.ink)
-                            .background(MCOTheme.Color.paperRaised)
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(.plain)
+                BackupOptionRow(
+                    symbol: "bookmark",
+                    title: "Save for tomorrow",
+                    subtitle: "Keep the card ready."
+                ) {
+                    complete(.savedForTomorrow)
                 }
             }
-            .padding(MCOSpace.l)
-            .padding(.top, MCOSpace.l)
-            .padding(.bottom, MCOSpace.l)
-        }
-        .sheet(item: $detail) { detail in
-            BackupDecisionSheet(detail: detail) {
-                complete(detail.decision)
+
+            Spacer()
+
+            GlassCommandBar {
+                Button {
+                    complete(.skippedIntentionally)
+                } label: {
+                    Text("Skip intentionally")
+                        .font(.system(size: 16, weight: .medium, design: .serif))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                        .background(MCOTheme.Color.paperRaised)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.pressable)
             }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
         }
+        .padding(MCOSpace.l)
+        .padding(.top, MCOSpace.l)
+        .padding(.bottom, MCOSpace.l)
     }
 
     private var backupStorySubtitle: String {
@@ -97,7 +135,7 @@ struct NotTodaySheet: View {
     }
 }
 
-/// Which backup the creator tapped. Opening the sheet does NOT record a
+/// Which backup the creator tapped. Opening the detail does NOT record a
 /// decision — only tapping `Use backup` inside it does.
 private enum BackupDetail: Identifiable, Hashable {
     case story
@@ -118,69 +156,66 @@ private enum BackupDetail: Identifiable, Hashable {
     }
 }
 
-private struct BackupDecisionSheet: View {
-    @Environment(\.dismiss) private var dismiss
+private struct BackupDecisionContent: View {
     @Environment(AppServices.self) private var services
     let detail: BackupDetail
+    let onBack: () -> Void
     let onUseBackup: () -> Void
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                MCOTheme.Color.paper.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: MCOSpace.l) {
-                        VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                            Text(eyebrow)
-                                .font(MCOType.tinyLabel)
-                                .foregroundStyle(MCOTheme.Color.oxblood)
-                            Text(title)
-                                .font(MCOType.screenTitle)
-                                .foregroundStyle(MCOTheme.Color.ink)
-                            Text(subtitle)
-                                .font(.system(size: 17, weight: .regular, design: .serif))
-                                .foregroundStyle(MCOTheme.Color.inkMuted)
-                        }
-
-                        if let primary = primaryText?.nilIfBlank {
-                            BackupCopyBlock(label: primaryLabel, text: primary)
-                        }
-                        if let visual = visualDirection?.nilIfBlank {
-                            BackupCopyBlock(label: "Visual direction", text: visual)
-                        }
-                        if let textDirection = textDirection?.nilIfBlank {
-                            BackupCopyBlock(label: textDirectionLabel, text: textDirection)
-                        }
-                        if let context = creatorContext?.nilIfBlank {
-                            BackupCopyBlock(label: "Context", text: context)
-                        }
-
-                        Spacer(minLength: MCOSpace.m)
-
-                        PrimaryActionButton(title: "Use backup", systemImage: "checkmark.seal") {
-                            onUseBackup()
-                            dismiss()
-                        }
-                    }
-                    .padding(MCOSpace.l)
-                }
-            }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cancel") { dismiss() }
+        VStack(spacing: 0) {
+            HStack {
+                Button(action: onBack) {
+                    Label("Back", systemImage: "chevron.left")
+                        .font(MCOType.bodySmall.weight(.semibold))
                         .foregroundStyle(MCOTheme.Color.oxblood)
                 }
+                .buttonStyle(.pressable(scale: 0.98))
+                Spacer()
+            }
+            .padding(.horizontal, MCOSpace.l)
+            .padding(.top, MCOSpace.m)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: MCOSpace.l) {
+                    VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                        Text(eyebrow)
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(MCOTheme.Color.oxblood)
+                        Text(title)
+                            .font(MCOType.screenTitle)
+                            .tracking(MCOType.screenTitleTracking)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                        Text(subtitle)
+                            .font(.system(size: 17, weight: .regular, design: .serif))
+                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                    }
+
+                    if let primary = primaryText?.nilIfBlank {
+                        BackupCopyBlock(label: primaryLabel, text: primary)
+                    }
+                    if let visual = visualDirection?.nilIfBlank {
+                        BackupCopyBlock(label: "Visual direction", text: visual)
+                    }
+                    if let textDirection = textDirection?.nilIfBlank {
+                        BackupCopyBlock(label: textDirectionLabel, text: textDirection)
+                    }
+                    if let context = creatorContext?.nilIfBlank {
+                        BackupCopyBlock(label: "Context", text: context)
+                    }
+
+                    PrimaryActionButton(title: "Use backup", systemImage: "checkmark.seal") {
+                        onUseBackup()
+                    }
+                }
+                .padding(MCOSpace.l)
             }
         }
     }
 
     private var card: DailyCard { services.todayCard }
 
-    private var eyebrow: String {
-        detail == .story ? "BACKUP" : "BACKUP"
-    }
+    private var eyebrow: String { "BACKUP" }
 
     private var title: String {
         detail == .story ? "10-second story" : "Caption-only post"
@@ -290,13 +325,9 @@ struct BackupOptionRow: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable(scale: 0.985))
     }
 }
-
-#if canImport(UIKit)
-import UIKit
-#endif
 
 #Preview {
     NotTodaySheet()
