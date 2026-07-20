@@ -458,6 +458,130 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertEqual(request?.dailyCardID, selected.id)
     }
 
+    func testPublishDayCardRejectsViewerRoleWithoutCallingRepository() async throws {
+        let repository = RecordingDayPublishRepository()
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: repository,
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            memberRole: "viewer",
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-07-18" }
+        )
+        let draft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-07-20")
+        let selected = draft.dailyCards[0]
+        services.dayBriefGeneratedCards = [selected.scheduledDate: selected]
+
+        XCTAssertFalse(services.canPublishDay(selected))
+        let succeeded = await services.publishDayCard(selected)
+
+        XCTAssertFalse(succeeded)
+        XCTAssertEqual(
+            services.lastPublishError,
+            "This daily card cannot be published from the current session."
+        )
+        let request = await repository.lastRequest
+        XCTAssertNil(request, "Viewer sessions must not invoke publish-day")
+    }
+
+    func testPublishDayCardRejectsAlreadyPublishedCard() async throws {
+        let repository = RecordingDayPublishRepository()
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: repository,
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-07-18" }
+        )
+        let draft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-07-20")
+        var published = draft.dailyCards[0]
+        published.status = "published"
+        services.dayBriefGeneratedCards = [published.scheduledDate: published]
+
+        XCTAssertFalse(services.canPublishDay(published))
+        let succeeded = await services.publishDayCard(published)
+
+        XCTAssertFalse(succeeded)
+        XCTAssertNil(services.lastPublishError, "Already published cards should fail silently")
+        let request = await repository.lastRequest
+        XCTAssertNil(request)
+    }
+
+    func testPublishDayCardRejectsMismatchedPublishResponse() async throws {
+        let repository = MismatchDayPublishRepository()
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: repository,
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-07-18" }
+        )
+        let draft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-07-20")
+        let selected = draft.dailyCards[0]
+        services.dayBriefGeneratedCards = [selected.scheduledDate: selected]
+
+        let succeeded = await services.publishDayCard(selected)
+
+        XCTAssertFalse(succeeded)
+        XCTAssertEqual(services.lastPublishError, RepositoryError.edgeFunction("invalid_publish_day_response").localizedDescription)
+        XCTAssertEqual(services.dayBriefGeneratedCards[selected.scheduledDate]?.status, "draft")
+    }
+
+    func testPublishDayCardSurfacesRepositoryPublishErrors() async throws {
+        let repository = FailingDayPublishRepository()
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: repository,
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-07-18" }
+        )
+        let draft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-07-20")
+        let selected = draft.dailyCards[0]
+        services.dayBriefGeneratedCards = [selected.scheduledDate: selected]
+
+        let succeeded = await services.publishDayCard(selected)
+
+        XCTAssertFalse(succeeded)
+        XCTAssertEqual(
+            services.lastPublishError,
+            RepositoryError.edgeFunction("daily_card_not_publishable").localizedDescription
+        )
+        XCTAssertEqual(services.dayBriefGeneratedCards[selected.scheduledDate]?.status, "draft")
+    }
+
     func testReadContentDailyCardRowDecodesPublishedGeneratedRichFields() throws {
         let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
         let workspaceID = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
@@ -2923,6 +3047,30 @@ private actor RecordingDayPublishRepository: DayGenerationRepository {
             scheduledDate: "2026-07-20",
             publishedAt: "2026-07-18T08:00:00Z"
         )
+    }
+}
+
+private actor MismatchDayPublishRepository: DayGenerationRepository {
+    func publishDay(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        context: WorkspaceContext
+    ) async throws -> DailyPublishResult {
+        DailyPublishResult(
+            dailyCardID: dailyCardID,
+            scheduledDate: "2099-01-01",
+            publishedAt: "2026-07-18T08:00:00Z"
+        )
+    }
+}
+
+private actor FailingDayPublishRepository: DayGenerationRepository {
+    func publishDay(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        context: WorkspaceContext
+    ) async throws -> DailyPublishResult {
+        throw RepositoryError.edgeFunction("daily_card_not_publishable")
     }
 }
 

@@ -57,6 +57,7 @@ Deno.test("publish-day preserves stable authorization and card-state errors", as
       ["daily_card_not_found", 404],
       ["daily_card_not_publishable", 409],
       ["cross_workspace_forbidden", 403],
+      ["invalid_publish_payload", 400],
     ] as const
   ) {
     const response = await callPublishDay(
@@ -68,12 +69,135 @@ Deno.test("publish-day preserves stable authorization and card-state errors", as
   }
 });
 
+Deno.test("publish-day rejects unauthenticated device sessions", async () => {
+  const response = await handlePublishDayRequest(
+    new Request("http://localhost/publish-day", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        creator_id: creatorID,
+        daily_card_id: dailyCardID,
+      }),
+    }),
+    {
+      env: {
+        get(name: string) {
+          return {
+            SUPABASE_URL: "http://127.0.0.1:54321",
+            SUPABASE_SERVICE_ROLE_KEY: "local-service-role",
+          }[name];
+        },
+      },
+      verifySession: async () => ({
+        response: new Response(JSON.stringify({ error: "device_session_invalid" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
+      }),
+      createAdminClient: () => ({
+        from() {
+          throw new Error("RPC must not run without auth");
+        },
+        rpc() {
+          throw new Error("RPC must not run without auth");
+        },
+      }),
+    },
+  );
+
+  assertEquals(response.status, 401);
+  assertEquals((await response.json()).error, "device_session_invalid");
+});
+
+Deno.test("publish-day rejects invalid JSON bodies", async () => {
+  const response = await handlePublishDayRequest(
+    new Request("http://localhost/publish-day", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-mco-device-token": "device-token",
+      },
+      body: "{not-json",
+    }),
+    {
+      env: {
+        get(name: string) {
+          return {
+            SUPABASE_URL: "http://127.0.0.1:54321",
+            SUPABASE_SERVICE_ROLE_KEY: "local-service-role",
+          }[name];
+        },
+      },
+      verifySession: async () => ({
+        session: {
+          deviceInstallationID: "device-installation",
+          workspaceID,
+          memberID,
+          role: "editor",
+        },
+      }),
+      createAdminClient: () => ({
+        from() {
+          throw new Error("RPC must not run for invalid JSON");
+        },
+        rpc() {
+          throw new Error("RPC must not run for invalid JSON");
+        },
+      }),
+    },
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals((await response.json()).error, "invalid_json");
+});
+
+Deno.test("publish-day maps publish_day_atomic transport failures to daily_card_publish_failed", async () => {
+  const response = await callPublishDay(
+    { creator_id: creatorID, daily_card_id: dailyCardID },
+    async () => ({
+      data: null,
+      error: { message: "connection reset" },
+    }),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals((await response.json()).error, "daily_card_publish_failed");
+});
+
+Deno.test("publish-day rejects malformed publish_day_atomic success payloads", async () => {
+  for (
+    const data of [
+      null,
+      { daily_card_id: dailyCardID },
+      {
+        daily_card_id: dailyCardID,
+        scheduled_date: "2026-07-18",
+      },
+      {
+        daily_card_id: "not-a-uuid",
+        scheduled_date: "2026-07-18",
+        published_at: "2026-07-18T10:00:00.000Z",
+      },
+    ]
+  ) {
+    const response = await callPublishDay(
+      { creator_id: creatorID, daily_card_id: dailyCardID },
+      async () => ({ data, error: null }),
+    );
+    assertEquals(response.status, 500);
+    assertEquals((await response.json()).error, "invalid_publish_day_result");
+  }
+});
+
 async function callPublishDay(
   body: Record<string, unknown>,
   rpc: (
     functionName: string,
     args: Record<string, unknown>,
-  ) => Promise<{ data: unknown; error: null }>,
+  ) => Promise<{
+    data: unknown;
+    error: { message?: string } | null;
+  }>,
 ): Promise<Response> {
   return await handlePublishDayRequest(
     new Request("http://localhost/publish-day", {
