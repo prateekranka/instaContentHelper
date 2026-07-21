@@ -268,9 +268,11 @@ export async function handleGenerateWeekRequest(
       auth: { persistSession: false },
     });
 
+  // Creator may generate day cards and run Plan prep; owner/editor retain Admin path access.
   const authResult = await verifyDeviceSession(request, admin, [
     "owner",
     "editor",
+    "creator",
   ]);
   if ("response" in authResult) {
     return authResult.response;

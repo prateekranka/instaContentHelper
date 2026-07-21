@@ -1,14 +1,8 @@
 import SwiftUI
 
 struct TodayView: View {
-    @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @State private var sheet: TodaySheet?
-    let onOpenProfile: () -> Void
-
-    init(onOpenProfile: @escaping () -> Void = {}) {
-        self.onOpenProfile = onOpenProfile
-    }
 
     var body: some View {
         EditorialScreen {
@@ -28,12 +22,7 @@ struct TodayView: View {
                 case .loading:
                     TodayLoadingCard()
                 case .missingPublishedCard(let date):
-                    MissingTodayCardView(
-                        date: date,
-                        canOpenWeekly: canOpenManagerWeekly,
-                        onOpenWeekly: openManagerWeekly,
-                        onOpenProfile: onOpenProfile
-                    )
+                    MissingTodayCardView(date: date)
                 }
 
 
@@ -70,14 +59,6 @@ struct TodayView: View {
             }
             Spacer()
         }
-    }
-
-    private var canOpenManagerWeekly: Bool {
-        services.memberRole == "owner" || services.memberRole == "editor"
-    }
-
-    private func openManagerWeekly() {
-        appState.activeMode = .admin
     }
 
     private var todayDateLine: String {
@@ -165,9 +146,6 @@ private struct TodayLoadingCard: View {
 
 private struct MissingTodayCardView: View {
     let date: String
-    let canOpenWeekly: Bool
-    let onOpenWeekly: () -> Void
-    let onOpenProfile: () -> Void
 
     var body: some View {
         JournalBlock {
@@ -179,31 +157,30 @@ private struct MissingTodayCardView: View {
                     Text("Nothing scheduled for today")
                         .font(MCOType.headline)
                         .foregroundStyle(MCOTheme.Color.ink)
-                    Text(message)
+                    Text("There is no ready package for \(date). Plan today’s content to create one.")
                         .font(MCOType.bodySmall)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                         .lineSpacing(4)
                 }
 
-                if canOpenWeekly {
-                    PrimaryActionButton(title: "Open Weekly", systemImage: "calendar") {
-                        onOpenWeekly()
+                NavigationLink(value: CreatorRoute.plan) {
+                    // PrimaryActionButton is not a NavigationLink label; mirror its look.
+                    HStack(spacing: MCOSpace.s) {
+                        Image(systemName: "calendar.badge.plus")
+                        Text("Plan today’s content")
                     }
-                } else {
-                    SecondaryActionButton(title: "Open Profile") {
-                        onOpenProfile()
-                    }
+                    .font(MCOType.headline)
+                    .foregroundStyle(MCOTheme.Color.paperRaised)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 52)
+                    .background(MCOTheme.Color.oxblood, in: RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Plan today’s content")
+                .accessibilityIdentifier("today.planCTA")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private var message: String {
-        if canOpenWeekly {
-            return "There is no published plan for \(date). Open Weekly, publish the right day, then return here."
-        }
-        return "Your manager has not published a plan for \(date) yet. Check back after the week is ready."
     }
 }
 

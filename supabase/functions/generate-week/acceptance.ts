@@ -452,7 +452,7 @@ const decision = await callFunction(
 assertEquals(decision.status, 200, "creator write decision status");
 console.log("PASS Creator decision write still works through write-content");
 
-const creatorRejected = await callFunction(
+const creatorGenerate = await callFunction(
   "generate-week",
   creatorSession.device_token,
   {
@@ -462,17 +462,11 @@ const creatorRejected = await callFunction(
     day_brief: acceptanceDayBrief(boundaryWeekStartDate, 0),
   },
 );
-assertEquals(
-  creatorRejected.status,
-  403,
-  "creator generation rejection status",
+assert(
+  creatorGenerate.json.error !== "role_not_allowed",
+  "creator must not be blocked by role_not_allowed for generate_day",
 );
-assertEquals(
-  creatorRejected.json.error,
-  "role_not_allowed",
-  "creator rejection error",
-);
-console.log("PASS creator role is rejected for generate_day");
+console.log("PASS creator role is allowed for generate_day (not role_not_allowed)");
 
 const crossWorkspace = await callFunction(
   "generate-week",

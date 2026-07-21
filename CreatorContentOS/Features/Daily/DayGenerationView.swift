@@ -9,19 +9,16 @@ struct DayGenerationView: View {
     @State private var selectedDate = Date()
     @State private var dayBrief = ""
     @State private var generationStartTime: Date?
+    @State private var showUnpublishConfirmation = false
+    @State private var showOverwriteConfirmation = false
+    @State private var lightEditCaption = ""
+    /// When false (Plan from Creator Profile), hide Admin-mode switch chrome.
+    var showsModeSwitch: Bool = true
 
     var body: some View {
         EditorialScreen {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
-                if !canGenerate {
-                    AdminSignalBlock(
-                        title: "Editor access required",
-                        value: "Only owner and editor sessions can generate daily content.",
-                        systemImage: "lock",
-                        tone: .warning
-                    )
-                }
                 daySelector
                 briefComposer
                 if isGenerating {
@@ -43,12 +40,38 @@ struct DayGenerationView: View {
                         tone: .warning
                     )
                 }
+                if let error = services.lastUnpublishDayError?.nilIfBlank {
+                    AdminSignalBlock(
+                        title: "Unpublish",
+                        value: error,
+                        systemImage: "exclamationmark.triangle",
+                        tone: .warning
+                    )
+                }
+                if let error = services.lastReadyDayPackageEditError?.nilIfBlank {
+                    AdminSignalBlock(
+                        title: "Save edits",
+                        value: error,
+                        systemImage: "exclamationmark.triangle",
+                        tone: .warning
+                    )
+                }
                 generatedDaysStrip
                 resultBlock
             }
         } bottomBar: {
             GlassCommandBar {
-                if displayedCard != nil {
+                if canUnpublish {
+                    SecondaryActionButton(
+                        title: services.isUnpublishingDay ? "Unpublishing…" : "Unpublish"
+                    ) {
+                        showUnpublishConfirmation = true
+                    }
+                    .disabled(services.isUnpublishingDay || isGenerating)
+                    .opacity(services.isUnpublishingDay || isGenerating ? 0.48 : 1)
+                    .accessibilityIdentifier("daily.unpublish")
+                }
+                if canMakeAvailable {
                     SecondaryActionButton(
                         title: services.isMakingDayAvailable ? "Making available…" : "Available on Today"
                     ) {
@@ -62,7 +85,7 @@ struct DayGenerationView: View {
                     title: generateButtonTitle,
                     systemImage: isGenerating ? "hourglass" : "sparkles"
                 ) {
-                    generate()
+                    requestGenerate()
                 }
                 .disabled(!canSubmit)
                 .opacity(canSubmit ? 1 : 0.48)
@@ -70,12 +93,35 @@ struct DayGenerationView: View {
             }
         }
         .navigationBarHidden(true)
+        .alert("Unpublish this day?", isPresented: $showUnpublishConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Unpublish", role: .destructive) {
+                unpublishSelectedDay()
+            }
+        } message: {
+            Text("Returns this ready package to draft. If there was a Decision, the live Decision clears and Archive history stays.")
+        }
+        .alert("Overwrite ready package?", isPresented: $showOverwriteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Overwrite", role: .destructive) {
+                generate(confirmOverwrite: true)
+            }
+        } message: {
+            Text("This replaces the ready package with a new draft. Any live Decision clears; Archive history stays. You will need Available on Today again.")
+        }
+        .onChange(of: displayedCard?.id) { _, _ in
+            lightEditCaption = displayedCard?.caption ?? ""
+        }
+        .onAppear {
+            lightEditCaption = displayedCard?.caption ?? ""
+        }
     }
 
     // MARK: - State helpers
 
+    /// Creator-only product: generation is not gated on owner/editor.
     private var canGenerate: Bool {
-        services.memberRole == "owner" || services.memberRole == "editor"
+        services.canGenerateContent
     }
 
     private var activeGenerationDate: String? {
@@ -99,10 +145,27 @@ struct DayGenerationView: View {
             && displayedCard?.status == "draft"
     }
 
+    private var canUnpublish: Bool {
+        canGenerate
+            && !isGenerating
+            && !services.isUnpublishingDay
+            && DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status)
+    }
+
+    private var canLightEditReadyPackage: Bool {
+        canGenerate
+            && !isGenerating
+            && !services.isUpdatingReadyDayPackage
+            && DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status)
+    }
+
     private var generateButtonTitle: String {
         let labelDate = activeGenerationDate ?? scheduledDateString
         if isGenerating {
             return "Generating \(shortLabel(for: labelDate))"
+        }
+        if DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status) {
+            return "Overwrite \(shortLabel(for: scheduledDateString))"
         }
         return "Generate \(shortLabel(for: scheduledDateString))"
     }
@@ -130,14 +193,16 @@ struct DayGenerationView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: MCOSpace.s) {
-            HStack {
-                Spacer()
-                FloatingIconButton(systemImage: "ellipsis", label: "Back to Creator Mode") {
-                    appState.activeMode = .creator
+            if showsModeSwitch {
+                HStack {
+                    Spacer()
+                    FloatingIconButton(systemImage: "ellipsis", label: "Back to Creator Mode") {
+                        appState.activeMode = .creator
+                    }
                 }
             }
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                Text("Daily Content")
+                Text("Plan")
                     .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .lineLimit(1)
@@ -309,10 +374,13 @@ struct DayGenerationView: View {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 WeeklySectionTitle(
                     title: "Storyboard & caption",
-                    subtitle: "\(shortLabel(for: card.scheduledDate)) — review, then shoot from the storyboard."
+                    subtitle: readyPackageSubtitle(for: card)
                 )
                 GeneratedDayPlannedContent(card: card) { assets in
                     services.dayBriefGeneratedCards[card.scheduledDate]?.storyboardThumbnailAssets = assets
+                }
+                if canLightEditReadyPackage {
+                    lightEditBlock
                 }
             }
         } else {
@@ -325,9 +393,56 @@ struct DayGenerationView: View {
         }
     }
 
+    private var lightEditBlock: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                Text("Light edit")
+                    .font(MCOType.tinyLabel)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                Text("Edits keep this day ready — no Unpublish required.")
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                TextEditor(text: $lightEditCaption)
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 72)
+                    .accessibilityIdentifier("daily.ready.edit.caption")
+                SecondaryActionButton(
+                    title: services.isUpdatingReadyDayPackage ? "Saving…" : "Save caption"
+                ) {
+                    saveLightEdit()
+                }
+                .disabled(!canSaveLightEdit)
+                .opacity(canSaveLightEdit ? 1 : 0.48)
+                .accessibilityIdentifier("daily.ready.edit.save")
+            }
+        }
+    }
+
+    private var canSaveLightEdit: Bool {
+        canLightEditReadyPackage
+            && lightEditCaption != (displayedCard?.caption ?? "")
+    }
+
+    private func readyPackageSubtitle(for card: GeneratedDailyCardDraft) -> String {
+        if DayPackageLifecycleStatus.requiresOverwriteConfirmation(card.status) {
+            return "\(shortLabel(for: card.scheduledDate)) — ready package. Light edit keeps it ready; Overwrite yields a new draft."
+        }
+        return "\(shortLabel(for: card.scheduledDate)) — review, then Available on Today."
+    }
+
     // MARK: - Actions
 
-    private func generate() {
+    private func requestGenerate() {
+        if DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status) {
+            showOverwriteConfirmation = true
+            return
+        }
+        generate(confirmOverwrite: false)
+    }
+
+    private func generate(confirmOverwrite: Bool) {
         let dateString = scheduledDateString
         generationStartTime = Date()
         Task { @MainActor in
@@ -335,9 +450,11 @@ struct DayGenerationView: View {
             do {
                 _ = try await services.generateDayCard(
                     scheduledDate: dateString,
-                    dayBrief: dayBrief
+                    dayBrief: dayBrief,
+                    confirmOverwrite: confirmOverwrite
                 )
                 dayBrief = ""
+                lightEditCaption = services.dayBriefGeneratedCards[dateString]?.caption ?? ""
             } catch {
                 // The error is surfaced via services.dayBriefGenerationErrors.
             }
@@ -352,8 +469,36 @@ struct DayGenerationView: View {
                 if shouldOpenToday {
                     appState.activeMode = .creator
                 }
+                lightEditCaption = services.dayBriefGeneratedCards[dateString]?.caption ?? ""
             } catch {
                 // Surfaced via services.lastMakeDayAvailableError; stay on Daily.
+            }
+        }
+    }
+
+    private func unpublishSelectedDay() {
+        let dateString = scheduledDateString
+        Task { @MainActor in
+            do {
+                _ = try await services.unpublishDay(scheduledDate: dateString)
+                lightEditCaption = services.dayBriefGeneratedCards[dateString]?.caption ?? ""
+            } catch {
+                // Surfaced via services.lastUnpublishDayError.
+            }
+        }
+    }
+
+    private func saveLightEdit() {
+        let dateString = scheduledDateString
+        let caption = lightEditCaption
+        Task { @MainActor in
+            do {
+                _ = try await services.updateReadyDayPackage(
+                    scheduledDate: dateString,
+                    package: ReadyDayPackageUpdate(caption: caption)
+                )
+            } catch {
+                // Surfaced via services.lastReadyDayPackageEditError.
             }
         }
     }

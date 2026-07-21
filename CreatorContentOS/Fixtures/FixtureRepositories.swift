@@ -229,6 +229,79 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
             weekIsSoftLocked: false
         )
     }
+
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult {
+        var cards = await publishedStore?.readWeekCards() ?? []
+        let existing = cards.first { card in
+            if let dailyCardID { return card.id == dailyCardID }
+            return card.scheduledDate == scheduledDate
+        }
+        guard let existing else {
+            throw RepositoryError.edgeFunction("daily_card_not_found")
+        }
+
+        cards.removeAll { $0.id == existing.id }
+        let today = SupabaseDateFormatting.todayDateString()
+        let todayCard = cards.first { $0.scheduledDate == today }
+        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
+
+        return DayUnpublishResult(
+            dailyCardID: existing.id,
+            scheduledDate: existing.scheduledDate ?? scheduledDate,
+            status: "draft",
+            previousStatus: "published",
+            clearedLiveDecision: false,
+            archiveRetained: true,
+            weeklyPlanID: plan.id
+        )
+    }
+
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        package: ReadyDayPackageUpdate,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult {
+        var cards = await publishedStore?.readWeekCards() ?? []
+        guard let index = cards.firstIndex(where: { card in
+            if let dailyCardID { return card.id == dailyCardID }
+            return card.scheduledDate == scheduledDate
+        }) else {
+            throw RepositoryError.edgeFunction("daily_card_not_found")
+        }
+
+        var card = cards[index]
+        if let title = package.title?.nilIfBlank {
+            card.title = title
+        }
+        if let whyToday = package.whyToday?.nilIfBlank {
+            card.whyToday = whyToday
+        }
+        if let caption = package.caption {
+            card.caption = caption
+        }
+        if let script = package.script {
+            card.script = script
+        }
+        cards[index] = card
+
+        let today = SupabaseDateFormatting.todayDateString()
+        let todayCard = cards.first { $0.scheduledDate == today }
+        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
+
+        return DayPackageUpdateResult(
+            dailyCardID: card.id,
+            scheduledDate: card.scheduledDate ?? scheduledDate,
+            status: "published",
+            weeklyPlanID: plan.id,
+            title: card.title,
+            caption: card.caption
+        )
+    }
 }
 
 struct AppFixtureDayGenerationUnavailableRepository: DayGenerationRepository {}

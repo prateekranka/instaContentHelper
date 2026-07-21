@@ -6,20 +6,12 @@ final class InstalledContentHelperUITests: XCTestCase {
 
     @MainActor
     func testInstalledSessionExposesManagerAccess() throws {
-        let app = launchInstalledApp()
-        waitForCreatorRuntime(in: app)
-        openProfile(in: app)
-        attachScreenshot(named: "10-profile-manager-access-check", app: app)
-
-        let managerAccess = app.buttons["Switch to manager control"]
-        XCTAssertTrue(
-            managerAccess.waitForExistence(timeout: 10),
-            diagnostics("Installed session does not expose manager/admin access. Sign in with an owner/editor account before running manager handover proof.", app: app)
-        )
+        throw XCTSkip("Manager tools removed from Creator Profile (ticket 04); Admin shell retirement is ticket 07.")
     }
 
     @MainActor
     func testInstalledManagerGenerateReviewPublishAndCreatorToday() throws {
+        throw XCTSkip("Manager tools removed from Creator Profile (ticket 04); Admin shell retirement is ticket 07.")
         let startedAt = Date()
         let app = launchInstalledApp()
         waitForCreatorRuntime(in: app)
@@ -103,6 +95,7 @@ final class InstalledContentHelperUITests: XCTestCase {
 
     @MainActor
     func testInstalledManagerGenerateReviewSurfaceWithoutPublishing() throws {
+        throw XCTSkip("Manager tools removed from Creator Profile (ticket 04); Admin shell retirement is ticket 07.")
         // Guard: this proof must never run with fixture or mock environment.
         // These checks read the XCTest process environment only - they do not
         // pass any secrets into the app under test.
@@ -194,6 +187,7 @@ final class InstalledContentHelperUITests: XCTestCase {
 
     @MainActor
     func testInstalledManagerRetriesFailedDay() throws {
+        throw XCTSkip("Manager tools removed from Creator Profile (ticket 04); Admin shell retirement is ticket 07.")
         let app = launchInstalledApp()
         waitForCreatorRuntime(in: app)
         openProfile(in: app)
@@ -213,6 +207,7 @@ final class InstalledContentHelperUITests: XCTestCase {
 
     @MainActor
     func testInstalledManagerPublishesExistingGeneratedWeekAndCreatorToday() throws {
+        throw XCTSkip("Manager tools removed from Creator Profile (ticket 04); Admin shell retirement is ticket 07.")
         let app = launchInstalledApp()
         waitForCreatorRuntime(in: app)
         openProfile(in: app)
@@ -395,16 +390,8 @@ final class InstalledContentHelperUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(1.5))
         attachScreenshot(named: "07-after-tap-use-backup", app: app)
 
-        openProfile(in: app)
-        attachScreenshot(named: "07b-profile-after-backup", app: app)
-
-        //    ArchiveSection is embedded inline in Profile; an explicit Archive button
-        //    may not exist. Tap it if present, otherwise proceed to Backups directly.
-        let archiveButton = app.buttons["Archive"]
-        if archiveButton.waitForExistence(timeout: 10) {
-            archiveButton.tap()
-            _ = app.staticTexts["Archive"].waitForExistence(timeout: 10)
-        }
+        openArchive(in: app)
+        attachScreenshot(named: "07b-archive-after-backup", app: app)
 
         let backupsFilter = app.buttons["Backups"]
         XCTAssertTrue(backupsFilter.waitForExistence(timeout: 10), diagnostics("Backups filter not found", app: app))
@@ -423,6 +410,7 @@ final class InstalledContentHelperUITests: XCTestCase {
 
     @MainActor
     func testManagerWeekStartMenuExcludesPastDates() throws {
+        throw XCTSkip("Manager tools removed from Creator Profile (ticket 04); Admin shell retirement is ticket 07.")
         let app = launchInstalledApp()
         waitForCreatorRuntime(in: app)
         openProfile(in: app)
@@ -560,7 +548,19 @@ final class InstalledContentHelperUITests: XCTestCase {
     }
 
     @MainActor
+    private func openArchive(in app: XCUIApplication) {
+        let archiveTab = app.tabBars.buttons["Archive"]
+        XCTAssertTrue(archiveTab.waitForExistence(timeout: 10), diagnostics("Archive tab is not available", app: app))
+        archiveTab.tap()
+        XCTAssertTrue(
+            app.staticTexts["Archive"].waitForExistence(timeout: 10),
+            diagnostics("Archive screen did not open", app: app)
+        )
+    }
+
+    @MainActor
     private func openManagerWeekly(in app: XCUIApplication) {
+        XCTFail("Manager tools are no longer reachable from Creator Profile (ticket 04).")
         let managerAccess = app.buttons["Switch to manager control"]
         XCTAssertTrue(managerAccess.waitForExistence(timeout: 15), diagnostics("Manager access is not available for the installed session", app: app))
         managerAccess.tap()

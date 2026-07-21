@@ -46,6 +46,11 @@ final class AppServices {
     var lastPublishError: String?
     var isMakingDayAvailable = false
     var lastMakeDayAvailableError: String?
+    var isUnpublishingDay = false
+    var lastUnpublishDayError: String?
+    var isUpdatingReadyDayPackage = false
+    var lastReadyDayPackageEditError: String?
+    var pendingOverwriteGenerateDate: String?
     var regeneratingDayDates: Set<String> = []
     var regenerationDayErrors: [String: String] = [:]
     var generatingDayBriefDates: Set<String> = []
@@ -118,6 +123,12 @@ final class AppServices {
 
     var canManageTesterAccess: Bool {
         isLiveSupabaseRuntime && memberRole == "owner"
+    }
+
+    /// Generation and Plan prep are available to Creator without an owner/editor gate.
+    var canGenerateContent: Bool {
+        let role = memberRole.lowercased()
+        return role == "owner" || role == "editor" || role == "creator"
     }
 
     var currentTodayDateString: String {
@@ -565,7 +576,7 @@ final class AppServices {
             throw RepositoryError.edgeFunction(error)
         }
 
-        guard memberRole == "owner" || memberRole == "editor" else {
+        guard canGenerateContent else {
             let error = "role_not_allowed"
             regenerationDayErrors[scheduledDate] = error
             logGeneration("regenerate_day rejected role_not_allowed scheduled_date=\(scheduledDate) role=\(memberRole)")
@@ -620,10 +631,16 @@ final class AppServices {
     /// target date, driven entirely by the supplied day brief (which can also
     /// carry one-off asks like brand deliverables). The server sends the
     /// creator profile, references, and this brief to the AI provider.
+    ///
+    /// When the date already has a ready package or Decision, pass
+    /// `confirmOverwrite: true` after an explicit Overwrite confirmation.
+    /// That unpublishes first (clearing live Decision, keeping Archive), then
+    /// regenerates as a new draft.
     @discardableResult
     func generateDayCard(
         scheduledDate: String,
-        dayBrief: String
+        dayBrief: String,
+        confirmOverwrite: Bool = false
     ) async throws -> GeneratedDailyCardDraft {
         let brief = dayBrief.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !brief.isEmpty else {
@@ -639,12 +656,31 @@ final class AppServices {
             throw RepositoryError.edgeFunction(error)
         }
 
-        guard memberRole == "owner" || memberRole == "editor" else {
+        guard canGenerateContent else {
             let error = "role_not_allowed"
             dayBriefGenerationErrors[scheduledDate] = error
             logGeneration("generate_day rejected role_not_allowed scheduled_date=\(scheduledDate) role=\(memberRole)")
             throw RepositoryError.edgeFunction(error)
         }
+
+        let existingStatus = dayBriefGeneratedCards[scheduledDate]?.status
+            ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })?.status
+        if DayPackageLifecycleStatus.requiresOverwriteConfirmation(existingStatus) {
+            guard confirmOverwrite else {
+                let error = "ready_package_overwrite_required"
+                dayBriefGenerationErrors[scheduledDate] = DayLifecycleErrorDisplay.message(forCode: error)
+                pendingOverwriteGenerateDate = scheduledDate
+                throw RepositoryError.edgeFunction(error)
+            }
+            do {
+                _ = try await unpublishDay(scheduledDate: scheduledDate)
+            } catch {
+                let message = DayLifecycleErrorDisplay.message(for: error)
+                dayBriefGenerationErrors[scheduledDate] = message
+                throw RepositoryError.edgeFunction(message)
+            }
+        }
+        pendingOverwriteGenerateDate = nil
 
         guard !generatingDayBriefDates.contains(scheduledDate) else {
             let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
@@ -699,7 +735,7 @@ final class AppServices {
         force: Bool = false,
         revisionInstructions: String? = nil
     ) async throws -> [StoryboardThumbnailAsset] {
-        guard memberRole == "owner" || memberRole == "editor" else {
+        guard canGenerateContent else {
             let error = "role_not_allowed"
             storyboardThumbnailErrors[card.id] = error
             throw RepositoryError.edgeFunction(error)
@@ -1084,6 +1120,131 @@ final class AppServices {
         } catch {
             let message = DayAvailabilityErrorDisplay.message(for: error)
             lastMakeDayAvailableError = message
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
+    /// Demotes a ready/decision package to draft. Clears live Decision state locally
+    /// and empties Today when the date is device-local today. Archive entries stay.
+    @discardableResult
+    func unpublishDay(scheduledDate: String) async throws -> DayUnpublishResult {
+        guard !isUnpublishingDay else {
+            throw RepositoryError.edgeFunction("unpublish_day_already_running")
+        }
+
+        isUnpublishingDay = true
+        lastUnpublishDayError = nil
+        defer { isUnpublishingDay = false }
+
+        let card = dayBriefGeneratedCards[scheduledDate]
+            ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
+
+        do {
+            let result = try await repositories.weeklyPlans.unpublishDay(
+                scheduledDate: scheduledDate,
+                dailyCardID: card?.id,
+                context: context
+            )
+
+            if var localCard = dayBriefGeneratedCards[scheduledDate] {
+                localCard.status = "draft"
+                dayBriefGeneratedCards[scheduledDate] = localCard
+            }
+            if var summary = latestGenerationSummary,
+               let index = summary.dailyCards.firstIndex(where: { $0.scheduledDate == scheduledDate }) {
+                var draftCard = summary.dailyCards[index]
+                draftCard.status = "draft"
+                summary.dailyCards[index] = draftCard
+                latestGenerationSummary = summary
+            }
+
+            let isLocalToday = scheduledDate == currentTodayDateString
+            if isLocalToday {
+                todayContentState = .missingPublishedCard(date: scheduledDate)
+                weekCards.removeAll { $0.scheduledDate == scheduledDate }
+                if todayCard.scheduledDate == scheduledDate {
+                    todayCard = DailyCard(
+                        id: UUID(),
+                        title: "No ready package",
+                        context: SupabaseDateFormatting.contextLine(for: scheduledDate),
+                        effortLabel: "",
+                        whyToday: "Unpublished. Generate or make a draft available again.",
+                        scheduledDate: scheduledDate,
+                        scenes: []
+                    )
+                }
+                await refreshPublishedContentAfterPublishImmediately()
+                saveTodaySnapshot(source: "day-unpublish")
+            }
+
+            lastActionMessage = "Unpublished — back to draft."
+            lastRepositoryError = nil
+            return result
+        } catch {
+            let message = DayLifecycleErrorDisplay.message(for: error)
+            lastUnpublishDayError = message
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
+    /// Light-edits a ready package in place (status stays ready). Refreshes Today when local today.
+    @discardableResult
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        package: ReadyDayPackageUpdate
+    ) async throws -> DayPackageUpdateResult {
+        guard !isUpdatingReadyDayPackage else {
+            throw RepositoryError.edgeFunction("update_ready_day_package_already_running")
+        }
+
+        isUpdatingReadyDayPackage = true
+        lastReadyDayPackageEditError = nil
+        defer { isUpdatingReadyDayPackage = false }
+
+        let card = dayBriefGeneratedCards[scheduledDate]
+            ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
+
+        do {
+            let result = try await repositories.weeklyPlans.updateReadyDayPackage(
+                scheduledDate: scheduledDate,
+                dailyCardID: card?.id,
+                package: package,
+                context: context
+            )
+
+            if var localCard = dayBriefGeneratedCards[scheduledDate] {
+                if let title = package.title?.nilIfBlank { localCard.title = title }
+                if let whyToday = package.whyToday?.nilIfBlank { localCard.whyToday = whyToday }
+                if let caption = package.caption { localCard.caption = caption }
+                if let script = package.script { localCard.script = script }
+                if let backupStory = package.backupStory { localCard.backupStory = backupStory }
+                if let backupCaptionOnly = package.backupCaptionOnly {
+                    localCard.backupCaptionOnly = backupCaptionOnly
+                }
+                if let shootability = package.shootability { localCard.shootability = shootability }
+                if let minutes = package.estimatedShootMinutes {
+                    localCard.estimatedShootMinutes = minutes
+                }
+                // Keep ready status — light edit must not demote.
+                dayBriefGeneratedCards[scheduledDate] = localCard
+            }
+
+            let isLocalToday = scheduledDate == currentTodayDateString
+            if isLocalToday {
+                if var localCard = dayBriefGeneratedCards[scheduledDate] {
+                    todayCard = localCard.dailyCard(completionState: todayCard.completionState)
+                    todayContentState = .ready
+                }
+                await refreshPublishedContentAfterPublishImmediately()
+                saveTodaySnapshot(source: "ready-day-edit")
+            }
+
+            lastActionMessage = "Ready package updated."
+            lastRepositoryError = nil
+            return result
+        } catch {
+            let message = DayLifecycleErrorDisplay.message(for: error)
+            lastReadyDayPackageEditError = message
             throw RepositoryError.edgeFunction(message)
         }
     }
@@ -1672,6 +1833,44 @@ private enum DayAvailabilityErrorDisplay {
         "invalid_device_token": "This device session has expired. Sign in again.",
         "make_day_available_not_configured": "Available on Today is not configured for this runtime."
     ]
+
+    static func message(for error: Error) -> String {
+        let description = error.localizedDescription
+        if let message = userFacingMessages[description] {
+            return message
+        }
+        if let code = userFacingMessages.keys.first(where: { description.contains($0) }) {
+            return userFacingMessages[code] ?? description
+        }
+        return description
+    }
+}
+
+private enum DayLifecycleErrorDisplay {
+    private static let userFacingMessages = [
+        "daily_card_not_found": "No package was found for that day.",
+        "daily_card_not_ready": "That day is not a ready package.",
+        "daily_card_already_draft": "That day is already a draft.",
+        "unpublish_day_conflict": "Could not unpublish — the day changed. Refresh and try again.",
+        "invalid_unpublish_day_payload": "Unpublish could not accept that request. Refresh and try again.",
+        "unpublish_day_failed": "Could not unpublish this day. Try again.",
+        "unpublish_day_already_running": "Unpublish is already running. Wait a moment.",
+        "unpublish_day_not_configured": "Unpublish is not configured for this runtime.",
+        "invalid_update_ready_day_package_payload": "Could not save those edits. Refresh and try again.",
+        "update_ready_day_package_failed": "Could not save package edits. Try again.",
+        "update_ready_day_package_already_running": "Package save is already running. Wait a moment.",
+        "update_ready_day_package_not_configured": "Package editing is not configured for this runtime.",
+        "update_ready_day_package_conflict": "Could not save edits — the day changed. Refresh and try again.",
+        "ready_package_overwrite_required": "This day is a ready package. Confirm Overwrite to replace it with a new draft.",
+        "role_not_allowed": "This session cannot change that day package.",
+        "creator_not_found": "This creator workspace is no longer available. Refresh and try again.",
+        "missing_device_token": "This device session is missing. Sign in again.",
+        "invalid_device_token": "This device session has expired. Sign in again."
+    ]
+
+    static func message(forCode code: String) -> String {
+        userFacingMessages[code] ?? code
+    }
 
     static func message(for error: Error) -> String {
         let description = error.localizedDescription

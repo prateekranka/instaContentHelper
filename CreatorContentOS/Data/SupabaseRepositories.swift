@@ -208,6 +208,73 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         }
     }
 
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult {
+        do {
+            let response: SupabaseUnpublishDayResponse = try await client.functions.invoke(
+                "unpublish-day",
+                options: FunctionInvokeOptions(
+                    body: SupabaseUnpublishDayRequest(
+                        creatorID: context.creatorID,
+                        scheduledDate: scheduledDate,
+                        dailyCardID: dailyCardID
+                    )
+                )
+            )
+            return DayUnpublishResult(
+                dailyCardID: response.dailyCardID,
+                scheduledDate: response.scheduledDate,
+                status: response.status,
+                previousStatus: response.previousStatus,
+                clearedLiveDecision: response.clearedLiveDecision,
+                archiveRetained: response.archiveRetained,
+                weeklyPlanID: response.weeklyPlanID
+            )
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        package: ReadyDayPackageUpdate,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult {
+        do {
+            let response: SupabaseUpdateReadyDayPackageResponse = try await client.functions.invoke(
+                "update-ready-day-package",
+                options: FunctionInvokeOptions(
+                    body: SupabaseUpdateReadyDayPackageRequest(
+                        creatorID: context.creatorID,
+                        scheduledDate: scheduledDate,
+                        dailyCardID: dailyCardID,
+                        package: package
+                    )
+                )
+            )
+            return DayPackageUpdateResult(
+                dailyCardID: response.dailyCardID,
+                scheduledDate: response.scheduledDate,
+                status: response.status,
+                weeklyPlanID: response.weeklyPlanID,
+                title: response.title,
+                caption: response.caption
+            )
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,

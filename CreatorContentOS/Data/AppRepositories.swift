@@ -258,6 +258,22 @@ protocol WeeklyPlanRepository: Sendable {
         dailyCardID: UUID?,
         context: WorkspaceContext
     ) async throws -> DayAvailabilityResult
+
+    /// Demotes a ready/decision day to draft. Clears live Decision; retains Archive rows.
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult
+
+    /// Light-edits package fields on a ready/decision day without demoting status
+    /// or requiring week soft-lock unlock.
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        package: ReadyDayPackageUpdate,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult
 }
 
 protocol DayGenerationRepository: Sendable {
@@ -357,6 +373,23 @@ extension WeeklyPlanRepository {
     ) async throws -> DayAvailabilityResult {
         throw RepositoryError.notConfigured("make_day_available_not_configured")
     }
+
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID? = nil,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult {
+        throw RepositoryError.notConfigured("unpublish_day_not_configured")
+    }
+
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID? = nil,
+        package: ReadyDayPackageUpdate,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult {
+        throw RepositoryError.notConfigured("update_ready_day_package_not_configured")
+    }
 }
 
 protocol ReferenceRepository: Sendable {
@@ -406,6 +439,53 @@ struct DayAvailabilityResult: Hashable, Sendable {
     var status: String
     var weeklyPlanID: UUID
     var weekIsSoftLocked: Bool
+}
+
+struct DayUnpublishResult: Hashable, Sendable {
+    var dailyCardID: UUID
+    var scheduledDate: String
+    var status: String
+    var previousStatus: String
+    var clearedLiveDecision: Bool
+    var archiveRetained: Bool
+    var weeklyPlanID: UUID
+}
+
+struct ReadyDayPackageUpdate: Hashable, Sendable {
+    var title: String?
+    var whyToday: String?
+    var caption: String?
+    var script: String?
+    var backupStory: String?
+    var backupCaptionOnly: String?
+    var shootability: String?
+    var estimatedShootMinutes: Int?
+}
+
+struct DayPackageUpdateResult: Hashable, Sendable {
+    var dailyCardID: UUID
+    var scheduledDate: String
+    var status: String
+    var weeklyPlanID: UUID
+    var title: String
+    var caption: String?
+}
+
+enum DayPackageLifecycleStatus {
+    static let readyOrDecision: Set<String> = [
+        "published",
+        "in_decision",
+        "shot",
+        "posted",
+        "used_backup",
+        "saved_for_tomorrow",
+        "skipped_intentionally"
+    ]
+
+    static func requiresOverwriteConfirmation(_ status: String?) -> Bool {
+        guard let status else { return false }
+        return readyOrDecision.contains(status)
+    }
 }
 
 struct CreatorProfileSummary: Hashable, Sendable {

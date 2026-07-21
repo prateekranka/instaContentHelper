@@ -463,6 +463,7 @@ enum PackageSection: String, CaseIterable, Identifiable, Hashable, Sendable {
 
 enum CreatorTab: String, CaseIterable, Identifiable, Hashable, Sendable {
     case today = "Today"
+    case archive = "Archive"
     case profile = "Profile"
 
     var id: String { rawValue }
@@ -470,6 +471,14 @@ enum CreatorTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 
 enum CreatorRoute: Hashable, Sendable {
     case shootFolio
+    case plan
+}
+
+/// Profile destinations reachable from the Creator Profile tab (not nested Archive / Manager).
+enum ProfileDestination: String, CaseIterable, Identifiable, Hashable, Sendable {
+    case plan = "Plan"
+
+    var id: String { rawValue }
 }
 
 enum TodaySheet: Identifiable, Hashable, Sendable {

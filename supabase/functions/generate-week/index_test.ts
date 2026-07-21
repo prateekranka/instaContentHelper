@@ -24,17 +24,28 @@ const dailyCardIDs = Array.from(
   (_, index) => `77777777-7777-4777-8777-77777777777${index}`,
 );
 
-Deno.test("generate-week rejects creator role", async () => {
+Deno.test("generate-week allows creator role for generate_day", async () => {
+  const state = dayGenerationState();
+  state.memberRole = "creator";
+  state.weeklyPlan = null;
+  state.dailyCards = [];
+  state.allowMockRequest = true;
+
   const response = await callHandler(
     {
+      action: "generate_day",
       creator_id: creatorID,
-      week_start_date: "2026-06-08",
+      scheduled_date: "2026-06-10",
+      day_brief: "Simple gym return day.",
+      mock: true,
     },
-    { memberRole: "creator" },
+    state,
   );
 
-  assertEquals(response.status, 403);
-  assertEquals(await errorCode(response), "role_not_allowed");
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.status, "draft");
+  assertEquals(typeof body.generation_id, "string");
 });
 
 Deno.test("generate-week status returns queued day-job progress", async () => {

@@ -6,21 +6,33 @@ struct CreatorShellView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
-                TodayView {
-                    selectedTab = .profile
-                }
-                    .navigationDestination(for: CreatorRoute.self) { route in
-                        switch route {
-                        case .shootFolio:
-                            ShootFolioView()
-                        }
+                TodayView()
+                .navigationDestination(for: CreatorRoute.self) { route in
+                    switch route {
+                    case .shootFolio:
+                        ShootFolioView()
+                    case .plan:
+                        PlanHubPlaceholderView()
                     }
+                }
             }
             .tabItem { Label("Today", systemImage: "sun.min") }
             .tag(CreatorTab.today)
 
             NavigationStack {
+                ArchiveView()
+            }
+            .tabItem { Label("Archive", systemImage: "archivebox") }
+            .tag(CreatorTab.archive)
+
+            NavigationStack {
                 ProfileModeView()
+                    .navigationDestination(for: ProfileDestination.self) { destination in
+                        switch destination {
+                        case .plan:
+                            PlanHubPlaceholderView()
+                        }
+                    }
             }
             .tabItem { Label("Profile", systemImage: "person.circle") }
             .tag(CreatorTab.profile)
@@ -29,24 +41,24 @@ struct CreatorShellView: View {
     }
 }
 
+/// Temporary Plan entry until ticket 05 builds the Plan calendar hub.
+struct PlanHubPlaceholderView: View {
+    var body: some View {
+        DayGenerationView(showsModeSwitch: false)
+    }
+}
+
 struct ProfileModeView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @State private var isSigningOut = false
-    @State private var isCreatorProfileExpanded = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: MCOSpace.m) {
                 header
                 accountSection
-                if canAccessAdmin {
-                    managerAccessSection
-                }
-                creatorProfileSection
-                Hairline()
-                    .padding(.vertical, MCOSpace.s)
-                ArchiveSection()
+                planEntry
                 runtimeStatus
             }
             .padding(.horizontal, MCOSpace.l)
@@ -62,12 +74,51 @@ struct ProfileModeView: View {
             .foregroundStyle(MCOTheme.Color.ink)
     }
 
+    private var planEntry: some View {
+        NavigationLink(value: ProfileDestination.plan) {
+            JournalBlock {
+                HStack(spacing: MCOSpace.m) {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(MCOTheme.Color.oxblood)
+                        .frame(width: 34)
+                    VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                        Text("Plan")
+                            .font(MCOType.headline)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                        Text("Generate and prepare day cards.")
+                            .font(MCOType.caption)
+                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                    }
+                    Spacer(minLength: MCOSpace.s)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open Plan")
+        .accessibilityIdentifier("profile.plan")
+    }
+
     private var runtimeStatus: some View {
         JournalBlock {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
-                Text(liveSession == nil ? "Database" : "Supabase")
+                Text("Status")
                     .font(MCOType.headline)
                     .foregroundStyle(MCOTheme.Color.ink)
+
+                statusRow(
+                    title: "Supabase",
+                    value: services.isLiveSupabaseRuntime ? "Live" : "Sample",
+                    tone: services.isLiveSupabaseRuntime ? .ready : .warning
+                )
+                statusRow(
+                    title: "Gemini",
+                    value: geminiStatusLabel,
+                    tone: services.isLiveSupabaseRuntime ? .ready : .quiet
+                )
 
                 HStack(alignment: .center, spacing: MCOSpace.s) {
                     Text(lastCheckedText)
@@ -89,6 +140,25 @@ struct ProfileModeView: View {
             .animation(.snappy(duration: 0.2), value: services.isRefreshingRepository)
             .animation(.snappy(duration: 0.2), value: refreshFeedbackMessage)
         }
+    }
+
+    private func statusRow(title: String, value: String, tone: ChipTone) -> some View {
+        HStack {
+            Text(title)
+                .font(MCOType.bodySmall)
+                .foregroundStyle(MCOTheme.Color.ink)
+            Spacer(minLength: MCOSpace.s)
+            StatusChip(text: value, tone: tone)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title) \(value)")
+    }
+
+    private var geminiStatusLabel: String {
+        if services.isLiveSupabaseRuntime {
+            return "Edge Function"
+        }
+        return "Offline"
     }
 
     private var refreshButton: some View {
@@ -147,19 +217,21 @@ struct ProfileModeView: View {
         JournalBlock {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 HStack {
-                    Text(liveSession == nil ? "Account" : "Signed in")
+                    Text(liveSession == nil ? "Account" : "Signed in with Apple")
                         .font(MCOType.tinyLabel)
                         .foregroundStyle(MCOTheme.Color.sageDeep)
                     Spacer()
-                    StatusChip(text: liveSession?.memberRole.capitalized ?? "Sample", tone: liveSession == nil ? .warning : .ready)
+                    StatusChip(
+                        text: liveSession?.memberRole.capitalized ?? "Sample",
+                        tone: liveSession == nil ? .warning : .ready
+                    )
                 }
 
                 if let liveSession {
-                    if let email = liveSession.authenticatedEmail {
-                        Text(email)
-                            .font(MCOType.body)
-                            .foregroundStyle(MCOTheme.Color.ink)
-                    }
+                    Text(appleIdentityLabel(for: liveSession))
+                        .font(MCOType.body)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                        .accessibilityIdentifier("profile.appleIdentity")
                 } else {
                     Text("Using sample data")
                         .font(MCOType.body)
@@ -175,63 +247,14 @@ struct ProfileModeView: View {
         }
     }
 
-    private var creatorProfileSection: some View {
-        VStack(spacing: 0) {
-            Button {
-                withAnimation(.snappy(duration: 0.22)) {
-                    isCreatorProfileExpanded.toggle()
-                }
-            } label: {
-                HStack(alignment: .center, spacing: MCOSpace.m) {
-                    Image(systemName: "person.crop.rectangle")
-                        .font(.system(size: 22, weight: .light))
-                        .foregroundStyle(MCOTheme.Color.brass)
-                        .frame(width: 34)
-
-                    Text("Creator Profile")
-                        .font(MCOType.headline)
-                        .foregroundStyle(MCOTheme.Color.ink)
-
-                    Spacer(minLength: MCOSpace.s)
-                    Image(systemName: isCreatorProfileExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
-                }
-                .padding(.vertical, MCOSpace.xs)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(isCreatorProfileExpanded ? "Close Creator Profile" : "Open Creator Profile")
-
-            if isCreatorProfileExpanded {
-                VStack(alignment: .leading, spacing: MCOSpace.s) {
-                    Text(services.creatorProfileSummary.positioning)
-                        .font(MCOType.bodySmall)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if !services.creatorProfileSummary.noGoTopics.isEmpty {
-                        HStack(spacing: MCOSpace.xs) {
-                            ForEach(services.creatorProfileSummary.noGoTopics.prefix(3), id: \.self) { topic in
-                                StatusChip(text: topic, tone: .warning)
-                            }
-                        }
-                    }
-
-                    NavigationLink {
-                        CreatorProfileAdminView()
-                    } label: {
-                        Text("Edit profile")
-                            .font(MCOType.caption)
-                            .foregroundStyle(MCOTheme.Color.oxblood)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Edit creator profile")
-                }
-                .padding(.bottom, MCOSpace.s)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+    private func appleIdentityLabel(for session: PairedDeviceSession) -> String {
+        if let email = session.authenticatedEmail?.nilIfBlank {
+            return email
         }
+        if let name = session.creatorDisplayName?.nilIfBlank {
+            return name
+        }
+        return "Apple ID"
     }
 
     private var lastCheckedText: String {
@@ -243,48 +266,12 @@ struct ProfileModeView: View {
         return "Checking for updates..."
     }
 
-    private var managerAccessSection: some View {
-        JournalBlock {
-            HStack(spacing: MCOSpace.m) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(MCOTheme.Color.oxblood)
-                    .frame(width: 34)
-                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                    Text("Manager tools")
-                        .font(MCOType.headline)
-                        .foregroundStyle(MCOTheme.Color.ink)
-                    Text("Plan the week, review references, and run QA.")
-                        .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
-                }
-                Spacer()
-                Button {
-                    appState.activeMode = .admin
-                } label: {
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 38, height: 38)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(MCOTheme.Color.paperRaised)
-                .background(MCOTheme.Color.oxblood, in: Circle())
-                .accessibilityLabel("Switch to manager control")
-            }
-        }
-    }
-
     private var liveSession: PairedDeviceSession? {
         if case .live(let session) = appState.runtime.mode {
             session
         } else {
             nil
         }
-    }
-
-    private var canAccessAdmin: Bool {
-        guard let role = liveSession?.memberRole.lowercased() else { return false }
-        return role == "owner" || role == "editor"
     }
 
     @MainActor

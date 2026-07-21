@@ -93,6 +93,7 @@ export async function handleGenerateStoryboardThumbnailRequest(
   const authResult = await verifyDeviceSession(request, admin, [
     "owner",
     "editor",
+    "creator",
   ]);
   if ("response" in authResult) {
     return authResult.response;
