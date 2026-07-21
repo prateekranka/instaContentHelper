@@ -187,6 +187,24 @@ final class GeneratedStoryboardBreakdownTests: XCTestCase {
         XCTAssertEqual(rows[3].audioDialogue, "One steady stride is enough for today.")
     }
 
+    func testShootFolioResolvesPlanGeminiThumbnailsWhenTodayCardMissingThem() {
+        let assets = Self.sampleThumbnailAssets(forRowCount: 2)
+        let services = AppServices.fixtureBacked()
+        var today = DailyCard.raceWeekToday
+        today.storyboardThumbnailAssets = nil
+        services.todayCard = today
+
+        var planCard = GeneratedDailyCardDraft.storyboardBreakdownFixture
+        planCard.scheduledDate = today.scheduledDate ?? "2026-06-05"
+        planCard.storyboardThumbnailAssets = assets
+        services.dayBriefGeneratedCards[planCard.scheduledDate] = planCard
+
+        let folioCard = services.todayShootFolioCard
+        XCTAssertEqual(folioCard.storyboardThumbnailAssets, assets)
+        XCTAssertTrue(services.hydrateTodayStoryboardThumbnailsFromPlanPackage())
+        XCTAssertEqual(services.todayCard.storyboardThumbnailAssets, assets)
+    }
+
     func testDomainCardPreservesStoryboardThumbnailsAndVoiceoverTimeline() throws {
         let thumbnailURL = "https://example.com/storyboard/row-0.jpg"
         let json = """

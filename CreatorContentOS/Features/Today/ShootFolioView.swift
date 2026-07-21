@@ -33,13 +33,13 @@ struct ShootFolioView: View {
                             sceneProgress
                         }
                         SceneListView(
-                            card: services.todayCard,
+                            card: services.todayShootFolioCard,
                             isEditing: isEditing,
                             draftScenes: $draftScenes
                         )
                     case .script:
                         ScriptTimelineCopyBlock(
-                            card: services.todayCard,
+                            card: services.todayShootFolioCard,
                             isEditing: isEditing,
                             draftScript: $draftScript
                         )
@@ -85,6 +85,7 @@ struct ShootFolioView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
+            _ = services.hydrateTodayStoryboardThumbnailsFromPlanPackage()
             if startsInEditingMode, !isEditing {
                 beginEditing()
             }

@@ -490,7 +490,7 @@ struct PlanHubView: View {
                     subtitle: readyPackageSubtitle(for: card)
                 )
                 GeneratedDayPlannedContent(card: card) { assets in
-                    services.dayBriefGeneratedCards[card.scheduledDate]?.storyboardThumbnailAssets = assets
+                    services.applyStoryboardThumbnailAssets(assets, toDailyCardID: card.id)
                 }
                 if canLightEditReadyPackage {
                     lightEditBlock

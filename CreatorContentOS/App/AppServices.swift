@@ -87,6 +87,79 @@ final class AppServices {
         }
         return latestGenerationSummary?.dailyCards.first { $0.scheduledDate == scheduledDate }
     }
+
+    /// Today Shoot Folio card with Gemini storyboard thumbnails from Plan when Today is missing them.
+    var todayShootFolioCard: DailyCard {
+        var card = todayCard
+        let assets = resolvedStoryboardThumbnailAssets(for: card)
+        if !assets.isEmpty {
+            card.storyboardThumbnailAssets = assets
+        }
+        if card.voiceoverTimeline?.isEmpty != false,
+           let package = dayPackage(for: card.scheduledDate ?? currentTodayDateString),
+           !package.voiceoverTimeline.isEmpty {
+            card.voiceoverTimeline = package.voiceoverTimeline
+        }
+        if card.shotTimeline?.isEmpty != false,
+           let package = dayPackage(for: card.scheduledDate ?? currentTodayDateString),
+           !package.shotTimeline.isEmpty {
+            card.shotTimeline = package.shotTimeline
+        }
+        return card
+    }
+
+    /// Prefer Plan/session Gemini storyboard assets when the published Today card lacks them.
+    func resolvedStoryboardThumbnailAssets(for card: DailyCard) -> [StoryboardThumbnailAsset] {
+        if Self.hasUsableStoryboardThumbnails(card.storyboardThumbnailAssets) {
+            return card.storyboardThumbnailAssets ?? []
+        }
+
+        let scheduledDate = card.scheduledDate ?? currentTodayDateString
+        if let package = dayPackage(for: scheduledDate),
+           Self.hasUsableStoryboardThumbnails(package.storyboardThumbnailAssets) {
+            return package.storyboardThumbnailAssets
+        }
+
+        if let summaryCard = latestGenerationSummary?.dailyCards.first(where: {
+            $0.id == card.id || $0.scheduledDate == scheduledDate
+        }), Self.hasUsableStoryboardThumbnails(summaryCard.storyboardThumbnailAssets) {
+            return summaryCard.storyboardThumbnailAssets
+        }
+
+        if let weekCard = weekCards.first(where: {
+            $0.id == card.id || $0.scheduledDate == scheduledDate
+        }), Self.hasUsableStoryboardThumbnails(weekCard.storyboardThumbnailAssets) {
+            return weekCard.storyboardThumbnailAssets ?? []
+        }
+
+        return card.storyboardThumbnailAssets ?? []
+    }
+
+    /// Copies Plan Gemini thumbnails onto `todayCard` so Shoot Folio can render them.
+    @discardableResult
+    func hydrateTodayStoryboardThumbnailsFromPlanPackage() -> Bool {
+        let assets = resolvedStoryboardThumbnailAssets(for: todayCard)
+        guard Self.hasUsableStoryboardThumbnails(assets) else { return false }
+        let existing = todayCard.storyboardThumbnailAssets ?? []
+        guard existing != assets else { return false }
+        todayCard.storyboardThumbnailAssets = assets
+        if let package = dayPackage(for: todayCard.scheduledDate ?? currentTodayDateString) {
+            if todayCard.voiceoverTimeline?.isEmpty != false, !package.voiceoverTimeline.isEmpty {
+                todayCard.voiceoverTimeline = package.voiceoverTimeline
+            }
+            if todayCard.shotTimeline?.isEmpty != false, !package.shotTimeline.isEmpty {
+                todayCard.shotTimeline = package.shotTimeline
+            }
+        }
+        saveTodaySnapshot(source: "storyboard-thumbnail-hydrate")
+        return true
+    }
+
+    private static func hasUsableStoryboardThumbnails(_ assets: [StoryboardThumbnailAsset]?) -> Bool {
+        guard let assets, !assets.isEmpty else { return false }
+        return assets.contains { $0.publicURL?.nilIfBlank != nil }
+    }
+
     private var latestTodayDecisionSyncID = 0
     private var todayDecisionSyncTask: Task<Void, Never>?
 
@@ -582,11 +655,21 @@ final class AppServices {
     }
 
     func generatedDailyCard(for dayID: UUID) -> GeneratedDailyCardDraft? {
-        latestGenerationSummary?.dailyCards.first { $0.id == dayID }
+        if let card = dayBriefGeneratedCards.values.first(where: { $0.id == dayID }) {
+            return card
+        }
+        return latestGenerationSummary?.dailyCards.first { $0.id == dayID }
     }
 
     func generatedDailyCard(for day: WeeklyDay) -> GeneratedDailyCardDraft? {
-        latestGenerationSummary?.dailyCards.first {
+        if let scheduledDate = day.scheduledDate,
+           let card = dayBriefGeneratedCards[scheduledDate] {
+            return card
+        }
+        if let card = dayBriefGeneratedCards.values.first(where: { $0.id == day.id }) {
+            return card
+        }
+        return latestGenerationSummary?.dailyCards.first {
             $0.id == day.id || $0.scheduledDate == day.scheduledDate
         }
     }
@@ -856,8 +939,15 @@ final class AppServices {
             latestGenerationSummary = draft
         }
 
-        if todayCard.id == dailyCardID {
+        if todayCard.id == dailyCardID
+            || matchingScheduledDates.contains(todayCard.scheduledDate ?? "")
+            || matchingScheduledDates.contains(currentTodayDateString) {
             todayCard.storyboardThumbnailAssets = assets
+            saveTodaySnapshot(source: "storyboard-thumbnail-apply")
+        }
+
+        if let weekIndex = weekCards.firstIndex(where: { $0.id == dailyCardID }) {
+            weekCards[weekIndex].storyboardThumbnailAssets = assets
         }
     }
 
@@ -1137,11 +1227,17 @@ final class AppServices {
 
             let isLocalToday = scheduledDate == currentTodayDateString
             if isLocalToday {
+                let preservedAssets = draftCard?.storyboardThumbnailAssets ?? []
                 if let draftCard {
                     todayCard = draftCard.dailyCard(completionState: nil)
                     todayContentState = .ready
                 }
                 await refreshPublishedContentAfterPublishImmediately()
+                if !Self.hasUsableStoryboardThumbnails(todayCard.storyboardThumbnailAssets),
+                   Self.hasUsableStoryboardThumbnails(preservedAssets) {
+                    todayCard.storyboardThumbnailAssets = preservedAssets
+                }
+                hydrateTodayStoryboardThumbnailsFromPlanPackage()
                 saveTodaySnapshot(source: "day-available")
                 await scheduleTodayNotificationIfNeededImmediately()
             }
@@ -1637,6 +1733,7 @@ final class AppServices {
             if !isMissingPublishedTodayCard {
                 todayContentState = .ready
             }
+            hydrateTodayStoryboardThumbnailsFromPlanPackage()
         } else {
             lastRepositoryRefreshError = refreshError?.localizedDescription
         }
