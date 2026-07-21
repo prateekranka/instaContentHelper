@@ -173,7 +173,8 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = false
+# Live Creator-only Apple sign-in auto-provisions; signup must be allowed for new Auth users.
+enable_signup = true
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -324,9 +325,11 @@ max_frequency = "5s"
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin_oidc`, `notion`, `twitch`,
 # `twitter`, `x`, `slack`, `spotify`, `workos`, `zoom`.
 [auth.external.apple]
-enabled = false
-client_id = ""
+enabled = true
+client_id = "com.prateekranka.creatorcontenthelper"
 # DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
+# Native-only Sign in with Apple (signInWithIdToken) does not require a rotating OAuth secret.
+# Set this only if you also enable web OAuth Sign in with Apple.
 secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
 # Overrides the default auth callback URL derived from auth.external_url.
 redirect_uri = ""
@@ -336,7 +339,7 @@ url = ""
 # If enabled, the nonce check will be skipped. Required for local sign in with Google auth.
 skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
-email_optional = false
+email_optional = true
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.

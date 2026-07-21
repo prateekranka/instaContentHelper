@@ -48,8 +48,34 @@ The script deploys:
 - `import-references`
 - `review-reference`
 - `generate-week`
+- `generate-storyboard-thumbnail`
+- `generate-storyboard-thumbnails`
+- `make-day-available`
+- `unpublish-day`
+- `update-ready-day-package`
 
 All functions deploy with JWT verification disabled because the app uses the publishable key plus `x-mco-device-token`; the service role key stays inside Edge Functions.
+
+## 1b. Enable Sign in with Apple (native iOS)
+
+For native `signInWithIdToken` only (no web OAuth), register the App ID as the Apple Client ID and allow Auth signups:
+
+```sh
+export SUPABASE_ACCESS_TOKEN=your-cli-access-token
+export PROJECT_REF=zogvvrxhiwozjmufvddu
+
+curl -X PATCH "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "disable_signup": false,
+    "external_apple_enabled": true,
+    "external_apple_client_id": "com.prateekranka.creatorcontenthelper",
+    "external_apple_email_optional": true
+  }'
+```
+
+Confirm Sign in with Apple is enabled on the App ID in Apple Developer (Capabilities). Native-only does not require a rotating Apple OAuth secret; add a Services ID + secret only if you later enable web OAuth.
 
 ## 2. Smoke live read/write boundary
 
