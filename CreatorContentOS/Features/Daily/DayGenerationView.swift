@@ -35,11 +35,29 @@ struct DayGenerationView: View {
                         tone: .warning
                     )
                 }
+                if let error = services.lastMakeDayAvailableError?.nilIfBlank {
+                    AdminSignalBlock(
+                        title: "Available on Today",
+                        value: error,
+                        systemImage: "exclamationmark.triangle",
+                        tone: .warning
+                    )
+                }
                 generatedDaysStrip
                 resultBlock
             }
         } bottomBar: {
             GlassCommandBar {
+                if displayedCard != nil {
+                    SecondaryActionButton(
+                        title: services.isMakingDayAvailable ? "Making available…" : "Available on Today"
+                    ) {
+                        makeAvailableOnToday()
+                    }
+                    .disabled(!canMakeAvailable)
+                    .opacity(canMakeAvailable ? 1 : 0.48)
+                    .accessibilityIdentifier("daily.availableOnToday")
+                }
                 PrimaryActionButton(
                     title: generateButtonTitle,
                     systemImage: isGenerating ? "hourglass" : "sparkles"
@@ -71,6 +89,14 @@ struct DayGenerationView: View {
     private var canSubmit: Bool {
         canGenerate && !isGenerating &&
             !dayBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canMakeAvailable: Bool {
+        canGenerate
+            && !isGenerating
+            && !services.isMakingDayAvailable
+            && displayedCard != nil
+            && displayedCard?.status == "draft"
     }
 
     private var generateButtonTitle: String {
@@ -314,6 +340,20 @@ struct DayGenerationView: View {
                 dayBrief = ""
             } catch {
                 // The error is surfaced via services.dayBriefGenerationErrors.
+            }
+        }
+    }
+
+    private func makeAvailableOnToday() {
+        let dateString = scheduledDateString
+        Task { @MainActor in
+            do {
+                let shouldOpenToday = try await services.makeDayAvailable(scheduledDate: dateString)
+                if shouldOpenToday {
+                    appState.activeMode = .creator
+                }
+            } catch {
+                // Surfaced via services.lastMakeDayAvailableError; stay on Daily.
             }
         }
     }

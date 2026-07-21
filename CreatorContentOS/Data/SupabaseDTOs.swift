@@ -999,6 +999,41 @@ struct SupabasePublishWeekResponse: Decodable, Hashable, Sendable {
     }
 }
 
+struct SupabaseMakeDayAvailableRequest: Encodable, Sendable {
+    var creatorID: UUID
+    var scheduledDate: String
+    var dailyCardID: UUID?
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case scheduledDate = "scheduled_date"
+        case dailyCardID = "daily_card_id"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(creatorID, forKey: .creatorID)
+        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encodeIfPresent(dailyCardID, forKey: .dailyCardID)
+    }
+}
+
+struct SupabaseMakeDayAvailableResponse: Decodable, Hashable, Sendable {
+    var dailyCardID: UUID
+    var scheduledDate: String
+    var status: String
+    var weeklyPlanID: UUID
+    var weekIsSoftLocked: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case dailyCardID = "daily_card_id"
+        case scheduledDate = "scheduled_date"
+        case status
+        case weeklyPlanID = "weekly_plan_id"
+        case weekIsSoftLocked = "week_is_soft_locked"
+    }
+}
+
 enum SupabaseDateFormatting {
     static func contextLine(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return rawDate }

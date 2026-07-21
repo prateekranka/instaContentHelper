@@ -191,6 +191,44 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         currentPlan.days[dayIndex].state = newState
         self.plan = currentPlan
     }
+
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult {
+        let cardID = dailyCardID ?? UUID()
+        let readyCard = DailyCard(
+            id: cardID,
+            title: "Ready package \(scheduledDate)",
+            context: SupabaseDateFormatting.contextLine(for: scheduledDate),
+            effortLabel: "Easy - 12 min",
+            whyToday: "Available on Today from draft.",
+            scheduledDate: scheduledDate,
+            scenes: [
+                ShotScene(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
+                ShotScene(number: 2, title: "One steady movement", duration: "5 sec", symbol: "figure.run"),
+                ShotScene(number: 3, title: "Useful close", duration: "4 sec", symbol: "text.quote")
+            ]
+        )
+
+        var cards = await publishedStore?.readWeekCards() ?? []
+        cards.removeAll { $0.scheduledDate == scheduledDate }
+        cards.append(readyCard)
+        cards.sort { ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "") }
+
+        let today = SupabaseDateFormatting.todayDateString()
+        let todayCard = cards.first { $0.scheduledDate == today }
+        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
+
+        return DayAvailabilityResult(
+            dailyCardID: cardID,
+            scheduledDate: scheduledDate,
+            status: "published",
+            weeklyPlanID: plan.id,
+            weekIsSoftLocked: false
+        )
+    }
 }
 
 struct AppFixtureDayGenerationUnavailableRepository: DayGenerationRepository {}

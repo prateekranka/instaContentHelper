@@ -34,6 +34,7 @@
 		788DF179289E2B563CDB5CEE /* TestGeneratedDraftFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99A7AEA0EFE2AB580A6F2775 /* TestGeneratedDraftFactory.swift */; };
 		7AB0A3DD52A25BAB5902E1A8 /* ReferenceImportDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = C90557DA178FDB72809DE825 /* ReferenceImportDTOs.swift */; };
 		7EE38E606D038C7C6DA0BAEB /* TodayCardAndPostedFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E483DCB6AAA413D2EF0C22E /* TodayCardAndPostedFlowTests.swift */; };
+		B2C3D4E5F60718293A4B5C6D /* DayAvailabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* DayAvailabilityTests.swift */; };
 		7F8E48FFBA5A5C32DE4660A6 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 73841363A79FEB861C7BE838 /* Supabase */; };
 		819EF924B23E127FD1FA6F5B /* ReferenceImportRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1172250F68C714C25A18EE6D /* ReferenceImportRepository.swift */; };
 		84507BFC8C21EAF5D1D07C40 /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E7EEA64764CBFE7F1C70689 /* TodayView.swift */; };
@@ -81,6 +82,7 @@
 		07626CC82ECFAE52D81D7216 /* LocalRuntime.sample.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = LocalRuntime.sample.xcconfig; sourceTree = "<group>"; };
 		0D7E49F920DF70C5EEE2E7C2 /* GeneratedStoryboardBreakdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedStoryboardBreakdown.swift; sourceTree = "<group>"; };
 		0E483DCB6AAA413D2EF0C22E /* TodayCardAndPostedFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayCardAndPostedFlowTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* DayAvailabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayAvailabilityTests.swift; sourceTree = "<group>"; };
 		1075444BEDE6E2FA7B31576A /* AppRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRuntime.swift; sourceTree = "<group>"; };
 		1172250F68C714C25A18EE6D /* ReferenceImportRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportRepository.swift; sourceTree = "<group>"; };
 		11ADF2B693A8CFF7257A50E4 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -305,6 +307,7 @@
 				79C80E2B2E609414F002A71F /* RuntimeConfigurationTests.swift */,
 				F8961EE41F4A381BD96FF250 /* SupabaseWriteContentDTOTests.swift */,
 				99A7AEA0EFE2AB580A6F2775 /* TestGeneratedDraftFactory.swift */,
+				A1B2C3D4E5F60718293A4B5C /* DayAvailabilityTests.swift */,
 				0E483DCB6AAA413D2EF0C22E /* TodayCardAndPostedFlowTests.swift */,
 			);
 			path = CreatorContentOSTests;
@@ -589,6 +592,7 @@
 				1AA6D4F3E2906C14EF8551DE /* RuntimeConfigurationTests.swift in Sources */,
 				335C9001D35A6E577CF5B38C /* SupabaseWriteContentDTOTests.swift in Sources */,
 				788DF179289E2B563CDB5CEE /* TestGeneratedDraftFactory.swift in Sources */,
+				B2C3D4E5F60718293A4B5C6D /* DayAvailabilityTests.swift in Sources */,
 				7EE38E606D038C7C6DA0BAEB /* TodayCardAndPostedFlowTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

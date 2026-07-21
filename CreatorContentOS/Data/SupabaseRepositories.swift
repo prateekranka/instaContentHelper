@@ -177,6 +177,37 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult {
+        do {
+            let response: SupabaseMakeDayAvailableResponse = try await client.functions.invoke(
+                "make-day-available",
+                options: FunctionInvokeOptions(
+                    body: SupabaseMakeDayAvailableRequest(
+                        creatorID: context.creatorID,
+                        scheduledDate: scheduledDate,
+                        dailyCardID: dailyCardID
+                    )
+                )
+            )
+            return DayAvailabilityResult(
+                dailyCardID: response.dailyCardID,
+                scheduledDate: response.scheduledDate,
+                status: response.status,
+                weeklyPlanID: response.weeklyPlanID,
+                weekIsSoftLocked: response.weekIsSoftLocked
+            )
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,

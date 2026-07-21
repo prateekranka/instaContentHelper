@@ -251,6 +251,13 @@ protocol WeeklyPlanRepository: Sendable {
         reviewState: String,
         context: WorkspaceContext
     ) async throws
+
+    /// Promotes one draft day to a ready package (published status) without week soft-lock.
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult
 }
 
 protocol DayGenerationRepository: Sendable {
@@ -342,6 +349,14 @@ extension WeeklyPlanRepository {
         context: WorkspaceContext
     ) async throws {
     }
+
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID? = nil,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult {
+        throw RepositoryError.notConfigured("make_day_available_not_configured")
+    }
 }
 
 protocol ReferenceRepository: Sendable {
@@ -383,6 +398,14 @@ struct WeeklyPublishResult: Hashable, Sendable {
     var weekCards: [DailyCard]
     var todayCard: DailyCard?
     var summary: String
+}
+
+struct DayAvailabilityResult: Hashable, Sendable {
+    var dailyCardID: UUID
+    var scheduledDate: String
+    var status: String
+    var weeklyPlanID: UUID
+    var weekIsSoftLocked: Bool
 }
 
 struct CreatorProfileSummary: Hashable, Sendable {

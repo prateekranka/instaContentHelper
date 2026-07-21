@@ -1,6 +1,6 @@
 # Available on Today: draft → ready package
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: None
 
 Parent: [spec.md](../spec.md) · seam **Day package lifecycle**
@@ -13,16 +13,37 @@ This ticket is the expand + first migrate for day availability: new per-day read
 
 ## Acceptance criteria
 
-- [ ] A date with a draft can be made a ready package via Available on Today for that single day (no full-week requirement).
-- [ ] Today shows the ready package when that date is local today; otherwise Today does not show that package.
-- [ ] Future ready packages do not clutter Today.
-- [ ] Available on Today success for local today navigates to Today with that card visible.
-- [ ] Available on Today failure stays put and surfaces a clear error.
-- [ ] Week soft-lock / seven-day publish is not required for a card to reach Today.
-- [ ] Repository/Edge (or equivalent) tests lock draft → ready and Today visibility for local today.
+- [x] A date with a draft can be made a ready package via Available on Today for that single day (no full-week requirement).
+- [x] Today shows the ready package when that date is local today; otherwise Today does not show that package.
+- [x] Future ready packages do not clutter Today.
+- [x] Available on Today success for local today navigates to Today with that card visible.
+- [x] Available on Today failure stays put and surfaces a clear error.
+- [x] Week soft-lock / seven-day publish is not required for a card to reach Today.
+- [x] Repository/Edge (or equivalent) tests lock draft → ready and Today visibility for local today.
 
 ## Blocked by
 
 None — can start immediately.
 
 ## Comments
+
+## Answer
+
+**Encoding**
+- Draft = `daily_cards.status = 'draft'`
+- Ready package = `daily_cards.status = 'published'` (then any published-lifecycle status for Today: `published`, `in_decision`, `shot`, `posted`, `used_backup`, `saved_for_tomorrow`, `skipped_intentionally`)
+- `weekly_plans` remains a storage container; `make_day_available` does **not** set `is_soft_locked` or require 7 days
+- `read-content` `today` already filters by `scheduled_date` + published-lifecycle statuses (future ready packages never become `today_card`)
+
+**Server**
+- RPC `public.make_day_available(payload jsonb)` — migration `20260721120000_make_day_available.sql`
+- Edge Function `make-day-available` → calls RPC; roles `owner` | `editor` | `creator`
+
+**Client**
+- `WeeklyPlanRepository.makeDayAvailable(scheduledDate:dailyCardID:context:)` (Supabase + Fixture)
+- `AppServices.makeDayAvailable(scheduledDate:)` → returns `true` when date is local today (caller navigates)
+- **UI button:** Admin → Daily Content (`DayGenerationView`) bottom bar — “Available on Today” next to Generate when the selected date has a draft result (`accessibilityIdentifier: daily.availableOnToday`). On success for local today: `appState.activeMode = .creator` (Creator shell defaults to Today tab). On failure: `lastMakeDayAvailableError` banner, stay on Daily.
+
+**Tests**
+- Deno: `supabase/functions/make-day-available/index_test.ts`
+- Swift: `CreatorContentOSTests/DayAvailabilityTests.swift`

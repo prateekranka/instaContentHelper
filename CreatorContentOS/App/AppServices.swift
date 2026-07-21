@@ -44,6 +44,8 @@ final class AppServices {
     var creatorProfileEditError: String?
     var lastPublishSummary: String?
     var lastPublishError: String?
+    var isMakingDayAvailable = false
+    var lastMakeDayAvailableError: String?
     var regeneratingDayDates: Set<String> = []
     var regenerationDayErrors: [String: String] = [:]
     var generatingDayBriefDates: Set<String> = []
@@ -1026,6 +1028,66 @@ final class AppServices {
         }
     }
 
+    /// Promotes one draft day to a ready package. Returns `true` when the date is
+    /// device-local today and Today was refreshed with that card (caller should
+    /// navigate to Creator Today). On failure, throws after setting
+    /// `lastMakeDayAvailableError` and does not navigate.
+    @discardableResult
+    func makeDayAvailable(scheduledDate: String) async throws -> Bool {
+        guard !isMakingDayAvailable else {
+            throw RepositoryError.edgeFunction("make_day_available_already_running")
+        }
+
+        isMakingDayAvailable = true
+        lastMakeDayAvailableError = nil
+        defer { isMakingDayAvailable = false }
+
+        let draftCard = dayBriefGeneratedCards[scheduledDate]
+            ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
+
+        do {
+            let result = try await repositories.weeklyPlans.makeDayAvailable(
+                scheduledDate: scheduledDate,
+                dailyCardID: draftCard?.id,
+                context: context
+            )
+
+            if var localDraft = dayBriefGeneratedCards[scheduledDate] {
+                localDraft.status = "published"
+                dayBriefGeneratedCards[scheduledDate] = localDraft
+            }
+            if var summary = latestGenerationSummary,
+               let index = summary.dailyCards.firstIndex(where: { $0.scheduledDate == scheduledDate }) {
+                var card = summary.dailyCards[index]
+                card.status = "published"
+                summary.dailyCards[index] = card
+                latestGenerationSummary = summary
+            }
+
+            let isLocalToday = scheduledDate == currentTodayDateString
+            if isLocalToday {
+                if let draftCard {
+                    todayCard = draftCard.dailyCard(completionState: nil)
+                    todayContentState = .ready
+                }
+                await refreshPublishedContentAfterPublishImmediately()
+                saveTodaySnapshot(source: "day-available")
+                await scheduleTodayNotificationIfNeededImmediately()
+            }
+
+            lastActionMessage = isLocalToday
+                ? "Ready for Today."
+                : "Ready package saved for \(SupabaseDateFormatting.displayDate(for: scheduledDate))."
+            lastRepositoryError = nil
+            _ = result
+            return isLocalToday
+        } catch {
+            let message = DayAvailabilityErrorDisplay.message(for: error)
+            lastMakeDayAvailableError = message
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
     private func publishWeekWithOneTransientRetry(
         _ plan: WeeklyPlan,
         ideaBank: [WeeklyIdea],
@@ -1593,6 +1655,33 @@ final class AppServices {
     private func cancelTodayNotification() async {
         await notifications.cancelTodayReminder(for: context)
         lastNotificationSchedule = nil
+    }
+}
+
+private enum DayAvailabilityErrorDisplay {
+    private static let userFacingMessages = [
+        "daily_card_not_found": "No draft was found for that day. Generate a draft first.",
+        "daily_card_not_draft": "That day is already a ready package.",
+        "daily_card_incomplete": "That draft is incomplete. Generate again, then try Available on Today.",
+        "invalid_make_day_available_payload": "Available on Today could not accept that request. Refresh and try again.",
+        "make_day_available_failed": "Could not make this day available. Try again.",
+        "make_day_available_already_running": "Available on Today is already running. Wait a moment.",
+        "role_not_allowed": "This session cannot make a day available.",
+        "creator_not_found": "This creator workspace is no longer available. Refresh and try again.",
+        "missing_device_token": "This device session is missing. Sign in again.",
+        "invalid_device_token": "This device session has expired. Sign in again.",
+        "make_day_available_not_configured": "Available on Today is not configured for this runtime."
+    ]
+
+    static func message(for error: Error) -> String {
+        let description = error.localizedDescription
+        if let message = userFacingMessages[description] {
+            return message
+        }
+        if let code = userFacingMessages.keys.first(where: { description.contains($0) }) {
+            return userFacingMessages[code] ?? description
+        }
+        return description
     }
 }
 
