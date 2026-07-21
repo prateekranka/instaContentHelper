@@ -287,6 +287,9 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         if let script = package.script {
             card.script = script
         }
+        if let sceneList = package.sceneList {
+            card.scenes = sceneList
+        }
         cards[index] = card
 
         let today = SupabaseDateFormatting.todayDateString()

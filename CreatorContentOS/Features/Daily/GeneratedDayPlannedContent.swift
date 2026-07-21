@@ -11,6 +11,7 @@ struct GeneratedDayPlannedContent: View {
                 card: card,
                 onStoryboardAssetsChanged: onStoryboardAssetsChanged
             )
+            GeneratedScriptTimelineBlock(card: card)
             InstagramCaptionPostBlock(card: card)
         }
     }
@@ -214,8 +215,8 @@ struct GeneratedStoryboardBreakdownContent: View {
 struct GeneratedStoryboardTable: View {
     let rows: [GeneratedStoryboardBreakdownRow]
     private let headerHeight: CGFloat = 38
-    private let rowHeight: CGFloat = 152
-    private let timeColumnWidth: CGFloat = 62
+    private let rowHeight: CGFloat = 168
+    private let timeColumnWidth: CGFloat = 96
     private let visualColumnWidth: CGFloat = 188
     private let whatColumnWidth: CGFloat = 182
     private let audioColumnWidth: CGFloat = 194
@@ -225,7 +226,7 @@ struct GeneratedStoryboardTable: View {
         HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 0) {
                 GeneratedStoryboardHeaderCell(
-                    title: "TIME",
+                    title: "SCENE",
                     width: timeColumnWidth,
                     height: headerHeight
                 )
@@ -321,6 +322,8 @@ struct GeneratedStoryboardTimeCell: View {
 
     var body: some View {
         VStack(spacing: MCOSpace.xxs) {
+            GeneratedStoryboardThumbnail(url: row.thumbnailURL)
+                .frame(width: width - 16, height: 54)
             Text(row.timecode.replacingOccurrences(of: " ", with: "\n"))
                 .font(MCOType.caption.weight(.semibold))
                 .foregroundStyle(MCOTheme.Color.ink)
@@ -331,9 +334,11 @@ struct GeneratedStoryboardTimeCell: View {
                 .font(MCOType.caption)
                 .foregroundStyle(MCOTheme.Color.inkMuted)
         }
+        .padding(.vertical, MCOSpace.xs)
         .frame(width: width, height: height)
         .background(MCOTheme.Color.paperRaised.opacity(0.78))
         .storyboardGridLines()
+        .accessibilityLabel("Scene \(row.sceneNumber), \(row.timecode)")
     }
 }
 
@@ -627,5 +632,54 @@ struct InstagramCaptionPostBlock: View {
     private var hashtagSummary: String {
         card.hashtags.map { "#\($0.trimmingCharacters(in: CharacterSet(charactersIn: "#")))" }
             .joined(separator: " ")
+    }
+}
+
+struct GeneratedScriptTimelineBlock: View {
+    let card: GeneratedDailyCardDraft
+
+    var body: some View {
+        let rows = GeneratedStoryboardBreakdown.rows(for: card)
+        if !rows.isEmpty {
+            JournalBlock {
+                VStack(alignment: .leading, spacing: MCOSpace.s) {
+                    HStack(spacing: MCOSpace.s) {
+                        Image(systemName: "text.alignleft")
+                            .font(MCOType.captionEmphasis)
+                        Text("Script")
+                            .font(MCOType.tinyLabel)
+                        Spacer(minLength: MCOSpace.s)
+                        Text("\(rows.count) lines")
+                            .font(MCOType.caption)
+                    }
+                    .foregroundStyle(MCOTheme.Color.paperRaised)
+                    .padding(.horizontal, MCOSpace.s)
+                    .frame(minHeight: 38)
+                    .background(MCOTheme.Color.ink, in: RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+
+                    ForEach(rows) { row in
+                        HStack(alignment: .top, spacing: MCOSpace.s) {
+                            GeneratedStoryboardThumbnail(url: row.thumbnailURL)
+                                .frame(width: 72, height: 54)
+                            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                                Text(row.timecode)
+                                    .font(MCOType.captionEmphasis)
+                                    .foregroundStyle(MCOTheme.Color.oxblood)
+                                Text(row.audioDialogue)
+                                    .font(MCOType.bodySmall)
+                                    .foregroundStyle(MCOTheme.Color.ink)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(MCOSpace.s)
+                        .background(MCOTheme.Color.paperRaised.opacity(0.58))
+                        .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                        .accessibilityIdentifier("plan.script.line.\(row.sceneNumber)")
+                    }
+                }
+            }
+            .accessibilityIdentifier("plan.script.timeline")
+        }
     }
 }

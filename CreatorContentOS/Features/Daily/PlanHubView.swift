@@ -21,7 +21,7 @@ struct PlanHubView: View {
     var initialSelectedDate: String? = nil
 
     var body: some View {
-        EditorialScreen {
+        EditorialScreen(bottomContentPadding: 200) {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
                 calendarSection
@@ -32,6 +32,9 @@ struct PlanHubView: View {
                         .accessibilityIdentifier("plan.generation.backgroundHint")
                 }
                 briefComposer
+                creatorProfileAccordion
+                referencesAccordion
+                lifecycleActions
                 if isGeneratingSelectedDay {
                     generationProgressBlock
                 }
@@ -69,9 +72,6 @@ struct PlanHubView: View {
                     )
                 }
                 resultBlock
-                lifecycleActions
-                creatorProfileAccordion
-                referencesAccordion
             }
         } bottomBar: {
             GlassCommandBar {
@@ -201,14 +201,32 @@ struct PlanHubView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: MCOSpace.s) {
-            if showsModeSwitch {
-                HStack {
-                    Spacer()
+            HStack(alignment: .center, spacing: MCOSpace.s) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(MCOType.iconCompact)
+                        .frame(width: 38, height: 38)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                        .background(MCOTheme.Color.paperRaised.opacity(0.72), in: Circle())
+                        .overlay {
+                            Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back")
+                .accessibilityIdentifier("plan.back")
+
+                Spacer(minLength: MCOSpace.s)
+
+                if showsModeSwitch {
                     FloatingIconButton(systemImage: "ellipsis", label: "Back to Creator Mode") {
                         appState.activeMode = .creator
                     }
                 }
             }
+
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
                 Text("Plan")
                     .font(MCOType.display)
@@ -549,29 +567,56 @@ struct PlanHubView: View {
     }
 
     private var creatorProfileAccordion: some View {
-        DisclosureGroup(isExpanded: $isCreatorProfileExpanded) {
+        planAccordion(
+            title: "Creator Profile",
+            isExpanded: $isCreatorProfileExpanded,
+            accessibilityID: "plan.accordion.creatorProfile"
+        ) {
             CreatorProfileAdminView(presentation: .embedded)
-                .padding(.top, MCOSpace.s)
-        } label: {
-            Text("Creator Profile")
-                .font(MCOType.headline)
-                .foregroundStyle(MCOTheme.Color.ink)
         }
-        .tint(MCOTheme.Color.oxblood)
-        .accessibilityIdentifier("plan.accordion.creatorProfile")
     }
 
     private var referencesAccordion: some View {
-        DisclosureGroup(isExpanded: $isReferencesExpanded) {
+        planAccordion(
+            title: "References",
+            isExpanded: $isReferencesExpanded,
+            accessibilityID: "plan.accordion.references"
+        ) {
             IntelligenceHomeView(presentation: .embedded)
-                .padding(.top, MCOSpace.s)
-        } label: {
-            Text("References")
-                .font(MCOType.headline)
-                .foregroundStyle(MCOTheme.Color.ink)
         }
-        .tint(MCOTheme.Color.oxblood)
-        .accessibilityIdentifier("plan.accordion.references")
+    }
+
+    private func planAccordion<Content: View>(
+        title: String,
+        isExpanded: Binding<Bool>,
+        accessibilityID: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack {
+                    Text(title)
+                        .font(MCOType.headline)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                    Spacer(minLength: MCOSpace.s)
+                    Image(systemName: "chevron.right")
+                        .font(MCOType.iconCompact)
+                        .foregroundStyle(MCOTheme.Color.ink)
+                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier(accessibilityID)
+
+            if isExpanded.wrappedValue {
+                content()
+            }
+        }
     }
 
     private func readyPackageSubtitle(for card: GeneratedDailyCardDraft) -> String {

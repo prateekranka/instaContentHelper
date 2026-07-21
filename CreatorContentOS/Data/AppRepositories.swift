@@ -460,6 +460,7 @@ struct ReadyDayPackageUpdate: Hashable, Sendable {
     var backupCaptionOnly: String?
     var shootability: String?
     var estimatedShootMinutes: Int?
+    var sceneList: [ShotScene]?
 }
 
 struct DayPackageUpdateResult: Hashable, Sendable {

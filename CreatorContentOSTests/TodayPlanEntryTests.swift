@@ -32,25 +32,34 @@ final class TodayPlanEntryTests: XCTestCase {
 
     func testEditAndOverflowRoutesPreselectCardDate() {
         let cardDate = "2026-07-21"
-        let editRoute = CreatorRoute.plan(selectedDate: cardDate)
+        let editRoute = CreatorRoute.shootFolio(editing: true)
         let overflowRoute = CreatorRoute.plan(selectedDate: cardDate)
 
-        guard case .plan(let editDate) = editRoute else {
-            return XCTFail("Expected edit plan route")
+        guard case .shootFolio(let editing) = editRoute else {
+            return XCTFail("Expected edit shoot folio route")
         }
         guard case .plan(let overflowDate) = overflowRoute else {
             return XCTFail("Expected overflow plan route")
         }
-        XCTAssertEqual(editDate, cardDate)
+        XCTAssertTrue(editing)
         XCTAssertEqual(overflowDate, cardDate)
-        XCTAssertEqual(editRoute, overflowRoute)
+        XCTAssertNotEqual(editRoute, overflowRoute)
     }
 
     func testCreatorRoutePlanIsDistinctFromShootFolio() {
         XCTAssertNotEqual(
             CreatorRoute.plan(selectedDate: "2026-07-21"),
-            CreatorRoute.shootFolio
+            CreatorRoute.shootFolio()
         )
+    }
+
+    func testEditRouteOpensShootFolioEditingNotPlan() {
+        let editRoute = CreatorRoute.shootFolio(editing: true)
+        guard case .shootFolio(let editing) = editRoute else {
+            return XCTFail("Expected shoot folio edit route")
+        }
+        XCTAssertTrue(editing)
+        XCTAssertNotEqual(editRoute, CreatorRoute.plan(selectedDate: "2026-07-21"))
     }
 
     func testNotificationReminderTitleIsGetTodaysContentReady() {

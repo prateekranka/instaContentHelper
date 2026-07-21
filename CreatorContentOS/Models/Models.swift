@@ -28,6 +28,8 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     var creatorFitScore: Double?
     var riskNotes: [String]?
     var assumptions: [String]?
+    /// Storyboard frame thumbnails keyed by scene/script row. Optional for older Today cache payloads.
+    var storyboardThumbnailAssets: [StoryboardThumbnailAsset]?
 
     init(
         id: UUID = UUID(),
@@ -56,7 +58,8 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         audioOptionNotes: String? = nil,
         creatorFitScore: Double? = nil,
         riskNotes: [String]? = nil,
-        assumptions: [String]? = nil
+        assumptions: [String]? = nil,
+        storyboardThumbnailAssets: [StoryboardThumbnailAsset]? = nil
     ) {
         self.id = id
         self.title = title
@@ -85,14 +88,15 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.creatorFitScore = creatorFitScore
         self.riskNotes = riskNotes
         self.assumptions = assumptions
+        self.storyboardThumbnailAssets = storyboardThumbnailAssets
     }
 }
 
 struct ShotScene: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let number: Int
-    let title: String
-    let duration: String
+    var title: String
+    var duration: String
     let symbol: String
 
     init(
@@ -470,7 +474,8 @@ enum CreatorTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 }
 
 enum CreatorRoute: Hashable, Sendable {
-    case shootFolio
+    /// Opens Shoot Folio; `editing` starts scene/script light-edit mode.
+    case shootFolio(editing: Bool = false)
     /// Opens Plan; optional `selectedDate` (`yyyy-MM-dd`) preselects that day.
     case plan(selectedDate: String?)
 }
@@ -971,6 +976,8 @@ extension GeneratedDailyCardDraft {
             sourceNote: sourceNote.nilIfBlank ?? contentPillar,
             scheduledDate: scheduledDate,
             scenes: sceneList,
+            shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
+            onScreenTextTimeline: onScreenTextTimeline.isEmpty ? nil : onScreenTextTimeline,
             completionState: completionState,
             script: script,
             noVoiceoverVersion: noVoiceoverVersion,
@@ -986,7 +993,8 @@ extension GeneratedDailyCardDraft {
             audioOptionNotes: audioOptionNotes,
             creatorFitScore: creatorFitScore,
             riskNotes: riskNotes,
-            assumptions: assumptions
+            assumptions: assumptions,
+            storyboardThumbnailAssets: storyboardThumbnailAssets
         )
     }
 }

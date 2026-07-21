@@ -182,29 +182,31 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         dailyCardID: UUID?,
         context: WorkspaceContext
     ) async throws -> DayAvailabilityResult {
-        do {
-            let response: SupabaseMakeDayAvailableResponse = try await client.functions.invoke(
-                "make-day-available",
-                options: FunctionInvokeOptions(
-                    body: SupabaseMakeDayAvailableRequest(
-                        creatorID: context.creatorID,
-                        scheduledDate: scheduledDate,
-                        dailyCardID: dailyCardID
+        try await TransientNetworkRetry.run(label: "make-day-available", attempts: 3) {
+            do {
+                let response: SupabaseMakeDayAvailableResponse = try await client.functions.invoke(
+                    "make-day-available",
+                    options: FunctionInvokeOptions(
+                        body: SupabaseMakeDayAvailableRequest(
+                            creatorID: context.creatorID,
+                            scheduledDate: scheduledDate,
+                            dailyCardID: dailyCardID
+                        )
                     )
                 )
-            )
-            return DayAvailabilityResult(
-                dailyCardID: response.dailyCardID,
-                scheduledDate: response.scheduledDate,
-                status: response.status,
-                weeklyPlanID: response.weeklyPlanID,
-                weekIsSoftLocked: response.weekIsSoftLocked
-            )
-        } catch {
-            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
-                throw RepositoryError.edgeFunction(code)
+                return DayAvailabilityResult(
+                    dailyCardID: response.dailyCardID,
+                    scheduledDate: response.scheduledDate,
+                    status: response.status,
+                    weeklyPlanID: response.weeklyPlanID,
+                    weekIsSoftLocked: response.weekIsSoftLocked
+                )
+            } catch {
+                if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                    throw RepositoryError.edgeFunction(code)
+                }
+                throw error
             }
-            throw error
         }
     }
 
@@ -779,6 +781,29 @@ enum SupabaseDailyGenerationPoller {
 
         observe(.timedOut)
         throw RepositoryError.edgeFunction("generation_timeout")
+    }
+}
+
+enum TransientNetworkRetry {
+    static func run<T>(
+        label: String,
+        attempts: Int = 3,
+        operation: () async throws -> T
+    ) async throws -> T {
+        var lastError: Error?
+        for attempt in 1...max(attempts, 1) {
+            do {
+                return try await operation()
+            } catch {
+                lastError = error
+                let canRetry = attempt < attempts && SupabaseGenerationRetryPolicy.isTransientPollingError(error)
+                guard canRetry else { throw error }
+                let delayNs = UInt64(250_000_000 * attempt)
+                print("[ContentHelperNetwork] \(label) transient failure attempt=\(attempt) retrying_after_ms=\(delayNs / 1_000_000) error=\(error.localizedDescription)")
+                try? await Task.sleep(nanoseconds: delayNs)
+            }
+        }
+        throw lastError ?? RepositoryError.edgeFunction("make_day_available_failed")
     }
 }
 

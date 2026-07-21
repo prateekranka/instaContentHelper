@@ -155,7 +155,8 @@ final class AppServices {
         notifications: any TodayNotificationScheduling = NoopTodayNotificationScheduler(),
         todayDate: @escaping TodayDateProvider = { SupabaseDateFormatting.todayDateString() }
     ) -> AppServices {
-        AppServices(
+        let today = todayDate()
+        let services = AppServices(
             repositories: repositories,
             isLiveSupabaseRuntime: isLiveSupabaseRuntime,
             memberRole: memberRole,
@@ -170,6 +171,12 @@ final class AppServices {
             creatorProfileSummary: .creatorFixture,
             weekCards: DailyCard.weekFixtures
         )
+        // Seed a reviewable draft so Plan can show Available on Today in fixture UI proofs.
+        var draft = GeneratedDailyCardDraft.storyboardBreakdownFixture
+        draft.scheduledDate = today
+        draft.status = "draft"
+        services.dayBriefGeneratedCards[today] = draft
+        return services
     }
 
     static func liveBacked(
@@ -836,6 +843,10 @@ final class AppServices {
             draft.dailyCards[index].storyboardThumbnailAssets = assets
             latestGenerationSummary = draft
         }
+
+        if todayCard.id == dailyCardID {
+            todayCard.storyboardThumbnailAssets = assets
+        }
     }
 
     private func logGeneration(_ message: String) {
@@ -1216,10 +1227,14 @@ final class AppServices {
         let card = dayBriefGeneratedCards[scheduledDate]
             ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
 
+        let resolvedCardID = card?.id
+            ?? weekCards.first(where: { $0.scheduledDate == scheduledDate })?.id
+            ?? (scheduledDate == currentTodayDateString ? todayCard.id : nil)
+
         do {
             let result = try await repositories.weeklyPlans.updateReadyDayPackage(
                 scheduledDate: scheduledDate,
-                dailyCardID: card?.id,
+                dailyCardID: resolvedCardID,
                 package: package,
                 context: context
             )
@@ -1237,15 +1252,36 @@ final class AppServices {
                 if let minutes = package.estimatedShootMinutes {
                     localCard.estimatedShootMinutes = minutes
                 }
+                if let sceneList = package.sceneList {
+                    localCard.sceneList = sceneList
+                }
                 // Keep ready status — light edit must not demote.
                 dayBriefGeneratedCards[scheduledDate] = localCard
             }
 
             let isLocalToday = scheduledDate == currentTodayDateString
             if isLocalToday {
+                if let title = package.title?.nilIfBlank {
+                    todayCard.title = title
+                }
+                if let whyToday = package.whyToday?.nilIfBlank {
+                    todayCard.whyToday = whyToday
+                }
+                if let caption = package.caption {
+                    todayCard.caption = caption
+                }
+                if let script = package.script {
+                    todayCard.script = script
+                }
+                if let sceneList = package.sceneList {
+                    todayCard.scenes = sceneList
+                }
                 if var localCard = dayBriefGeneratedCards[scheduledDate] {
                     todayCard = localCard.dailyCard(completionState: todayCard.completionState)
-                    todayContentState = .ready
+                }
+                todayContentState = .ready
+                if let index = weekCards.firstIndex(where: { $0.scheduledDate == scheduledDate }) {
+                    weekCards[index] = todayCard
                 }
                 await refreshPublishedContentAfterPublishImmediately()
                 saveTodaySnapshot(source: "ready-day-edit")
@@ -1853,6 +1889,14 @@ private enum DayAvailabilityErrorDisplay {
         }
         if let code = userFacingMessages.keys.first(where: { description.contains($0) }) {
             return userFacingMessages[code] ?? description
+        }
+        let lowered = description.lowercased()
+        if lowered.contains("network connection was lost")
+            || lowered.contains("timed out")
+            || lowered.contains("internet connection appears to be offline")
+            || lowered.contains("could not connect to the server")
+        {
+            return "Connection dropped briefly. Tap Available on Today again."
         }
         return description
     }

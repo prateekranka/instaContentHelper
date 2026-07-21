@@ -1095,6 +1095,14 @@ struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
         case backupCaptionOnly = "backup_caption_only"
         case shootability
         case estimatedShootMinutes = "estimated_shoot_minutes"
+        case sceneList = "scene_list"
+    }
+
+    private enum SceneCodingKeys: String, CodingKey {
+        case number
+        case title
+        case duration
+        case symbol
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1112,6 +1120,16 @@ struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
         try packageContainer.encodeIfPresent(package.backupCaptionOnly, forKey: .backupCaptionOnly)
         try packageContainer.encodeIfPresent(package.shootability, forKey: .shootability)
         try packageContainer.encodeIfPresent(package.estimatedShootMinutes, forKey: .estimatedShootMinutes)
+        if let scenes = package.sceneList {
+            var scenesContainer = packageContainer.nestedUnkeyedContainer(forKey: .sceneList)
+            for scene in scenes {
+                var sceneContainer = scenesContainer.nestedContainer(keyedBy: SceneCodingKeys.self)
+                try sceneContainer.encode(scene.number, forKey: .number)
+                try sceneContainer.encode(scene.title, forKey: .title)
+                try sceneContainer.encode(scene.duration, forKey: .duration)
+                try sceneContainer.encode(scene.symbol, forKey: .symbol)
+            }
+        }
     }
 }
 

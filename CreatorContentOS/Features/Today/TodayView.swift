@@ -15,7 +15,7 @@ struct TodayView: View {
                 }
                 switch services.todayContentState {
                 case .ready:
-                    NavigationLink(value: CreatorRoute.shootFolio) {
+                    NavigationLink(value: CreatorRoute.shootFolio()) {
                         TodayHeroCard(card: services.todayCard)
                     }
                     .buttonStyle(.plain)
@@ -65,10 +65,10 @@ struct TodayView: View {
         }
     }
 
-    /// Edit + `⋯` (Plan only) — shown only when a ready card is present.
+    /// Edit opens Shoot Folio in light-edit mode; `⋯` still reaches Plan.
     private var readyPlanEntries: some View {
         HStack(spacing: MCOSpace.xs) {
-            NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
+            NavigationLink(value: CreatorRoute.shootFolio(editing: true)) {
                 Text("Edit")
                     .font(MCOType.bodySmall)
                     .foregroundStyle(MCOTheme.Color.oxblood)
@@ -80,10 +80,7 @@ struct TodayView: View {
                     }
             }
             .buttonStyle(.plain)
-            .simultaneousGesture(TapGesture().onEnded {
-                appState.preparePlan(selecting: planDateForReadyCard)
-            })
-            .accessibilityLabel("Edit today’s package in Plan")
+            .accessibilityLabel("Edit today’s scenes and script")
             .accessibilityIdentifier("today.edit")
 
             Menu {
