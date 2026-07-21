@@ -14,7 +14,25 @@ extension DailyCard {
             ShotScene(number: 2, title: "Open the journal", duration: "4 sec", symbol: "book.closed"),
             ShotScene(number: 3, title: "Bottle, timer, breath", duration: "3 sec", symbol: "waterbottle"),
             ShotScene(number: 4, title: "One steady stride", duration: "2 sec", symbol: "figure.run")
-        ]
+        ],
+        shotTimeline: [
+            ProductionTimelineItem(timestamp: "0-3 sec", title: "Shoes by the door", detail: "Frame the shoes ready by the door.", shot: "Wide entryway", videoPortion: "Steady wide shot of shoes waiting."),
+            ProductionTimelineItem(timestamp: "3-7 sec", title: "Open the journal", detail: "Open the journal and show the page.", shot: "Hands + journal", videoPortion: "Close-up of the open page."),
+            ProductionTimelineItem(timestamp: "7-10 sec", title: "Bottle, timer, breath", detail: "Set the bottle and timer, then take a breath.", shot: "Prep still life", videoPortion: "Quiet prep before leaving."),
+            ProductionTimelineItem(timestamp: "10-12 sec", title: "One steady stride", detail: "Step out and hold a calm first stride.", shot: "Walking out", videoPortion: "One clean step into the day.")
+        ],
+        voiceoverTimeline: [
+            ProductionTimelineItem(timestamp: "0-3 sec", title: "Hook", detail: "", voiceover: "Race week starts with the shoes by the door."),
+            ProductionTimelineItem(timestamp: "3-7 sec", title: "Journal", detail: "", voiceover: "Then I open the journal and write one honest line."),
+            ProductionTimelineItem(timestamp: "7-10 sec", title: "Prep", detail: "", voiceover: "Bottle, timer, breath. Keep it small."),
+            ProductionTimelineItem(timestamp: "10-12 sec", title: "Stride", detail: "", voiceover: "One steady stride is enough for today.")
+        ],
+        script: """
+        Race week starts with the shoes by the door.
+        Then I open the journal and write one honest line.
+        Bottle, timer, breath. Keep it small.
+        One steady stride is enough for today.
+        """
     )
 
     static let weekFixtures: [DailyCard] = [

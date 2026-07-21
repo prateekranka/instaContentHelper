@@ -366,6 +366,7 @@ struct GeneratedStoryboardVisualCell: View {
 
 struct GeneratedStoryboardThumbnail: View {
     let url: URL?
+    var fallbackSystemImage: String? = nil
 
     var body: some View {
         ZStack {
@@ -412,7 +413,7 @@ struct GeneratedStoryboardThumbnail: View {
                 ProgressView()
                     .controlSize(.small)
             } else {
-                Image(systemName: "photo")
+                Image(systemName: fallbackSystemImage?.nilIfBlank ?? "photo")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(MCOTheme.Color.inkMuted)
             }
@@ -659,7 +660,10 @@ struct GeneratedScriptTimelineBlock: View {
 
                     ForEach(rows) { row in
                         HStack(alignment: .top, spacing: MCOSpace.s) {
-                            GeneratedStoryboardThumbnail(url: row.thumbnailURL)
+                            GeneratedStoryboardThumbnail(
+                                url: row.thumbnailURL,
+                                fallbackSystemImage: card.sceneList[safe: row.sceneNumber - 1]?.symbol
+                            )
                                 .frame(width: 72, height: 54)
                             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                                 Text(row.timecode)

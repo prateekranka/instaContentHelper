@@ -174,6 +174,62 @@ final class GeneratedStoryboardBreakdownTests: XCTestCase {
         XCTAssertEqual(rows[1].thumbnailURL, thumbnailURL)
     }
 
+    func testDailyCardRowsUseVoiceoverTimelineNotSingleScriptBlob() {
+        let card = DailyCard.raceWeekToday
+        let rows = GeneratedStoryboardBreakdown.rows(for: card)
+
+        XCTAssertEqual(rows.count, 4)
+        XCTAssertEqual(rows[0].timecode, "0-3 sec")
+        XCTAssertEqual(rows[1].timecode, "3-7 sec")
+        XCTAssertEqual(rows[2].timecode, "7-10 sec")
+        XCTAssertEqual(rows[3].timecode, "10-12 sec")
+        XCTAssertEqual(rows[0].audioDialogue, "Race week starts with the shoes by the door.")
+        XCTAssertEqual(rows[3].audioDialogue, "One steady stride is enough for today.")
+    }
+
+    func testDomainCardPreservesStoryboardThumbnailsAndVoiceoverTimeline() throws {
+        let thumbnailURL = "https://example.com/storyboard/row-0.jpg"
+        let json = """
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "workspace_id": "22222222-2222-4222-8222-222222222222",
+          "creator_id": "33333333-3333-4333-8333-333333333333",
+          "weekly_plan_id": "44444444-4444-4444-8444-444444444444",
+          "scheduled_date": "2026-07-21",
+          "status": "published",
+          "title": "Thumbnails stay on Today",
+          "scene_list": [
+            { "number": 1, "title": "Hook", "duration": "3 sec", "symbol": "sparkles" },
+            { "number": 2, "title": "Proof", "duration": "3 sec", "symbol": "figure.run" }
+          ],
+          "voiceover_timeline": [
+            { "timestamp": "0-3 sec", "title": "Hook", "detail": "", "voiceover": "Line one." },
+            { "timestamp": "3-6 sec", "title": "Proof", "detail": "", "voiceover": "Line two." }
+          ],
+          "hashtags": [],
+          "storyboard_thumbnail_assets": [
+            {
+              "row_index": 0,
+              "prompt_hash": "hash0",
+              "public_url": "\(thumbnailURL)",
+              "status": "generated"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let row = try JSONDecoder().decode(SupabaseDailyCardRow.self, from: json)
+        let card = row.domainCard()
+        let rows = GeneratedStoryboardBreakdown.rows(for: card)
+
+        XCTAssertEqual(card.storyboardThumbnailAssets?.count, 1)
+        XCTAssertEqual(card.voiceoverTimeline?.count, 2)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].thumbnailURL?.absoluteString, thumbnailURL)
+        XCTAssertEqual(rows[0].audioDialogue, "Line one.")
+        XCTAssertEqual(rows[1].audioDialogue, "Line two.")
+    }
+
     func testThumbnailRequestEncodesRevisionInstructions() throws {
         let request = SupabaseGenerateStoryboardThumbnailRequest(
             creatorID: UUID(uuidString: "22222222-2222-4222-8222-222222222222")!,

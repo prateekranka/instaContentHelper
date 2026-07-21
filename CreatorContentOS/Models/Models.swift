@@ -11,6 +11,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     var scheduledDate: String?
     var scenes: [ShotScene]
     var shotTimeline: [ProductionTimelineItem]?
+    var voiceoverTimeline: [ProductionTimelineItem]?
     var onScreenTextTimeline: [ProductionTimelineItem]?
     var completionState: CompletionState?
     var script: String?
@@ -42,6 +43,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         scheduledDate: String? = nil,
         scenes: [ShotScene],
         shotTimeline: [ProductionTimelineItem]? = nil,
+        voiceoverTimeline: [ProductionTimelineItem]? = nil,
         onScreenTextTimeline: [ProductionTimelineItem]? = nil,
         completionState: CompletionState? = nil,
         script: String? = nil,
@@ -71,6 +73,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.scheduledDate = scheduledDate
         self.scenes = scenes
         self.shotTimeline = shotTimeline
+        self.voiceoverTimeline = voiceoverTimeline
         self.onScreenTextTimeline = onScreenTextTimeline
         self.completionState = completionState
         self.script = script
@@ -970,6 +973,7 @@ extension GeneratedDailyCardDraft {
             scheduledDate: scheduledDate,
             scenes: sceneList,
             shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
+            voiceoverTimeline: voiceoverTimeline.isEmpty ? nil : voiceoverTimeline,
             onScreenTextTimeline: onScreenTextTimeline.isEmpty ? nil : onScreenTextTimeline,
             completionState: completionState,
             script: script,

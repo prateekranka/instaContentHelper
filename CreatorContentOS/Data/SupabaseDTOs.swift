@@ -321,8 +321,9 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             scenes: sceneList.enumerated().map { index, scene in
                 scene.domainScene(fallbackNumber: index + 1)
             },
-            shotTimeline: shotTimeline,
-            onScreenTextTimeline: onScreenTextTimeline,
+            shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
+            voiceoverTimeline: voiceoverTimeline.isEmpty ? nil : voiceoverTimeline,
+            onScreenTextTimeline: onScreenTextTimeline.isEmpty ? nil : onScreenTextTimeline,
             completionState: CompletionState(supabaseStatus: status),
             script: script,
             noVoiceoverVersion: noVoiceoverVersion,
@@ -338,7 +339,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             audioOptionNotes: postInstructions?.audioOptionNotes,
             creatorFitScore: creatorFitScore,
             riskNotes: riskNotes?.compactMap(\.displayText),
-            assumptions: assumptions?.compactMap(\.displayText)
+            assumptions: assumptions?.compactMap(\.displayText),
+            storyboardThumbnailAssets: storyboardThumbnailAssets.isEmpty ? nil : storyboardThumbnailAssets
         )
     }
 

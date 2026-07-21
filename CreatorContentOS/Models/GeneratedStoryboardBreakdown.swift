@@ -13,6 +13,46 @@ struct GeneratedStoryboardBreakdownRow: Identifiable, Hashable, Sendable {
 }
 
 enum GeneratedStoryboardBreakdown {
+    static func rows(for card: DailyCard) -> [GeneratedStoryboardBreakdownRow] {
+        rows(
+            for: GeneratedDailyCardDraft(
+                id: card.id,
+                scheduledDate: card.scheduledDate ?? "",
+                status: "published",
+                title: card.title,
+                whyToday: card.whyToday,
+                growthJob: card.whyToday,
+                contentPillar: card.sourceNote ?? "Pattern",
+                shootability: "easy",
+                estimatedShootMinutes: 0,
+                energyRequired: "low",
+                languageMode: "Natural",
+                hook: card.hook,
+                sceneList: card.scenes,
+                shotTimeline: card.shotTimeline ?? [],
+                voiceoverTimeline: card.voiceoverTimeline ?? [],
+                onScreenTextTimeline: card.onScreenTextTimeline ?? [],
+                script: card.script ?? "",
+                noVoiceoverVersion: card.noVoiceoverVersion ?? "",
+                onScreenText: card.onScreenText ?? [],
+                caption: card.caption ?? "",
+                cta: card.cta ?? "",
+                hashtags: card.hashtags ?? [],
+                coverText: card.coverText ?? "",
+                postInstructions: card.postInstructions ?? "",
+                brandEventNotes: card.brandEventNotes ?? "",
+                backupStory: card.backupStory ?? "",
+                backupCaptionOnly: card.backupCaptionOnly ?? "",
+                audioOptionNotes: card.audioOptionNotes ?? "",
+                creatorFitScore: card.creatorFitScore ?? 0,
+                riskNotes: card.riskNotes ?? [],
+                assumptions: card.assumptions ?? [],
+                sourceNote: card.sourceNote ?? "",
+                storyboardThumbnailAssets: card.storyboardThumbnailAssets ?? []
+            )
+        )
+    }
+
     static func rows(for card: GeneratedDailyCardDraft) -> [GeneratedStoryboardBreakdownRow] {
         let rowCount = [
             card.sceneList.count,

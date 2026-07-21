@@ -356,8 +356,12 @@ struct SceneListView: View {
     }
 
     private func readOnlySceneRow(scene: ShotScene, index: Int) -> some View {
-        HStack(alignment: .top, spacing: MCOSpace.s) {
-            GeneratedStoryboardThumbnail(url: thumbnailURL(for: index))
+        let row = storyboardRows[safe: index]
+        return HStack(alignment: .top, spacing: MCOSpace.s) {
+            GeneratedStoryboardThumbnail(
+                url: row?.thumbnailURL,
+                fallbackSystemImage: scene.symbol
+            )
                 .frame(width: 88, height: 66)
 
             VStack(alignment: .leading, spacing: MCOSpace.s) {
@@ -369,7 +373,7 @@ struct SceneListView: View {
                         Text(scene.title)
                             .font(MCOType.headline)
                             .foregroundStyle(MCOTheme.Color.ink)
-                        Text(timecode(for: index, scene: scene))
+                        Text(row?.timecode ?? timecode(for: index, scene: scene))
                             .font(MCOType.captionEmphasis)
                             .foregroundStyle(MCOTheme.Color.inkMuted)
                     }
@@ -391,8 +395,13 @@ struct SceneListView: View {
         }
     }
 
+    private var storyboardRows: [GeneratedStoryboardBreakdownRow] {
+        GeneratedStoryboardBreakdown.rows(for: card)
+    }
+
     private func thumbnailURL(for index: Int) -> URL? {
-        (card.storyboardThumbnailAssets ?? [])
+        storyboardRows[safe: index]?.thumbnailURL
+            ?? (card.storyboardThumbnailAssets ?? [])
             .first(where: { $0.rowIndex == index })?
             .publicURL
             .flatMap(URL.init(string:))
@@ -600,24 +609,33 @@ struct ScriptTimelineCopyBlock: View {
                             .accessibilityIdentifier("shootFolio.script.editor")
                     }
                 }
-            } else if lines.isEmpty {
+            } else if rows.isEmpty {
                 CopyBlock(title: "Script", bodyText: "No script recorded for today.")
             } else {
                 JournalBlock {
                     VStack(alignment: .leading, spacing: MCOSpace.s) {
-                        Text("Script")
-                            .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.oxblood)
+                        HStack(spacing: MCOSpace.s) {
+                            Text("Script")
+                                .font(MCOType.tinyLabel)
+                                .foregroundStyle(MCOTheme.Color.oxblood)
+                            Spacer(minLength: MCOSpace.s)
+                            Text("\(rows.count) lines")
+                                .font(MCOType.caption)
+                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                        }
 
-                        ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                        ForEach(rows) { row in
                             HStack(alignment: .top, spacing: MCOSpace.s) {
-                                GeneratedStoryboardThumbnail(url: thumbnailURL(for: index))
+                                GeneratedStoryboardThumbnail(
+                                    url: row.thumbnailURL,
+                                    fallbackSystemImage: card.scenes[safe: row.sceneNumber - 1]?.symbol
+                                )
                                     .frame(width: 72, height: 54)
                                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                                    Text(timecode(for: index))
+                                    Text(row.timecode)
                                         .font(MCOType.captionEmphasis)
                                         .foregroundStyle(MCOTheme.Color.oxblood)
-                                    Text(line)
+                                    Text(row.audioDialogue)
                                         .font(MCOType.bodySmall)
                                         .foregroundStyle(MCOTheme.Color.ink)
                                         .fixedSize(horizontal: false, vertical: true)
@@ -627,11 +645,12 @@ struct ScriptTimelineCopyBlock: View {
                             .padding(MCOSpace.s)
                             .background(MCOTheme.Color.paperRaised.opacity(0.58))
                             .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                            .accessibilityIdentifier("shoot.script.line.\(row.sceneNumber)")
                         }
 
                         SecondaryActionButton(title: didCopy ? "Copied" : "Copy full script") {
                             #if canImport(UIKit)
-                            UIPasteboard.general.string = card.script
+                            UIPasteboard.general.string = copyableScript
                             #endif
                             didCopy = true
                         }
@@ -645,35 +664,15 @@ struct ScriptTimelineCopyBlock: View {
         }
     }
 
-    private var lines: [String] {
-        let raw = card.script ?? ""
-        let split = raw
-            .split(whereSeparator: \.isNewline)
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        if !split.isEmpty { return split }
-        if let whole = raw.nilIfBlank { return [whole] }
-        return []
+    private var rows: [GeneratedStoryboardBreakdownRow] {
+        GeneratedStoryboardBreakdown.rows(for: card)
     }
 
-    private func thumbnailURL(for index: Int) -> URL? {
-        (card.storyboardThumbnailAssets ?? [])
-            .first(where: { $0.rowIndex == index })?
-            .publicURL
-            .flatMap(URL.init(string:))
-    }
-
-    private func timecode(for index: Int) -> String {
-        if let stamped = card.shotTimeline?[safe: index]?.timestamp.nilIfBlank {
-            return stamped
+    private var copyableScript: String {
+        if let script = card.script?.nilIfBlank {
+            return script
         }
-        if let window = SceneTiming.windows(for: card.scenes)[safe: index] {
-            return window
-        }
-        if let scene = card.scenes[safe: index] {
-            return scene.duration
-        }
-        return "Line \(index + 1)"
+        return rows.map(\.audioDialogue).joined(separator: "\n")
     }
 }
 
