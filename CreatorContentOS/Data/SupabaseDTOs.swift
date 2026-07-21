@@ -1151,6 +1151,48 @@ struct SupabaseUpdateReadyDayPackageResponse: Decodable, Hashable, Sendable {
     }
 }
 
+struct SupabaseRuntimeHealthProbe: Decodable, Hashable, Sendable {
+    var ok: Bool
+    var latencyMs: Int?
+    var detail: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case latencyMs = "latency_ms"
+        case detail
+    }
+}
+
+struct SupabaseRuntimeHealthResponse: Decodable, Hashable, Sendable {
+    var checkedAt: String?
+    var supabase: SupabaseRuntimeHealthProbe
+    var gemini: SupabaseRuntimeHealthProbe
+
+    enum CodingKeys: String, CodingKey {
+        case checkedAt = "checked_at"
+        case supabase
+        case gemini
+    }
+
+    func report(fallbackDate: Date = Date()) -> RuntimeHealthReport {
+        let checkedAtDate: Date = {
+            guard let checkedAt,
+                  let parsed = ISO8601DateFormatter().date(from: checkedAt)
+            else {
+                return fallbackDate
+            }
+            return parsed
+        }()
+        return RuntimeHealthReport(
+            supabaseOK: supabase.ok,
+            geminiOK: gemini.ok,
+            supabaseDetail: supabase.detail,
+            geminiDetail: gemini.detail,
+            checkedAt: checkedAtDate
+        )
+    }
+}
+
 enum SupabaseDateFormatting {
     static func contextLine(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return rawDate }

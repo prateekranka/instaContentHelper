@@ -1083,3 +1083,25 @@ private extension SupabaseIdeaRow {
         )
     }
 }
+
+struct SupabaseRuntimeHealthRepository: RuntimeHealthRepository {
+    let client: SupabaseClient
+
+    func checkHealth(for context: WorkspaceContext) async throws -> RuntimeHealthReport {
+        _ = context
+        do {
+            let response: SupabaseRuntimeHealthResponse = try await client.functions.invoke(
+                "runtime-health",
+                options: FunctionInvokeOptions(body: EmptyJSONBody())
+            )
+            return response.report()
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+}
+
+private struct EmptyJSONBody: Encodable, Sendable {}

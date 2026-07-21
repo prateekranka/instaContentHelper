@@ -81,7 +81,8 @@ struct SupabaseRepositoryBundleFactory {
             intelligence: SupabaseIntelligenceRepository(client: client, references: sourcePulse),
             creatorProfile: SupabaseCreatorProfileRepository(client: client),
             archive: SupabaseArchiveRepository(client: client),
-            testerAccess: SupabaseTesterAccessRepository(client: client)
+            testerAccess: SupabaseTesterAccessRepository(client: client),
+            runtimeHealth: SupabaseRuntimeHealthRepository(client: client)
         )
     }
 }

@@ -78,13 +78,13 @@ struct ProfileModeView: View {
 
                 statusRow(
                     title: "Supabase",
-                    value: services.isLiveSupabaseRuntime ? "Live" : "Sample",
-                    tone: services.isLiveSupabaseRuntime ? .ready : .warning
+                    value: services.supabaseHealthStatus.chipLabel,
+                    tone: healthChipTone(services.supabaseHealthStatus)
                 )
                 statusRow(
                     title: "Gemini",
-                    value: geminiStatusLabel,
-                    tone: services.isLiveSupabaseRuntime ? .ready : .quiet
+                    value: geminiChipLabel(services.geminiHealthStatus),
+                    tone: healthChipTone(services.geminiHealthStatus)
                 )
 
                 HStack(alignment: .center, spacing: MCOSpace.s) {
@@ -105,7 +105,36 @@ struct ProfileModeView: View {
                 }
             }
             .animation(.snappy(duration: 0.2), value: services.isRefreshingRepository)
+            .animation(.snappy(duration: 0.2), value: services.isCheckingRuntimeHealth)
             .animation(.snappy(duration: 0.2), value: refreshFeedbackMessage)
+        }
+    }
+
+    private func healthChipTone(_ status: RuntimeHealthStatus) -> ChipTone {
+        switch status {
+        case .unknown, .checking:
+            .quiet
+        case .sample:
+            .warning
+        case .live:
+            .ready
+        case .down:
+            .danger
+        }
+    }
+
+    private func geminiChipLabel(_ status: RuntimeHealthStatus) -> String {
+        switch status {
+        case .sample:
+            "Offline"
+        case .live:
+            "Live"
+        case .checking:
+            "Checking"
+        case .down:
+            "Down"
+        case .unknown:
+            "—"
         }
     }
 
@@ -121,19 +150,12 @@ struct ProfileModeView: View {
         .accessibilityLabel("\(title) \(value)")
     }
 
-    private var geminiStatusLabel: String {
-        if services.isLiveSupabaseRuntime {
-            return "Edge Function"
-        }
-        return "Offline"
-    }
-
     private var refreshButton: some View {
         Button {
             services.refreshFromRepositories()
         } label: {
             ZStack {
-                if services.isRefreshingRepository {
+                if services.isRefreshingRepository || services.isCheckingRuntimeHealth {
                     ProgressView()
                         .controlSize(.small)
                 } else {
@@ -147,21 +169,29 @@ struct ProfileModeView: View {
             .overlay {
                 Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
             }
-            .opacity(services.isRefreshingRepository ? 0.6 : 1)
+            .opacity((services.isRefreshingRepository || services.isCheckingRuntimeHealth) ? 0.6 : 1)
         }
         .buttonStyle(.plain)
-        .disabled(services.isRefreshingRepository)
-        .accessibilityLabel(services.isRefreshingRepository ? "Refreshing" : "Refresh profile data")
+        .disabled(services.isRefreshingRepository || services.isCheckingRuntimeHealth)
+        .accessibilityLabel(
+            (services.isRefreshingRepository || services.isCheckingRuntimeHealth)
+                ? "Refreshing"
+                : "Refresh profile data"
+        )
     }
 
     private var refreshFeedbackMessage: String? {
-        if services.isRefreshingRepository {
+        if services.isRefreshingRepository || services.isCheckingRuntimeHealth {
             return "Refreshing…"
+        }
+        if let healthError = services.lastRuntimeHealthError?.nilIfBlank {
+            return "Health check failed: \(healthError)"
         }
         if let error = services.lastRepositoryRefreshError?.nilIfBlank {
             return "Refresh failed: \(error)"
         }
-        if let succeeded = services.lastRepositoryRefreshSucceededAt {
+        if let succeeded = services.lastRepositoryRefreshSucceededAt
+            ?? services.lastRuntimeHealthCheckedAt {
             let formatter = DateFormatter()
             formatter.dateStyle = .none
             formatter.timeStyle = .short
@@ -171,10 +201,10 @@ struct ProfileModeView: View {
     }
 
     private var refreshFeedbackColor: Color {
-        if services.isRefreshingRepository {
+        if services.isRefreshingRepository || services.isCheckingRuntimeHealth {
             return MCOTheme.Color.inkMuted
         }
-        if services.lastRepositoryRefreshError != nil {
+        if services.lastRuntimeHealthError != nil || services.lastRepositoryRefreshError != nil {
             return MCOTheme.Color.danger
         }
         return MCOTheme.Color.sageDeep

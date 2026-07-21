@@ -24,6 +24,7 @@ struct AppRepositories: Sendable {
     let creatorProfile: any CreatorProfileRepository
     let archive: any ArchiveRepository
     let testerAccess: any TesterAccessRepository
+    let runtimeHealth: any RuntimeHealthRepository
 
     init(
         context: WorkspaceContext,
@@ -36,7 +37,8 @@ struct AppRepositories: Sendable {
         intelligence: any IntelligenceRepository,
         creatorProfile: any CreatorProfileRepository,
         archive: any ArchiveRepository,
-        testerAccess: any TesterAccessRepository = FixtureTesterAccessRepository()
+        testerAccess: any TesterAccessRepository = FixtureTesterAccessRepository(),
+        runtimeHealth: any RuntimeHealthRepository = FixtureRuntimeHealthRepository()
     ) {
         self.context = context
         self.today = today
@@ -49,6 +51,7 @@ struct AppRepositories: Sendable {
         self.creatorProfile = creatorProfile
         self.archive = archive
         self.testerAccess = testerAccess
+        self.runtimeHealth = runtimeHealth
     }
 
     static var fixture: AppRepositories {
@@ -583,4 +586,39 @@ struct CreatorProfileUpdate: Hashable, Sendable {
         noGoTopics = summary.noGoTopics
         recurringFormats = summary.recurringFormats
     }
+}
+
+enum RuntimeHealthStatus: Hashable, Sendable {
+    case unknown
+    case sample
+    case checking
+    case live
+    case down(String?)
+
+    var chipLabel: String {
+        switch self {
+        case .unknown:
+            "—"
+        case .sample:
+            "Sample"
+        case .checking:
+            "Checking"
+        case .live:
+            "Live"
+        case .down:
+            "Down"
+        }
+    }
+}
+
+struct RuntimeHealthReport: Hashable, Sendable {
+    var supabaseOK: Bool
+    var geminiOK: Bool
+    var supabaseDetail: String?
+    var geminiDetail: String?
+    var checkedAt: Date
+}
+
+protocol RuntimeHealthRepository: Sendable {
+    func checkHealth(for context: WorkspaceContext) async throws -> RuntimeHealthReport
 }

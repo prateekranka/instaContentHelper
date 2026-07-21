@@ -34,6 +34,11 @@ final class AppServices {
     var isRefreshingRepository = false
     var lastRepositoryRefreshError: String?
     var lastRepositoryRefreshSucceededAt: Date?
+    var supabaseHealthStatus: RuntimeHealthStatus = .unknown
+    var geminiHealthStatus: RuntimeHealthStatus = .unknown
+    var isCheckingRuntimeHealth = false
+    var lastRuntimeHealthCheckedAt: Date?
+    var lastRuntimeHealthError: String?
     var todayContentState: TodayContentState
     var lastNotificationSchedule: TodayNotificationSchedule?
     var lastNotificationError: String?
@@ -127,6 +132,13 @@ final class AppServices {
         self.creatorProfileSummary = creatorProfileSummary
         self.weekCards = weekCards
         self.todayContentState = todayContentState
+        if isLiveSupabaseRuntime {
+            supabaseHealthStatus = .unknown
+            geminiHealthStatus = .unknown
+        } else {
+            supabaseHealthStatus = .sample
+            geminiHealthStatus = .sample
+        }
     }
 
     var canManageTesterAccess: Bool {
@@ -1372,6 +1384,40 @@ final class AppServices {
         }
     }
 
+    func checkRuntimeHealth() {
+        Task {
+            await checkRuntimeHealthImmediately()
+        }
+    }
+
+    func checkRuntimeHealthImmediately() async {
+        guard isLiveSupabaseRuntime else {
+            supabaseHealthStatus = .sample
+            geminiHealthStatus = .sample
+            lastRuntimeHealthError = nil
+            lastRuntimeHealthCheckedAt = Date()
+            return
+        }
+
+        isCheckingRuntimeHealth = true
+        supabaseHealthStatus = .checking
+        geminiHealthStatus = .checking
+        defer { isCheckingRuntimeHealth = false }
+
+        do {
+            let report = try await repositories.runtimeHealth.checkHealth(for: context)
+            supabaseHealthStatus = report.supabaseOK ? .live : .down(report.supabaseDetail)
+            geminiHealthStatus = report.geminiOK ? .live : .down(report.geminiDetail)
+            lastRuntimeHealthCheckedAt = report.checkedAt
+            lastRuntimeHealthError = nil
+        } catch {
+            supabaseHealthStatus = .down(error.localizedDescription)
+            geminiHealthStatus = .down(error.localizedDescription)
+            lastRuntimeHealthCheckedAt = Date()
+            lastRuntimeHealthError = error.localizedDescription
+        }
+    }
+
     func refreshWeeklyData() {
         Task {
             await refreshWeeklyDataFromRepositories()
@@ -1600,6 +1646,7 @@ final class AppServices {
 #endif
 
         normalizeManagerWeekStartIfStale()
+        await checkRuntimeHealthImmediately()
     }
 
     private func applyMissingPublishedTodayCardState(date: String) {

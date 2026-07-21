@@ -415,3 +415,16 @@ struct FixtureTesterAccessRepository: TesterAccessRepository {
         )
     }
 }
+
+struct FixtureRuntimeHealthRepository: RuntimeHealthRepository {
+    func checkHealth(for context: WorkspaceContext) async throws -> RuntimeHealthReport {
+        _ = context
+        return RuntimeHealthReport(
+            supabaseOK: false,
+            geminiOK: false,
+            supabaseDetail: "sample_runtime",
+            geminiDetail: "sample_runtime",
+            checkedAt: Date()
+        )
+    }
+}
