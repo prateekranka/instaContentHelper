@@ -72,7 +72,7 @@ struct ProfileModeView: View {
 
     private var header: some View {
         Text("Profile")
-            .font(MCOType.screenTitle)
+            .font(MCOType.display)
             .foregroundStyle(MCOTheme.Color.ink)
     }
 
@@ -81,7 +81,7 @@ struct ProfileModeView: View {
             JournalBlock {
                 HStack(spacing: MCOSpace.m) {
                     Image(systemName: "calendar.badge.plus")
-                        .font(.system(size: 22, weight: .medium))
+                        .font(MCOType.iconRow)
                         .foregroundStyle(MCOTheme.Color.oxblood)
                         .frame(width: 34)
                     VStack(alignment: .leading, spacing: MCOSpace.xxs) {
@@ -94,7 +94,7 @@ struct ProfileModeView: View {
                     }
                     Spacer(minLength: MCOSpace.s)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(MCOType.captionEmphasis)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                 }
             }
@@ -177,7 +177,7 @@ struct ProfileModeView: View {
                         .controlSize(.small)
                 } else {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(MCOType.bodyEmphasis)
                 }
             }
             .frame(width: 44, height: 44)

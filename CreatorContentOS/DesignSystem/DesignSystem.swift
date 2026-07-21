@@ -24,12 +24,25 @@ enum MCOTheme {
 enum MCOType {
     static let display = Font.system(size: 42, weight: .regular, design: .serif)
     static let screenTitle = Font.system(size: 34, weight: .regular, design: .serif)
+    static let heroTitle = Font.system(size: 31, weight: .regular, design: .serif)
     static let cardTitle = Font.system(size: 25, weight: .regular, design: .serif)
+    static let dateLine = Font.system(size: 17, weight: .regular, design: .serif)
+    static let editorialHeadline = Font.system(size: 18, weight: .regular, design: .serif)
     static let headline = Font.system(size: 18, weight: .semibold)
     static let body = Font.system(size: 16, weight: .regular)
+    static let bodyEmphasis = Font.system(size: 16, weight: .semibold)
+    static let bodyMedium = Font.system(size: 16, weight: .medium)
     static let bodySmall = Font.system(size: 14, weight: .regular)
     static let caption = Font.system(size: 12, weight: .regular)
+    static let captionEmphasis = Font.system(size: 12, weight: .semibold)
+    static let captionMedium = Font.system(size: 12, weight: .medium)
     static let tinyLabel = Font.system(size: 11, weight: .semibold)
+    static let iconInline = Font.system(size: 16, weight: .medium)
+    static let iconCompact = Font.system(size: 14, weight: .semibold)
+    static let iconRow = Font.system(size: 22, weight: .medium)
+    static let iconEmpty = Font.system(size: 28, weight: .regular)
+    static let iconLarge = Font.system(size: 30, weight: .regular)
+    static let iconHeroMark = Font.system(size: 96, weight: .light)
 }
 
 enum MCOSpace {

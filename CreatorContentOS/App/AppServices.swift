@@ -732,7 +732,9 @@ final class AppServices {
         } catch {
             let message = DayGenerationErrorDisplay.message(for: error)
             dayBriefGenerationErrors[scheduledDate] = message
-            logGeneration("generate_day failed scheduled_date=\(scheduledDate) error=\(message)")
+            logGeneration(
+                "generate_day failed scheduled_date=\(scheduledDate) user_message=\(message) error_type=\(String(describing: type(of: error))) localized=\(error.localizedDescription) dump=\(String(describing: error))"
+            )
             throw RepositoryError.edgeFunction(message)
         }
     }
@@ -837,7 +839,9 @@ final class AppServices {
     }
 
     private func logGeneration(_ message: String) {
-        print("[ContentHelperGeneration] \(Date()) \(message)")
+        let line = "[ContentHelperGeneration] \(ISO8601DateFormatter().string(from: Date())) \(message)"
+        print(line)
+        GenerationLogFile.append(line)
     }
 
     private static func hasMissingStoryboardThumbnails(for card: GeneratedDailyCardDraft) -> Bool {
@@ -1905,9 +1909,10 @@ private enum DayGenerationErrorDisplay {
         "existing_published_week_locked": "This week is already published and locked.",
         "past_generation_date_not_allowed": "You cannot generate content for a past date. Select today or a future date.",
         "generation_timeout": "Generation timed out. Wait a moment, then try Generate again.",
-        "generation_cancelled": "Generation was cancelled. Try Generate again.",
+        "generation_cancelled": "This day’s draft stopped before it finished. You can try Generate again.",
         "generation_already_running": "A generation is already in progress for this day. Wait for it to finish, then try again.",
-        "accepted_run_not_found": "Generation status is still syncing. Refresh and try Generate again."
+        "accepted_run_not_found": "Generation status is still syncing. Refresh and try Generate again.",
+        "cancelled": "This day’s draft stopped before it finished. You can try Generate again."
     ]
 
     private static let stableCodes = [
@@ -1928,10 +1933,14 @@ private enum DayGenerationErrorDisplay {
         "generation_timeout",
         "generation_cancelled",
         "generation_already_running",
-        "accepted_run_not_found"
+        "accepted_run_not_found",
+        "cancelled"
     ]
 
     static func message(for error: Error) -> String {
+        if error is CancellationError {
+            return message(forCode: "generation_cancelled")
+        }
         let description = error.localizedDescription
         if description.contains("generation_persist_failed:") {
             return "The draft could not be saved (\(description))."
@@ -1940,8 +1949,13 @@ private enum DayGenerationErrorDisplay {
             return message
         }
 
-        if let code = stableCodes.first(where: { description.contains($0) }) {
+        if let code = stableCodes.first(where: { description.localizedCaseInsensitiveContains($0) }) {
             return userFacingMessages[code] ?? code
+        }
+
+        let lowered = description.lowercased()
+        if lowered.contains("cancel") {
+            return message(forCode: "generation_cancelled")
         }
 
         return description

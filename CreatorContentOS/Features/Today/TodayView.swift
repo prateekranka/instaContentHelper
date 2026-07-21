@@ -55,7 +55,7 @@ struct TodayView: View {
                     .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)
                 Text(todayDateLine)
-                    .font(.system(size: 17, weight: .regular, design: .serif))
+                    .font(MCOType.dateLine)
                     .foregroundStyle(MCOTheme.Color.brass)
             }
             Spacer(minLength: MCOSpace.s)
@@ -92,7 +92,7 @@ struct TodayView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(MCOType.iconInline)
                     .frame(width: 42, height: 42)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .glassEffect(.regular.interactive(), in: .circle)
@@ -199,7 +199,7 @@ private struct MissingTodayCardView: View {
         JournalBlock {
             VStack(alignment: .leading, spacing: MCOSpace.m) {
                 Image(systemName: "circle.dashed")
-                    .font(.system(size: 28, weight: .regular))
+                    .font(MCOType.iconEmpty)
                     .foregroundStyle(MCOTheme.Color.brass)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: MCOSpace.xs) {
@@ -253,7 +253,7 @@ struct TodayHeroCard: View {
                 )
             GeometryReader { proxy in
                 Image(systemName: "shoeprints.fill")
-                    .font(.system(size: 96, weight: .light))
+                    .font(MCOType.iconHeroMark)
                     .foregroundStyle(.white.opacity(0.06))
                     .rotationEffect(.degrees(-18))
                     .position(x: proxy.size.width * 0.78, y: proxy.size.height * 0.28)
@@ -272,12 +272,12 @@ struct TodayHeroCard: View {
                         }
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(MCOType.bodyEmphasis)
                         .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.7))
                 }
 
                 Text(card.title)
-                    .font(.system(size: 31, weight: .regular, design: .serif))
+                    .font(MCOType.heroTitle)
                     .foregroundStyle(MCOTheme.Color.paperRaised)
                     .multilineTextAlignment(.leading)
                     .lineLimit(3)
@@ -290,7 +290,7 @@ struct TodayHeroCard: View {
                             .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.6))
                             .padding(.top, 2)
                         Text(hook)
-                            .font(.system(size: 17, weight: .regular, design: .serif))
+                            .font(MCOType.dateLine)
                             .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.9))
                             .multilineTextAlignment(.leading)
                             .lineLimit(3)
@@ -302,7 +302,7 @@ struct TodayHeroCard: View {
                         ForEach(Array(scenePlanLines.enumerated()), id: \.offset) { _, sceneLine in
                             HStack(alignment: .top, spacing: MCOSpace.xs) {
                             Text("\(sceneLine.number)")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(MCOType.captionEmphasis)
                                     .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.5))
                                     .frame(width: 16, alignment: .leading)
                                 Text(sceneLine.text)

@@ -17,7 +17,7 @@ struct NotTodaySheet: View {
                         .fill(MCOTheme.Color.brass)
                         .frame(width: 32, height: 1)
                     Text("Choose the smallest useful win.")
-                        .font(.system(size: 17, weight: .regular, design: .serif))
+                        .font(MCOType.dateLine)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                 }
                 .padding(.top, MCOSpace.l)
@@ -53,7 +53,7 @@ struct NotTodaySheet: View {
                         complete(.skippedIntentionally)
                     } label: {
                         Text("Skip intentionally")
-                            .font(.system(size: 16, weight: .medium, design: .serif))
+                            .font(MCOType.bodyMedium)
                             .frame(maxWidth: .infinity)
                             .frame(height: 54)
                             .foregroundStyle(MCOTheme.Color.ink)
@@ -138,7 +138,7 @@ private struct BackupDecisionSheet: View {
                                 .font(MCOType.screenTitle)
                                 .foregroundStyle(MCOTheme.Color.ink)
                             Text(subtitle)
-                                .font(.system(size: 17, weight: .regular, design: .serif))
+                                .font(MCOType.dateLine)
                                 .foregroundStyle(MCOTheme.Color.inkMuted)
                         }
 
@@ -272,12 +272,12 @@ struct BackupOptionRow: View {
             JournalBlock {
                 HStack(spacing: MCOSpace.m) {
                     Image(systemName: symbol)
-                        .font(.system(size: 28, weight: .light))
+                        .font(MCOType.iconEmpty)
                         .foregroundStyle(MCOTheme.Color.brass)
                         .frame(width: 44)
                     VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                         Text(title)
-                            .font(.system(size: 20, weight: .regular, design: .serif))
+                            .font(MCOType.editorialHeadline)
                             .foregroundStyle(MCOTheme.Color.ink)
                         Text(subtitle)
                             .font(MCOType.bodySmall)

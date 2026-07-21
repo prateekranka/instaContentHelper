@@ -482,9 +482,27 @@ enum DayPackageLifecycleStatus {
         "skipped_intentionally"
     ]
 
+    /// Draft package statuses, including Manager review_state values mapped onto draft cards
+    /// (`open` / `ready` / `backup` via `draftReviewStatus`).
+    static let draftLike: Set<String> = [
+        "draft",
+        "open",
+        "ready",
+        "backup"
+    ]
+
     static func requiresOverwriteConfirmation(_ status: String?) -> Bool {
         guard let status else { return false }
         return readyOrDecision.contains(status)
+    }
+
+    static func isDraftPackage(_ status: String?) -> Bool {
+        guard let status = status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !status.isEmpty
+        else {
+            return false
+        }
+        return draftLike.contains(status)
     }
 }
 

@@ -633,7 +633,9 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
     }
 
     private func logGeneration(_ message: String) {
-        print("[ContentHelperGenerationRepository] \(Date()) \(message)")
+        let line = "[ContentHelperGenerationRepository] \(ISO8601DateFormatter().string(from: Date())) \(message)"
+        print(line)
+        GenerationLogFile.append(line)
     }
 
     private func dailyGenerationInvocationSummary(_ invocation: SupabaseDailyGenerationInvocation) -> String {

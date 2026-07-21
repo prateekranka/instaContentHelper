@@ -25,15 +25,22 @@ struct PlanHubView: View {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
                 calendarSection
+                if let otherLabel = otherDayGeneratingLabel {
+                    Text("Still drafting \(otherLabel) in the background — you can keep planning other days.")
+                        .font(MCOType.caption)
+                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .accessibilityIdentifier("plan.generation.backgroundHint")
+                }
                 briefComposer
-                if isGenerating {
+                if isGeneratingSelectedDay {
                     generationProgressBlock
                 }
                 if let error = surfacedGenerationError {
+                    let cancelled = Self.isCancellationMessage(error)
                     AdminSignalBlock(
-                        title: "Generation error",
+                        title: cancelled ? "Generation stopped" : "Generation error",
                         value: error,
-                        systemImage: "exclamationmark.triangle",
+                        systemImage: cancelled ? "xmark.circle" : "exclamationmark.triangle",
                         tone: .warning
                     )
                 }
@@ -70,7 +77,7 @@ struct PlanHubView: View {
             GlassCommandBar {
                 PrimaryActionButton(
                     title: generateButtonTitle,
-                    systemImage: isGenerating ? "hourglass" : "sparkles"
+                    systemImage: isGeneratingSelectedDay ? "hourglass" : "sparkles"
                 ) {
                     requestGenerate()
                 }
@@ -131,45 +138,46 @@ struct PlanHubView: View {
         services.canGenerateContent
     }
 
-    private var activeGenerationDate: String? {
-        services.generatingDayBriefDates.sorted().first
+    private var isGeneratingSelectedDay: Bool {
+        services.generatingDayBriefDates.contains(scheduledDateString)
     }
 
-    private var isGenerating: Bool {
-        activeGenerationDate != nil
+    private var otherDayGeneratingLabel: String? {
+        let others = services.generatingDayBriefDates.filter { $0 != scheduledDateString }.sorted()
+        guard let first = others.first else { return nil }
+        return shortLabel(for: first)
     }
 
     private var canSubmit: Bool {
-        canGenerate && !isGenerating &&
+        canGenerate && !isGeneratingSelectedDay &&
             !dayBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var canMakeAvailable: Bool {
         canGenerate
-            && !isGenerating
+            && !isGeneratingSelectedDay
             && !services.isMakingDayAvailable
             && displayedCard != nil
-            && displayedCard?.status == "draft"
+            && DayPackageLifecycleStatus.isDraftPackage(displayedCard?.status)
     }
 
     private var canUnpublish: Bool {
         canGenerate
-            && !isGenerating
+            && !isGeneratingSelectedDay
             && !services.isUnpublishingDay
             && DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status)
     }
 
     private var canLightEditReadyPackage: Bool {
         canGenerate
-            && !isGenerating
+            && !isGeneratingSelectedDay
             && !services.isUpdatingReadyDayPackage
             && DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status)
     }
 
     private var generateButtonTitle: String {
-        let labelDate = activeGenerationDate ?? scheduledDateString
-        if isGenerating {
-            return "Generating \(shortLabel(for: labelDate))"
+        if isGeneratingSelectedDay {
+            return "Generating \(shortLabel(for: scheduledDateString))"
         }
         if DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status) {
             return "Overwrite \(shortLabel(for: scheduledDateString))"
@@ -182,10 +190,7 @@ struct PlanHubView: View {
     }
 
     private var surfacedGenerationError: String? {
-        if let activeGenerationDate {
-            return services.dayBriefGenerationErrors[activeGenerationDate]
-        }
-        return services.dayBriefGenerationErrors[scheduledDateString]
+        services.dayBriefGenerationErrors[scheduledDateString]
     }
 
     private var displayedCard: GeneratedDailyCardDraft? {
@@ -272,7 +277,7 @@ struct PlanHubView: View {
                 shiftMonth(by: -1)
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(MCOType.iconCompact)
                     .frame(width: 36, height: 36)
                     .foregroundStyle(MCOTheme.Color.ink)
             }
@@ -289,7 +294,7 @@ struct PlanHubView: View {
                 shiftMonth(by: 1)
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(MCOType.iconCompact)
                     .frame(width: 36, height: 36)
                     .foregroundStyle(MCOTheme.Color.ink)
             }
@@ -378,7 +383,7 @@ struct PlanHubView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(isGenerating || !isSelectable)
+        .disabled(!isSelectable)
         .accessibilityLabel(calendarAccessibilityLabel(dateString: dateString, dayNumber: dayNumber, state: state))
         .accessibilityIdentifier("plan.calendar.day.\(dateString)")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -417,7 +422,7 @@ struct PlanHubView: View {
                         .font(MCOType.bodySmall)
                         .foregroundStyle(MCOTheme.Color.ink)
                         .scrollContentBackground(.hidden)
-                        .disabled(isGenerating || !canGenerate)
+                        .disabled(isGeneratingSelectedDay || !canGenerate)
                         .accessibilityIdentifier("daily.generate.brief")
                 }
                 .padding(MCOSpace.s)
@@ -438,7 +443,7 @@ struct PlanHubView: View {
                 ProgressView()
                     .controlSize(.small)
                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                    Text("Drafting \(shortLabel(for: activeGenerationDate ?? scheduledDateString))")
+                    Text("Drafting \(shortLabel(for: scheduledDateString))")
                         .font(MCOType.headline)
                         .foregroundStyle(MCOTheme.Color.ink)
                     Text("Deep reasoning takes a couple of minutes. Validation may retry once or twice.")
@@ -535,8 +540,8 @@ struct PlanHubView: View {
                     ) {
                         showUnpublishConfirmation = true
                     }
-                    .disabled(services.isUnpublishingDay || isGenerating)
-                    .opacity(services.isUnpublishingDay || isGenerating ? 0.48 : 1)
+                    .disabled(services.isUnpublishingDay || isGeneratingSelectedDay)
+                    .opacity(services.isUnpublishingDay || isGeneratingSelectedDay ? 0.48 : 1)
                     .accessibilityIdentifier("daily.unpublish")
                 }
             }
@@ -746,9 +751,18 @@ enum PlanCalendarDayState: Equatable, Sendable {
         if DayPackageLifecycleStatus.requiresOverwriteConfirmation(status) {
             return .ready
         }
-        if status == "draft" {
+        if DayPackageLifecycleStatus.isDraftPackage(status) {
             return .draft
         }
         return .empty
+    }
+}
+
+extension PlanHubView {
+    fileprivate static func isCancellationMessage(_ message: String) -> Bool {
+        let lowered = message.lowercased()
+        // Raw codes ("cancelled") and the friendly copy both count.
+        return lowered.contains("cancel")
+            || lowered.contains("stopped before it finished")
     }
 }

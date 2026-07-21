@@ -58,7 +58,7 @@ struct ShootFolioView: View {
         JournalBlock {
             HStack(alignment: .center, spacing: MCOSpace.m) {
                 Image(systemName: services.areAllScenesShot ? "checkmark.seal.fill" : "target")
-                    .font(.system(size: 24, weight: .medium))
+                    .font(MCOType.cardTitle)
                     .foregroundStyle(services.areAllScenesShot ? MCOTheme.Color.success : MCOTheme.Color.liveBlue)
                     .frame(width: 34)
 
@@ -85,7 +85,7 @@ struct ShootFolioView: View {
         HStack(alignment: .top, spacing: MCOSpace.xs) {
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                 Text("Shoot Folio")
-                    .font(MCOType.headline)
+                    .font(MCOType.screenTitle)
                     .foregroundStyle(MCOTheme.Color.ink)
                 Text(services.todayCard.title.nilIfBlank ?? "Today's shoot")
                     .font(MCOType.bodySmall)
@@ -124,7 +124,7 @@ struct ShootFolioView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(MCOType.iconInline)
                     .frame(width: 42, height: 42)
                     .foregroundStyle(MCOTheme.Color.ink)
                     .glassEffect(.regular.interactive(), in: .circle)
@@ -180,7 +180,7 @@ private struct ShootFolioEmptyState: View {
         JournalBlock {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 Image(systemName: "bookmark.slash")
-                    .font(.system(size: 30, weight: .regular))
+                    .font(MCOType.iconLarge)
                     .foregroundStyle(MCOTheme.Color.brass)
                 Text("No Shoot Folio yet")
                     .font(MCOType.headline)

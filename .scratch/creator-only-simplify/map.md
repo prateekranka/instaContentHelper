@@ -11,7 +11,7 @@ A Creator-only Instagram app whose primary UI is Today → Shoot Folio → decis
 - Standing preferences: optimize only for the Creator’s daily loop; Plan is buried, never a second primary mode; Instagram shoot/edit/post stays outside the app; keep offline Today cache and local notification plumbing; produce decisions until the way is clear — do not build the destination inside this map unless Notes are updated.
 - Tracker: local markdown under `.scratch/creator-only-simplify/`.
 - **Spec (ready-for-agent):** [spec.md](spec.md) — published via `/to-spec`.
-- **Implementation tickets:** [implement/](implement/) — published via `/to-tickets`. Work the frontier with `/implement` (clear context between tickets). Wayfinder decision tickets 01–07 in `issues/` stay resolved history.
+- **Implementation tickets:** [implement/](implement/) — all 01–07 **resolved** (Apple auth → Available on Today → mutations → shell → Plan → Today entries → retire legacy). Wayfinder decision tickets in `issues/` stay resolved history.
 
 ## Decisions so far
 
