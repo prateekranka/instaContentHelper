@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PROTOTYPE — Empty Today variants</title>
+  <style>
+    :root {
+      --paper: #f3efe6;
+      --ink: #1c1712;
+      --muted: #6b6258;
+      --brass: #8a7348;
+      --oxblood: #6e2c2c;
+      --hairline: rgba(28, 23, 18, 0.14);
+      --raised: rgba(255, 252, 246, 0.86);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      background: #2a2420;
+      font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      color: var(--ink);
+      -webkit-text-size-adjust: 100%;
+    }
+    .note {
+      max-width: 390px;
+      margin: 16px auto 8px;
+      padding: 0 12px;
+      color: #cfc6ba;
+      font: 12px/1.4 ui-sans-serif, system-ui, sans-serif;
+    }
+    .phone {
+      width: min(390px, 100% - 24px);
+      margin: 0 auto 110px;
+      min-height: min(720px, calc(100dvh - 140px));
+      background: var(--paper);
+      border-radius: 28px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    @media (max-width: 480px) {
+      body { background: var(--paper); }
+      .note {
+        max-width: none;
+        margin: 10px 12px 0;
+        color: var(--muted);
+      }
+      .phone {
+        width: 100%;
+        margin: 0 0 96px;
+        min-height: calc(100dvh - 96px);
+        border-radius: 0;
+        box-shadow: none;
+      }
+      .switcher {
+        bottom: max(12px, env(safe-area-inset-bottom));
+        width: calc(100% - 24px);
+        max-width: 420px;
+        justify-content: space-between;
+      }
+    }
+    .tabs {
+      display: flex;
+      border-top: 1px solid var(--hairline);
+      background: rgba(243, 239, 230, 0.96);
+      margin-top: auto;
+      font: 11px/1 ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.02em;
+    }
+    .tabs div {
+      flex: 1;
+      text-align: center;
+      padding: 14px 4px 18px;
+      color: var(--muted);
+    }
+    .tabs .on { color: var(--oxblood); font-weight: 600; }
+    .screen { padding: 28px 22px 24px; flex: 1; }
+    .title { font-size: 40px; margin: 0; letter-spacing: -0.02em; }
+    .date { margin: 6px 0 0; color: var(--brass); font-size: 17px; }
+    .btn {
+      appearance: none;
+      border: 0;
+      border-radius: 14px;
+      padding: 16px 18px;
+      font: 600 16px/1.2 ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+      width: 100%;
+    }
+    .btn-primary { background: var(--oxblood); color: #f8f1e8; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--oxblood);
+      border: 1px solid rgba(110, 44, 44, 0.35);
+    }
+    .muted { color: var(--muted); font-size: 15px; line-height: 1.45; }
+    .block {
+      background: var(--raised);
+      border: 1px solid var(--hairline);
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .variant { display: none; }
+    .variant.active { display: block; }
+
+    /* A — calm center */
+    #A .hero {
+      margin-top: 72px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      align-items: center;
+    }
+    #A .hero h2 { margin: 0; font-size: 26px; font-weight: 600; }
+    #A .hero p { margin: 0; max-width: 280px; }
+    #A .hero .btn { max-width: 280px; }
+
+    /* B — journal card (closest to current MissingToday) */
+    #B .card { margin-top: 28px; }
+    #B .icon { font-size: 28px; color: var(--brass); margin-bottom: 12px; }
+    #B h2 { margin: 0 0 8px; font-size: 22px; }
+    #B p { margin: 0 0 20px; }
+
+    /* C — chrome CTA: almost empty canvas, action in bottom command bar */
+    #C .whisper {
+      margin-top: 48px;
+      max-width: 260px;
+    }
+    #C .whisper h2 { margin: 0 0 8px; font-size: 22px; }
+    #C .bar {
+      position: absolute;
+      left: 16px; right: 16px; bottom: 78px;
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(255,252,246,0.72);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--hairline);
+    }
+
+    .switcher {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: #111;
+      color: #fff;
+      font: 13px/1 ui-sans-serif, system-ui, sans-serif;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      z-index: 20;
+    }
+    .switcher button {
+      appearance: none;
+      border: 0;
+      background: #333;
+      color: #fff;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .switcher .label { min-width: 180px; text-align: center; }
+  </style>
+</head>
+<body>
+  <p class="note">
+    PROTOTYPE — throwaway. Question: empty Today = one action into Plan (no ⋯, no Manager).
+    Arrow keys or buttons cycle variants. Pick A / B / C or mix.
+  </p>
+
+  <div class="phone">
+    <div class="screen">
+      <h1 class="title">Today</h1>
+      <p class="date">21st July 2026</p>
+
+      <section id="A" class="variant active" data-name="Calm center">
+        <div class="hero">
+          <h2>Nothing ready for today</h2>
+          <p class="muted">Plan a reel for today, then make it available here.</p>
+          <button class="btn btn-primary" type="button">Plan today’s content</button>
+        </div>
+      </section>
+
+      <section id="B" class="variant" data-name="Journal card">
+        <div class="block card">
+          <div class="icon">◎</div>
+          <h2>Nothing ready for today</h2>
+          <p class="muted">There’s no ready package for this date yet. Open Plan to generate one and make it available on Today.</p>
+          <button class="btn btn-primary" type="button">Plan today’s content</button>
+        </div>
+      </section>
+
+      <section id="C" class="variant" data-name="Command-bar CTA">
+        <div class="whisper">
+          <h2>No ready package</h2>
+          <p class="muted">When today’s content is ready, it shows up here.</p>
+        </div>
+        <div class="bar">
+          <button class="btn btn-primary" type="button">Plan today’s content</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="tabs">
+      <div class="on">Today</div>
+      <div>Archive</div>
+      <div>Profile</div>
+    </div>
+  </div>
+
+  <div class="switcher" aria-label="Prototype variant switcher">
+    <button type="button" id="prev" aria-label="Previous">←</button>
+    <div class="label" id="label">A — Calm center</div>
+    <button type="button" id="next" aria-label="Next">→</button>
+  </div>
+
+  <script>
+    const keys = ["A", "B", "C"];
+    let i = 0;
+    const label = document.getElementById("label");
+
+    function show(index) {
+      i = (index + keys.length) % keys.length;
+      keys.forEach((k) => {
+        document.getElementById(k).classList.toggle("active", k === keys[i]);
+      });
+      const name = document.getElementById(keys[i]).dataset.name;
+      label.textContent = keys[i] + " — " + name;
+      const url = new URL(location.href);
+      url.searchParams.set("variant", keys[i]);
+      history.replaceState(null, "", url);
+    }
+
+    document.getElementById("prev").onclick = () => show(i - 1);
+    document.getElementById("next").onclick = () => show(i + 1);
+    window.addEventListener("keydown", (e) => {
+      if (e.target.matches("input, textarea, [contenteditable]")) return;
+      if (e.key === "ArrowLeft") show(i - 1);
+      if (e.key === "ArrowRight") show(i + 1);
+    });
+
+    const start = new URL(location.href).searchParams.get("variant");
+    show(Math.max(0, keys.indexOf(start || "A")));
+  </script>
+</body>
+</html>

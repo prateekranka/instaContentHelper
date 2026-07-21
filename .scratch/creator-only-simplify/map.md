@@ -10,6 +10,8 @@ A Creator-only Instagram app whose primary UI is Today → Shoot Folio → decis
 - Skills every session should consult: `/grilling`, `/domain-modeling`, `/batch-grill-me` when frontier questions fan out; `/prototype` for UI fidelity tickets.
 - Standing preferences: optimize only for the Creator’s daily loop; Plan is buried, never a second primary mode; Instagram shoot/edit/post stays outside the app; keep offline Today cache and local notification plumbing; produce decisions until the way is clear — do not build the destination inside this map unless Notes are updated.
 - Tracker: local markdown under `.scratch/creator-only-simplify/`.
+- **Spec (ready-for-agent):** [spec.md](spec.md) — published via `/to-spec`.
+- **Implementation tickets:** [implement/](implement/) — published via `/to-tickets`. Work the frontier with `/implement` (clear context between tickets). Wayfinder decision tickets 01–07 in `issues/` stay resolved history.
 
 ## Decisions so far
 
@@ -18,13 +20,15 @@ A Creator-only Instagram app whose primary UI is Today → Shoot Folio → decis
 - [Publish and soft-lock data model (research)](issues/03-publish-data-model-research.md) — Soft-lock is week-only; Today = published-lifecycle card statuses; 7-day publish + post-publish edit/regen blocks; `review_state` ≠ Today availability ([full notes](assets/03-publish-data-model-research.md))
 - [Per-day available-on-Today semantics](issues/04-available-on-today-semantics.md) — Per-day draft/ready; Available one day; Unpublish (+ after Decision clears live Decision, keeps Archive); overwrite-generate warns; edit keeps ready; Today = local today only; soft-lock language retired
 - [Sign in with Apple + current auth (research)](issues/05-sign-in-with-apple-research.md) — OTP → exchange → device token; Apple via native id_token + same exchange; migration hinges on `members.auth_user_id` ([full notes](assets/05-sign-in-with-apple-research.md))
+- [Sign in with Apple product rules](issues/06-sign-in-with-apple-rules.md) — Apple front door only; keep exchange→device token; no allowlist; auto-provision Creator; no OTP migration UX; Sign in with Apple screen only; sign-out clears device session
+- [Empty Today one-action prototype](issues/07-empty-today-prototype.md) — Journal card empty state (variant B): “Nothing ready for today” + CTA **Plan today’s content** → Plan ([prototype](assets/07-empty-today-prototype.html))
 
 ## Not yet specified
 
 - Migration / encoding of draft vs ready in schema (replace week soft-lock + `status=published` gate) once build starts
 - Whether Admin/Manager codepaths are deleted, feature-gated, or left unreachable after shell removal
 - Generation prompt / quality behavior once there is no Manager framing (only Creator + Plan)
-- TestFlight / allowlisting without Testers UI once Sign in with Apple replaces OTP (blocked on ticket 06 grilling)
+- Implementation details for auto-provision (exact tables/RPC) and Apple entitlements/Dashboard config at build time
 - Visual system for Plan hub (beyond IA) — calendar chrome, accordion styling, legend placement
 - Exact Profile “Gemini status” / Supabase status presentation (enough that both are required light support)
 - Exact Unpublish / Overwrite confirmation copy
