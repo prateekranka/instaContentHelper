@@ -480,13 +480,6 @@ enum CreatorRoute: Hashable, Sendable {
     case plan(selectedDate: String?)
 }
 
-/// Profile destinations reachable from the Creator Profile tab (not nested Archive / Manager).
-enum ProfileDestination: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case plan = "Plan"
-
-    var id: String { rawValue }
-}
-
 enum TodaySheet: Identifiable, Hashable, Sendable {
     case notToday
 

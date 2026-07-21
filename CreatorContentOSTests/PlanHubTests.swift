@@ -185,10 +185,6 @@ final class PlanHubTests: XCTestCase {
             .draft
         )
     }
-
-    func testProfilePlanDestinationRemainsPlanOnly() {
-        XCTAssertEqual(ProfileDestination.allCases.map(\.rawValue), ["Plan"])
-    }
 }
 
 // MARK: - Helpers

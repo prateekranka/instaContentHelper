@@ -31,12 +31,6 @@ struct CreatorShellView: View {
 
             NavigationStack {
                 ProfileModeView()
-                    .navigationDestination(for: ProfileDestination.self) { destination in
-                        switch destination {
-                        case .plan:
-                            PlanHubView(showsModeSwitch: false)
-                        }
-                    }
             }
             .tabItem { Label("Profile", systemImage: "person.circle") }
             .tag(CreatorTab.profile)
@@ -60,7 +54,6 @@ struct ProfileModeView: View {
             VStack(alignment: .leading, spacing: MCOSpace.m) {
                 header
                 accountSection
-                planEntry
                 runtimeStatus
             }
             .padding(.horizontal, MCOSpace.l)
@@ -74,38 +67,6 @@ struct ProfileModeView: View {
         Text("Profile")
             .font(MCOType.display)
             .foregroundStyle(MCOTheme.Color.ink)
-    }
-
-    private var planEntry: some View {
-        NavigationLink(value: ProfileDestination.plan) {
-            JournalBlock {
-                HStack(spacing: MCOSpace.m) {
-                    Image(systemName: "calendar.badge.plus")
-                        .font(MCOType.iconRow)
-                        .foregroundStyle(MCOTheme.Color.oxblood)
-                        .frame(width: 34)
-                    VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                        Text("Plan")
-                            .font(MCOType.headline)
-                            .foregroundStyle(MCOTheme.Color.ink)
-                        Text("Generate and prepare day cards.")
-                            .font(MCOType.caption)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
-                    }
-                    Spacer(minLength: MCOSpace.s)
-                    Image(systemName: "chevron.right")
-                        .font(MCOType.captionEmphasis)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .simultaneousGesture(TapGesture().onEnded {
-            // Profile → Plan always starts on local today.
-            appState.preparePlan(selecting: nil)
-        })
-        .accessibilityLabel("Open Plan")
-        .accessibilityIdentifier("profile.plan")
     }
 
     private var runtimeStatus: some View {

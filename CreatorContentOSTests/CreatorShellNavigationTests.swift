@@ -10,10 +10,6 @@ final class CreatorShellNavigationTests: XCTestCase {
         )
     }
 
-    func testProfileDestinationsArePlanOnly() {
-        XCTAssertEqual(ProfileDestination.allCases.map(\.rawValue), ["Plan"])
-    }
-
     func testCreatorCanGenerateWithoutOwnerOrEditorRole() {
         XCTAssertTrue(AppServices.fixtureBacked(memberRole: "creator").canGenerateContent)
         XCTAssertTrue(AppServices.fixtureBacked(memberRole: "owner").canGenerateContent)
