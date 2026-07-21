@@ -284,6 +284,7 @@ final class InstalledContentHelperUITests: XCTestCase {
 
     @MainActor
     func testDebugFixtureManagerCanReachAndPublishWeeklyButton() throws {
+        // DEBUG-only Admin shell (`MCO_FORCE_APP_MODE=admin`). Not a product path after ticket 07.
         let app = launchInstalledApp(environment: [
             "MCO_FORCE_FIXTURE_UI": "1",
             "MCO_FORCE_APP_MODE": "admin"

@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Admin Daily tab host until ticket 07 retires AdminShell. Creator Plan uses `PlanHubView` directly.
+/// DEBUG Admin Daily tab host wrapping `PlanHubView`. Creator Plan uses `PlanHubView` directly.
 struct DayGenerationView: View {
-    /// When false (Plan from Creator Profile), hide Admin-mode switch chrome.
+    /// Admin chrome “Creator mode” control — only meaningful under DEBUG AdminShellView.
     var showsModeSwitch: Bool = true
 
     var body: some View {

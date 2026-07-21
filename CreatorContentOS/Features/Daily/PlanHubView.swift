@@ -15,8 +15,8 @@ struct PlanHubView: View {
     @State private var lightEditCaption = ""
     @State private var isCreatorProfileExpanded = false
     @State private var isReferencesExpanded = false
-    /// When false (Creator Profile → Plan), hide Admin-mode switch chrome.
-    var showsModeSwitch: Bool = true
+    /// When true (DEBUG Admin Daily), show Admin “Creator mode” chrome. Creator Plan passes false.
+    var showsModeSwitch: Bool = false
     /// Optional `yyyy-MM-dd` preselection from Today Edit / ⋯ / empty CTA.
     var initialSelectedDate: String? = nil
 

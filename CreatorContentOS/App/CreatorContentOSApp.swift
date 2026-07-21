@@ -40,6 +40,10 @@ struct CreatorContentOSAppView: View {
             if appState.authenticationPhase == .live,
                let forcedScreen = DebugForcedScreen.current {
                 forcedScreen.view
+            } else if shouldShowDebugAdminShell {
+                // DEBUG-only: Admin/Manager TabView (Daily / Weekly / References).
+                // Not reachable from the live Creator product path.
+                AdminShellView()
             } else {
                 appView
             }
@@ -50,6 +54,7 @@ struct CreatorContentOSAppView: View {
         .tint(MCOTheme.Color.oxblood)
     }
 
+    /// Live product always uses the Creator shell. `AppMode.admin` is ignored here.
     @ViewBuilder
     private var appView: some View {
         Group {
@@ -57,17 +62,22 @@ struct CreatorContentOSAppView: View {
             case .restoring:
                 AuthenticationRestoringView()
             case .live:
-                switch appState.activeMode {
-                case .creator:
-                    CreatorShellView()
-                case .admin:
-                    AdminShellView()
-                }
+                CreatorShellView()
             case .signedOut, .signingIn, .failed:
                 SignInView()
             }
         }
     }
+
+#if DEBUG
+    /// Fixture-only Manager shell when `MCO_FORCE_FIXTURE_UI=1` and `MCO_FORCE_APP_MODE=admin`.
+    /// Setting `activeMode = .creator` (Admin chrome “Creator mode”) exits back to CreatorShellView.
+    private var shouldShowDebugAdminShell: Bool {
+        ProcessInfo.processInfo.environment["MCO_FORCE_FIXTURE_UI"] == "1"
+            && ProcessInfo.processInfo.environment["MCO_FORCE_APP_MODE"] == "admin"
+            && appState.activeMode == .admin
+    }
+#endif
 }
 
 private extension AppState {
@@ -80,6 +90,7 @@ private extension AppState {
         }
 
         if environment["MCO_FORCE_FIXTURE_UI"] == "1" {
+            // `.admin` only affects DEBUG AdminShellView routing above — never the Release live path.
             let mode: AppMode = environment["MCO_FORCE_APP_MODE"] == "admin" ? .admin : .creator
             return AppState(
                 activeMode: mode,
@@ -93,10 +104,13 @@ private extension AppState {
 }
 
 #if DEBUG
+/// Screens kept for fixture / QA launches only — not product navigation.
 private enum DebugForcedScreen: String {
     case aiRunway = "ai-runway"
     case storyboardCard = "storyboard-card"
     case testerAccess = "tester-access"
+    /// Alias for Admin shell without relying on `MCO_FORCE_APP_MODE`.
+    case adminShell = "admin"
 
     static var current: DebugForcedScreen? {
         guard ProcessInfo.processInfo.environment["MCO_FORCE_FIXTURE_UI"] == "1",
@@ -117,6 +131,8 @@ private enum DebugForcedScreen: String {
             DebugStoryboardCardScreen()
         case .testerAccess:
             TesterAccessView()
+        case .adminShell:
+            AdminShellView()
         }
     }
 }

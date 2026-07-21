@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// DEBUG / fixture-only Manager shell (Daily · Weekly · References).
+///
+/// Not reachable from the live Creator product path (`authenticationPhase == .live`
+/// always hosts `CreatorShellView`). Open only via:
+/// - `MCO_FORCE_FIXTURE_UI=1` + `MCO_FORCE_APP_MODE=admin`, or
+/// - `MCO_FORCE_FIXTURE_UI=1` + `MCO_FORCE_SCREEN=admin`
+///
+/// Weekly Control’s publish-week / soft-lock ceremony lives here only — not in Creator UX.
 struct AdminShellView: View {
     @Environment(AppServices.self) private var services
 
@@ -360,6 +368,7 @@ private extension String {
     }
 }
 
+/// DEBUG-only (`MCO_FORCE_SCREEN=ai-runway`). Not part of the Creator product.
 struct AIRunwayView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
@@ -710,6 +719,7 @@ struct LiveQAView: View {
     }
 }
 
+/// DEBUG-only (`MCO_FORCE_SCREEN=tester-access`). OTP allowlist UI is not a product path.
 struct TesterAccessView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services

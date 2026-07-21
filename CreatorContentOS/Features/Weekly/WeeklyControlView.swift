@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// DEBUG Admin Weekly tab — publish-week / soft-lock ceremony.
+/// Unreachable from Creator product (only via DEBUG `AdminShellView`). Storage/RPC may remain.
 struct WeeklyControlView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services

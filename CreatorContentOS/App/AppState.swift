@@ -178,6 +178,8 @@ private extension AppRuntimeMode {
     }
 }
 
+/// Product shell is always Creator. `.admin` exists only so DEBUG fixture launches can
+/// open `AdminShellView` (`MCO_FORCE_APP_MODE=admin`); Release live routing ignores it.
 enum AppMode: String, CaseIterable, Codable, Hashable {
     case creator
     case admin

@@ -84,6 +84,23 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(authentication.restoreCallCount, 1)
     }
 
+    func testRestoreForcesCreatorModeEvenWhenStartedAsAdmin() async {
+        let session = makeSession(email: "creator@example.com", role: "creator")
+        let authentication = AuthenticationServiceStub(restoredSession: session)
+        let state = AppState(
+            activeMode: .admin,
+            authenticationService: authentication,
+            liveRuntimeBuilder: { session in
+                Self.fixtureLiveRuntime(session)
+            }
+        )
+
+        await state.restoreAuthentication()
+
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
+        XCTAssertEqual(state.activeMode, AppMode.creator)
+    }
+
     func testMissingLiveBootstrapConfigurationRestoresStableError() async {
         let state = AppState(
             authenticationService: SupabaseAuthenticationService(bootstrapConfiguration: nil),
