@@ -21,6 +21,13 @@ final class CreatorShellNavigationTests: XCTestCase {
         XCTAssertFalse(AppServices.fixtureBacked(memberRole: "scout").canGenerateContent)
     }
 
+    func testRequestCreatorTabSetsPendingTabForPlanAvailableNavigation() {
+        let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
+        XCTAssertNil(state.pendingCreatorTab)
+        state.requestCreatorTab(.today)
+        XCTAssertEqual(state.pendingCreatorTab, .today)
+    }
+
     func testGenerateDayCardAllowsCreatorRole() async throws {
         let services = AppServices.fixtureBacked(
             repositories: AppRepositories(

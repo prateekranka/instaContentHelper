@@ -8,6 +8,8 @@ final class AppState {
     var runtime: AppRuntime
     var authenticationPhase: AuthenticationPhase
     var authenticationError: String?
+    /// Consumed by `CreatorShellView` to switch tabs (e.g. Available on Today → Today).
+    var pendingCreatorTab: CreatorTab?
 
     private let authenticationService: any AuthenticationServicing
     private let liveRuntimeBuilder: @MainActor (PairedDeviceSession) -> AppRuntime
@@ -39,6 +41,10 @@ final class AppState {
 
     func replaceRuntime(_ runtime: AppRuntime) {
         self.runtime = runtime
+    }
+
+    func requestCreatorTab(_ tab: CreatorTab) {
+        pendingCreatorTab = tab
     }
 
     func restoreAuthentication() async {

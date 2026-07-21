@@ -25,6 +25,13 @@ struct AdminShellView: View {
 }
 
 struct CreatorProfileAdminView: View {
+    enum Presentation {
+        /// Full-screen admin push with back chrome.
+        case standalone
+        /// Nested under Plan accordion — fields only, no screen chrome.
+        case embedded
+    }
+
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
@@ -35,34 +42,27 @@ struct CreatorProfileAdminView: View {
     @State private var noGoTopicsText = ""
     @State private var recurringFormatsText = ""
     @State private var didLoadDraft = false
+    var presentation: Presentation = .standalone
 
     var body: some View {
-        EditorialScreen(bottomContentPadding: MCOSpace.l, showsBottomBar: false) {
-            VStack(alignment: .leading, spacing: MCOSpace.l) {
-                header
-                ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
-                if !canEditProfile {
-                    AdminSignalBlock(
-                        title: "Editor access required",
-                        value: "Only owner and editor sessions can update the creator profile.",
-                        systemImage: "lock",
-                        tone: .warning
-                    )
+        Group {
+            switch presentation {
+            case .standalone:
+                EditorialScreen(bottomContentPadding: MCOSpace.l, showsBottomBar: false) {
+                    VStack(alignment: .leading, spacing: MCOSpace.l) {
+                        header
+                        profileBody
+                    }
+                } bottomBar: {
+                    EmptyView()
                 }
-                if let error = services.creatorProfileEditError {
-                    AdminSignalBlock(
-                        title: "Profile save error",
-                        value: error,
-                        systemImage: "exclamationmark.triangle",
-                        tone: .warning
-                    )
+                .navigationBarHidden(true)
+            case .embedded:
+                VStack(alignment: .leading, spacing: MCOSpace.l) {
+                    profileBody
                 }
-                profileEditor
             }
-        } bottomBar: {
-            EmptyView()
         }
-        .navigationBarHidden(true)
         .onAppear {
             if !didLoadDraft {
                 loadDraft(from: services.creatorProfileSummary)
@@ -74,6 +74,28 @@ struct CreatorProfileAdminView: View {
                 loadDraft(from: profile)
             }
         }
+    }
+
+    @ViewBuilder
+    private var profileBody: some View {
+        ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
+        if !canEditProfile {
+            AdminSignalBlock(
+                title: "Editor access required",
+                value: "Only owner and editor sessions can update the creator profile.",
+                systemImage: "lock",
+                tone: .warning
+            )
+        }
+        if let error = services.creatorProfileEditError {
+            AdminSignalBlock(
+                title: "Profile save error",
+                value: error,
+                systemImage: "exclamationmark.triangle",
+                tone: .warning
+            )
+        }
+        profileEditor
     }
 
     private var canEditProfile: Bool {

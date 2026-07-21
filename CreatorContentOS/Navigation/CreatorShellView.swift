@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct CreatorShellView: View {
+    @Environment(AppState.self) private var appState
     @State private var selectedTab: CreatorTab = .today
 
     var body: some View {
@@ -12,7 +13,7 @@ struct CreatorShellView: View {
                     case .shootFolio:
                         ShootFolioView()
                     case .plan:
-                        PlanHubPlaceholderView()
+                        PlanHubView(showsModeSwitch: false)
                     }
                 }
             }
@@ -30,7 +31,7 @@ struct CreatorShellView: View {
                     .navigationDestination(for: ProfileDestination.self) { destination in
                         switch destination {
                         case .plan:
-                            PlanHubPlaceholderView()
+                            PlanHubView(showsModeSwitch: false)
                         }
                     }
             }
@@ -38,13 +39,11 @@ struct CreatorShellView: View {
             .tag(CreatorTab.profile)
         }
         .background(MCOTheme.Color.paper)
-    }
-}
-
-/// Temporary Plan entry until ticket 05 builds the Plan calendar hub.
-struct PlanHubPlaceholderView: View {
-    var body: some View {
-        DayGenerationView(showsModeSwitch: false)
+        .onChange(of: appState.pendingCreatorTab) { _, tab in
+            guard let tab else { return }
+            selectedTab = tab
+            appState.pendingCreatorTab = nil
+        }
     }
 }
 

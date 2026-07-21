@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		006F38C338FAD348CA0C0EDD /* CreatorContentOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54E107AF78B3000D2A9C264 /* CreatorContentOSApp.swift */; };
+		066BE6E745C55E2B1EA202DA /* PlanHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23395AB2FF74CF4F50E144C /* PlanHubView.swift */; };
 		08A5B9761D3E9E189DD59638 /* ReferenceImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4C8ED51EAD5398D2832AAB4 /* ReferenceImportTests.swift */; };
 		0A7F95C8F69751E40A4E4BCD /* ContentConsistencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA13D115B3CC70D6C5F6D7BA /* ContentConsistencyTests.swift */; };
 		0AED86BDE7B6CE889E8A8298 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB9CFA44B8E7990294C9CE67 /* SignInView.swift */; };
@@ -22,9 +23,11 @@
 		45CD8BDB68F53E5B36BCC233 /* WriteContentDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD3FB713073CF44BD44318FC /* WriteContentDTOs.swift */; };
 		4746F35A81ED33245F39DA64 /* WeeklyControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9FDBFEC8FEBFE417DB74B96 /* WeeklyControlView.swift */; };
 		481AFA168D18FCD0037E78C0 /* GeneratedStoryboardBreakdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F58885C0A0B48C185935DBAA /* GeneratedStoryboardBreakdownTests.swift */; };
+		487B5B3069C26B0E46782FAC /* DayLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA7E67BCDE7382CF0DF9953 /* DayLifecycleTests.swift */; };
 		498ED61592CA7E82A494C8C9 /* CreatorShellNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 418C02D02DD29D0BB6D88EBF /* CreatorShellNavigationTests.swift */; };
 		4EFF5342C21CA059F469E85D /* GeneratedDayPlannedContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44554BE3268355F5F4330553 /* GeneratedDayPlannedContent.swift */; };
 		52E6243CEDF556777DE10152 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3F01FE486362EAFDB992BA /* DesignSystem.swift */; };
+		5C74F83BEE6D5CA3FE3413E0 /* PlanHubTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7FA93717B45A3E7B6D05F88 /* PlanHubTests.swift */; };
 		5E2447A4001429D09BDD46BB /* SupabaseClientFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99D8093F95A3FBAF1E2138BF /* SupabaseClientFactory.swift */; };
 		63A830B08C6D64ACE37F1A35 /* SupabaseDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9168AA818D4223159226D66 /* SupabaseDTOs.swift */; };
 		68EF9C0F94D2447AF4A1E0DD /* WeeklyPublishingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A630640EC84FFD5B4C17934 /* WeeklyPublishingModels.swift */; };
@@ -47,7 +50,6 @@
 		9F1942BC6FA3576A61AD8D92 /* GenerationDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89FD76E9AE309C04BD386C58 /* GenerationDTOs.swift */; };
 		A08BD8334CD348A559F4FA21 /* PublishWeekFixtureAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2AC2FDAEA55DE198383352E /* PublishWeekFixtureAcceptanceTests.swift */; };
 		A92C96F91BEB188D6E8466D2 /* DayAvailabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8D078BD0A001D827EA27264 /* DayAvailabilityTests.swift */; };
-		B03D17A02BEB299E7F9577E3 /* DayLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E189CE1B112E938FB38375 /* DayLifecycleTests.swift */; };
 		B08008609B240EAB892F2007 /* AppRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 901CA42E68495333D010A290 /* AppRepositories.swift */; };
 		B3BC133C4E17918A8B4DA2B4 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11ADF2B693A8CFF7257A50E4 /* AppState.swift */; };
 		B8A2E00D7011DA2CA0CA7D31 /* ContentQualityLearningLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DE94010C1FB456F02A3D2A3 /* ContentQualityLearningLoopTests.swift */; };
@@ -124,20 +126,22 @@
 		A9168AA818D4223159226D66 /* SupabaseDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseDTOs.swift; sourceTree = "<group>"; };
 		A917EFA6A7E9B440631BE3A5 /* CreatorShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatorShellView.swift; sourceTree = "<group>"; };
 		B78DEF2B8258D528779DC9BB /* AuthenticationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationService.swift; sourceTree = "<group>"; };
+		BDA7E67BCDE7382CF0DF9953 /* DayLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayLifecycleTests.swift; sourceTree = "<group>"; };
 		C0B6EA6B62471E956EAABAEB /* ShootFolioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShootFolioView.swift; sourceTree = "<group>"; };
 		C1B20A8B6F7A9D3D4D85888F /* InstalledContentHelperUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InstalledContentHelperUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C1E6B09FB76F07F297A81CAF /* PublishedWeekPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishedWeekPersistenceTests.swift; sourceTree = "<group>"; };
+		C23395AB2FF74CF4F50E144C /* PlanHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanHubView.swift; sourceTree = "<group>"; };
 		C2AC2FDAEA55DE198383352E /* PublishWeekFixtureAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishWeekFixtureAcceptanceTests.swift; sourceTree = "<group>"; };
 		C40B9B86E383C63186A87CC6 /* IntelligenceHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceHomeView.swift; sourceTree = "<group>"; };
 		C90557DA178FDB72809DE825 /* ReferenceImportDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportDTOs.swift; sourceTree = "<group>"; };
 		C9FDBFEC8FEBFE417DB74B96 /* WeeklyControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyControlView.swift; sourceTree = "<group>"; };
 		D54E107AF78B3000D2A9C264 /* CreatorContentOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatorContentOSApp.swift; sourceTree = "<group>"; };
 		D566585D57DD59569122FFDF /* ReferenceReviewEditSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceReviewEditSheet.swift; sourceTree = "<group>"; };
+		D7FA93717B45A3E7B6D05F88 /* PlanHubTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanHubTests.swift; sourceTree = "<group>"; };
 		DD3FB713073CF44BD44318FC /* WriteContentDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriteContentDTOs.swift; sourceTree = "<group>"; };
 		E2757322CC157546F5DC597C /* FixtureRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureRepositories.swift; sourceTree = "<group>"; };
 		E5276E2B3F4FF2C581F447F3 /* ReferenceImportPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportPreviewView.swift; sourceTree = "<group>"; };
 		E8D078BD0A001D827EA27264 /* DayAvailabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayAvailabilityTests.swift; sourceTree = "<group>"; };
-		F9E189CE1B112E938FB38375 /* DayLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayLifecycleTests.swift; sourceTree = "<group>"; };
 		EA13D115B3CC70D6C5F6D7BA /* ContentConsistencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentConsistencyTests.swift; sourceTree = "<group>"; };
 		EB9CFA44B8E7990294C9CE67 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
 		EBEB4BBCF7E55C0E4D50A54D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -281,6 +285,7 @@
 			children = (
 				F60A8FF2DCE5BCCB70962CBC /* DayGenerationView.swift */,
 				44554BE3268355F5F4330553 /* GeneratedDayPlannedContent.swift */,
+				C23395AB2FF74CF4F50E144C /* PlanHubView.swift */,
 			);
 			path = Daily;
 			sourceTree = "<group>";
@@ -303,11 +308,12 @@
 				2DE94010C1FB456F02A3D2A3 /* ContentQualityLearningLoopTests.swift */,
 				418C02D02DD29D0BB6D88EBF /* CreatorShellNavigationTests.swift */,
 				E8D078BD0A001D827EA27264 /* DayAvailabilityTests.swift */,
-				F9E189CE1B112E938FB38375 /* DayLifecycleTests.swift */,
+				BDA7E67BCDE7382CF0DF9953 /* DayLifecycleTests.swift */,
 				8EF81B58FA3AF15A81BC5742 /* DevicePairingServiceTests.swift */,
 				F58885C0A0B48C185935DBAA /* GeneratedStoryboardBreakdownTests.swift */,
 				6D69E7565442EEBB659CB551 /* GenerationContractsTests.swift */,
 				674AC06A8413A366F72FD56A /* ManagerAdminUsageTests.swift */,
+				D7FA93717B45A3E7B6D05F88 /* PlanHubTests.swift */,
 				C1E6B09FB76F07F297A81CAF /* PublishedWeekPersistenceTests.swift */,
 				C2AC2FDAEA55DE198383352E /* PublishWeekFixtureAcceptanceTests.swift */,
 				A4C8ED51EAD5398D2832AAB4 /* ReferenceImportTests.swift */,
@@ -553,6 +559,7 @@
 				9E8E80AA9E831480188CA14A /* IntelligenceHomeView.swift in Sources */,
 				733F66CC1224251437A7D210 /* Models.swift in Sources */,
 				E3BD409D4CCB2EFABDB5049F /* NotTodaySheet.swift in Sources */,
+				066BE6E745C55E2B1EA202DA /* PlanHubView.swift in Sources */,
 				7AB0A3DD52A25BAB5902E1A8 /* ReferenceImportDTOs.swift in Sources */,
 				8A19428E4B449705C0122B28 /* ReferenceImportPreviewView.swift in Sources */,
 				819EF924B23E127FD1FA6F5B /* ReferenceImportRepository.swift in Sources */,
@@ -590,11 +597,12 @@
 				B8A2E00D7011DA2CA0CA7D31 /* ContentQualityLearningLoopTests.swift in Sources */,
 				498ED61592CA7E82A494C8C9 /* CreatorShellNavigationTests.swift in Sources */,
 				A92C96F91BEB188D6E8466D2 /* DayAvailabilityTests.swift in Sources */,
-				B03D17A02BEB299E7F9577E3 /* DayLifecycleTests.swift in Sources */,
+				487B5B3069C26B0E46782FAC /* DayLifecycleTests.swift in Sources */,
 				F53CA7EC1CC07711BCA397D4 /* DevicePairingServiceTests.swift in Sources */,
 				481AFA168D18FCD0037E78C0 /* GeneratedStoryboardBreakdownTests.swift in Sources */,
 				2B31F168775F479CCC4708DE /* GenerationContractsTests.swift in Sources */,
 				6EEAF162E6C8A36CECBD722E /* ManagerAdminUsageTests.swift in Sources */,
+				5C74F83BEE6D5CA3FE3413E0 /* PlanHubTests.swift in Sources */,
 				A08BD8334CD348A559F4FA21 /* PublishWeekFixtureAcceptanceTests.swift in Sources */,
 				1A0195CCA1D27283A79A6CA9 /* PublishedWeekPersistenceTests.swift in Sources */,
 				08A5B9761D3E9E189DD59638 /* ReferenceImportTests.swift in Sources */,

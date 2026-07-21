@@ -1,58 +1,42 @@
 import SwiftUI
 
 struct IntelligenceHomeView: View {
+    enum Presentation {
+        /// Admin References tab with screen chrome.
+        case standalone
+        /// Nested under Plan accordion — shelves only.
+        case embedded
+    }
+
     @Environment(\.openURL) private var openURL
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @State private var editingReviewItem: IntelligenceItem?
+    var presentation: Presentation = .standalone
 
     var body: some View {
-        ZStack {
-            MCOTheme.Color.paper.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: MCOSpace.l) {
-                    header
-                    ActionFeedbackBanner(message: services.lastActionMessage, tone: .info)
-                    if let referenceMessage {
-                        ReferenceImportMessageBanner(message: referenceMessage)
-                    }
-                    NeedsYourCallShelf(
-                        items: services.intelligenceHome.needsReview,
-                        isReviewing: services.isReviewingReference,
-                        onApprove: { item in
-                            review(item, action: .approve)
-                        },
-                        onDismiss: { item in
-                            review(item, action: .dismiss)
-                        },
-                        onEdit: { item in
-                            editingReviewItem = item
-                        },
-                        onOpen: { item in
-                            open(item)
+        Group {
+            switch presentation {
+            case .standalone:
+                ZStack {
+                    MCOTheme.Color.paper.ignoresSafeArea()
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: MCOSpace.l) {
+                            header
+                            referencesBody
                         }
-                    )
-                    NavigationLink {
-                        referenceImportDestination
-                    } label: {
-                        ReferenceImportEntryBlock(isLiveRuntime: services.isLiveSupabaseRuntime)
+                        .padding(.horizontal, MCOSpace.l)
+                        .padding(.top, MCOSpace.l)
+                        .padding(.bottom, 84)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!services.isLiveSupabaseRuntime)
-                    GrowthReferenceShelf(references: services.intelligenceHome.growthReferences)
-                    SourcePulseShelf(sourcePulse: services.intelligenceHome.sourcePulse)
-                    IntelligenceShelf(
-                        title: "Recently used",
-                        items: services.intelligenceHome.recentlyUsed
-                    )
-                    LibraryNavigationShelf(sections: services.intelligenceHome.librarySections)
                 }
-                .padding(.horizontal, MCOSpace.l)
-                .padding(.top, MCOSpace.l)
-                .padding(.bottom, 84)
+                .navigationBarHidden(true)
+            case .embedded:
+                VStack(alignment: .leading, spacing: MCOSpace.l) {
+                    referencesBody
+                }
             }
         }
-        .navigationBarHidden(true)
         .sheet(item: $editingReviewItem) { item in
             ReferenceReviewEditSheet(
                 item: item,
@@ -61,6 +45,44 @@ struct IntelligenceHomeView: View {
                 review(item, action: .edit, edit: edit)
             }
         }
+    }
+
+    @ViewBuilder
+    private var referencesBody: some View {
+        ActionFeedbackBanner(message: services.lastActionMessage, tone: .info)
+        if let referenceMessage {
+            ReferenceImportMessageBanner(message: referenceMessage)
+        }
+        NeedsYourCallShelf(
+            items: services.intelligenceHome.needsReview,
+            isReviewing: services.isReviewingReference,
+            onApprove: { item in
+                review(item, action: .approve)
+            },
+            onDismiss: { item in
+                review(item, action: .dismiss)
+            },
+            onEdit: { item in
+                editingReviewItem = item
+            },
+            onOpen: { item in
+                open(item)
+            }
+        )
+        NavigationLink {
+            referenceImportDestination
+        } label: {
+            ReferenceImportEntryBlock(isLiveRuntime: services.isLiveSupabaseRuntime)
+        }
+        .buttonStyle(.plain)
+        .disabled(!services.isLiveSupabaseRuntime)
+        GrowthReferenceShelf(references: services.intelligenceHome.growthReferences)
+        SourcePulseShelf(sourcePulse: services.intelligenceHome.sourcePulse)
+        IntelligenceShelf(
+            title: "Recently used",
+            items: services.intelligenceHome.recentlyUsed
+        )
+        LibraryNavigationShelf(sections: services.intelligenceHome.librarySections)
     }
 
     private var header: some View {

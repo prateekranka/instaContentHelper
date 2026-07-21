@@ -74,6 +74,14 @@ final class AppServices {
     var testerAccessMessage: String?
     var lastActionMessage: String?
     private let todayDate: TodayDateProvider
+
+    /// Resolves the Plan package for a date from session cards or the latest draft summary.
+    func dayPackage(for scheduledDate: String) -> GeneratedDailyCardDraft? {
+        if let card = dayBriefGeneratedCards[scheduledDate] {
+            return card
+        }
+        return latestGenerationSummary?.dailyCards.first { $0.scheduledDate == scheduledDate }
+    }
     private var latestTodayDecisionSyncID = 0
     private var todayDecisionSyncTask: Task<Void, Never>?
 
