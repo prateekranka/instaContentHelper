@@ -17,6 +17,8 @@ struct PlanHubView: View {
     @State private var isReferencesExpanded = false
     /// When false (Creator Profile → Plan), hide Admin-mode switch chrome.
     var showsModeSwitch: Bool = true
+    /// Optional `yyyy-MM-dd` preselection from Today Edit / ⋯ / empty CTA.
+    var initialSelectedDate: String? = nil
 
     var body: some View {
         EditorialScreen {
@@ -102,9 +104,25 @@ struct PlanHubView: View {
             lightEditCaption = displayedCard?.caption ?? ""
         }
         .onAppear {
+            applyPendingPlanDateSelection()
             visibleMonth = selectedDate
             lightEditCaption = displayedCard?.caption ?? ""
         }
+    }
+
+    private func applyPendingPlanDateSelection() {
+        let candidate: String?
+        if let initial = initialSelectedDate?.nilIfBlank {
+            appState.preparePlan(selecting: initial)
+            candidate = initial
+        } else {
+            // Profile / Admin Plan opens on local today — drop any leftover Edit date.
+            _ = appState.consumePlanSelectedDate()
+            candidate = nil
+        }
+        guard let candidate, let date = Self.parseLocalDate(candidate) else { return }
+        selectedDate = date
+        visibleMonth = date
     }
 
     // MARK: - State helpers

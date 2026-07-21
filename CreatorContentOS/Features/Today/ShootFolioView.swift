@@ -6,6 +6,7 @@ import UIKit
 struct ShootFolioView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
+    @Environment(AppState.self) private var appState
     @State private var selection: PackageSection = .scenes
 
     var body: some View {
@@ -90,29 +91,53 @@ struct ShootFolioView: View {
                     .font(MCOType.bodySmall)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
             }
-            Spacer()
-            shootFolioMenu
+            Spacer(minLength: MCOSpace.s)
+            if isReady {
+                shootFolioPlanEntries
+            }
         }
     }
 
-    private var shootFolioMenu: some View {
-        Menu {
-            Button {
-                services.lastActionMessage = "Issue noted. Share the screen with the manager if this package looks wrong."
-            } label: {
-                Label("Report issue", systemImage: "exclamationmark.bubble")
+    private var shootFolioPlanEntries: some View {
+        HStack(spacing: MCOSpace.xs) {
+            NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
+                Text("Edit")
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .padding(.horizontal, MCOSpace.s)
+                    .frame(height: 42)
+                    .background(MCOTheme.Color.paperRaised.opacity(0.72), in: Capsule())
+                    .overlay {
+                        Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                    }
             }
-            .disabled(!isReady)
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .medium))
-                .frame(width: 42, height: 42)
-                .foregroundStyle(MCOTheme.Color.ink)
-                .glassEffect(.regular.interactive(), in: .circle)
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded {
+                appState.preparePlan(selecting: planDateForReadyCard)
+            })
+            .accessibilityLabel("Edit today’s package in Plan")
+            .accessibilityIdentifier("shootFolio.edit")
+
+            Menu {
+                NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
+                    Label("Plan", systemImage: "calendar")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 42, height: 42)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Shoot Folio options")
+            .accessibilityIdentifier("shootFolio.overflow")
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .accessibilityLabel("Shoot Folio options")
+    }
+
+    private var planDateForReadyCard: String {
+        services.todayCard.scheduledDate?.nilIfBlank ?? services.currentTodayDateString
     }
 
     private var isReady: Bool {

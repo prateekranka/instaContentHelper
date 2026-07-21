@@ -11,6 +11,10 @@ struct TodayNotificationSchedule: Hashable, Sendable {
     var minute: Int
 }
 
+enum TodayNotificationCopy {
+    static let reminderTitle = "Get today's content ready."
+}
+
 @MainActor
 protocol TodayNotificationScheduling {
     @discardableResult
@@ -63,7 +67,7 @@ struct LocalTodayNotificationScheduler: TodayNotificationScheduling {
         let schedule = TodayNotificationSchedule(
             identifier: Self.identifier(for: context),
             cardID: card.id,
-            title: "Today's reel is ready",
+            title: TodayNotificationCopy.reminderTitle,
             body: notificationBody(for: card),
             scheduledDate: card.scheduledDate ?? SupabaseDateFormatting.todayDateString(),
             hour: hour,

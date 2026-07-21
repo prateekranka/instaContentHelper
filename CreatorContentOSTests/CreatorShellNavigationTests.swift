@@ -28,6 +28,16 @@ final class CreatorShellNavigationTests: XCTestCase {
         XCTAssertEqual(state.pendingCreatorTab, .today)
     }
 
+    func testPreparePlanSelectedDateForEditAndOverflowEntries() {
+        let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
+        state.preparePlan(selecting: "2026-07-21")
+        XCTAssertEqual(state.planSelectedDate, "2026-07-21")
+        XCTAssertEqual(
+            CreatorRoute.plan(selectedDate: state.planSelectedDate),
+            CreatorRoute.plan(selectedDate: "2026-07-21")
+        )
+    }
+
     func testGenerateDayCardAllowsCreatorRole() async throws {
         let services = AppServices.fixtureBacked(
             repositories: AppRepositories(

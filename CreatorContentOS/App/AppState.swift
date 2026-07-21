@@ -10,6 +10,8 @@ final class AppState {
     var authenticationError: String?
     /// Consumed by `CreatorShellView` to switch tabs (e.g. Available on Today → Today).
     var pendingCreatorTab: CreatorTab?
+    /// Consumed by `PlanHubView` to preselect a calendar date (Edit / ⋯ / empty Today CTA).
+    var planSelectedDate: String?
 
     private let authenticationService: any AuthenticationServicing
     private let liveRuntimeBuilder: @MainActor (PairedDeviceSession) -> AppRuntime
@@ -45,6 +47,18 @@ final class AppState {
 
     func requestCreatorTab(_ tab: CreatorTab) {
         pendingCreatorTab = tab
+    }
+
+    /// Preselects a Plan calendar date (`yyyy-MM-dd`) before opening Plan.
+    func preparePlan(selecting date: String?) {
+        planSelectedDate = date?.nilIfBlank
+    }
+
+    /// Returns and clears a pending Plan date selection.
+    func consumePlanSelectedDate() -> String? {
+        let date = planSelectedDate
+        planSelectedDate = nil
+        return date
     }
 
     func restoreAuthentication() async {

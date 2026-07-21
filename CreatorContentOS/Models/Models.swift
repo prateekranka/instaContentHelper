@@ -471,7 +471,8 @@ enum CreatorTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 
 enum CreatorRoute: Hashable, Sendable {
     case shootFolio
-    case plan
+    /// Opens Plan; optional `selectedDate` (`yyyy-MM-dd`) preselects that day.
+    case plan(selectedDate: String?)
 }
 
 /// Profile destinations reachable from the Creator Profile tab (not nested Archive / Manager).

@@ -170,7 +170,7 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
 
         let schedule = try XCTUnwrap(notifications.pendingSchedule)
         XCTAssertEqual(schedule.cardID, services.todayCard.id)
-        XCTAssertEqual(schedule.title, "Today's reel is ready")
+        XCTAssertEqual(schedule.title, TodayNotificationCopy.reminderTitle)
         XCTAssertEqual(schedule.body, "Race week has entered the house")
         XCTAssertEqual(schedule.scheduledDate, "2026-06-05")
         XCTAssertEqual(schedule.hour, 8)
@@ -404,7 +404,7 @@ private final class MemoryTodayNotificationScheduler: TodayNotificationSchedulin
         let schedule = TodayNotificationSchedule(
             identifier: identifier,
             cardID: card.id,
-            title: "Today's reel is ready",
+            title: TodayNotificationCopy.reminderTitle,
             body: card.title,
             scheduledDate: card.scheduledDate ?? SupabaseDateFormatting.todayDateString(),
             hour: 8,

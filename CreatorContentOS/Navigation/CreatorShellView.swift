@@ -12,8 +12,11 @@ struct CreatorShellView: View {
                     switch route {
                     case .shootFolio:
                         ShootFolioView()
-                    case .plan:
-                        PlanHubView(showsModeSwitch: false)
+                    case .plan(let selectedDate):
+                        PlanHubView(
+                            showsModeSwitch: false,
+                            initialSelectedDate: selectedDate
+                        )
                     }
                 }
             }
@@ -97,6 +100,10 @@ struct ProfileModeView: View {
             }
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture().onEnded {
+            // Profile → Plan always starts on local today.
+            appState.preparePlan(selecting: nil)
+        })
         .accessibilityLabel("Open Plan")
         .accessibilityIdentifier("profile.plan")
     }

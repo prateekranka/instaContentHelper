@@ -1,6 +1,6 @@
 # Today empty journal card and Plan entry points
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02, 04, 05
 
 Parent: [spec.md](../spec.md) · seam **Creator shell** (consumes **Day package lifecycle**)
@@ -13,13 +13,13 @@ Empty-state visual source: `.scratch/creator-only-simplify/assets/07-empty-today
 
 ## Acceptance criteria
 
-- [ ] Empty Today (no ready package for local today) shows the journal card: “Nothing ready for today,” supporting body, CTA “Plan today’s content” → Plan; no `⋯` on empty Today.
-- [ ] Ready Today shows the package; Creator can open Shoot Folio, copy text, mark scenes shot / posted, and use Other ideas → Decision.
-- [ ] Edit on Today hero and Edit on Shoot Folio open Plan with that card’s date preselected.
-- [ ] When a card is showing, `⋯` contains Plan only (no other overflow items).
-- [ ] Local notification title/copy is “Get today’s content ready.”
-- [ ] Offline cached Today still presents a ready package when network fails.
-- [ ] UI tests (or highest existing UI seam) lock: empty CTA → Plan; Edit/`⋯` → Plan with date; ready card still reachable after Available on Today.
+- [x] Empty Today (no ready package for local today) shows the journal card: “Nothing ready for today,” supporting body, CTA “Plan today’s content” → Plan; no `⋯` on empty Today.
+- [x] Ready Today shows the package; Creator can open Shoot Folio, copy text, mark scenes shot / posted, and use Other ideas → Decision.
+- [x] Edit on Today hero and Edit on Shoot Folio open Plan with that card’s date preselected.
+- [x] When a card is showing, `⋯` contains Plan only (no other overflow items).
+- [x] Local notification title/copy is “Get today’s content ready.”
+- [x] Offline cached Today still presents a ready package when network fails.
+- [x] UI tests (or highest existing UI seam) lock: empty CTA → Plan; Edit/`⋯` → Plan with date; ready card still reachable after Available on Today.
 
 ## Blocked by
 
@@ -28,3 +28,32 @@ Empty-state visual source: `.scratch/creator-only-simplify/assets/07-empty-today
 - [Plan hub: calendar, generate, Available, Unpublish](05-plan-hub.md)
 
 ## Comments
+
+## Answer
+
+### Empty Today (prototype B)
+- Journal card headline **Nothing ready for today**
+- Body: **There’s no ready package for this date yet. Open Plan to generate one and make it available on Today.**
+- CTA **Plan today’s content** → `CreatorRoute.plan(selectedDate:)` for the missing date
+- No `⋯` when `todayContentState` is not `.ready`
+
+### Ready Today + Shoot Folio
+- Hero → Shoot Folio; Other ideas → Decision; mark shot/posted; copy unchanged
+- **Edit** (`today.edit` / `shootFolio.edit`) → Plan with that card’s `scheduledDate`
+- **`⋯`** (`today.overflow` / `shootFolio.overflow`) → **Plan only** (Report issue removed)
+
+### Date preselection
+- `AppState.planSelectedDate` + `preparePlan(selecting:)` / `consumePlanSelectedDate()`
+- `CreatorRoute.plan(selectedDate:)` carries the date into `PlanHubView(initialSelectedDate:)`
+- Profile → Plan clears leftover Edit date and opens on local today
+
+### Notification
+- `TodayNotificationCopy.reminderTitle` = **Get today’s content ready.**
+
+### Offline cache
+- Unchanged fallback path; covered by `TodayPlanEntryTests` + existing persistence test
+
+### Tests
+- `CreatorContentOSTests/TodayPlanEntryTests.swift`
+- Shell nav: `testPreparePlanSelectedDateForEditAndOverflowEntries`
+- Notification title assertion updated in `PublishWeekFixtureAcceptanceTests`

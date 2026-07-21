@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TodayView: View {
     @Environment(AppServices.self) private var services
+    @Environment(AppState.self) private var appState
     @State private var sheet: TodaySheet?
 
     var body: some View {
@@ -22,10 +23,10 @@ struct TodayView: View {
                 case .loading:
                     TodayLoadingCard()
                 case .missingPublishedCard(let date):
-                    MissingTodayCardView(date: date)
+                    MissingTodayCardView(date: date) {
+                        appState.preparePlan(selecting: date)
+                    }
                 }
-
-
             }
         } bottomBar: {
             if case .ready = services.todayContentState {
@@ -57,8 +58,54 @@ struct TodayView: View {
                     .font(.system(size: 17, weight: .regular, design: .serif))
                     .foregroundStyle(MCOTheme.Color.brass)
             }
-            Spacer()
+            Spacer(minLength: MCOSpace.s)
+            if case .ready = services.todayContentState {
+                readyPlanEntries
+            }
         }
+    }
+
+    /// Edit + `⋯` (Plan only) — shown only when a ready card is present.
+    private var readyPlanEntries: some View {
+        HStack(spacing: MCOSpace.xs) {
+            NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
+                Text("Edit")
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .padding(.horizontal, MCOSpace.s)
+                    .frame(height: 42)
+                    .background(MCOTheme.Color.paperRaised.opacity(0.72), in: Capsule())
+                    .overlay {
+                        Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded {
+                appState.preparePlan(selecting: planDateForReadyCard)
+            })
+            .accessibilityLabel("Edit today’s package in Plan")
+            .accessibilityIdentifier("today.edit")
+
+            Menu {
+                NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
+                    Label("Plan", systemImage: "calendar")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 42, height: 42)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Today options")
+            .accessibilityIdentifier("today.overflow")
+        }
+    }
+
+    private var planDateForReadyCard: String {
+        services.todayCard.scheduledDate?.nilIfBlank ?? services.currentTodayDateString
     }
 
     private var todayDateLine: String {
@@ -146,25 +193,26 @@ private struct TodayLoadingCard: View {
 
 private struct MissingTodayCardView: View {
     let date: String
+    let onPlan: () -> Void
 
     var body: some View {
         JournalBlock {
             VStack(alignment: .leading, spacing: MCOSpace.m) {
-                Image(systemName: "calendar.badge.exclamationmark")
-                    .font(.system(size: 30, weight: .regular))
+                Image(systemName: "circle.dashed")
+                    .font(.system(size: 28, weight: .regular))
                     .foregroundStyle(MCOTheme.Color.brass)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                    Text("Nothing scheduled for today")
+                    Text("Nothing ready for today")
                         .font(MCOType.headline)
                         .foregroundStyle(MCOTheme.Color.ink)
-                    Text("There is no ready package for \(date). Plan today’s content to create one.")
+                    Text("There’s no ready package for this date yet. Open Plan to generate one and make it available on Today.")
                         .font(MCOType.bodySmall)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                         .lineSpacing(4)
                 }
 
-                NavigationLink(value: CreatorRoute.plan) {
-                    // PrimaryActionButton is not a NavigationLink label; mirror its look.
+                NavigationLink(value: CreatorRoute.plan(selectedDate: date)) {
                     HStack(spacing: MCOSpace.s) {
                         Image(systemName: "calendar.badge.plus")
                         Text("Plan today’s content")
@@ -176,11 +224,13 @@ private struct MissingTodayCardView: View {
                     .background(MCOTheme.Color.oxblood, in: RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded(onPlan))
                 .accessibilityLabel("Plan today’s content")
                 .accessibilityIdentifier("today.planCTA")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityIdentifier("today.emptyCard")
     }
 }
 
