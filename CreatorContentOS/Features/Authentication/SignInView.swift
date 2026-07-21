@@ -1,32 +1,23 @@
+import AuthenticationServices
 import SwiftUI
 
 struct SignInView: View {
     @Environment(AppState.self) private var appState
-    @State private var email = ""
-    @State private var otp = ""
 
     var body: some View {
         ZStack {
             MCOTheme.Color.paper.ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: MCOSpace.xl) {
-                    header
-                    signInForm
-                }
-                .padding(.horizontal, MCOSpace.l)
-                .padding(.top, MCOSpace.xxl)
-                .padding(.bottom, MCOSpace.xxl)
+            VStack(alignment: .leading, spacing: MCOSpace.xl) {
+                header
+                signInActions
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, MCOSpace.l)
+            .padding(.top, MCOSpace.xxl)
+            .padding(.bottom, MCOSpace.xxl)
         }
         .tint(MCOTheme.Color.oxblood)
-        .onChange(of: appState.pendingEmail) { _, pendingEmail in
-            if let pendingEmail {
-                email = pendingEmail
-            } else {
-                otp = ""
-            }
-        }
     }
 
     private var header: some View {
@@ -34,18 +25,31 @@ struct SignInView: View {
             Text("ContentHelper")
                 .font(MCOType.display)
                 .foregroundStyle(MCOTheme.Color.ink)
-            Text("Sign in with an approved tester email to access Creator's live workspace.")
+            Text("Sign in with Apple to open your Creator workspace.")
                 .font(MCOType.body)
                 .foregroundStyle(MCOTheme.Color.inkMuted)
         }
     }
 
-    private var signInForm: some View {
+    private var signInActions: some View {
         VStack(alignment: .leading, spacing: MCOSpace.m) {
-            if appState.pendingEmail == nil {
-                emailStep
-            } else {
-                otpStep
+            SignInWithAppleButton(.signIn) { request in
+                request.requestedScopes = [.email, .fullName]
+            } onCompletion: { result in
+                handleAppleAuthorization(result)
+            }
+            .signInWithAppleButtonStyle(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .disabled(isBusy)
+            .opacity(isBusy ? 0.52 : 1)
+            .accessibilityIdentifier("sign-in-with-apple")
+
+            if isBusy {
+                ProgressView()
+                    .tint(MCOTheme.Color.oxblood)
+                    .accessibilityIdentifier("sign-in-progress")
             }
 
             if let error = appState.authenticationError {
@@ -57,109 +61,46 @@ struct SignInView: View {
         }
     }
 
-    private var emailStep: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
-            Text("Email")
-                .font(MCOType.tinyLabel)
-                .foregroundStyle(MCOTheme.Color.oxblood)
-
-            TextField("you@example.com", text: $email)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.emailAddress)
-                .textContentType(.emailAddress)
-                .submitLabel(.continue)
-                .signInFieldStyle()
-                .onSubmit(requestCode)
-                .accessibilityIdentifier("sign-in-email")
-
-            PrimaryActionButton(
-                title: appState.authenticationPhase == .requestingCode
-                    ? "Sending code"
-                    : "Email me a code",
-                systemImage: "envelope"
-            ) {
-                requestCode()
-            }
-            .disabled(isBusy || trimmedEmail.isEmpty)
-            .opacity(isBusy || trimmedEmail.isEmpty ? 0.52 : 1)
-            .accessibilityIdentifier("request-otp")
-        }
-    }
-
-    private var otpStep: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
-            Text("Verification code")
-                .font(MCOType.tinyLabel)
-                .foregroundStyle(MCOTheme.Color.oxblood)
-
-            Text("Sent to \(appState.pendingEmail ?? email)")
-                .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-
-            TextField("000000", text: $otp)
-                .keyboardType(.numberPad)
-                .textContentType(.oneTimeCode)
-                .signInFieldStyle()
-                .onChange(of: otp) { _, newValue in
-                    otp = String(newValue.filter(\.isNumber).prefix(6))
-                }
-                .accessibilityIdentifier("sign-in-otp")
-
-            PrimaryActionButton(
-                title: appState.authenticationPhase == .verifyingCode
-                    ? "Verifying"
-                    : "Sign in",
-                systemImage: "arrow.right"
-            ) {
-                verifyCode()
-            }
-            .disabled(isBusy || otp.count != 6)
-            .opacity(isBusy || otp.count != 6 ? 0.52 : 1)
-            .accessibilityIdentifier("verify-otp")
-
-            Button("Use a different email") {
-                appState.resetSignIn()
-            }
-            .buttonStyle(.plain)
-            .font(MCOType.bodySmall)
-            .foregroundStyle(MCOTheme.Color.oxblood)
-            .disabled(isBusy)
-        }
-    }
-
-    private var trimmedEmail: String {
-        email.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private var isBusy: Bool {
-        appState.authenticationPhase == .requestingCode ||
-            appState.authenticationPhase == .verifyingCode
+        appState.authenticationPhase == .signingIn
     }
 
-    private func requestCode() {
-        let value = trimmedEmail
-        guard !value.isEmpty, !isBusy else { return }
-        Task { await appState.requestEmailOTP(value) }
-    }
-
-    private func verifyCode() {
-        guard otp.count == 6, !isBusy else { return }
-        Task { await appState.verifyEmailOTP(otp) }
-    }
-}
-
-private extension View {
-    func signInFieldStyle() -> some View {
-        font(MCOType.body)
-            .foregroundStyle(MCOTheme.Color.ink)
-            .padding(MCOSpace.m)
-            .frame(height: 56)
-            .background(MCOTheme.Color.paperRaised)
-            .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                    .stroke(MCOTheme.Color.hairlineStrong, lineWidth: 1)
+    private func handleAppleAuthorization(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .failure(let error):
+            if isAppleSignInCancellation(error) {
+                return
             }
+            Task {
+                await appState.failSignIn(message: error.localizedDescription)
+            }
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                Task {
+                    await appState.failSignIn(message: "Apple sign-in returned an unexpected credential.")
+                }
+                return
+            }
+            guard
+                let identityToken = credential.identityToken.flatMap({
+                    String(data: $0, encoding: .utf8)
+                })
+            else {
+                Task {
+                    await appState.failSignIn(message: "Apple did not return a usable identity token.")
+                }
+                return
+            }
+
+            let fullName = credential.fullName?.formatted().nilIfBlank
+            Task {
+                await appState.signInWithApple(idToken: identityToken, fullName: fullName)
+            }
+        }
+    }
+
+    private func isAppleSignInCancellation(_ error: Error) -> Bool {
+        let authorizationError = error as? ASAuthorizationError
+        return authorizationError?.code == .canceled
     }
 }

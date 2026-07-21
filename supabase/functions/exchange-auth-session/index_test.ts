@@ -6,6 +6,9 @@ const memberID = "22222222-2222-4222-8222-222222222222";
 const creatorID = "33333333-3333-4333-8333-333333333333";
 const installationID = "44444444-4444-4444-8444-444444444444";
 const userID = "55555555-5555-4555-8555-555555555555";
+const provisionedWorkspaceID = "66666666-6666-4666-8666-666666666666";
+const provisionedCreatorID = "77777777-7777-4777-8777-777777777777";
+const provisionedMemberID = "88888888-8888-4888-8888-888888888888";
 
 Deno.test("bearerToken requires a bearer authorization header", () => {
   assertEquals(bearerToken(null), null);
@@ -44,15 +47,27 @@ Deno.test("exchange rotates an owned installation token", async () => {
   assertEquals(state.installWrites.length, 0);
 });
 
-Deno.test("unapproved auth user is rejected", async () => {
+Deno.test("first auth user without membership is auto-provisioned as creator", async () => {
   const state = exchangeState({ memberships: [] });
   const response = await handleExchangeAuthSessionRequest(
     exchangeRequest(),
     dependencies(state),
   );
 
-  assertEquals(response.status, 403);
-  assertEquals((await response.json()).error, "tester_not_approved");
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.workspace_id, provisionedWorkspaceID);
+  assertEquals(body.creator_id, provisionedCreatorID);
+  assertEquals(body.member_id, provisionedMemberID);
+  assertEquals(body.member_role, "creator");
+  assertEquals(body.member_email, "tester@example.com");
+  assertEquals(state.workspaceWrites.length, 1);
+  assertEquals(state.creatorWrites.length, 1);
+  assertEquals(state.memberWrites.length, 1);
+  assertEquals(state.memberWrites[0].role, "creator");
+  assertEquals(state.memberWrites[0].status, "active");
+  assertEquals(state.memberWrites[0].auth_user_id, userID);
+  assertEquals(state.installWrites.length, 1);
 });
 
 Deno.test("revoked approved member receives stable revoked error", async () => {
@@ -87,6 +102,9 @@ type ExchangeState = {
   memberships: Record<string, unknown>[];
   installWrites: Record<string, unknown>[];
   updateWrites: Record<string, unknown>[];
+  workspaceWrites: Record<string, unknown>[];
+  creatorWrites: Record<string, unknown>[];
+  memberWrites: Record<string, unknown>[];
 };
 
 function exchangeState(
@@ -103,6 +121,9 @@ function exchangeState(
     }],
     installWrites: [],
     updateWrites: [],
+    workspaceWrites: [],
+    creatorWrites: [],
+    memberWrites: [],
     ...overrides,
   };
 }
@@ -145,7 +166,7 @@ function dependencies(state: ExchangeState) {
 }
 
 class FakeExchangeQuery {
-  private operation: "select" | "insert" | "update" = "select";
+  private operation: "select" | "insert" | "update" | "delete" = "select";
   private values: Record<string, unknown> = {};
   private filters: Record<string, unknown> = {};
 
@@ -167,6 +188,11 @@ class FakeExchangeQuery {
   update(values: Record<string, unknown>): FakeExchangeQuery {
     this.operation = "update";
     this.values = values;
+    return this;
+  }
+
+  delete(): FakeExchangeQuery {
+    this.operation = "delete";
     return this;
   }
 
@@ -203,6 +229,11 @@ class FakeExchangeQuery {
 
   private resolveList(): any[] {
     if (this.table === "members") {
+      if (this.filters.status === "active") {
+        return this.state.memberships.filter((membership) =>
+          membership.status === "active"
+        );
+      }
       return this.state.memberships;
     }
     return [];
@@ -210,10 +241,52 @@ class FakeExchangeQuery {
 
   private resolveSingle(): any {
     if (this.table === "workspaces") {
+      if (this.operation === "insert") {
+        this.state.workspaceWrites.push(this.values);
+        return {
+          id: provisionedWorkspaceID,
+          name: this.values.name ?? "Creator's Workspace",
+        };
+      }
+      if (this.filters.id === provisionedWorkspaceID) {
+        return {
+          id: provisionedWorkspaceID,
+          name: "tester's Workspace",
+        };
+      }
       return { id: workspaceID, name: "Creator Content OS" };
     }
     if (this.table === "creators") {
+      if (this.operation === "insert") {
+        this.state.creatorWrites.push(this.values);
+        return {
+          id: provisionedCreatorID,
+          display_name: this.values.display_name ?? "Creator",
+        };
+      }
+      if (this.filters.workspace_id === provisionedWorkspaceID) {
+        return {
+          id: provisionedCreatorID,
+          display_name: "tester",
+        };
+      }
       return { id: creatorID, display_name: "Creator" };
+    }
+    if (this.table === "members") {
+      if (this.operation === "insert") {
+        this.state.memberWrites.push(this.values);
+        const member = {
+          id: provisionedMemberID,
+          workspace_id: this.values.workspace_id,
+          email: this.values.email ?? null,
+          display_name: this.values.display_name ?? "Creator",
+          role: this.values.role ?? "creator",
+          status: this.values.status ?? "active",
+        };
+        this.state.memberships = [member];
+        return member;
+      }
+      return null;
     }
     if (this.table === "device_installations") {
       if (this.operation === "update") {

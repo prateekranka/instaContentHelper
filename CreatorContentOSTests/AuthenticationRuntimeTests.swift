@@ -67,7 +67,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
     }
 
     func testStoredLiveSessionRestoresLiveRuntime() async {
-        let session = makeSession(email: "tester@example.com")
+        let session = makeSession(email: "creator@example.com")
         let authentication = AuthenticationServiceStub(restoredSession: session)
         let state = AppState(
             authenticationService: authentication,
@@ -109,9 +109,9 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(runtime.mode, AppRuntimeMode.fixtures)
     }
 
-    func testOTPRequestAndVerificationActivateLiveRuntime() async throws {
-        let session = makeSession(email: "tester@example.com")
-        let authentication = AuthenticationServiceStub(verifiedSession: session)
+    func testAppleSignInActivatesLiveRuntime() async throws {
+        let session = makeSession(email: "creator@example.com", role: "creator")
+        let authentication = AuthenticationServiceStub(appleSession: session)
         let state = AppState(
             authenticationService: authentication,
             liveRuntimeBuilder: { session in
@@ -120,45 +120,19 @@ final class AuthenticationRuntimeTests: XCTestCase {
         )
         state.authenticationPhase = AuthenticationPhase.signedOut
 
-        await state.requestEmailOTP(" Tester@Example.com ")
-        XCTAssertEqual(state.pendingEmail, "tester@example.com")
-        XCTAssertEqual(authentication.requestedEmail, " Tester@Example.com ")
-
-        await state.verifyEmailOTP("123456")
+        await state.signInWithApple(idToken: "stub-apple-id-token", fullName: "Creator Name")
 
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.live(session))
-        XCTAssertNil(state.pendingEmail)
-        XCTAssertEqual(authentication.verifiedEmail, "tester@example.com")
-        XCTAssertEqual(authentication.verifiedToken, "123456")
-    }
-
-    func testResetSignInClearsPendingEmailAndError() async {
-        let authentication = AuthenticationServiceStub(
-            requestError: AuthenticationServiceError.backend("tester_not_approved")
-        )
-        let state = AppState(
-            authenticationService: authentication,
-            liveRuntimeBuilder: { session in
-                Self.fixtureLiveRuntime(session)
-            }
-        )
-        state.authenticationPhase = AuthenticationPhase.signedOut
-
-        await state.requestEmailOTP("unknown@example.com")
-        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.failed)
-        XCTAssertNotNil(state.authenticationError)
-
-        state.pendingEmail = "unknown@example.com"
-        state.resetSignIn()
-
-        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
-        XCTAssertNil(state.pendingEmail)
+        XCTAssertEqual(state.activeMode, AppMode.creator)
         XCTAssertNil(state.authenticationError)
+        XCTAssertEqual(authentication.appleIDToken, "stub-apple-id-token")
+        XCTAssertEqual(authentication.appleFullName, "Creator Name")
     }
 
-    func testVerifyWithoutPendingEmailShowsStableRecoveryError() async {
-        let authentication = AuthenticationServiceStub()
+    func testFirstLaunchAppleSignInUsesAutoProvisionedCreatorSession() async throws {
+        let session = makeSession(email: "new-creator@example.com", role: "creator")
+        let authentication = AuthenticationServiceStub(appleSession: session)
         let state = AppState(
             authenticationService: authentication,
             liveRuntimeBuilder: { session in
@@ -167,16 +141,22 @@ final class AuthenticationRuntimeTests: XCTestCase {
         )
         state.authenticationPhase = AuthenticationPhase.signedOut
 
-        await state.verifyEmailOTP("123456")
+        await state.signInWithApple(idToken: "first-launch-apple-token")
 
-        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.failed)
-        XCTAssertEqual(state.authenticationError, "Request a new code first.")
-        XCTAssertNil(authentication.verifiedEmail)
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
+        XCTAssertEqual(state.runtime.mode, AppRuntimeMode.live(session))
+        if case .live(let liveSession) = state.runtime.mode {
+            XCTAssertEqual(liveSession.memberRole, "creator")
+            XCTAssertEqual(liveSession.authenticatedEmail, "new-creator@example.com")
+        } else {
+            XCTFail("Expected live runtime after first-launch Apple sign-in.")
+        }
+        XCTAssertEqual(authentication.appleSignInCallCount, 1)
     }
 
-    func testOTPVerificationStaysLiveWhenTodayCardIsMissing() async throws {
-        let session = makeSession(email: "tester@example.com")
-        let authentication = AuthenticationServiceStub(verifiedSession: session)
+    func testAppleSignInStaysLiveWhenTodayCardIsMissing() async throws {
+        let session = makeSession(email: "creator@example.com", role: "creator")
+        let authentication = AuthenticationServiceStub(appleSession: session)
         let state = AppState(
             authenticationService: authentication,
             liveRuntimeBuilder: { session in
@@ -185,8 +165,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
         )
         state.authenticationPhase = AuthenticationPhase.signedOut
 
-        await state.requestEmailOTP("tester@example.com")
-        await state.verifyEmailOTP("123456")
+        await state.signInWithApple(idToken: "stub-apple-id-token")
         await waitForTodayContentState(
             in: state,
             toBecome: TodayContentState.missingPublishedCard(date: "2026-06-14")
@@ -202,9 +181,9 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertNil(state.runtime.services.lastRepositoryError)
     }
 
-    func testAuthenticationFailureSurfacesStableMessage() async {
+    func testAppleSignInFailureSurfacesStableMessage() async {
         let authentication = AuthenticationServiceStub(
-            requestError: AuthenticationServiceError.backend("tester_not_approved")
+            appleError: AuthenticationServiceError.backend("device_session_failed")
         )
         let state = AppState(
             authenticationService: authentication,
@@ -214,34 +193,43 @@ final class AuthenticationRuntimeTests: XCTestCase {
         )
         state.authenticationPhase = AuthenticationPhase.signedOut
 
-        await state.requestEmailOTP("unknown@example.com")
+        await state.signInWithApple(idToken: "stub-apple-id-token")
 
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.failed)
         XCTAssertEqual(
             state.authenticationError,
-            "This email has not been approved for testing."
+            "Signed in, but device access could not be created. Try again."
         )
     }
 
-    func testSupabaseAuthenticationServiceRejectsInvalidEmailBeforeBootstrap() async {
-        let authentication = SupabaseAuthenticationService(bootstrapConfiguration: nil)
+    func testFailSignInSurfacesCredentialErrorWithoutCallingService() async {
+        let authentication = AuthenticationServiceStub()
+        let state = AppState(
+            authenticationService: authentication,
+            liveRuntimeBuilder: { session in
+                Self.fixtureLiveRuntime(session)
+            }
+        )
+        state.authenticationPhase = AuthenticationPhase.signedOut
 
-        do {
-            try await authentication.requestEmailOTP(email: "not-an-email")
-            XCTFail("Expected invalid email validation to throw.")
-        } catch {
-            XCTAssertEqual(error as? AuthenticationServiceError, .invalidEmail)
-        }
+        await state.failSignIn(message: "Apple did not return a usable identity token.")
+
+        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.failed)
+        XCTAssertEqual(
+            state.authenticationError,
+            "Apple did not return a usable identity token."
+        )
+        XCTAssertEqual(authentication.appleSignInCallCount, 0)
     }
 
-    func testSupabaseAuthenticationServiceRejectsInvalidOTPBeforeBootstrap() async {
+    func testSupabaseAuthenticationServiceRejectsEmptyAppleTokenBeforeBootstrap() async {
         let authentication = SupabaseAuthenticationService(bootstrapConfiguration: nil)
 
         do {
-            _ = try await authentication.verifyEmailOTP(email: "tester@example.com", token: "12ab")
-            XCTFail("Expected invalid OTP validation to throw.")
+            _ = try await authentication.signInWithApple(idToken: "   ", fullName: nil)
+            XCTFail("Expected empty Apple identity token validation to throw.")
         } catch {
-            XCTAssertEqual(error as? AuthenticationServiceError, .invalidOTP)
+            XCTAssertEqual(error as? AuthenticationServiceError, .invalidAppleIdentityToken)
         }
     }
 
@@ -256,7 +244,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
     }
 
     func testSignOutRevokesSessionAndReturnsToSignedOutShell() async throws {
-        let session = makeSession(email: "tester@example.com")
+        let session = makeSession(email: "creator@example.com")
         let authentication = AuthenticationServiceStub()
         let state = AppState(
             runtime: Self.fixtureLiveRuntime(session),
@@ -276,7 +264,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
     }
 
     func testSignOutRevokeFailureStillClearsLocalSession() async throws {
-        let session = makeSession(email: "tester@example.com")
+        let session = makeSession(email: "creator@example.com")
         let authentication = AuthenticationServiceStub(
             signOutError: AuthenticationServiceError.backend("session_revoke_failed")
         )
@@ -299,7 +287,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
     }
 
     func testRemoteSignedOutEventReturnsToSignedOutShell() async {
-        let session = makeSession(email: "tester@example.com")
+        let session = makeSession(email: "creator@example.com")
         let authentication = AuthenticationServiceStub()
         let state = AppState(
             activeMode: .admin,
@@ -324,11 +312,10 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
         XCTAssertEqual(state.activeMode, AppMode.creator)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
-        XCTAssertNil(state.pendingEmail)
     }
 
     func testRemoteUserDeletedEventReturnsToSignedOutShell() async {
-        let session = makeSession(email: "tester@example.com")
+        let session = makeSession(email: "creator@example.com")
         let authentication = AuthenticationServiceStub()
         let state = AppState(
             activeMode: .admin,
@@ -339,7 +326,6 @@ final class AuthenticationRuntimeTests: XCTestCase {
                 Self.fixtureLiveRuntime(session)
             }
         )
-        state.pendingEmail = "tester@example.com"
 
         let observation = Task { @MainActor in
             await state.observeAuthenticationChanges()
@@ -354,11 +340,10 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
         XCTAssertEqual(state.activeMode, AppMode.creator)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
-        XCTAssertNil(state.pendingEmail)
     }
 
     func testLiveRuntimeStartsWithoutCreatorFixtureContent() throws {
-        let runtime = Self.fixtureLiveRuntime(makeSession(email: "tester@example.com"))
+        let runtime = Self.fixtureLiveRuntime(makeSession(email: "creator@example.com"))
 
         XCTAssertEqual(runtime.services.todayCard.title, "Loading today's card")
         XCTAssertTrue(runtime.services.archiveEntries.isEmpty)
@@ -394,7 +379,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
         )
     }
 
-    private func makeSession(email: String) -> PairedDeviceSession {
+    private func makeSession(email: String, role: String = "editor") -> PairedDeviceSession {
         PairedDeviceSession(
             projectURL: URL(string: "http://127.0.0.1:54321")!,
             publishableKey: "publishable-test-key",
@@ -405,7 +390,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
             deviceToken: "device-token",
             workspaceName: "Creator Content OS",
             creatorDisplayName: "Creator",
-            memberRole: "editor",
+            memberRole: role,
             pairedAt: Date(timeIntervalSince1970: 1_780_000_000),
             authenticatedEmail: email
         )
@@ -430,46 +415,39 @@ final class AuthenticationRuntimeTests: XCTestCase {
 
 private final class AuthenticationServiceStub: AuthenticationServicing, @unchecked Sendable {
     var restoredSession: PairedDeviceSession?
-    var verifiedSession: PairedDeviceSession?
-    var requestError: Error?
-    var verifyError: Error?
+    var appleSession: PairedDeviceSession?
+    var appleError: Error?
     var signOutError: Error?
     private let eventStream: AsyncStream<AuthenticationSessionEvent>
     private let eventContinuation: AsyncStream<AuthenticationSessionEvent>.Continuation
 
     private(set) var restoreCallCount = 0
-    private(set) var requestedEmail: String?
-    private(set) var verifiedEmail: String?
-    private(set) var verifiedToken: String?
+    private(set) var appleSignInCallCount = 0
+    private(set) var appleIDToken: String?
+    private(set) var appleFullName: String?
     private(set) var signedOutSession: PairedDeviceSession?
 
     init(
         restoredSession: PairedDeviceSession? = nil,
-        verifiedSession: PairedDeviceSession? = nil,
-        requestError: Error? = nil,
-        verifyError: Error? = nil,
+        appleSession: PairedDeviceSession? = nil,
+        appleError: Error? = nil,
         signOutError: Error? = nil
     ) {
         self.restoredSession = restoredSession
-        self.verifiedSession = verifiedSession
-        self.requestError = requestError
-        self.verifyError = verifyError
+        self.appleSession = appleSession
+        self.appleError = appleError
         self.signOutError = signOutError
         let pair = AsyncStream<AuthenticationSessionEvent>.makeStream()
         self.eventStream = pair.stream
         self.eventContinuation = pair.continuation
     }
 
-    func requestEmailOTP(email: String) async throws {
-        requestedEmail = email
-        if let requestError { throw requestError }
-    }
-
-    func verifyEmailOTP(email: String, token: String) async throws -> PairedDeviceSession {
-        verifiedEmail = email
-        verifiedToken = token
-        if let verifyError { throw verifyError }
-        return try XCTUnwrap(verifiedSession)
+    func signInWithApple(idToken: String, fullName: String?) async throws -> PairedDeviceSession {
+        appleSignInCallCount += 1
+        appleIDToken = idToken
+        appleFullName = fullName
+        if let appleError { throw appleError }
+        return try XCTUnwrap(appleSession)
     }
 
     func restoreSession() async throws -> PairedDeviceSession? {

@@ -7,7 +7,6 @@ final class AppState {
     var activeMode: AppMode
     var runtime: AppRuntime
     var authenticationPhase: AuthenticationPhase
-    var pendingEmail: String?
     var authenticationError: String?
 
     private let authenticationService: any AuthenticationServicing
@@ -67,52 +66,30 @@ final class AppState {
         }
     }
 
-    func requestEmailOTP(_ email: String) async {
-        guard authenticationPhase != .requestingCode,
-              authenticationPhase != .verifyingCode
-        else { return }
+    func signInWithApple(idToken: String, fullName: String? = nil) async {
+        guard authenticationPhase != .signingIn else { return }
 
-        authenticationPhase = .requestingCode
+        authenticationPhase = .signingIn
         authenticationError = nil
         do {
-            try await authenticationService.requestEmailOTP(email: email)
-            pendingEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            authenticationPhase = .signedOut
-        } catch {
-            authenticationError = error.localizedDescription
-            authenticationPhase = .failed
-        }
-    }
-
-    func verifyEmailOTP(_ token: String) async {
-        guard let pendingEmail else {
-            authenticationError = "Request a new code first."
-            authenticationPhase = .failed
-            return
-        }
-
-        authenticationPhase = .verifyingCode
-        authenticationError = nil
-        do {
-            debugAuthLog("otp:verify:start")
-            let session = try await authenticationService.verifyEmailOTP(
-                email: pendingEmail,
-                token: token
+            debugAuthLog("apple:sign-in:start")
+            let session = try await authenticationService.signInWithApple(
+                idToken: idToken,
+                fullName: fullName
             )
-            debugAuthLog("otp:verify:session-ready")
+            debugAuthLog("apple:sign-in:session-ready")
             await activate(session: session)
-            debugAuthLog("otp:verify:activated")
+            debugAuthLog("apple:sign-in:activated")
         } catch {
             authenticationError = error.localizedDescription
             authenticationPhase = .failed
-            debugAuthLog("otp:verify:failed \(error.localizedDescription)")
+            debugAuthLog("apple:sign-in:failed \(error.localizedDescription)")
         }
     }
 
-    func resetSignIn() {
-        pendingEmail = nil
-        authenticationError = nil
-        authenticationPhase = .signedOut
+    func failSignIn(message: String) async {
+        authenticationError = message
+        authenticationPhase = .failed
     }
 
     func signOut() async {
@@ -143,7 +120,6 @@ final class AppState {
         debugAuthLog("activate:set-live")
         self.runtime = runtime
         activeMode = .creator
-        pendingEmail = nil
         authenticationError = nil
         authenticationPhase = .live
 
@@ -156,7 +132,6 @@ final class AppState {
 
     private func finishLocalSignOut() {
         activeMode = .creator
-        pendingEmail = nil
         runtime = .fixtures()
         authenticationPhase = .signedOut
     }
@@ -171,8 +146,7 @@ final class AppState {
 enum AuthenticationPhase: Hashable, Sendable {
     case restoring
     case signedOut
-    case requestingCode
-    case verifyingCode
+    case signingIn
     case live
     case failed
 }

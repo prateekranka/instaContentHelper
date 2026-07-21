@@ -63,7 +63,7 @@ struct CreatorContentOSAppView: View {
                 case .admin:
                     AdminShellView()
                 }
-            case .signedOut, .requestingCode, .verifyingCode, .failed:
+            case .signedOut, .signingIn, .failed:
                 SignInView()
             }
         }

@@ -535,8 +535,8 @@ final class InstalledContentHelperUITests: XCTestCase {
             return
         }
 
-        let signInField = app.textFields["sign-in-email"]
-        if signInField.exists {
+        let signInButton = app.buttons["sign-in-with-apple"]
+        if signInButton.exists {
             XCTFail("Installed app is on the sign-in screen, not the creator runtime.")
             return
         }
