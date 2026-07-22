@@ -108,8 +108,7 @@ struct WeeklyControlView: View {
     }
 
     private var canRegenerateDay: Bool {
-        (services.memberRole == "owner" || services.memberRole == "editor") &&
-            !services.weeklyPlan.isSoftLocked
+        services.canGenerateContent && !services.weeklyPlan.isSoftLocked
     }
 
     private var publishButtonTitle: String {

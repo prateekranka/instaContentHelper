@@ -347,11 +347,22 @@ struct FixtureArchiveRepository: ArchiveRepository {
         ArchiveEntry.fixtures
     }
 
+    func persistDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        context: WorkspaceContext
+    ) async throws {
+        _ = entry
+        _ = card
+        _ = context
+    }
+
     func upsertDecision(
         _ entry: ArchiveEntry,
         for card: DailyCard,
         context: WorkspaceContext
     ) async throws -> [ArchiveEntry] {
+        try await persistDecision(entry, for: card, context: context)
         var entries = ArchiveEntry.fixtures
         if let index = entries.firstIndex(where: { archiveEntry in
             archiveEntry.dailyCardID == card.id || archiveEntry.cardTitle == card.title

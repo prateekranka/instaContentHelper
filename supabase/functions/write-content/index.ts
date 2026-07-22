@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
+  CONTENT_CREATOR_ROLES,
   corsHeaders,
   jsonResponse,
   SupabaseAdminClient,
@@ -874,17 +875,8 @@ function jsonTextArray(value: string): unknown[] {
   return trimmedValue.length === 0 ? [] : [trimmedValue];
 }
 
-function allowedRoles(action: WriteAction): string[] {
-  if (
-    action === "select_idea_for_next_open_day" ||
-    action === "update_weekly_setup" ||
-    action === "update_creator_profile" ||
-    action === "update_daily_card_review_state"
-  ) {
-    return ["owner", "editor"];
-  }
-
-  return ["owner", "editor", "creator"];
+function allowedRoles(_action: WriteAction): string[] {
+  return [...CONTENT_CREATOR_ROLES];
 }
 
 function stableWriteError(value: unknown, action: WriteAction): string {

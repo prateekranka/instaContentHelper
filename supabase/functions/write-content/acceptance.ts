@@ -480,14 +480,16 @@ async function assertCreatorWriteBoundary() {
     tokens.creator,
     selectIdeaBody(ids.creatorIdea),
   );
-  assertEquals(select.status, 403, "creator select idea status");
-  assertEquals(
-    select.json.error,
-    "role_not_allowed",
-    "creator select idea error",
+  assertEquals(select.status, 200, "creator select idea status");
+  await assertIdeaScheduled(ids.creatorIdea, "creator idea scheduled");
+  await assertOpenCardFilled(
+    ids.creatorOpenCard,
+    ids.creatorIdea,
+    "Creator idea",
+    "creator open card selected",
   );
 
-  console.log("PASS creator can complete/archive but cannot select idea");
+  console.log("PASS creator can complete/archive and select idea");
 }
 
 async function assertCrossWorkspaceIdeaRejection() {
@@ -596,14 +598,10 @@ async function assertWeeklySetupUpdateBoundary() {
 
   const creatorUpdate = await callWriteContent(
     tokens.creator,
-    weeklySetupBody("Creator should not edit", ids.weeklyPlanA),
+    weeklySetupBody("Creator edited New Jersey place", ids.weeklyPlanA),
   );
-  assertEquals(creatorUpdate.status, 403, "creator weekly setup update status");
-  assertEquals(
-    creatorUpdate.json.error,
-    "role_not_allowed",
-    "creator weekly setup update error",
-  );
+  assertEquals(creatorUpdate.status, 200, "creator weekly setup update status");
+  await assertWeeklySetupSummary("location", "Creator edited New Jersey place");
 
   const crossWorkspacePlan = await callWriteContent(
     tokens.owner,
@@ -731,18 +729,22 @@ async function assertCreatorProfileUpdateBoundary() {
   const creatorUpdate = await callWriteContent(
     tokens.creator,
     creatorProfileBody({
-      positioning: "Creator should not edit profile",
+      positioning: "Creator updated creator positioning",
+      caption_style: "Creator tightened caption style",
     }),
   );
   assertEquals(
     creatorUpdate.status,
-    403,
+    200,
     "creator creator profile update status",
   );
-  assertEquals(
-    creatorUpdate.json.error,
-    "role_not_allowed",
-    "creator creator profile update error",
+  await assertCreatorProfileValue(
+    "positioning",
+    "Creator updated creator positioning",
+  );
+  await assertCreatorProfileValue(
+    "caption_style",
+    "Creator tightened caption style",
   );
 
   const malformed = await callWriteContent(

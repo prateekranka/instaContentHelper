@@ -172,8 +172,6 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
         setupSections: [WeeklySetupSection],
         weeklyBriefText: String
     ) -> WeeklyPlan? {
-        guard !cardRows.isEmpty else { return nil }
-
         let daysByDate = Dictionary(
             uniqueKeysWithValues: cardRows.map { ($0.scheduledDate, $0.weeklyDay()) }
         )
@@ -410,6 +408,11 @@ protocol CreatorProfileRepository: Sendable {
 
 protocol ArchiveRepository: Sendable {
     func entries(for context: WorkspaceContext) async throws -> [ArchiveEntry]
+    func persistDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        context: WorkspaceContext
+    ) async throws
     func upsertDecision(
         _ entry: ArchiveEntry,
         for card: DailyCard,

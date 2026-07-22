@@ -623,16 +623,24 @@ private actor MutableFixtureArchiveRepository: ArchiveRepository {
         stored
     }
 
-    func upsertDecision(
+    func persistDecision(
         _ entry: ArchiveEntry,
         for card: DailyCard,
         context: WorkspaceContext
-    ) async throws -> [ArchiveEntry] {
+    ) async throws {
         if let index = stored.firstIndex(where: { $0.dailyCardID == card.id }) {
             stored[index] = entry
         } else {
             stored.insert(entry, at: 0)
         }
+    }
+
+    func upsertDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        context: WorkspaceContext
+    ) async throws -> [ArchiveEntry] {
+        try await persistDecision(entry, for: card, context: context)
         return stored
     }
 }

@@ -9,6 +9,14 @@ export type VerifiedDeviceSession = {
   role: string;
 };
 
+/** Roles that may read, edit, and generate creator content (legacy owner/editor included). */
+export const CONTENT_CREATOR_ROLES = ["owner", "editor", "creator"] as const;
+
+export const ALL_DEVICE_ROLES = [
+  ...CONTENT_CREATOR_ROLES,
+  "scout",
+] as const;
+
 export async function verifyDeviceSession(
   request: Request,
   admin: SupabaseAdminClient,

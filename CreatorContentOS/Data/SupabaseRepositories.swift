@@ -343,19 +343,21 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         let publishedCardRows = response.publishedDailyCards.isEmpty
             ? response.dailyCards
             : response.publishedDailyCards
-        guard !publishedCardRows.isEmpty else {
-            throw RepositoryError.edgeFunction("weekly_plan_has_no_daily_cards")
-        }
 
         let publishedSetupSections = (response.publishedWeeklySetup ?? response.weeklySetup)?.setupSections ?? []
         let publishedBriefText = (response.publishedWeeklySetup ?? response.weeklySetup)?.weeklyBriefText ?? ""
 
-        let publishedPlan = makeWeeklyPlan(
-            row: planRow,
-            cardRows: publishedCardRows,
-            setupSections: publishedSetupSections,
-            weeklyBriefText: publishedBriefText
-        )
+        let publishedPlan = WeeklyRepositoryContent.makeWorkingPlan(
+                from: publishedCardRows,
+                planRow: planRow,
+                setupSections: publishedSetupSections,
+                weeklyBriefText: publishedBriefText
+            ) ?? makeWeeklyPlan(
+                row: planRow,
+                cardRows: publishedCardRows,
+                setupSections: publishedSetupSections,
+                weeklyBriefText: publishedBriefText
+            )
 
         let generatedDraft: GeneratedWeekDraft?
         if response.weeklyPlan != nil, !response.dailyCards.isEmpty {
@@ -365,7 +367,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         }
 
         let workingPlan: WeeklyPlan?
-        if let workingPlanRow = response.weeklyPlan, !response.dailyCards.isEmpty {
+        if let workingPlanRow = response.weeklyPlan {
             workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
                 from: response.dailyCards,
                 planRow: workingPlanRow,
@@ -830,6 +832,18 @@ enum SupabaseGenerationRetryPolicy {
         "weekly_setup_not_found",
     ]
 
+    static func isRetryableWriteError(_ error: Error) -> Bool {
+        if isTransientPollingError(error) {
+            return true
+        }
+
+        guard let httpError = functionHTTPError(error) else {
+            return false
+        }
+
+        return [408, 429, 500, 502, 503, 504].contains(httpError.status)
+    }
+
     static func isTransientPollingError(_ error: Error) -> Bool {
         let nsError = error as NSError
         if nsError.domain == NSURLErrorDomain {
@@ -1001,15 +1015,22 @@ struct SupabaseArchiveRepository: ArchiveRepository {
         return response.entries.map { $0.domainEntry() }
     }
 
+    func persistDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        context: WorkspaceContext
+    ) async throws {
+        try await client.writeContent(
+            .upsertArchiveDecision(entry, for: card, context: context)
+        )
+    }
+
     func upsertDecision(
         _ entry: ArchiveEntry,
         for card: DailyCard,
         context: WorkspaceContext
     ) async throws -> [ArchiveEntry] {
-        try await client.writeContent(
-            .upsertArchiveDecision(entry, for: card, context: context)
-        )
-
+        try await persistDecision(entry, for: card, context: context)
         return try await entries(for: context)
     }
 }
@@ -1053,19 +1074,29 @@ private extension SupabaseClient {
     }
 
     func writeContent(_ request: SupabaseWriteContentRequest) async throws {
-        do {
-            let response: SupabaseWriteContentResponse = try await functions.invoke(
-                "write-content",
-                options: FunctionInvokeOptions(body: request)
-            )
-            if let error = response.error?.nilIfBlank {
-                throw RepositoryError.edgeFunction(error)
+        var attempts = 0
+        while true {
+            do {
+                let response: SupabaseWriteContentResponse = try await functions.invoke(
+                    "write-content",
+                    options: FunctionInvokeOptions(body: request)
+                )
+                if let error = response.error?.nilIfBlank {
+                    throw RepositoryError.edgeFunction(error)
+                }
+                return
+            } catch {
+                if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                    throw RepositoryError.edgeFunction(code)
+                }
+
+                attempts += 1
+                guard attempts < 3, SupabaseGenerationRetryPolicy.isRetryableWriteError(error) else {
+                    throw error
+                }
+
+                try await Task.sleep(nanoseconds: UInt64(attempts) * 1_000_000_000)
             }
-        } catch {
-            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
-                throw RepositoryError.edgeFunction(code)
-            }
-            throw error
         }
     }
 }

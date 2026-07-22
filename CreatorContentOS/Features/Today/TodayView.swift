@@ -10,8 +10,8 @@ struct TodayView: View {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
                 ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
-                if let repositoryError = services.lastRepositoryError?.nilIfBlank {
-                    ActionFeedbackBanner(message: "Couldn't save your decision — \(repositoryError)", tone: .danger)
+                if let decisionError = services.lastTodayDecisionSyncError?.nilIfBlank {
+                    ActionFeedbackBanner(message: "Couldn't save your decision — \(decisionError)", tone: .danger)
                 }
                 switch services.todayContentState {
                 case .ready:

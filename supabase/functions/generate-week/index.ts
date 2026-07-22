@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
+  CONTENT_CREATOR_ROLES,
   corsHeaders,
   jsonResponse,
   SupabaseAdminClient,
@@ -268,11 +269,8 @@ export async function handleGenerateWeekRequest(
       auth: { persistSession: false },
     });
 
-  // Creator may generate day cards and run Plan prep; owner/editor retain Admin path access.
   const authResult = await verifyDeviceSession(request, admin, [
-    "owner",
-    "editor",
-    "creator",
+    ...CONTENT_CREATOR_ROLES,
   ]);
   if ("response" in authResult) {
     return authResult.response;

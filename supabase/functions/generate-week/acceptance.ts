@@ -361,6 +361,19 @@ assertEquals(weeklyRead.json.weekly_plan.id, weeklyPlanID, "weekly draft id");
 assertEquals(weeklyRead.json.daily_cards.length, 7, "weekly read card count");
 console.log("PASS read-content weekly returns draft review data");
 
+const creatorWeeklyRead = await callFunction(
+  "read-content",
+  creatorSession.device_token,
+  { action: "weekly", creator_id: ids.creator },
+);
+assertEquals(creatorWeeklyRead.status, 200, "creator read weekly status");
+assertEquals(
+  creatorWeeklyRead.json.weekly_plan.id,
+  weeklyPlanID,
+  "creator weekly draft id",
+);
+console.log("PASS creator read-content weekly returns draft review data");
+
 const profileRead = await callFunction(
   "read-content",
   ownerSession.device_token,

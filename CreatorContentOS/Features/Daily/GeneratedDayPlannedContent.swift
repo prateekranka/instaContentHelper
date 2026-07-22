@@ -216,8 +216,7 @@ struct GeneratedStoryboardTable: View {
     let rows: [GeneratedStoryboardBreakdownRow]
     private let headerHeight: CGFloat = 38
     private let rowHeight: CGFloat = 168
-    private let timeColumnWidth: CGFloat = 96
-    private let visualColumnWidth: CGFloat = 188
+    private let sceneColumnWidth: CGFloat = 220
     private let whatColumnWidth: CGFloat = 182
     private let audioColumnWidth: CGFloat = 194
     private let textColumnWidth: CGFloat = 184
@@ -226,14 +225,14 @@ struct GeneratedStoryboardTable: View {
         HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 0) {
                 GeneratedStoryboardHeaderCell(
-                    title: "SCENE",
-                    width: timeColumnWidth,
+                    title: "SCENE / VISUAL",
+                    width: sceneColumnWidth,
                     height: headerHeight
                 )
                 ForEach(rows) { row in
-                    GeneratedStoryboardTimeCell(
+                    GeneratedStoryboardSceneCell(
                         row: row,
-                        width: timeColumnWidth,
+                        width: sceneColumnWidth,
                         height: rowHeight
                     )
                 }
@@ -242,11 +241,6 @@ struct GeneratedStoryboardTable: View {
             ScrollView(.horizontal, showsIndicators: true) {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
-                        GeneratedStoryboardHeaderCell(
-                            title: "VISUAL / SHOT",
-                            width: visualColumnWidth,
-                            height: headerHeight
-                        )
                         GeneratedStoryboardHeaderCell(
                             title: "WHAT TO SHOW",
                             width: whatColumnWidth,
@@ -265,11 +259,6 @@ struct GeneratedStoryboardTable: View {
                     }
                     ForEach(rows) { row in
                         HStack(alignment: .top, spacing: 0) {
-                            GeneratedStoryboardVisualCell(
-                                row: row,
-                                width: visualColumnWidth,
-                                height: rowHeight
-                            )
                             GeneratedStoryboardTextCell(
                                 text: row.whatToShow,
                                 width: whatColumnWidth,
@@ -315,52 +304,37 @@ struct GeneratedStoryboardHeaderCell: View {
     }
 }
 
-struct GeneratedStoryboardTimeCell: View {
+struct GeneratedStoryboardSceneCell: View {
     let row: GeneratedStoryboardBreakdownRow
     let width: CGFloat
     let height: CGFloat
 
     var body: some View {
-        VStack(spacing: MCOSpace.xxs) {
+        VStack(alignment: .leading, spacing: MCOSpace.xxs) {
             GeneratedStoryboardThumbnail(url: row.thumbnailURL)
                 .frame(width: width - 16, height: 54)
-            Text(row.timecode.replacingOccurrences(of: " ", with: "\n"))
-                .font(MCOType.caption.weight(.semibold))
-                .foregroundStyle(MCOTheme.Color.ink)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-                .minimumScaleFactor(0.72)
-            Text(String(format: "%02d", row.sceneNumber))
-                .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-        }
-        .padding(.vertical, MCOSpace.xs)
-        .frame(width: width, height: height)
-        .background(MCOTheme.Color.paperRaised.opacity(0.78))
-        .storyboardGridLines()
-        .accessibilityLabel("Scene \(row.sceneNumber), \(row.timecode)")
-    }
-}
-
-struct GeneratedStoryboardVisualCell: View {
-    let row: GeneratedStoryboardBreakdownRow
-    let width: CGFloat
-    let height: CGFloat
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.xs) {
-            GeneratedStoryboardThumbnail(url: row.thumbnailURL)
-                .frame(height: 88)
+            HStack(spacing: MCOSpace.xxs) {
+                Text(String(format: "%02d", row.sceneNumber))
+                    .font(MCOType.caption.weight(.semibold))
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                Text(row.timecode)
+                    .font(MCOType.caption.weight(.semibold))
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
             Text(row.visualShot)
                 .font(MCOType.caption)
                 .foregroundStyle(MCOTheme.Color.ink)
-                .lineLimit(2)
+                .lineLimit(4)
                 .minimumScaleFactor(0.8)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(MCOSpace.xs)
         .frame(width: width, height: height, alignment: .topLeading)
-        .background(MCOTheme.Color.paperRaised.opacity(0.58))
+        .background(MCOTheme.Color.paperRaised.opacity(0.78))
         .storyboardGridLines()
+        .accessibilityLabel("Scene \(row.sceneNumber), \(row.timecode), \(row.visualShot)")
     }
 }
 

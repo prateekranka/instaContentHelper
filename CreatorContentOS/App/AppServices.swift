@@ -29,6 +29,7 @@ final class AppServices {
     var creatorProfileSummary: CreatorProfileSummary
     var weekCards: [DailyCard]
     var lastRepositoryError: String?
+    var lastTodayDecisionSyncError: String?
     var lastRepositoryRefreshAttemptAt: Date?
     var lastRepositoryRefreshAt: Date?
     var isRefreshingRepository = false
@@ -218,7 +219,7 @@ final class AppServices {
         isLiveSupabaseRuntime && memberRole == "owner"
     }
 
-    /// Generation and Plan prep are available to Creator without an owner/editor gate.
+    /// Generation, Plan prep, and weekly publish are available to Creator sessions.
     var canGenerateContent: Bool {
         let role = memberRole.lowercased()
         return role == "owner" || role == "editor" || role == "creator"
@@ -397,6 +398,7 @@ final class AppServices {
 
     private func prepareTodayDecisionSync(_ decision: DailyDecision) -> PendingTodayDecisionSync {
         let localDecision = applyLocalTodayDecision(decision)
+        lastTodayDecisionSyncError = nil
         latestTodayDecisionSyncID += 1
         return PendingTodayDecisionSync(
             id: latestTodayDecisionSyncID,
@@ -425,7 +427,7 @@ final class AppServices {
             guard isCurrentTodayDecisionSync(pendingSync) else {
                 return pendingSync.localEntry
             }
-            archiveEntries = try await repositories.archive.upsertDecision(
+            try await repositories.archive.persistDecision(
                 entry,
                 for: pendingSync.card,
                 context: context
@@ -433,8 +435,15 @@ final class AppServices {
             guard isCurrentTodayDecisionSync(pendingSync) else {
                 return pendingSync.localEntry
             }
+            if let refreshedEntries = try? await repositories.archive.entries(for: context) {
+                archiveEntries = refreshedEntries
+            }
+            guard isCurrentTodayDecisionSync(pendingSync) else {
+                return pendingSync.localEntry
+            }
             saveTodaySnapshot(source: "decision-synced")
             lastRepositoryError = nil
+            lastTodayDecisionSyncError = nil
             return entry
         } catch RepositoryError.noPublishedTodayCard(let date) {
             guard isCurrentTodayDecisionSync(pendingSync) else {
@@ -442,12 +451,20 @@ final class AppServices {
             }
             applyMissingPublishedTodayCardState(date: date)
             lastRepositoryError = nil
+            lastTodayDecisionSyncError = nil
             return pendingSync.localEntry
         } catch {
             guard isCurrentTodayDecisionSync(pendingSync) else {
                 return pendingSync.localEntry
             }
-            lastRepositoryError = error.localizedDescription
+            if error is CancellationError {
+                return pendingSync.localEntry
+            }
+            if (error as NSError).domain == NSURLErrorDomain,
+               (error as NSError).code == NSURLErrorCancelled {
+                return pendingSync.localEntry
+            }
+            lastTodayDecisionSyncError = TodayDecisionErrorDisplay.message(for: error)
             return pendingSync.localEntry
         }
     }
@@ -457,7 +474,7 @@ final class AppServices {
     }
 
     var canPublishCurrentWeek: Bool {
-        guard memberRole == "owner" || memberRole == "editor",
+        guard canGenerateContent,
               !isPublishingWeek,
               !weeklyPlan.isSoftLocked,
               weeklyPlan.days.count == 7,
@@ -1725,7 +1742,6 @@ final class AppServices {
             refreshError = refreshError ?? error
         }
 
-        lastRepositoryError = refreshError?.localizedDescription
         if refreshError == nil {
             lastRepositoryRefreshAt = Date()
             lastRepositoryRefreshSucceededAt = Date()
@@ -1782,7 +1798,7 @@ final class AppServices {
             refreshError = refreshError ?? error
         }
 
-        lastRepositoryError = refreshError?.localizedDescription
+        lastRepositoryRefreshError = refreshError?.localizedDescription
     }
 
     func refreshIntelligenceHomeImmediately() async {
@@ -1809,9 +1825,9 @@ final class AppServices {
         }
 
         if let refreshError {
-            lastRepositoryError = refreshError.localizedDescription
+            lastRepositoryRefreshError = refreshError.localizedDescription
         } else {
-            lastRepositoryError = nil
+            lastRepositoryRefreshError = nil
             normalizeManagerWeekStartIfStale()
         }
     }
@@ -2011,19 +2027,51 @@ final class AppServices {
     }
 }
 
+private enum TodayDecisionErrorDisplay {
+    private static let userFacingMessages = [
+        "daily_card_not_found": "Today's package could not be found. Refresh Plan, then try again.",
+        "complete_today_failed": "Could not save today's decision. Try again.",
+        "archive_upsert_failed": "Could not save today's archive entry. Try again.",
+        "missing_device_token": "This device session is missing. Sign in again.",
+        "invalid_device_token": "This device session has expired. Sign in again.",
+        "role_not_allowed": "This session cannot save today's decision."
+    ]
+
+    static func message(for error: Error) -> String {
+        let description = error.localizedDescription
+        if let message = userFacingMessages[description] {
+            return message
+        }
+        if let code = userFacingMessages.keys.first(where: { description.contains($0) }) {
+            return userFacingMessages[code] ?? description
+        }
+
+        let lowered = description.lowercased()
+        if lowered.contains("network connection was lost")
+            || lowered.contains("timed out")
+            || lowered.contains("internet connection appears to be offline")
+            || lowered.contains("could not connect to the server")
+        {
+            return "Connection dropped briefly while saving. Your choice is kept on this device — try again."
+        }
+
+        return description
+    }
+}
+
 private enum DayAvailabilityErrorDisplay {
     private static let userFacingMessages = [
         "daily_card_not_found": "No draft was found for that day. Generate a draft first.",
         "daily_card_not_draft": "That day is already a ready package.",
-        "daily_card_incomplete": "That draft is incomplete. Generate again, then try Available on Today.",
-        "invalid_make_day_available_payload": "Available on Today could not accept that request. Refresh and try again.",
-        "make_day_available_failed": "Could not make this day available. Try again.",
-        "make_day_available_already_running": "Available on Today is already running. Wait a moment.",
+        "daily_card_incomplete": "That draft is incomplete. Generate again, then approve.",
+        "invalid_make_day_available_payload": "Approve could not accept that request. Refresh and try again.",
+        "make_day_available_failed": "Could not approve this day. Try again.",
+        "make_day_available_already_running": "Approve is already running. Wait a moment.",
         "role_not_allowed": "This session cannot make a day available.",
         "creator_not_found": "This creator workspace is no longer available. Refresh and try again.",
         "missing_device_token": "This device session is missing. Sign in again.",
         "invalid_device_token": "This device session has expired. Sign in again.",
-        "make_day_available_not_configured": "Available on Today is not configured for this runtime."
+        "make_day_available_not_configured": "Approve is not configured for this runtime."
     ]
 
     static func message(for error: Error) -> String {
@@ -2040,7 +2088,7 @@ private enum DayAvailabilityErrorDisplay {
             || lowered.contains("internet connection appears to be offline")
             || lowered.contains("could not connect to the server")
         {
-            return "Connection dropped briefly. Tap Available on Today again."
+            return "Connection dropped briefly. Tap Approve again."
         }
         return description
     }
@@ -2166,7 +2214,7 @@ private enum ReferenceImportErrorDisplay {
         "invalid_review_action": "This review action is not supported. Refresh and try again.",
         "review_item_not_found": "This review item is no longer available. Refresh References.",
         "creator_not_found": "This creator workspace is no longer available. Refresh and try again.",
-        "role_not_allowed": "Only owners and editors can manage references.",
+        "role_not_allowed": "This action is not available for your account role.",
         "missing_device_token": "This device session is missing. Sign in again.",
         "invalid_device_token": "This device session has expired. Sign in again.",
         "import_failed_nothing_saved": "The import could not be saved. Try previewing again.",

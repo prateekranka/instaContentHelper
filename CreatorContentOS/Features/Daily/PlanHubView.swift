@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Buried Plan hub: calendar → brief → Generate → result / Available / Unpublish →
+/// Buried Plan hub: calendar → brief → Generate → result / Approve / Unpublish →
 /// collapsed Creator Profile and References.
 struct PlanHubView: View {
     @Environment(\.dismiss) private var dismiss
@@ -34,7 +34,6 @@ struct PlanHubView: View {
                 briefComposer
                 creatorProfileAccordion
                 referencesAccordion
-                lifecycleActions
                 if isGeneratingSelectedDay {
                     generationProgressBlock
                 }
@@ -49,7 +48,7 @@ struct PlanHubView: View {
                 }
                 if let error = services.lastMakeDayAvailableError?.nilIfBlank {
                     AdminSignalBlock(
-                        title: "Available on Today",
+                        title: "Approve",
                         value: error,
                         systemImage: "exclamationmark.triangle",
                         tone: .warning
@@ -101,7 +100,7 @@ struct PlanHubView: View {
                 generate(confirmOverwrite: true)
             }
         } message: {
-            Text("This replaces the ready package with a new draft. Any live Decision clears; Archive history stays. You will need Available on Today again.")
+            Text("This replaces the ready package with a new draft. Any live Decision clears; Archive history stays. You will need to approve again.")
         }
         .onChange(of: displayedCard?.id) { _, _ in
             lightEditCaption = displayedCard?.caption ?? ""
@@ -495,6 +494,8 @@ struct PlanHubView: View {
                 if canLightEditReadyPackage {
                     lightEditBlock
                 }
+                approveActionBlock
+                unpublishActionBlock
             }
         } else {
             AdminSignalBlock(
@@ -539,30 +540,41 @@ struct PlanHubView: View {
     }
 
     @ViewBuilder
-    private var lifecycleActions: some View {
-        if canMakeAvailable || canUnpublish {
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
-                if canMakeAvailable {
-                    SecondaryActionButton(
-                        title: services.isMakingDayAvailable ? "Making available…" : "Available on Today"
-                    ) {
-                        makeAvailableOnToday()
-                    }
-                    .disabled(!canMakeAvailable)
-                    .opacity(canMakeAvailable ? 1 : 0.48)
-                    .accessibilityIdentifier("daily.availableOnToday")
+    private var approveActionBlock: some View {
+        if canMakeAvailable {
+            VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                PrimaryActionButton(
+                    title: services.isMakingDayAvailable ? "Approving…" : "Approve",
+                    systemImage: "checkmark.circle"
+                ) {
+                    makeAvailableOnToday()
                 }
-                if canUnpublish {
-                    SecondaryActionButton(
-                        title: services.isUnpublishingDay ? "Unpublishing…" : "Unpublish"
-                    ) {
-                        showUnpublishConfirmation = true
-                    }
-                    .disabled(services.isUnpublishingDay || isGeneratingSelectedDay)
-                    .opacity(services.isUnpublishingDay || isGeneratingSelectedDay ? 0.48 : 1)
-                    .accessibilityIdentifier("daily.unpublish")
-                }
+                .disabled(!canMakeAvailable)
+                .opacity(canMakeAvailable ? 1 : 0.48)
+                .accessibilityIdentifier("daily.availableOnToday")
+
+                Text("Clicking this will add the card to the Today page.")
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("daily.approve.hint")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var unpublishActionBlock: some View {
+        if canUnpublish {
+            SecondaryActionButton(
+                title: services.isUnpublishingDay ? "Unpublishing…" : "Unpublish"
+            ) {
+                showUnpublishConfirmation = true
+            }
+            .disabled(services.isUnpublishingDay || isGeneratingSelectedDay)
+            .opacity(services.isUnpublishingDay || isGeneratingSelectedDay ? 0.48 : 1)
+            .accessibilityIdentifier("daily.unpublish")
         }
     }
 
@@ -623,7 +635,7 @@ struct PlanHubView: View {
         if DayPackageLifecycleStatus.requiresOverwriteConfirmation(card.status) {
             return "\(shortLabel(for: card.scheduledDate)) — ready package. Light edit keeps it ready; Overwrite yields a new draft."
         }
-        return "\(shortLabel(for: card.scheduledDate)) — review, then Available on Today."
+        return "\(shortLabel(for: card.scheduledDate)) — review the storyboard and caption, then approve."
     }
 
     // MARK: - Actions
