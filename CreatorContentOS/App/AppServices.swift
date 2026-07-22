@@ -257,11 +257,13 @@ final class AppServices {
             creatorProfileSummary: .creatorFixture,
             weekCards: DailyCard.weekFixtures
         )
-        // Seed a reviewable draft so Plan can show Available on Today in fixture UI proofs.
+        #if DEBUG
+        // Seed a reviewable draft so Plan can show Approve in fixture UI proofs.
         var draft = GeneratedDailyCardDraft.storyboardBreakdownFixture
         draft.scheduledDate = today
         draft.status = "draft"
         services.dayBriefGeneratedCards[today] = draft
+        #endif
         return services
     }
 
