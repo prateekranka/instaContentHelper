@@ -265,8 +265,8 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
 
         return WeeklyPlan(
             id: row.id,
-            title: "Generate a Week",
-            eyebrow: "MANAGER WEEKLY CONTROL",
+            title: "Daily content",
+            eyebrow: "DAILY CONTENT",
             weekRange: SupabaseDateFormatting.weekRange(starting: row.weekStartDate),
             weekStartDate: row.weekStartDate,
             weekEndDate: SupabaseDateFormatting.weekEndDate(starting: row.weekStartDate),

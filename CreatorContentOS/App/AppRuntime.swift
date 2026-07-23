@@ -133,7 +133,7 @@ private extension DailyCard {
 
 private extension WeeklyPlan {
     static let liveLoadingPlaceholder = WeeklyPlan(
-        title: "Loading week",
+        title: "Loading daily content",
         eyebrow: "LIVE SUPABASE",
         weekRange: "Checking for updates",
         readinessLine: "Loading",

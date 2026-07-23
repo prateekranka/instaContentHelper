@@ -148,8 +148,8 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
 
         return WeeklyPlan(
             id: draft.weeklyPlanID,
-            title: "Generate a Week",
-            eyebrow: "MANAGER AI REVIEW",
+            title: "Daily content",
+            eyebrow: "DAILY CONTENT",
             weekRange: SupabaseDateFormatting.weekRange(starting: weekStartDate),
             weekStartDate: weekStartDate,
             weekEndDate: SupabaseDateFormatting.weekEndDate(starting: weekStartDate),
@@ -205,8 +205,8 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
 
         return WeeklyPlan(
             id: planRow.id,
-            title: "Generate a Week",
-            eyebrow: "MANAGER AI REVIEW",
+            title: "Daily content",
+            eyebrow: "DAILY CONTENT",
             weekRange: SupabaseDateFormatting.weekRange(starting: planRow.weekStartDate),
             weekStartDate: planRow.weekStartDate,
             weekEndDate: SupabaseDateFormatting.weekEndDate(starting: planRow.weekStartDate),

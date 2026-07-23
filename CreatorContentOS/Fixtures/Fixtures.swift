@@ -39,8 +39,8 @@ extension ArchiveEntry {
 
 extension WeeklyPlan {
     static let raceWeek = WeeklyPlan(
-        title: "Generate a Week",
-        eyebrow: "MANAGER WEEKLY CONTROL",
+        title: "Daily content",
+        eyebrow: "DAILY CONTENT",
         weekRange: "1 Jun - 7 Jun",
         weekStartDate: "2026-06-01",
         weekEndDate: "2026-06-07",
@@ -268,7 +268,7 @@ extension IntelligenceHome {
             ),
             IntelligenceItem(
                 title: "Race morning non-negotiables",
-                subtitle: "Shootable list from the weekly setup.",
+                subtitle: "Shootable list from the creator context.",
                 kind: .idea,
                 state: .approved,
                 trailingNote: "Easy",

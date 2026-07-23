@@ -2,13 +2,6 @@ import XCTest
 import Supabase
 @testable import CreatorContentOS
 
-private struct WeeklyPublishResult: Sendable {
-    var weeklyPlan: WeeklyPlan
-    var weekCards: [DailyCard]
-    var todayCard: DailyCard?
-    var summary: String
-}
-
 @MainActor
 final class GenerationContractsTests: XCTestCase {
 
@@ -2328,15 +2321,6 @@ private actor FailingCurrentWeeklyContentRepository: WeeklyPlanRepository {
         throw RepositoryError.notConfigured("reconciliation read failed")
     }
 
-    func retiredFixturePublication(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish not needed")
-    }
-
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,
@@ -2475,205 +2459,6 @@ private actor WorkingPlanPreferringWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
-    func retiredFixturePublication(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish not needed")
-    }
-
-    func selectIdeaForNextOpenDay(
-        _ idea: WeeklyIdea,
-        in plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        context: WorkspaceContext
-    ) async throws -> WeeklySelectionUpdate {
-        throw RepositoryError.notConfigured("selection not needed")
-    }
-
-    func updateWeeklySetupSections(
-        _ sections: [WeeklySetupSection],
-        in plan: WeeklyPlan,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPlan {
-        throw RepositoryError.notConfigured("setup not needed")
-    }
-
-    func updateWeeklyBrief(
-        _ text: String,
-        in plan: WeeklyPlan,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPlan {
-        throw RepositoryError.notConfigured("brief not needed")
-    }
-}
-
-private actor FailingPublishWeeklyPlanRepository: WeeklyPlanRepository {
-    let error: Error
-
-    init(error: Error) {
-        self.error = error
-    }
-
-    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
-        .raceWeek
-    }
-
-    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
-        nil
-    }
-
-    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
-        []
-    }
-
-    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
-        WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
-    }
-
-    func retiredFixturePublication(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw error
-    }
-
-    func selectIdeaForNextOpenDay(
-        _ idea: WeeklyIdea,
-        in plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        context: WorkspaceContext
-    ) async throws -> WeeklySelectionUpdate {
-        throw RepositoryError.notConfigured("selection not needed")
-    }
-
-    func updateWeeklySetupSections(
-        _ sections: [WeeklySetupSection],
-        in plan: WeeklyPlan,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPlan {
-        throw RepositoryError.notConfigured("setup not needed")
-    }
-
-    func updateWeeklyBrief(
-        _ text: String,
-        in plan: WeeklyPlan,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPlan {
-        throw RepositoryError.notConfigured("brief not needed")
-    }
-}
-
-private actor TransientThenSuccessPublishRepository: WeeklyPlanRepository {
-    let transientError: Error
-    var publishCallCount = 0
-    private var latestPublishedPlan: WeeklyPlan = .raceWeek
-
-    init(transientError: Error) {
-        self.transientError = transientError
-    }
-
-    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
-        latestPublishedPlan
-    }
-
-    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
-        nil
-    }
-
-    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
-        []
-    }
-
-    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
-        WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
-    }
-
-    func retiredFixturePublication(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        publishCallCount += 1
-        if publishCallCount == 1 {
-            throw transientError
-        }
-        let publishedPlan = plan.softLockedForPublish
-        self.latestPublishedPlan = publishedPlan
-        let cards = DailyCard.publishedCards(from: publishedPlan)
-        return WeeklyPublishResult(
-            weeklyPlan: publishedPlan,
-            weekCards: cards,
-            todayCard: nil,
-            summary: "Published after retry."
-        )
-    }
-
-    func selectIdeaForNextOpenDay(
-        _ idea: WeeklyIdea,
-        in plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        context: WorkspaceContext
-    ) async throws -> WeeklySelectionUpdate {
-        throw RepositoryError.notConfigured("selection not needed")
-    }
-
-    func updateWeeklySetupSections(
-        _ sections: [WeeklySetupSection],
-        in plan: WeeklyPlan,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPlan {
-        throw RepositoryError.notConfigured("setup not needed")
-    }
-
-    func updateWeeklyBrief(
-        _ text: String,
-        in plan: WeeklyPlan,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPlan {
-        throw RepositoryError.notConfigured("brief not needed")
-    }
-}
-
-private actor NonTransientFailingPublishRepository: WeeklyPlanRepository {
-    let error: Error
-    var publishCallCount = 0
-
-    init(error: Error) {
-        self.error = error
-    }
-
-    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
-        .raceWeek
-    }
-
-    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
-        nil
-    }
-
-    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
-        []
-    }
-
-    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
-        WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
-    }
-
-    func retiredFixturePublication(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        publishCallCount += 1
-        throw error
-    }
-
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,
@@ -2759,15 +2544,6 @@ private actor ReviewStateReloadRepository: WeeklyPlanRepository {
             generatedDraft: generatedDraft,
             ideaBank: draft.ideaBank
         )
-    }
-
-    func retiredFixturePublication(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish not needed")
     }
 
     func selectIdeaForNextOpenDay(
@@ -2859,15 +2635,6 @@ private actor ReviewStateTrackingRepository: WeeklyPlanRepository {
 
     func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
         WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
-    }
-
-    func retiredFixturePublication(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish not needed")
     }
 
     func selectIdeaForNextOpenDay(
@@ -2966,15 +2733,6 @@ private actor ReconciliationContentRepository: WeeklyPlanRepository {
             generatedDraft: generatedDraft,
             ideaBank: generatedDraft?.ideaBank ?? []
         )
-    }
-
-    func retiredFixturePublication(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish not needed")
     }
 
     func selectIdeaForNextOpenDay(

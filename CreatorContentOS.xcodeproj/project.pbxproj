@@ -24,7 +24,6 @@
 		52E6243CEDF556777DE10152 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3F01FE486362EAFDB992BA /* DesignSystem.swift */; };
 		5E2447A4001429D09BDD46BB /* SupabaseClientFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99D8093F95A3FBAF1E2138BF /* SupabaseClientFactory.swift */; };
 		63A830B08C6D64ACE37F1A35 /* SupabaseDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9168AA818D4223159226D66 /* SupabaseDTOs.swift */; };
-		68EF9C0F94D2447AF4A1E0DD /* WeeklyPublishingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A630640EC84FFD5B4C17934 /* WeeklyPublishingModels.swift */; };
 		6D39AC384DA1FC39E7839C18 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2D402309616D1FCDEB1EB137 /* Assets.xcassets */; };
 		6EEAF162E6C8A36CECBD722E /* ManagerAdminUsageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 674AC06A8413A366F72FD56A /* ManagerAdminUsageTests.swift */; };
 		733F66CC1224251437A7D210 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A748621CB6EAB1EBCE6C5EB /* Models.swift */; };
@@ -110,7 +109,6 @@
 		90532CA91160D600CF200666 /* SupabaseRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseRepositories.swift; sourceTree = "<group>"; };
 		99A7AEA0EFE2AB580A6F2775 /* TestGeneratedDraftFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestGeneratedDraftFactory.swift; sourceTree = "<group>"; };
 		99D8093F95A3FBAF1E2138BF /* SupabaseClientFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientFactory.swift; sourceTree = "<group>"; };
-		9A630640EC84FFD5B4C17934 /* WeeklyPublishingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyPublishingModels.swift; sourceTree = "<group>"; };
 		A448CD53A79DDA0644C8DD09 /* Fixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fixtures.swift; sourceTree = "<group>"; };
 		A4C8ED51EAD5398D2832AAB4 /* ReferenceImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportTests.swift; sourceTree = "<group>"; };
 		A9168AA818D4223159226D66 /* SupabaseDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseDTOs.swift; sourceTree = "<group>"; };
@@ -231,7 +229,6 @@
 				90532CA91160D600CF200666 /* SupabaseRepositories.swift */,
 				843D5A526CCBA04114C4A72A /* TodayCacheStore.swift */,
 				38046C9F47183FB73FF43F78 /* TodayNotificationScheduler.swift */,
-				9A630640EC84FFD5B4C17934 /* WeeklyPublishingModels.swift */,
 				DD3FB713073CF44BD44318FC /* WriteContentDTOs.swift */,
 			);
 			path = Data;
@@ -539,7 +536,6 @@
 				D6FA5625DF2179CB5D127FDD /* TodayCacheStore.swift in Sources */,
 				88C182864E867EB5D142FB09 /* TodayNotificationScheduler.swift in Sources */,
 				84507BFC8C21EAF5D1D07C40 /* TodayView.swift in Sources */,
-				68EF9C0F94D2447AF4A1E0DD /* WeeklyPublishingModels.swift in Sources */,
 				45CD8BDB68F53E5B36BCC233 /* WriteContentDTOs.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

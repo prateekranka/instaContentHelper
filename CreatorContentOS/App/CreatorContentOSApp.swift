@@ -94,7 +94,6 @@ private extension AppState {
 
 #if DEBUG
 private enum DebugForcedScreen: String {
-    case aiRunway = "ai-runway"
     case storyboardCard = "storyboard-card"
     case testerAccess = "tester-access"
 
@@ -111,8 +110,6 @@ private enum DebugForcedScreen: String {
     @ViewBuilder
     var view: some View {
         switch self {
-        case .aiRunway:
-            AIRunwayView()
         case .storyboardCard:
             DebugStoryboardCardScreen()
         case .testerAccess:

@@ -167,7 +167,7 @@ struct DayGenerationView: View {
 
     private var daySelector: some View {
         VStack(alignment: .leading, spacing: MCOSpace.s) {
-            WeeklySectionTitle(
+            SectionTitle(
                 title: "Day",
                 subtitle: "Today, tomorrow, or any day you want to plan ahead."
             )
@@ -229,7 +229,7 @@ struct DayGenerationView: View {
 
     private var briefComposer: some View {
         VStack(alignment: .leading, spacing: MCOSpace.s) {
-            WeeklySectionTitle(
+            SectionTitle(
                 title: "Brief for the day",
                 subtitle: "What is happening, what should the content feel like, and any one-off asks — brand work included."
             )
@@ -291,7 +291,7 @@ struct DayGenerationView: View {
     private var generatedDaysStrip: some View {
         if !generatedDates.isEmpty {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
-                WeeklySectionTitle(
+                SectionTitle(
                     title: "Generated days",
                     subtitle: "Choose one date to review or publish. Published days stay clearly marked."
                 )
@@ -322,7 +322,7 @@ struct DayGenerationView: View {
     private var resultBlock: some View {
         if let card = displayedCard {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
-                WeeklySectionTitle(
+                SectionTitle(
                     title: "Storyboard & caption",
                     subtitle: "\(shortLabel(for: card.scheduledDate)) — \(card.status.lowercased() == "published" ? "published" : "draft"). Gemini shot visuals generate with the day so creators see the same reference on Today."
                 )
