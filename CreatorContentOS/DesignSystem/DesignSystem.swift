@@ -226,7 +226,7 @@ struct JournalBlock<Content: View>: View {
     }
 }
 
-struct WeeklySectionTitle: View {
+struct SectionTitle: View {
     let title: String
     let subtitle: String
 

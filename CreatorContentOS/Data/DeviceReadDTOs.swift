@@ -71,14 +71,14 @@ struct SupabaseWeeklyReadResponse: Decodable, Hashable, Sendable {
             id: weeklyPlan.id,
             weeklyPlanID: weeklyPlan.id,
             status: weeklyPlan.status,
-            strategySummary: weeklyPlan.strategySummary ?? "Generated week loaded from live daily cards.",
+            strategySummary: weeklyPlan.strategySummary ?? "Daily content loaded from live cards.",
             warnings: weeklyPlan.warnings.compactMap(\.displayText),
             assumptions: weeklyPlan.assumptions.compactMap(\.displayText),
             dailyCards: dailyCards
                 .map { $0.generatedDailyCardDraft() }
                 .sorted { $0.scheduledDate < $1.scheduledDate },
             ideaBank: ideaBank.map { $0.domainIdea() },
-            sourceSummary: "Live weekly daily cards.",
+            sourceSummary: "Live daily cards.",
             generatedAt: weeklyPlan.publishedAt ?? SupabaseDateFormatting.todayDateString()
         )
     }

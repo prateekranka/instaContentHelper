@@ -257,7 +257,7 @@ struct ProfileModeView: View {
                     Text("Manager tools")
                         .font(MCOType.headline)
                         .foregroundStyle(MCOTheme.Color.ink)
-                    Text("Plan the week, review references, and run QA.")
+                    Text("Create daily content, review references, and manage testers.")
                         .font(MCOType.caption)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                 }

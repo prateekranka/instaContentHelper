@@ -351,7 +351,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             status: Self.draftReviewStatus(dbStatus: status, reviewState: reviewState),
             title: title,
             whyToday: whyToday ?? growthJob ?? "Prepared for this day.",
-            growthJob: growthJob ?? whyToday ?? "Support this week’s content arc.",
+            growthJob: growthJob ?? whyToday ?? "Support this content arc.",
             contentPillar: contentPillar ?? sourceNote ?? "Pattern",
             shootability: shootability ?? "Not specified",
             estimatedShootMinutes: estimatedShootMinutes ?? 0,
@@ -520,7 +520,7 @@ struct SupabaseWeeklySetupRow: Codable, Hashable, Sendable {
         }
 
         appendSummary(
-            title: "Weekly routine",
+            title: "Creator routine",
             values: workoutRaceSchedule,
             fallback: nil,
             into: &lines

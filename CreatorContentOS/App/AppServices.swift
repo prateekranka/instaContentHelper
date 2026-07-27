@@ -172,7 +172,7 @@ final class AppServices {
             ),
             archiveEntries: [],
             weeklyPlan: WeeklyPlan(
-                title: "Generate a Week",
+                title: "Daily content",
                 eyebrow: "LIVE WORKSPACE",
                 weekRange: "Checking schedule",
                 readinessLine: "Loading live plan",
@@ -897,7 +897,7 @@ final class AppServices {
             )
             weeklyBriefEditError = nil
             lastRepositoryError = nil
-            lastActionMessage = "Weekly brief saved."
+            lastActionMessage = "Brief saved."
 
             return true
         } catch {
@@ -923,7 +923,7 @@ final class AppServices {
             weeklyBriefDraftText = weeklyPlan.weeklyBriefText
             weeklyBriefEditError = nil
             lastRepositoryError = nil
-            lastActionMessage = "Weekly brief saved."
+            lastActionMessage = "Brief saved."
 
             return true
         } catch {
@@ -1369,6 +1369,7 @@ final class AppServices {
         }
 
         for card in draft.dailyCards {
+            guard card.status.lowercased() != "published" else { continue }
             guard !generatingDayBriefDates.contains(card.scheduledDate) else { continue }
             hydratedCards[card.scheduledDate] = card
         }
@@ -1565,8 +1566,8 @@ private enum DayGenerationErrorDisplay {
         "missing_openai_api_key": "AI generation is not configured in Supabase.",
         "invalid_generation_payload": "The generation request could not be accepted. Refresh and try again.",
         "generation_persist_failed": "The draft could not be saved. Try Generate again.",
-        "weekly_setup_not_found": "The weekly brief could not be found. Save the brief and try again.",
-        "existing_published_week_locked": "This week is already published and locked.",
+        "weekly_setup_not_found": "The generation context could not be found. Refresh and try again.",
+        "existing_published_week_locked": "This content is already published and locked.",
         "past_generation_date_not_allowed": "You cannot generate content for a past date. Select today or a future date.",
         "generation_timeout": "Generation timed out. Wait a moment, then try Generate again.",
         "generation_cancelled": "Generation was cancelled. Try Generate again.",

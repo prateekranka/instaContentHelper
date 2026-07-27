@@ -791,15 +791,15 @@ struct ReferenceItemDetailView: View {
     private var usageGuidance: String {
         switch item.kind {
         case .pattern:
-            "Use this as a repeatable content structure when drafting weekly cards. It should shape framing, not override the weekly brief."
+            "Use this as a repeatable content structure when drafting daily cards. It should shape framing, not override the day brief."
         case .trend:
-            "Use this as context for a timely angle. Keep it grounded in the creator's current week before using it."
+            "Use this as context for a timely angle. Keep it grounded in the creator's current brief before using it."
         case .audio:
             "Use this as an optional audio direction for Reels. If it does not fit the daily card, keep the card shootable without it."
         case .idea:
-            "Use this as a candidate card idea. It still needs to fit the selected week, creator profile, and daily energy."
+            "Use this as a candidate card idea. It still needs to fit the selected day, creator profile, and daily energy."
         case .watchlist:
-            "Use this as a source to monitor. Pull from it when it gives a practical angle for the creator's week."
+            "Use this as a source to monitor. Pull from it when it gives a practical angle for the creator's current content."
         }
     }
 
