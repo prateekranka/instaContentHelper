@@ -50,8 +50,18 @@ export type SingleDayGenerationLifecycleEvent = {
   scheduled_date: string;
   day_index: number | null;
   duration_ms: number | null;
+  stage_timings_ms: SingleDayGenerationStageTimings;
   day_guidance_present: boolean;
   day_guidance_chars: number;
+};
+
+export type SingleDayGenerationStageTimings = {
+  text_generation: number | null;
+  validation: number | null;
+  persistence: number | null;
+  storyboard_visuals: number | null;
+  finalization: number | null;
+  total: number | null;
 };
 
 export type SingleDayRunnerHost = {
@@ -88,6 +98,8 @@ export type SingleDayRunnerHost = {
   ) => Promise<{ ok: true } | { response: Response }>;
   scheduleBackgroundTask: (promise: Promise<unknown>) => void;
   emitLifecycleEvent: (event: SingleDayGenerationLifecycleEvent) => void;
+  /** Optional monotonic clock override for deterministic timing tests. */
+  nowMS?: () => number;
   dayHeartbeatIntervalMS?: number;
   /**
    * Optional override for tests. Default attaches Gemini storyboard
@@ -158,6 +170,67 @@ function guidanceMetadata(
   };
 }
 
+const SINGLE_DAY_TIMED_STAGES = [
+  "text_generation",
+  "validation",
+  "persistence",
+  "storyboard_visuals",
+  "finalization",
+] as const;
+
+type SingleDayTimedStage = typeof SINGLE_DAY_TIMED_STAGES[number];
+
+function emptySingleDayStageTimings(): SingleDayGenerationStageTimings {
+  return {
+    text_generation: null,
+    validation: null,
+    persistence: null,
+    storyboard_visuals: null,
+    finalization: null,
+    total: null,
+  };
+}
+
+function nonNegativeDurationMS(startMS: number, endMS: number): number {
+  if (!Number.isFinite(startMS) || !Number.isFinite(endMS)) return 0;
+  return Math.max(0, Math.floor(endMS - startMS));
+}
+
+function singleDayStageTimingTracker(host: SingleDayRunnerHost): {
+  start: (stage: SingleDayTimedStage) => void;
+  finish: (stage: SingleDayTimedStage) => void;
+  snapshot: () => SingleDayGenerationStageTimings;
+} {
+  const nowMS = host.nowMS ?? (() => performance.now());
+  const pipelineStartedAtMS = nowMS();
+  const stageStartedAtMS = new Map<SingleDayTimedStage, number>();
+  const timings = emptySingleDayStageTimings();
+
+  return {
+    start: (stage) => {
+      stageStartedAtMS.set(stage, nowMS());
+    },
+    finish: (stage) => {
+      const startedAtMS = stageStartedAtMS.get(stage);
+      if (startedAtMS === undefined) return;
+      timings[stage] = nonNegativeDurationMS(startedAtMS, nowMS());
+      stageStartedAtMS.delete(stage);
+    },
+    snapshot: () => {
+      const measuredTotalMS = nonNegativeDurationMS(
+        pipelineStartedAtMS,
+        nowMS(),
+      );
+      const measuredStageTotalMS = SINGLE_DAY_TIMED_STAGES.reduce(
+        (total, stage) => total + (timings[stage] ?? 0),
+        0,
+      );
+      timings.total = Math.max(measuredTotalMS, measuredStageTotalMS);
+      return { ...timings };
+    },
+  };
+}
+
 export async function scheduleSingleDayGeneration(
   admin: SupabaseAdminClient,
   generationID: string,
@@ -209,6 +282,7 @@ export async function runDayGenerationPipeline(
       scheduled_date: prepared.request.scheduled_date,
       day_index: null,
       duration_ms: null,
+      stage_timings_ms: emptySingleDayStageTimings(),
       ...guidance,
     });
     return {
@@ -217,7 +291,7 @@ export async function runDayGenerationPipeline(
   }
 
   const pipelineStartedAtISO = new Date().toISOString();
-  const pipelineStartedAt = Date.parse(pipelineStartedAtISO);
+  const stageTimings = singleDayStageTimingTracker(host);
   host.emitLifecycleEvent({
     phase: "generation_started",
     status: "running",
@@ -227,6 +301,7 @@ export async function runDayGenerationPipeline(
     scheduled_date: prepared.request.scheduled_date,
     day_index: dayIndex,
     duration_ms: null,
+    stage_timings_ms: emptySingleDayStageTimings(),
     ...guidance,
   });
 
@@ -240,6 +315,7 @@ export async function runDayGenerationPipeline(
   };
 
   let generated: GeneratedDayOutput;
+  stageTimings.start("text_generation");
   try {
     const rawOutput = await withSingleDayGenerationHeartbeat(
       admin,
@@ -251,14 +327,23 @@ export async function runDayGenerationPipeline(
           ? host.mockOutput(prepared.inputSnapshot, dayIndex)
           : await host.generateOutput(prepared, generationID, dayIndex),
     );
-    generated = validateGeneratedDayOutput(
-      rawOutput,
-      prepared.request.scheduled_date,
-      dayIndex,
-    );
+    stageTimings.finish("text_generation");
+    stageTimings.start("validation");
+    try {
+      generated = validateGeneratedDayOutput(
+        rawOutput,
+        prepared.request.scheduled_date,
+        dayIndex,
+      );
+    } finally {
+      stageTimings.finish("validation");
+    }
   } catch (error) {
+    stageTimings.finish("text_generation");
+    stageTimings.finish("validation");
     const errorCode = host.stableGenerationError(error);
     await host.markGenerationRunFailed(admin, generationID, errorCode);
+    const timingSnapshot = stageTimings.snapshot();
     host.emitLifecycleEvent({
       phase: "generation_failed",
       status: "failed",
@@ -267,7 +352,8 @@ export async function runDayGenerationPipeline(
       week_start_date: prepared.inputSnapshot.week_start_date,
       scheduled_date: prepared.request.scheduled_date,
       day_index: dayIndex,
-      duration_ms: Date.now() - pipelineStartedAt,
+      duration_ms: timingSnapshot.total,
+      stage_timings_ms: timingSnapshot,
       ...guidance,
     });
     return {
@@ -278,17 +364,26 @@ export async function runDayGenerationPipeline(
     };
   }
 
-  const persistResult = await host.persistRegeneratedDay(
-    admin,
-    prepared,
-    generated.daily_card,
-  );
+  stageTimings.start("persistence");
+  let persistResult: Awaited<
+    ReturnType<SingleDayRunnerHost["persistRegeneratedDay"]>
+  >;
+  try {
+    persistResult = await host.persistRegeneratedDay(
+      admin,
+      prepared,
+      generated.daily_card,
+    );
+  } finally {
+    stageTimings.finish("persistence");
+  }
   if ("response" in persistResult) {
     await host.markGenerationRunFailed(
       admin,
       generationID,
       "generation_persist_failed",
     );
+    const timingSnapshot = stageTimings.snapshot();
     host.emitLifecycleEvent({
       phase: "generation_failed",
       status: "failed",
@@ -297,7 +392,8 @@ export async function runDayGenerationPipeline(
       week_start_date: prepared.inputSnapshot.week_start_date,
       scheduled_date: prepared.request.scheduled_date,
       day_index: dayIndex,
-      duration_ms: Date.now() - pipelineStartedAt,
+      duration_ms: timingSnapshot.total,
+      stage_timings_ms: timingSnapshot,
       ...guidance,
     });
     return persistResult;
@@ -305,17 +401,23 @@ export async function runDayGenerationPipeline(
 
   const attachStoryboard = host.attachDayStoryboardThumbnails ??
     defaultAttachDayStoryboardThumbnails;
-  const dailyCardWithStoryboard = await withSingleDayGenerationHeartbeat(
-    admin,
-    generationID,
-    {
-      ...runningProgress,
-      status: "running",
-      updated_at: new Date().toISOString(),
-    },
-    host,
-    () => attachStoryboard(admin, prepared, persistResult.dailyCard),
-  );
+  stageTimings.start("storyboard_visuals");
+  let dailyCardWithStoryboard: GeneratedDailyCard;
+  try {
+    dailyCardWithStoryboard = await withSingleDayGenerationHeartbeat(
+      admin,
+      generationID,
+      {
+        ...runningProgress,
+        status: "running",
+        updated_at: new Date().toISOString(),
+      },
+      host,
+      () => attachStoryboard(admin, prepared, persistResult.dailyCard),
+    );
+  } finally {
+    stageTimings.finish("storyboard_visuals");
+  }
 
   const completedAt = new Date().toISOString();
   const payload: RegenerateDayDraftResponse = {
@@ -329,18 +431,27 @@ export async function runDayGenerationPipeline(
     source_summary: generated.source_summary,
     generated_at: completedAt,
   };
-  const completedResult = await host.completeDayGenerationRun(
-    admin,
-    generationID,
-    payload,
-    completedAt,
-  );
+  stageTimings.start("finalization");
+  let completedResult: Awaited<
+    ReturnType<SingleDayRunnerHost["completeDayGenerationRun"]>
+  >;
+  try {
+    completedResult = await host.completeDayGenerationRun(
+      admin,
+      generationID,
+      payload,
+      completedAt,
+    );
+  } finally {
+    stageTimings.finish("finalization");
+  }
   if ("response" in completedResult) {
     await host.markGenerationRunFailed(
       admin,
       generationID,
       "generation_persist_failed",
     );
+    const timingSnapshot = stageTimings.snapshot();
     host.emitLifecycleEvent({
       phase: "generation_failed",
       status: "failed",
@@ -349,11 +460,13 @@ export async function runDayGenerationPipeline(
       week_start_date: prepared.inputSnapshot.week_start_date,
       scheduled_date: prepared.request.scheduled_date,
       day_index: dayIndex,
-      duration_ms: Date.now() - pipelineStartedAt,
+      duration_ms: timingSnapshot.total,
+      stage_timings_ms: timingSnapshot,
       ...guidance,
     });
     return completedResult;
   }
+  const timingSnapshot = stageTimings.snapshot();
   host.emitLifecycleEvent({
     phase: "generation_completed",
     status: "completed",
@@ -362,7 +475,8 @@ export async function runDayGenerationPipeline(
     week_start_date: prepared.inputSnapshot.week_start_date,
     scheduled_date: prepared.request.scheduled_date,
     day_index: dayIndex,
-    duration_ms: Date.now() - pipelineStartedAt,
+    duration_ms: timingSnapshot.total,
+    stage_timings_ms: timingSnapshot,
     ...guidance,
   });
   return { payload };

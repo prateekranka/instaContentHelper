@@ -4,6 +4,7 @@ import {
   runDayGenerationPipeline,
   scheduleSingleDayGeneration,
   type SingleDayGenerationLifecycleEvent,
+  type SingleDayGenerationStageTimings,
   type SingleDayRunnerHost,
   type SingleDayRunnerPreparedGeneration,
 } from "./generation-single-day-runner.ts";
@@ -262,6 +263,186 @@ Deno.test("runDayGenerationPipeline mock path validates persists completes and e
   assertEquals(lifecycleEvents[1].status, "completed");
 });
 
+Deno.test("runDayGenerationPipeline emits ordered deterministic stage timings", async () => {
+  const lifecycleEvents: SingleDayGenerationLifecycleEvent[] = [];
+  const stageCalls: string[] = [];
+  let clockMS = 0;
+  const prepared = minimalPrepared({ mockEnabled: true });
+  const mockOutput = stubHost().mockOutput(prepared.inputSnapshot, 2);
+  const persistedCard = { ...mockOutput.daily_card, id: "card-timing" };
+  const host = stubHost({
+    nowMS: () => {
+      clockMS += 10;
+      return clockMS;
+    },
+    mockOutput: () => {
+      stageCalls.push("text_generation");
+      return mockOutput;
+    },
+    persistRegeneratedDay: async () => {
+      stageCalls.push("persistence");
+      return { dailyCard: persistedCard };
+    },
+    attachDayStoryboardThumbnails: async (_admin, _prepared, dailyCard) => {
+      stageCalls.push("storyboard_visuals");
+      return dailyCard;
+    },
+    completeDayGenerationRun: async () => {
+      stageCalls.push("finalization");
+      return { ok: true as const };
+    },
+    emitLifecycleEvent: (event) => {
+      lifecycleEvents.push(event);
+    },
+  });
+
+  const result = await runDayGenerationPipeline(
+    fakeAdmin(),
+    generationID,
+    prepared,
+    host,
+  );
+
+  assertEquals("payload" in result, true);
+  assertEquals(stageCalls, [
+    "text_generation",
+    "persistence",
+    "storyboard_visuals",
+    "finalization",
+  ]);
+  assertEquals(lifecycleEvents.map((event) => event.phase), [
+    "generation_started",
+    "generation_completed",
+  ]);
+  assertEquals(lifecycleEvents[0].stage_timings_ms, {
+    text_generation: null,
+    validation: null,
+    persistence: null,
+    storyboard_visuals: null,
+    finalization: null,
+    total: null,
+  });
+  const completedTimings = lifecycleEvents[1].stage_timings_ms;
+  assertEquals(Object.keys(completedTimings), [
+    "text_generation",
+    "validation",
+    "persistence",
+    "storyboard_visuals",
+    "finalization",
+    "total",
+  ]);
+  assertEquals(completedTimings, {
+    text_generation: 10,
+    validation: 10,
+    persistence: 10,
+    storyboard_visuals: 10,
+    finalization: 10,
+    total: 110,
+  });
+  assertCoherentStageTotal(completedTimings);
+  assertEquals(lifecycleEvents[1].duration_ms, completedTimings.total);
+});
+
+Deno.test("runDayGenerationPipeline retains completed stage timings on persistence failure", async () => {
+  const lifecycleEvents: SingleDayGenerationLifecycleEvent[] = [];
+  let clockMS = 0;
+  const prepared = minimalPrepared({ mockEnabled: true });
+  const host = stubHost({
+    nowMS: () => {
+      clockMS += 10;
+      return clockMS;
+    },
+    persistRegeneratedDay: async () => ({
+      response: new Response(
+        JSON.stringify({ error: "generation_persist_failed" }),
+        { status: 500 },
+      ),
+    }),
+    emitLifecycleEvent: (event) => {
+      lifecycleEvents.push(event);
+    },
+  });
+
+  const result = await runDayGenerationPipeline(
+    fakeAdmin(),
+    generationID,
+    prepared,
+    host,
+  );
+
+  assertEquals("response" in result, true);
+  if ("response" in result) {
+    assertEquals(result.response.status, 500);
+    assertEquals(await result.response.json(), {
+      error: "generation_persist_failed",
+    });
+  }
+  assertEquals(lifecycleEvents.map((event) => event.phase), [
+    "generation_started",
+    "generation_failed",
+  ]);
+  const failedTimings = lifecycleEvents[1].stage_timings_ms;
+  assertEquals(failedTimings, {
+    text_generation: 10,
+    validation: 10,
+    persistence: 10,
+    storyboard_visuals: null,
+    finalization: null,
+    total: 70,
+  });
+  assertCoherentStageTotal(failedTimings);
+  assertEquals(lifecycleEvents[1].duration_ms, failedTimings.total);
+});
+
+Deno.test("runDayGenerationPipeline times storyboard soft failure without changing success response", async () => {
+  const lifecycleEvents: SingleDayGenerationLifecycleEvent[] = [];
+  let clockMS = 0;
+  let softFailureHandled = false;
+  const prepared = minimalPrepared({ mockEnabled: false });
+  const mockOutput = stubHost().mockOutput(prepared.inputSnapshot, 2);
+  const persistedCard = { ...mockOutput.daily_card, id: "card-soft-visuals" };
+  const host = stubHost({
+    nowMS: () => {
+      clockMS += 10;
+      return clockMS;
+    },
+    generateOutput: async () => mockOutput,
+    persistRegeneratedDay: async () => ({ dailyCard: persistedCard }),
+    attachDayStoryboardThumbnails: async (_admin, _prepared, dailyCard) => {
+      try {
+        throw new Error("synthetic_storyboard_thumbnail_gemini_failed");
+      } catch {
+        softFailureHandled = true;
+        return dailyCard;
+      }
+    },
+    completeDayGenerationRun: async () => ({ ok: true as const }),
+    emitLifecycleEvent: (event) => {
+      lifecycleEvents.push(event);
+    },
+  });
+
+  const result = await runDayGenerationPipeline(
+    fakeAdmin(),
+    generationID,
+    prepared,
+    host,
+  );
+
+  assert(softFailureHandled, "expected storyboard failure to soft-fail");
+  assert("payload" in result, "soft storyboard failure changed HTTP outcome");
+  const completed = lifecycleEvents.find((event) =>
+    event.phase === "generation_completed"
+  );
+  assert(completed !== undefined, "expected completed lifecycle event");
+  assert(
+    typeof completed.stage_timings_ms.storyboard_visuals === "number",
+    "storyboard soft failure was not timed",
+  );
+  assertCoherentStageTotal(completed.stage_timings_ms);
+  assertEquals(completed.duration_ms, completed.stage_timings_ms.total);
+});
+
 Deno.test("runDayGenerationPipeline attaches Gemini storyboard assets before completion", async () => {
   const prepared = minimalPrepared({ mockEnabled: false });
   const mockOutput = stubHost().mockOutput(prepared.inputSnapshot, 2);
@@ -494,4 +675,21 @@ function assert(
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function assertCoherentStageTotal(
+  timings: SingleDayGenerationStageTimings,
+): void {
+  const completedStageTotal = [
+    timings.text_generation,
+    timings.validation,
+    timings.persistence,
+    timings.storyboard_visuals,
+    timings.finalization,
+  ].reduce<number>((total, duration) => total + (duration ?? 0), 0);
+  const total = timings.total;
+  assert(
+    typeof total === "number" && total >= completedStageTotal,
+    "total timing must cover every completed stage",
+  );
 }

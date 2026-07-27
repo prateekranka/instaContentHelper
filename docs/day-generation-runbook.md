@@ -117,7 +117,7 @@ Set these only in Supabase Edge Function secrets or local function env files:
 - `DEEPSEEK_API_KEY`: primary real AI provider.
 - `OPENAI_API_KEY`: fallback provider if DeepSeek fails or is not configured.
 - `MCO_DEEPSEEK_MODEL`: optional DeepSeek model override. Default:
-  `deepseek-v4-pro`.
+  `deepseek-v4-flash`.
 - `MCO_DEEPSEEK_BASE_URL`: optional DeepSeek API base URL override. Default:
   `https://api.deepseek.com`.
 - `MCO_OPENAI_MODEL`: optional OpenAI fallback model override. Default:

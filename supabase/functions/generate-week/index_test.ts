@@ -1,4 +1,5 @@
 import {
+  aiProviderConfigs,
   availableParallelDayJobSlots,
   handleGenerateWeekRequest,
   overrideTodayISO,
@@ -970,6 +971,7 @@ Deno.test({
 Deno.test("regenerate_day updates exactly one draft card and leaves the other six unchanged", async () => {
   const state = dayGenerationState();
   const before = structuredClone(state.dailyCards);
+  let observedProviders: Array<{ provider: string; model: string }> = [];
   const response = await handleGenerateWeekRequest(
     requestFor({
       action: "regenerate_day",
@@ -979,10 +981,13 @@ Deno.test("regenerate_day updates exactly one draft card and leaves the other si
       preserve_manual_edits: false,
     }),
     {
-      env: fakeEnv("openai-key"),
+      env: fakeEnv("openai-key", false, "deepseek-key"),
       createAdminClient: () => fakeAdmin(state),
       generateDayAI: async (input, providers, scheduledDate, dayIndex) => {
-        assertEquals(providers[0].provider, "openai");
+        observedProviders = providers.map(({ provider, model }) => ({
+          provider,
+          model,
+        }));
         const mock = makeMockGeneratedWeek(input);
         return {
           strategy_note: "Regenerated Wednesday only.",
@@ -1001,6 +1006,13 @@ Deno.test("regenerate_day updates exactly one draft card and leaves the other si
   );
 
   assertEquals(response.status, 200);
+  assertEquals(
+    JSON.stringify(observedProviders),
+    JSON.stringify([
+      { provider: "deepseek", model: "deepseek-v4-flash" },
+      { provider: "openai", model: "gpt-4.1-mini" },
+    ]),
+  );
   const body = await response.json();
   assertEquals(body.target_scheduled_date, "2026-06-10");
   assertEquals(body.daily_card.title, "Fresh Wednesday");
@@ -1013,6 +1025,46 @@ Deno.test("regenerate_day updates exactly one draft card and leaves the other si
     );
   }
   assertEquals(state.updatedDailyCardIDs.join(","), dailyCardIDs[2]);
+});
+
+Deno.test("day provider defaults degrade safely and preserve explicit overrides", () => {
+  const summarized = (
+    env: ReturnType<typeof fakeEnv>,
+  ): Array<{ provider: string; model: string }> =>
+    aiProviderConfigs(env).map(({ provider, model }) => ({ provider, model }));
+
+  assertEquals(
+    JSON.stringify(summarized(fakeEnv(undefined, false, "deepseek-key"))),
+    JSON.stringify([
+      { provider: "deepseek", model: "deepseek-v4-flash" },
+    ]),
+  );
+  assertEquals(
+    JSON.stringify(summarized(fakeEnv("openai-key"))),
+    JSON.stringify([
+      { provider: "openai", model: "gpt-4.1-mini" },
+    ]),
+  );
+  assertEquals(
+    JSON.stringify(summarized(fakeEnv("openai-key", false, "deepseek-key", {
+      MCO_AI_PROVIDER_ORDER: "unknown, openai, deepseek, openai",
+    }))),
+    JSON.stringify([
+      { provider: "openai", model: "gpt-4.1-mini" },
+      { provider: "deepseek", model: "deepseek-v4-flash" },
+    ]),
+  );
+  assertEquals(
+    JSON.stringify(summarized(fakeEnv("openai-key", false, "deepseek-key", {
+      MCO_AI_PROVIDER_ORDER: "deepseek,openai",
+      MCO_DEEPSEEK_MODEL: "deepseek-explicit-model",
+      MCO_OPENAI_MODEL: "openai-explicit-model",
+    }))),
+    JSON.stringify([
+      { provider: "deepseek", model: "deepseek-explicit-model" },
+      { provider: "openai", model: "openai-explicit-model" },
+    ]),
+  );
 });
 
 Deno.test("regenerate_day retries a failed draft day and keeps the other six cards", async () => {
@@ -1762,6 +1814,7 @@ function fakeEnv(
   openAIKey?: string,
   allowMockRequest = false,
   deepSeekKey?: string,
+  overrides: Record<string, string> = {},
 ): { get: (name: string) => string | undefined } {
   const values: Record<string, string> = {
     SUPABASE_URL: "http://127.0.0.1:54321",
@@ -1776,6 +1829,7 @@ function fakeEnv(
   if (allowMockRequest) {
     values.MCO_ALLOW_AI_MOCK_REQUEST = "1";
   }
+  Object.assign(values, overrides);
   return { get: (name) => values[name] };
 }
 
@@ -2730,6 +2784,10 @@ Deno.test("regenerate_day emits accepted/started/completed lifecycle logs with g
   assertEquals(started.status, "running");
   assertEquals(started.day_index, 2);
   assertEquals(started.day_guidance_present, true);
+  assertEquals(
+    recordValue(started.stage_timings_ms).text_generation ?? null,
+    null,
+  );
 
   const completed = findLifecycleLog(
     captured.logs,
@@ -2746,6 +2804,24 @@ Deno.test("regenerate_day emits accepted/started/completed lifecycle logs with g
     typeof completed.duration_ms === "number" && completed.duration_ms >= 0,
     "duration_ms should be a non-negative number",
   );
+  const stageTimings = recordValue(completed.stage_timings_ms);
+  for (
+    const stage of [
+      "text_generation",
+      "validation",
+      "persistence",
+      "storyboard_visuals",
+      "finalization",
+      "total",
+    ]
+  ) {
+    const duration = stageTimings[stage];
+    assert(
+      typeof duration === "number" && duration >= 0,
+      `${stage} should be a non-negative number`,
+    );
+  }
+  assertEquals(stageTimings.total, completed.duration_ms);
   assertEquals(completed.day_guidance_present, true);
   assertEquals(completed.day_guidance_chars, guidance.length);
 

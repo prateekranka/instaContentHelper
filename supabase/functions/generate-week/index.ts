@@ -76,6 +76,7 @@ import {
 import {
   runDayGenerationPipeline,
   scheduleSingleDayGeneration,
+  type SingleDayGenerationStageTimings,
   type SingleDayRunnerHost,
   type SingleDayRunnerPreparedGeneration,
 } from "./generation-single-day-runner.ts";
@@ -145,6 +146,7 @@ type GenerationLifecycleLog = {
   scheduled_date: string | null;
   day_index: number | null;
   duration_ms: number | null;
+  stage_timings_ms?: SingleDayGenerationStageTimings;
   day_guidance_present: boolean | null;
   day_guidance_chars: number | null;
 };
@@ -182,7 +184,7 @@ type CreatorRecord = Record<string, unknown> & {
   display_name?: string;
 };
 
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 
 let todayISOProvider: () => string = () =>
@@ -1505,7 +1507,7 @@ function stableGenerationError(error: unknown): string {
   return "invalid_generated_week";
 }
 
-function aiProviderConfigs(env: EnvReader): AIProviderConfig[] {
+export function aiProviderConfigs(env: EnvReader): AIProviderConfig[] {
   const deepSeekKey = env.get("DEEPSEEK_API_KEY")?.trim();
   const openAIKey = env.get("OPENAI_API_KEY")?.trim();
   const deepSeekModel = env.get("MCO_DEEPSEEK_MODEL")?.trim() ||
@@ -1528,7 +1530,7 @@ function aiProviderConfigs(env: EnvReader): AIProviderConfig[] {
       ? { provider: "openai", model: openAIModel, apiKey: openAIKey }
       : undefined,
   };
-  const order = (env.get("MCO_AI_PROVIDER_ORDER") ?? "openai,deepseek")
+  const order = (env.get("MCO_AI_PROVIDER_ORDER") ?? "deepseek,openai")
     .split(",")
     .map((provider) => provider.trim().toLowerCase())
     .filter((provider) => provider.length > 0);
