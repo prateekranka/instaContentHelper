@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
+  ALL_DEVICE_ROLES,
   corsHeaders,
   jsonResponse,
   SupabaseAdminClient,
@@ -11,22 +12,13 @@ import {
   type WeeklyPlanRecord,
   utcTodayDateString,
 } from "./working-plan-selection.ts";
-
-type ReadAction =
-  | "today"
-  | "weekly"
-  | "archive"
-  | "creator_profile"
-  | "intelligence";
+import { canReadAction, isReadAction, type ReadAction } from "./read-permissions.ts";
 
 type ReadContentRequest = {
   action?: ReadAction;
   creator_id?: string;
   today_date?: string;
 };
-
-const ALL_DEVICE_ROLES = ["owner", "editor", "creator", "scout"];
-const ADMIN_ACTIONS = new Set<ReadAction>(["weekly", "intelligence"]);
 
 const DAILY_CARD_SELECT =
   "id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,review_state,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,risk_notes,assumptions,source_note,decision_at,storyboard_thumbnail_assets";
@@ -72,7 +64,7 @@ Deno.serve(async (request) => {
   const authResult = await verifyDeviceSession(
     request,
     admin,
-    ALL_DEVICE_ROLES,
+    [...ALL_DEVICE_ROLES],
   );
   if ("response" in authResult) {
     return authResult.response;
@@ -584,22 +576,6 @@ async function readLibraryRows(
   }
 
   return { rows: rows ?? [] };
-}
-
-function isReadAction(value: string | undefined): value is ReadAction {
-  return value === "today" ||
-    value === "weekly" ||
-    value === "archive" ||
-    value === "creator_profile" ||
-    value === "intelligence";
-}
-
-function canReadAction(role: string, action: ReadAction): boolean {
-  if (!ADMIN_ACTIONS.has(action)) {
-    return role === "owner" || role === "editor" || role === "creator";
-  }
-
-  return role === "owner" || role === "editor";
 }
 
 function normalizedDate(value: string | undefined): string {
