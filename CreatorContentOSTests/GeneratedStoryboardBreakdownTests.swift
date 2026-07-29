@@ -3,92 +3,6 @@ import XCTest
 
 @MainActor
 final class GeneratedStoryboardBreakdownTests: XCTestCase {
-    func testPublishedDailyCardRowsMatchManagerDraftStoryboardIncludingThumbnails() {
-        let assets = [
-            StoryboardThumbnailAsset(
-                rowIndex: 0,
-                promptHash: "hash-0",
-                publicURL: "https://example.com/row-0.jpg",
-                status: "generated"
-            ),
-            StoryboardThumbnailAsset(
-                rowIndex: 1,
-                promptHash: "hash-1",
-                publicURL: "https://example.com/row-1.jpg",
-                status: "generated"
-            )
-        ]
-        let draft = makeCard(
-            sceneList: [
-                ShotScene(number: 1, title: "Talking head hook", duration: "3 sec", symbol: "person.crop.rectangle"),
-                ShotScene(number: 2, title: "Gym b-roll", duration: "4 sec", symbol: "dumbbell")
-            ],
-            shotTimeline: [
-                ProductionTimelineItem(
-                    timestamp: "0-3 sec",
-                    title: "Close-up talking head",
-                    detail: "Hook frame.",
-                    shot: "Close-up",
-                    videoPortion: "Direct eye contact.",
-                    voiceover: nil,
-                    onScreenText: nil,
-                    placement: nil,
-                    durationSeconds: 3
-                ),
-                ProductionTimelineItem(
-                    timestamp: "3-7 sec",
-                    title: "Wide gym shot",
-                    detail: "Walk-in.",
-                    shot: "B-roll",
-                    videoPortion: "Gym entrance.",
-                    voiceover: nil,
-                    onScreenText: nil,
-                    placement: nil,
-                    durationSeconds: 4
-                )
-            ],
-            voiceoverTimeline: [
-                ProductionTimelineItem(
-                    timestamp: "0-3 sec",
-                    title: "Hook line",
-                    detail: "",
-                    voiceover: "The biggest lie after 40."
-                ),
-                ProductionTimelineItem(
-                    timestamp: "3-7 sec",
-                    title: "Belief line",
-                    detail: "",
-                    voiceover: "I believed that too."
-                )
-            ],
-            onScreenTextTimeline: [
-                ProductionTimelineItem(
-                    timestamp: "0-3 sec",
-                    title: "Hook text",
-                    detail: "",
-                    onScreenText: "THE BIGGEST LIE"
-                ),
-                ProductionTimelineItem(
-                    timestamp: "3-7 sec",
-                    title: "Belief text",
-                    detail: "",
-                    onScreenText: "I BELIEVED THAT TOO"
-                )
-            ],
-            storyboardThumbnailAssets: assets
-        )
-        let published = draft.dailyCard(completionState: nil)
-        let draftRows = GeneratedStoryboardBreakdown.rows(for: draft)
-        let publishedRows = GeneratedStoryboardBreakdown.rows(for: published)
-
-        XCTAssertEqual(published.storyboardThumbnailAssets, assets)
-        XCTAssertEqual(publishedRows.count, draftRows.count)
-        XCTAssertEqual(publishedRows.map(\.visualShot), draftRows.map(\.visualShot))
-        XCTAssertEqual(publishedRows.map(\.audioDialogue), draftRows.map(\.audioDialogue))
-        XCTAssertEqual(publishedRows.map(\.thumbnailURL), draftRows.map(\.thumbnailURL))
-        XCTAssertEqual(publishedRows[0].thumbnailURL?.absoluteString, "https://example.com/row-0.jpg")
-    }
-
     func testRowsAlignSceneShotVoiceoverAndOnScreenTextByIndex() {
         let card = makeCard(
             sceneList: [
@@ -258,6 +172,80 @@ final class GeneratedStoryboardBreakdownTests: XCTestCase {
 
         XCTAssertNil(rows[0].thumbnailURL)
         XCTAssertEqual(rows[1].thumbnailURL, thumbnailURL)
+    }
+
+    func testDailyCardRowsUseVoiceoverTimelineNotSingleScriptBlob() {
+        let card = DailyCard.raceWeekToday
+        let rows = GeneratedStoryboardBreakdown.rows(for: card)
+
+        XCTAssertEqual(rows.count, 4)
+        XCTAssertEqual(rows[0].timecode, "0-3 sec")
+        XCTAssertEqual(rows[1].timecode, "3-7 sec")
+        XCTAssertEqual(rows[2].timecode, "7-10 sec")
+        XCTAssertEqual(rows[3].timecode, "10-12 sec")
+        XCTAssertEqual(rows[0].audioDialogue, "Race week starts with the shoes by the door.")
+        XCTAssertEqual(rows[3].audioDialogue, "One steady stride is enough for today.")
+    }
+
+    func testShootFolioResolvesPlanGeminiThumbnailsWhenTodayCardMissingThem() {
+        let assets = Self.sampleThumbnailAssets(forRowCount: 2)
+        let services = AppServices.fixtureBacked()
+        var today = DailyCard.raceWeekToday
+        today.storyboardThumbnailAssets = nil
+        services.todayCard = today
+
+        var planCard = GeneratedDailyCardDraft.storyboardBreakdownFixture
+        planCard.scheduledDate = today.scheduledDate ?? "2026-06-05"
+        planCard.storyboardThumbnailAssets = assets
+        services.dayBriefGeneratedCards[planCard.scheduledDate] = planCard
+
+        let folioCard = services.todayShootFolioCard
+        XCTAssertEqual(folioCard.storyboardThumbnailAssets, assets)
+        XCTAssertTrue(services.hydrateTodayStoryboardThumbnailsFromPlanPackage())
+        XCTAssertEqual(services.todayCard.storyboardThumbnailAssets, assets)
+    }
+
+    func testDomainCardPreservesStoryboardThumbnailsAndVoiceoverTimeline() throws {
+        let thumbnailURL = "https://example.com/storyboard/row-0.jpg"
+        let json = """
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "workspace_id": "22222222-2222-4222-8222-222222222222",
+          "creator_id": "33333333-3333-4333-8333-333333333333",
+          "weekly_plan_id": "44444444-4444-4444-8444-444444444444",
+          "scheduled_date": "2026-07-21",
+          "status": "published",
+          "title": "Thumbnails stay on Today",
+          "scene_list": [
+            { "number": 1, "title": "Hook", "duration": "3 sec", "symbol": "sparkles" },
+            { "number": 2, "title": "Proof", "duration": "3 sec", "symbol": "figure.run" }
+          ],
+          "voiceover_timeline": [
+            { "timestamp": "0-3 sec", "title": "Hook", "detail": "", "voiceover": "Line one." },
+            { "timestamp": "3-6 sec", "title": "Proof", "detail": "", "voiceover": "Line two." }
+          ],
+          "hashtags": [],
+          "storyboard_thumbnail_assets": [
+            {
+              "row_index": 0,
+              "prompt_hash": "hash0",
+              "public_url": "\(thumbnailURL)",
+              "status": "generated"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let row = try JSONDecoder().decode(SupabaseDailyCardRow.self, from: json)
+        let card = row.domainCard()
+        let rows = GeneratedStoryboardBreakdown.rows(for: card)
+
+        XCTAssertEqual(card.storyboardThumbnailAssets?.count, 1)
+        XCTAssertEqual(card.voiceoverTimeline?.count, 2)
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].thumbnailURL?.absoluteString, thumbnailURL)
+        XCTAssertEqual(rows[0].audioDialogue, "Line one.")
+        XCTAssertEqual(rows[1].audioDialogue, "Line two.")
     }
 
     func testThumbnailRequestEncodesRevisionInstructions() throws {

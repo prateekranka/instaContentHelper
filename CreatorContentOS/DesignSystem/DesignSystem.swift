@@ -24,116 +24,25 @@ enum MCOTheme {
 enum MCOType {
     static let display = Font.system(size: 42, weight: .regular, design: .serif)
     static let screenTitle = Font.system(size: 34, weight: .regular, design: .serif)
+    static let heroTitle = Font.system(size: 31, weight: .regular, design: .serif)
     static let cardTitle = Font.system(size: 25, weight: .regular, design: .serif)
+    static let dateLine = Font.system(size: 17, weight: .regular, design: .serif)
+    static let editorialHeadline = Font.system(size: 18, weight: .regular, design: .serif)
     static let headline = Font.system(size: 18, weight: .semibold)
     static let body = Font.system(size: 16, weight: .regular)
+    static let bodyEmphasis = Font.system(size: 16, weight: .semibold)
+    static let bodyMedium = Font.system(size: 16, weight: .medium)
     static let bodySmall = Font.system(size: 14, weight: .regular)
     static let caption = Font.system(size: 12, weight: .regular)
+    static let captionEmphasis = Font.system(size: 12, weight: .semibold)
+    static let captionMedium = Font.system(size: 12, weight: .medium)
     static let tinyLabel = Font.system(size: 11, weight: .semibold)
-
-    /// Size-specific tracking (Apple: tighten large display, leave body near 0).
-    static let displayTracking: CGFloat = -0.84
-    static let screenTitleTracking: CGFloat = -0.5
-}
-
-/// Motion tokens from Emil Kowalski's easing vocabulary, mapped to SwiftUI.
-enum MCOMotion {
-    /// Strong ease-out for UI enter/response: cubic-bezier(0.23, 1, 0.32, 1)
-    static func easeOut(duration: Double = 0.2) -> Animation {
-        .timingCurve(0.23, 1, 0.32, 1, duration: duration)
-    }
-
-    /// Press feedback: 100–160ms ease-out.
-    static let press = easeOut(duration: 0.14)
-
-    /// Crossfade / tab content: under 300ms.
-    static let crossfade = easeOut(duration: 0.18)
-
-    /// iOS-like drawer curve: cubic-bezier(0.32, 0.72, 0, 1)
-    static func sheet(duration: Double = 0.32) -> Animation {
-        .timingCurve(0.32, 0.72, 0, 1, duration: duration)
-    }
-
-    /// Critically damped spring for pill / layout (no bounce).
-    static let pill = Animation.spring(duration: 0.28, bounce: 0)
-
-    /// Banner enter (slightly elegant).
-    static let bannerEnter = easeOut(duration: 0.2)
-
-    /// Banner exit — faster than enter (asymmetric).
-    static let bannerExit = easeOut(duration: 0.15)
-
-    static func preferential(_ reduceMotion: Bool, _ animation: Animation) -> Animation {
-        reduceMotion ? .easeOut(duration: 0.12) : animation
-    }
-}
-
-/// Touch-down press scale. Subtle (0.95–0.98) so daily actions never feel bouncy.
-struct PressableButtonStyle: ButtonStyle {
-    var pressedScale: CGFloat = 0.97
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? pressedScale : 1)
-            .animation(
-                reduceMotion ? .easeOut(duration: 0.08) : MCOMotion.press,
-                value: configuration.isPressed
-            )
-    }
-}
-
-extension ButtonStyle where Self == PressableButtonStyle {
-    static var pressable: PressableButtonStyle { PressableButtonStyle() }
-
-    static func pressable(scale: CGFloat) -> PressableButtonStyle {
-        PressableButtonStyle(pressedScale: scale)
-    }
-}
-
-/// Sliding oxblood pill for filter/section bars (clip-style active fill).
-struct FolioPillBar<Selection: Hashable>: View {
-    let items: [(id: Selection, title: String)]
-    @Binding var selection: Selection
-    var height: CGFloat = 34
-    var font: Font = MCOType.bodySmall
-    @Namespace private var pillNamespace
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: MCOSpace.s) {
-                ForEach(items, id: \.id) { item in
-                    let isSelected = selection == item.id
-                    Button {
-                        withAnimation(MCOMotion.preferential(reduceMotion, MCOMotion.pill)) {
-                            selection = item.id
-                        }
-                    } label: {
-                        Text(item.title)
-                            .font(font)
-                            .foregroundStyle(isSelected ? MCOTheme.Color.paperRaised : MCOTheme.Color.ink)
-                            .padding(.horizontal, MCOSpace.s)
-                            .frame(height: height)
-                            .background {
-                                if isSelected {
-                                    Capsule()
-                                        .fill(MCOTheme.Color.oxblood)
-                                        .matchedGeometryEffect(id: "folio-pill", in: pillNamespace)
-                                } else {
-                                    Capsule()
-                                        .fill(MCOTheme.Color.paperRaised.opacity(0.62))
-                                }
-                            }
-                            .overlay {
-                                Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(.pressable(scale: 0.98))
-                }
-            }
-        }
-    }
+    static let iconInline = Font.system(size: 16, weight: .medium)
+    static let iconCompact = Font.system(size: 14, weight: .semibold)
+    static let iconRow = Font.system(size: 22, weight: .medium)
+    static let iconEmpty = Font.system(size: 28, weight: .regular)
+    static let iconLarge = Font.system(size: 30, weight: .regular)
+    static let iconHeroMark = Font.system(size: 96, weight: .light)
 }
 
 enum MCOSpace {
@@ -226,27 +135,8 @@ struct JournalBlock<Content: View>: View {
     }
 }
 
-struct SectionTitle: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.xs) {
-            Text(title)
-                .font(.system(size: 26, weight: .regular, design: .serif))
-                .foregroundStyle(MCOTheme.Color.ink)
-            Text(subtitle)
-                .font(MCOType.bodySmall)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-        }
-        .padding(.top, MCOSpace.s)
-    }
-}
-
 struct GlassCommandBar<Content: View>: View {
     @ViewBuilder let content: Content
-    @State private var materialized = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GlassEffectContainer(spacing: MCOSpace.s) {
@@ -259,13 +149,6 @@ struct GlassCommandBar<Content: View>: View {
                 .regular.tint(MCOGlass.commandTint),
                 in: .rect(cornerRadius: MCOShape.commandRadius)
             )
-        }
-        .scaleEffect(materialized ? 1 : 0.97)
-        .opacity(materialized ? 1 : 0)
-        .onAppear {
-            withAnimation(MCOMotion.preferential(reduceMotion, MCOMotion.easeOut(duration: 0.22))) {
-                materialized = true
-            }
         }
     }
 }
@@ -281,7 +164,7 @@ struct FloatingIconButton: View {
                 .font(.system(size: 16, weight: .medium))
                 .frame(width: 42, height: 42)
         }
-        .buttonStyle(.pressable)
+        .buttonStyle(.plain)
         .foregroundStyle(MCOTheme.Color.ink)
         .glassEffect(.regular.interactive(), in: .circle)
         .accessibilityLabel(label)
@@ -314,7 +197,7 @@ struct PrimaryActionButton: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
-        .buttonStyle(.pressable)
+        .buttonStyle(.plain)
     }
 }
 
@@ -336,7 +219,7 @@ struct SecondaryActionButton: View {
                         .stroke(MCOTheme.Color.hairline, lineWidth: 1)
                 }
         }
-        .buttonStyle(.pressable)
+        .buttonStyle(.plain)
     }
 }
 
@@ -422,47 +305,29 @@ struct Hairline: View {
 struct ActionFeedbackBanner: View {
     let message: String?
     var tone: ChipTone = .info
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Group {
-            if let message = message?.nilIfBlank {
-                HStack(alignment: .center, spacing: MCOSpace.s) {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 15, weight: .semibold))
-                    Text(message)
-                        .font(MCOType.bodySmall)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: MCOSpace.s)
-                }
-                .foregroundStyle(tone.foreground)
-                .padding(.horizontal, MCOSpace.m)
-                .padding(.vertical, MCOSpace.s)
-                .background(tone.background)
-                .clipShape(RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
-                        .stroke(tone.stroke, lineWidth: 1)
-                }
-                .accessibilityElement(children: .combine)
-                .transition(bannerTransition)
+        if let message = message?.nilIfBlank {
+            HStack(alignment: .center, spacing: MCOSpace.s) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold))
+                Text(message)
+                    .font(MCOType.bodySmall)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: MCOSpace.s)
             }
+            .foregroundStyle(tone.foreground)
+            .padding(.horizontal, MCOSpace.m)
+            .padding(.vertical, MCOSpace.s)
+            .background(tone.background)
+            .clipShape(RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
+                    .stroke(tone.stroke, lineWidth: 1)
+            }
+            .accessibilityElement(children: .combine)
         }
-        .animation(
-            reduceMotion ? .easeOut(duration: 0.12) : MCOMotion.bannerEnter,
-            value: message
-        )
-    }
-
-    private var bannerTransition: AnyTransition {
-        if reduceMotion {
-            return .opacity
-        }
-        return .asymmetric(
-            insertion: .opacity.combined(with: .offset(y: 8)),
-            removal: .opacity.combined(with: .offset(y: 4))
-        )
     }
 
     private var systemImage: String {
@@ -478,25 +343,5 @@ struct ActionFeedbackBanner: View {
         case .danger:
             "xmark.octagon.fill"
         }
-    }
-}
-
-/// Soft content swap for package tabs — opacity + slight scale; blur when motion allowed.
-struct FolioContentSwap<Content: View>: View {
-    let identity: AnyHashable
-    @ViewBuilder let content: Content
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        content
-            .id(identity)
-            .transition(
-                reduceMotion
-                    ? .opacity
-                    : .asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
-                        removal: .opacity
-                    )
-            )
     }
 }

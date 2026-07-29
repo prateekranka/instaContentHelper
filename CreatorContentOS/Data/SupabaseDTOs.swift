@@ -321,9 +321,9 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             scenes: sceneList.enumerated().map { index, scene in
                 scene.domainScene(fallbackNumber: index + 1)
             },
-            shotTimeline: shotTimeline,
-            voiceoverTimeline: voiceoverTimeline,
-            onScreenTextTimeline: onScreenTextTimeline,
+            shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
+            voiceoverTimeline: voiceoverTimeline.isEmpty ? nil : voiceoverTimeline,
+            onScreenTextTimeline: onScreenTextTimeline.isEmpty ? nil : onScreenTextTimeline,
             completionState: CompletionState(supabaseStatus: status),
             script: script,
             noVoiceoverVersion: noVoiceoverVersion,
@@ -340,7 +340,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             creatorFitScore: creatorFitScore,
             riskNotes: riskNotes?.compactMap(\.displayText),
             assumptions: assumptions?.compactMap(\.displayText),
-            storyboardThumbnailAssets: storyboardThumbnailAssets
+            storyboardThumbnailAssets: storyboardThumbnailAssets.isEmpty ? nil : storyboardThumbnailAssets
         )
     }
 
@@ -351,7 +351,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             status: Self.draftReviewStatus(dbStatus: status, reviewState: reviewState),
             title: title,
             whyToday: whyToday ?? growthJob ?? "Prepared for this day.",
-            growthJob: growthJob ?? whyToday ?? "Support this content arc.",
+            growthJob: growthJob ?? whyToday ?? "Support this week’s content arc.",
             contentPillar: contentPillar ?? sourceNote ?? "Pattern",
             shootability: shootability ?? "Not specified",
             estimatedShootMinutes: estimatedShootMinutes ?? 0,
@@ -520,7 +520,7 @@ struct SupabaseWeeklySetupRow: Codable, Hashable, Sendable {
         }
 
         appendSummary(
-            title: "Creator routine",
+            title: "Weekly routine",
             values: workoutRaceSchedule,
             fallback: nil,
             into: &lines
@@ -892,25 +892,306 @@ struct SupabaseArchiveEntryUpsert: Encodable, Sendable {
     }
 }
 
-struct SupabasePublishDayRequest: Encodable, Sendable {
+struct SupabasePublishWeekRequest: Encodable, Sendable {
     var creatorID: UUID
-    var dailyCardID: UUID
+    var memberID: UUID
+    var weeklyPlanID: UUID
+    var weekStartDate: String
+    var strategySummary: String
+    var days: [SupabasePublishWeekDayRequest]?
+    var draftDailyCards: [SupabaseDraftDailyCardPublishRequest]?
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
-        case dailyCardID = "daily_card_id"
+        case memberID = "member_id"
+        case weeklyPlanID = "weekly_plan_id"
+        case weekStartDate = "week_start_date"
+        case strategySummary = "strategy_summary"
+        case days
+        case draftDailyCards = "draft_daily_cards"
+    }
+
+    init(plan: WeeklyPlan, generatedDraft: GeneratedWeekDraft?, context: WorkspaceContext) {
+        creatorID = context.creatorID
+        memberID = context.memberID
+        weeklyPlanID = plan.id
+        weekStartDate = plan.weekStartDate
+            ?? plan.days.compactMap(\.scheduledDate).first
+            ?? SupabaseDateFormatting.todayDateString()
+        strategySummary = generatedDraft?.strategySummary ?? plan.readinessSummary
+
+        if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
+            days = nil
+            draftDailyCards = generatedDraft.dailyCards.map {
+                SupabaseDraftDailyCardPublishRequest(card: $0)
+            }
+        } else {
+            days = plan.days.map { SupabasePublishWeekDayRequest(day: $0) }
+            draftDailyCards = nil
+        }
     }
 }
 
-struct SupabasePublishDayResponse: Decodable, Hashable, Sendable {
+struct SupabasePublishWeekDayRequest: Encodable, Sendable {
+    var id: UUID
+    var scheduledDate: String
+    var title: String
+    var whyToday: String
+    var source: String
+    var state: String
+    var shootability: String
+    var estimatedShootMinutes: Int
+    var sceneList: [SupabasePublishSceneRequest]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case scheduledDate = "scheduled_date"
+        case title
+        case whyToday = "why_today"
+        case source
+        case state
+        case shootability
+        case estimatedShootMinutes = "estimated_shoot_minutes"
+        case sceneList = "scene_list"
+    }
+
+    init(day: WeeklyDay) {
+        id = day.id
+        scheduledDate = day.scheduledDate ?? SupabaseDateFormatting.todayDateString()
+        title = day.title
+        whyToday = day.reason
+        source = day.source.rawValue.lowercased()
+        state = day.state.rawValue
+        shootability = switch day.state {
+        case .planned: "easy"
+        case .backup: "backup"
+        case .open: "open"
+        }
+        estimatedShootMinutes = switch day.state {
+        case .planned: 12
+        case .backup: 8
+        case .open: 0
+        }
+        sceneList = [
+            SupabasePublishSceneRequest(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
+            SupabasePublishSceneRequest(number: 2, title: day.title, duration: "5 sec", symbol: "figure.run"),
+            SupabasePublishSceneRequest(number: 3, title: "One useful takeaway", duration: "4 sec", symbol: "text.quote")
+        ]
+    }
+}
+
+struct SupabasePublishSceneRequest: Encodable, Sendable {
+    var number: Int
+    var title: String
+    var duration: String
+    var symbol: String
+}
+
+struct SupabasePublishWeekResponse: Decodable, Hashable, Sendable {
+    var weeklyPlanID: UUID
+    var dailyCardCount: Int
+    var isSoftLocked: Bool
+    var publishedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case weeklyPlanID = "weekly_plan_id"
+        case dailyCardCount = "daily_card_count"
+        case isSoftLocked = "is_soft_locked"
+        case publishedAt = "published_at"
+    }
+}
+
+struct SupabaseMakeDayAvailableRequest: Encodable, Sendable {
+    var creatorID: UUID
+    var scheduledDate: String
+    var dailyCardID: UUID?
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case scheduledDate = "scheduled_date"
+        case dailyCardID = "daily_card_id"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(creatorID, forKey: .creatorID)
+        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encodeIfPresent(dailyCardID, forKey: .dailyCardID)
+    }
+}
+
+struct SupabaseMakeDayAvailableResponse: Decodable, Hashable, Sendable {
     var dailyCardID: UUID
     var scheduledDate: String
-    var publishedAt: String
+    var status: String
+    var weeklyPlanID: UUID
+    var weekIsSoftLocked: Bool
 
     enum CodingKeys: String, CodingKey {
         case dailyCardID = "daily_card_id"
         case scheduledDate = "scheduled_date"
-        case publishedAt = "published_at"
+        case status
+        case weeklyPlanID = "weekly_plan_id"
+        case weekIsSoftLocked = "week_is_soft_locked"
+    }
+}
+
+struct SupabaseUnpublishDayRequest: Encodable, Sendable {
+    var creatorID: UUID
+    var scheduledDate: String
+    var dailyCardID: UUID?
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case scheduledDate = "scheduled_date"
+        case dailyCardID = "daily_card_id"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(creatorID, forKey: .creatorID)
+        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encodeIfPresent(dailyCardID, forKey: .dailyCardID)
+    }
+}
+
+struct SupabaseUnpublishDayResponse: Decodable, Hashable, Sendable {
+    var dailyCardID: UUID
+    var scheduledDate: String
+    var status: String
+    var previousStatus: String
+    var clearedLiveDecision: Bool
+    var archiveRetained: Bool
+    var weeklyPlanID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case dailyCardID = "daily_card_id"
+        case scheduledDate = "scheduled_date"
+        case status
+        case previousStatus = "previous_status"
+        case clearedLiveDecision = "cleared_live_decision"
+        case archiveRetained = "archive_retained"
+        case weeklyPlanID = "weekly_plan_id"
+    }
+}
+
+struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
+    var creatorID: UUID
+    var scheduledDate: String
+    var dailyCardID: UUID?
+    var package: ReadyDayPackageUpdate
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case scheduledDate = "scheduled_date"
+        case dailyCardID = "daily_card_id"
+        case package
+    }
+
+    private enum PackageCodingKeys: String, CodingKey {
+        case title
+        case whyToday = "why_today"
+        case caption
+        case script
+        case backupStory = "backup_story"
+        case backupCaptionOnly = "backup_caption_only"
+        case shootability
+        case estimatedShootMinutes = "estimated_shoot_minutes"
+        case sceneList = "scene_list"
+    }
+
+    private enum SceneCodingKeys: String, CodingKey {
+        case number
+        case title
+        case duration
+        case symbol
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(creatorID, forKey: .creatorID)
+        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encodeIfPresent(dailyCardID, forKey: .dailyCardID)
+
+        var packageContainer = container.nestedContainer(keyedBy: PackageCodingKeys.self, forKey: .package)
+        try packageContainer.encodeIfPresent(package.title, forKey: .title)
+        try packageContainer.encodeIfPresent(package.whyToday, forKey: .whyToday)
+        try packageContainer.encodeIfPresent(package.caption, forKey: .caption)
+        try packageContainer.encodeIfPresent(package.script, forKey: .script)
+        try packageContainer.encodeIfPresent(package.backupStory, forKey: .backupStory)
+        try packageContainer.encodeIfPresent(package.backupCaptionOnly, forKey: .backupCaptionOnly)
+        try packageContainer.encodeIfPresent(package.shootability, forKey: .shootability)
+        try packageContainer.encodeIfPresent(package.estimatedShootMinutes, forKey: .estimatedShootMinutes)
+        if let scenes = package.sceneList {
+            var scenesContainer = packageContainer.nestedUnkeyedContainer(forKey: .sceneList)
+            for scene in scenes {
+                var sceneContainer = scenesContainer.nestedContainer(keyedBy: SceneCodingKeys.self)
+                try sceneContainer.encode(scene.number, forKey: .number)
+                try sceneContainer.encode(scene.title, forKey: .title)
+                try sceneContainer.encode(scene.duration, forKey: .duration)
+                try sceneContainer.encode(scene.symbol, forKey: .symbol)
+            }
+        }
+    }
+}
+
+struct SupabaseUpdateReadyDayPackageResponse: Decodable, Hashable, Sendable {
+    var dailyCardID: UUID
+    var scheduledDate: String
+    var status: String
+    var weeklyPlanID: UUID
+    var title: String
+    var caption: String?
+
+    enum CodingKeys: String, CodingKey {
+        case dailyCardID = "daily_card_id"
+        case scheduledDate = "scheduled_date"
+        case status
+        case weeklyPlanID = "weekly_plan_id"
+        case title
+        case caption
+    }
+}
+
+struct SupabaseRuntimeHealthProbe: Decodable, Hashable, Sendable {
+    var ok: Bool
+    var latencyMs: Int?
+    var detail: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case latencyMs = "latency_ms"
+        case detail
+    }
+}
+
+struct SupabaseRuntimeHealthResponse: Decodable, Hashable, Sendable {
+    var checkedAt: String?
+    var supabase: SupabaseRuntimeHealthProbe
+    var gemini: SupabaseRuntimeHealthProbe
+
+    enum CodingKeys: String, CodingKey {
+        case checkedAt = "checked_at"
+        case supabase
+        case gemini
+    }
+
+    func report(fallbackDate: Date = Date()) -> RuntimeHealthReport {
+        let checkedAtDate: Date = {
+            guard let checkedAt,
+                  let parsed = ISO8601DateFormatter().date(from: checkedAt)
+            else {
+                return fallbackDate
+            }
+            return parsed
+        }()
+        return RuntimeHealthReport(
+            supabaseOK: supabase.ok,
+            geminiOK: gemini.ok,
+            supabaseDetail: supabase.detail,
+            geminiDetail: gemini.detail,
+            checkedAt: checkedAtDate
+        )
     }
 }
 

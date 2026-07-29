@@ -6,9 +6,14 @@ import UIKit
 struct ShootFolioView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var selection: PackageSection = .storyboard
-    @State private var postedPulse = false
+    @Environment(AppState.self) private var appState
+    @State private var selection: PackageSection = .scenes
+    @State private var isEditing = false
+    @State private var draftScenes: [ShotScene] = []
+    @State private var draftScript = ""
+    @State private var saveError: String?
+    /// When true, open directly in scene/script light-edit mode (Today → Edit).
+    var startsInEditingMode: Bool = false
 
     var body: some View {
         EditorialScreen {
@@ -17,61 +22,73 @@ struct ShootFolioView: View {
 
                 if case .ready = services.todayContentState {
                     ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
+                    if let saveError {
+                        ActionFeedbackBanner(message: saveError, tone: .danger)
+                    }
                     sectionTabs
 
-                    ZStack(alignment: .topLeading) {
-                        FolioContentSwap(identity: selection) {
-                            packageContent
+                    switch selection {
+                    case .scenes:
+                        if !isEditing {
+                            sceneProgress
                         }
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        SceneListView(
+                            card: services.todayShootFolioCard,
+                            isEditing: isEditing,
+                            draftScenes: $draftScenes
+                        )
+                    case .script:
+                        ScriptTimelineCopyBlock(
+                            card: services.todayShootFolioCard,
+                            isEditing: isEditing,
+                            draftScript: $draftScript
+                        )
+                    case .caption:
+                        CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "No caption recorded for today.")
+                    case .audio:
+                        CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "No audio notes recorded for today.")
                     }
-                    .animation(
-                        MCOMotion.preferential(reduceMotion, MCOMotion.crossfade),
-                        value: selection
-                    )
                 } else {
                     ShootFolioEmptyState(state: services.todayContentState)
                 }
             }
         } bottomBar: {
-            if selection == .scenes,
-               case .ready = services.todayContentState {
-                GlassCommandBar {
-                    PrimaryActionButton(
-                        title: services.canMarkPosted ? "Mark as posted" : (services.areAllScenesShot ? "All scenes shot" : "Mark all as shot"),
-                        systemImage: services.canMarkPosted ? "paperplane.fill" : (services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal")
-                    ) {
-                        if services.canMarkPosted {
-                            services.markPosted()
-                            postedPulse.toggle()
-                        } else {
-                            services.markAllScenesShot()
+            if case .ready = services.todayContentState {
+                if isEditing {
+                    GlassCommandBar {
+                        PrimaryActionButton(
+                            title: services.isUpdatingReadyDayPackage ? "Saving…" : "Save edits",
+                            systemImage: "checkmark"
+                        ) {
+                            saveEdits()
                         }
+                        .disabled(services.isUpdatingReadyDayPackage || !hasDraftChanges)
+                        .opacity(services.isUpdatingReadyDayPackage || !hasDraftChanges ? 0.48 : 1)
+                        .accessibilityIdentifier("shootFolio.saveEdits")
                     }
-                    .disabled(services.areAllScenesShot && !services.canMarkPosted)
-                    .sensoryFeedback(.success, trigger: postedPulse)
+                } else if selection == .scenes {
+                    GlassCommandBar {
+                        PrimaryActionButton(
+                            title: services.canMarkPosted ? "Mark as posted" : (services.areAllScenesShot ? "All scenes shot" : "Mark all as shot"),
+                            systemImage: services.canMarkPosted ? "paperplane.fill" : (services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal")
+                        ) {
+                            if services.canMarkPosted {
+                                services.markPosted()
+                            } else {
+                                services.markAllScenesShot()
+                            }
+                        }
+                        .disabled(services.areAllScenesShot && !services.canMarkPosted)
+                    }
                 }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    @ViewBuilder
-    private var packageContent: some View {
-        switch selection {
-        case .storyboard:
-            CreatorStoryboardPackageView(card: services.todayCard)
-        case .scenes:
-            VStack(alignment: .leading, spacing: MCOSpace.l) {
-                sceneProgress
-                SceneListView(card: services.todayCard)
+        .onAppear {
+            _ = services.hydrateTodayStoryboardThumbnailsFromPlanPackage()
+            if startsInEditingMode, !isEditing {
+                beginEditing()
             }
-        case .script:
-            CreatorScriptPackageView(card: services.todayCard)
-        case .caption:
-            CreatorCaptionPackageView(card: services.todayCard)
-        case .audio:
-            CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "No audio notes recorded for today.")
         }
     }
 
@@ -79,7 +96,7 @@ struct ShootFolioView: View {
         JournalBlock {
             HStack(alignment: .center, spacing: MCOSpace.m) {
                 Image(systemName: services.areAllScenesShot ? "checkmark.seal.fill" : "target")
-                    .font(.system(size: 24, weight: .medium))
+                    .font(MCOType.cardTitle)
                     .foregroundStyle(services.areAllScenesShot ? MCOTheme.Color.success : MCOTheme.Color.liveBlue)
                     .frame(width: 34)
 
@@ -106,35 +123,69 @@ struct ShootFolioView: View {
         HStack(alignment: .top, spacing: MCOSpace.xs) {
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                 Text("Shoot Folio")
-                    .font(MCOType.headline)
+                    .font(MCOType.screenTitle)
                     .foregroundStyle(MCOTheme.Color.ink)
-                Text(services.todayCard.title.nilIfBlank ?? "Today's shoot")
+                Text(isEditing ? "Editing scenes & script" : (services.todayCard.title.nilIfBlank ?? "Today's shoot"))
                     .font(MCOType.bodySmall)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
             }
-            Spacer()
-            shootFolioMenu
+            Spacer(minLength: MCOSpace.s)
+            if isReady {
+                shootFolioHeaderActions
+            }
         }
     }
 
-    private var shootFolioMenu: some View {
-        Menu {
-            Button {
-                services.lastActionMessage = "Issue noted. Share the screen with the manager if this package looks wrong."
-            } label: {
-                Label("Report issue", systemImage: "exclamationmark.bubble")
+    private var shootFolioHeaderActions: some View {
+        HStack(spacing: MCOSpace.xs) {
+            if isEditing {
+                Button("Cancel") {
+                    cancelEditing()
+                }
+                .font(MCOType.bodySmall)
+                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .padding(.horizontal, MCOSpace.s)
+                .frame(height: 42)
+                .accessibilityIdentifier("shootFolio.cancelEdit")
+            } else {
+                Button {
+                    beginEditing()
+                } label: {
+                    Text("Edit")
+                        .font(MCOType.bodySmall)
+                        .foregroundStyle(MCOTheme.Color.oxblood)
+                        .padding(.horizontal, MCOSpace.s)
+                        .frame(height: 42)
+                        .background(MCOTheme.Color.paperRaised.opacity(0.72), in: Capsule())
+                        .overlay {
+                            Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit today’s scenes and script")
+                .accessibilityIdentifier("shootFolio.edit")
             }
-            .disabled(!isReady)
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 16, weight: .medium))
-                .frame(width: 42, height: 42)
-                .foregroundStyle(MCOTheme.Color.ink)
-                .glassEffect(.regular.interactive(), in: .circle)
+
+            Menu {
+                NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
+                    Label("Plan", systemImage: "calendar")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(MCOType.iconInline)
+                    .frame(width: 42, height: 42)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Shoot Folio options")
+            .accessibilityIdentifier("shootFolio.overflow")
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .accessibilityLabel("Shoot Folio options")
+    }
+
+    private var planDateForReadyCard: String {
+        services.todayCard.scheduledDate?.nilIfBlank ?? services.currentTodayDateString
     }
 
     private var isReady: Bool {
@@ -145,79 +196,72 @@ struct ShootFolioView: View {
         }
     }
 
-    private var sectionTabs: some View {
-        FolioPillBar(
-            items: PackageSection.allCases.map { ($0, $0.rawValue) },
-            selection: $selection,
-            height: 34,
-            font: MCOType.bodySmall
-        )
+    private var hasDraftChanges: Bool {
+        draftScenes != services.todayCard.scenes
+            || draftScript != (services.todayCard.script ?? "")
     }
-}
 
-/// Read-only storyboard package for creators — same Gemini visuals and row
-/// breakdown as the manager Daily preview, without edit/refresh controls.
-struct CreatorStoryboardPackageView: View {
-    let card: DailyCard
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.m) {
-            if rows.isEmpty {
-                JournalBlock {
-                    VStack(alignment: .leading, spacing: MCOSpace.s) {
-                        Text("Storyboard")
-                            .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.oxblood)
-                        Text("This published day does not include a storyboard yet.")
+    private var sectionTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: MCOSpace.s) {
+                ForEach(PackageSection.allCases) { section in
+                    Button {
+                        selection = section
+                    } label: {
+                        Text(section.rawValue)
                             .font(MCOType.bodySmall)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .foregroundStyle(selection == section ? MCOTheme.Color.paperRaised : MCOTheme.Color.ink)
+                            .padding(.horizontal, MCOSpace.s)
+                            .frame(height: 34)
+                            .background(selection == section ? MCOTheme.Color.oxblood : MCOTheme.Color.paperRaised.opacity(0.62))
+                            .clipShape(Capsule())
+                            .overlay {
+                                Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                            }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                JournalBlock {
-                    VStack(alignment: .leading, spacing: MCOSpace.s) {
-                        HStack(spacing: MCOSpace.s) {
-                            Image(systemName: "rectangle.stack.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("Storyboard")
-                                .font(MCOType.tinyLabel)
-                            Spacer(minLength: MCOSpace.s)
-                            Text(durationLabel)
-                                .font(MCOType.caption)
-                        }
-                        .foregroundStyle(MCOTheme.Color.paperRaised)
-                        .padding(.horizontal, MCOSpace.s)
-                        .frame(minHeight: 38)
-                        .background(MCOTheme.Color.ink, in: RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
-
-                        Text(card.effectiveHook?.nilIfBlank ?? card.title)
-                            .font(MCOType.headline)
-                            .foregroundStyle(MCOTheme.Color.ink)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        GeneratedStoryboardTable(rows: rows)
-
-                        if let filmingTip = card.postInstructions?.nilIfBlank {
-                            GeneratedStoryboardTip(text: filmingTip)
-                        }
-                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
-        .accessibilityIdentifier("today.shootFolio.storyboard")
     }
 
-    private var rows: [GeneratedStoryboardBreakdownRow] {
-        GeneratedStoryboardBreakdown.rows(for: card)
-    }
-
-    private var durationLabel: String {
-        if let seconds = SceneTiming.totalSeconds(for: card.scenes), seconds > 0 {
-            return "\(seconds)s"
+    private func beginEditing() {
+        draftScenes = services.todayCard.scenes
+        draftScript = services.todayCard.script ?? ""
+        saveError = nil
+        isEditing = true
+        if selection != .scenes && selection != .script {
+            selection = .scenes
         }
-        return "\(rows.count) scenes"
+    }
+
+    private func cancelEditing() {
+        draftScenes = services.todayCard.scenes
+        draftScript = services.todayCard.script ?? ""
+        saveError = nil
+        isEditing = false
+    }
+
+    private func saveEdits() {
+        let dateString = planDateForReadyCard
+        let scenes = draftScenes
+        let script = draftScript
+        Task { @MainActor in
+            do {
+                _ = try await services.updateReadyDayPackage(
+                    scheduledDate: dateString,
+                    package: ReadyDayPackageUpdate(
+                        script: script,
+                        sceneList: scenes
+                    )
+                )
+                saveError = nil
+                isEditing = false
+            } catch {
+                saveError = services.lastReadyDayPackageEditError
+                    ?? error.localizedDescription
+            }
+        }
     }
 }
 
@@ -228,7 +272,7 @@ private struct ShootFolioEmptyState: View {
         JournalBlock {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 Image(systemName: "bookmark.slash")
-                    .font(.system(size: 30, weight: .regular))
+                    .font(MCOType.iconLarge)
                     .foregroundStyle(MCOTheme.Color.brass)
                 Text("No Shoot Folio yet")
                     .font(MCOType.headline)
@@ -257,53 +301,97 @@ private struct ShootFolioEmptyState: View {
 struct SceneListView: View {
     @Environment(AppServices.self) private var services
     let card: DailyCard
+    var isEditing: Bool = false
+    @Binding var draftScenes: [ShotScene]
+
+    init(
+        card: DailyCard,
+        isEditing: Bool = false,
+        draftScenes: Binding<[ShotScene]> = .constant([])
+    ) {
+        self.card = card
+        self.isEditing = isEditing
+        self._draftScenes = draftScenes
+    }
 
     var body: some View {
         VStack(spacing: MCOSpace.m) {
-            ForEach(Array(card.scenes.enumerated()), id: \.element.id) { index, scene in
-                let row = storyboardRows[safe: index]
-                NavigationLink {
-                    SceneDetailView(card: card, scene: scene)
-                } label: {
+            if isEditing {
+                ForEach($draftScenes) { $scene in
                     JournalBlock {
-                        VStack(alignment: .leading, spacing: MCOSpace.s) {
-                            HStack(alignment: .top, spacing: MCOSpace.s) {
-                                FolioStoryboardThumbnail(url: row?.thumbnailURL, height: 72)
-
-                                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                                    Text("SCENE \(String(format: "%02d", scene.number))")
-                                        .font(MCOType.tinyLabel)
-                                        .foregroundStyle(MCOTheme.Color.oxblood)
-                                    Text(scene.title)
-                                        .font(MCOType.headline)
-                                        .foregroundStyle(MCOTheme.Color.ink)
-                                    Text(row?.timecode ?? scene.duration)
-                                        .font(MCOType.caption)
-                                        .foregroundStyle(MCOTheme.Color.inkMuted)
-                                }
-                                Spacer(minLength: MCOSpace.s)
-                                StatusChip(
-                                    text: services.isSceneShot(scene) ? "Shot" : (row?.timecode ?? scene.duration),
-                                    tone: services.isSceneShot(scene) ? .ready : .info
-                                )
-                                .scaleEffect(services.isSceneShot(scene) ? 1 : 0.98)
-                                .animation(MCOMotion.press, value: services.isSceneShot(scene))
-                            }
-
-                            FolioDetailLine(title: "What to capture", text: SceneGuidance.capture(for: scene, at: index, in: card))
-
-                            if let text = SceneGuidance.onScreenText(at: index, in: card) {
-                                FolioDetailLine(title: "On-screen text", text: text)
-                            }
-
-                            FolioDetailLine(title: "Example", text: SceneGuidance.contextExample(for: scene, in: card))
-                        }
+                        editableSceneRow(scene: $scene)
                     }
                 }
-                .buttonStyle(.pressable(scale: 0.985))
-                .accessibilityLabel(
-                    "Scene \(scene.number), \(scene.title), \(row?.timecode ?? scene.duration), \(services.isSceneShot(scene) ? "shot" : "not shot")"
-                )
+            } else {
+                ForEach(Array(card.scenes.enumerated()), id: \.element.id) { index, scene in
+                    NavigationLink {
+                        SceneDetailView(card: card, scene: scene)
+                    } label: {
+                        JournalBlock {
+                            readOnlySceneRow(scene: scene, index: index)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Scene \(scene.number), \(scene.title), \(timecode(for: index, scene: scene)), \(services.isSceneShot(scene) ? "shot" : "not shot")")
+                }
+            }
+        }
+    }
+
+    private func editableSceneRow(scene: Binding<ShotScene>) -> some View {
+        VStack(alignment: .leading, spacing: MCOSpace.s) {
+            Text("SCENE \(String(format: "%02d", scene.wrappedValue.number))")
+                .font(MCOType.tinyLabel)
+                .foregroundStyle(MCOTheme.Color.oxblood)
+            TextField("Scene title", text: scene.title)
+                .font(MCOType.headline)
+                .foregroundStyle(MCOTheme.Color.ink)
+                .textFieldStyle(.plain)
+                .accessibilityIdentifier("shootFolio.scene.\(scene.wrappedValue.number).title")
+            TextField("Duration (e.g. 3 sec)", text: scene.duration)
+                .font(MCOType.bodySmall)
+                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .textFieldStyle(.plain)
+                .accessibilityIdentifier("shootFolio.scene.\(scene.wrappedValue.number).duration")
+        }
+    }
+
+    private func readOnlySceneRow(scene: ShotScene, index: Int) -> some View {
+        let row = storyboardRows[safe: index]
+        return HStack(alignment: .top, spacing: MCOSpace.s) {
+            GeneratedStoryboardThumbnail(
+                url: row?.thumbnailURL,
+                fallbackSystemImage: scene.symbol
+            )
+                .frame(width: 88, height: 66)
+
+            VStack(alignment: .leading, spacing: MCOSpace.s) {
+                HStack(alignment: .top, spacing: MCOSpace.s) {
+                    VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                        Text("SCENE \(String(format: "%02d", scene.number))")
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(MCOTheme.Color.oxblood)
+                        Text(scene.title)
+                            .font(MCOType.headline)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                        Text(row?.timecode ?? timecode(for: index, scene: scene))
+                            .font(MCOType.captionEmphasis)
+                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                    }
+                    Spacer(minLength: MCOSpace.s)
+                    StatusChip(
+                        text: services.isSceneShot(scene) ? "Shot" : scene.duration,
+                        tone: services.isSceneShot(scene) ? .ready : .info
+                    )
+                }
+
+                FolioDetailLine(title: "What to capture", text: SceneGuidance.capture(for: scene, at: index, in: card))
+
+                if let text = SceneGuidance.onScreenText(at: index, in: card) {
+                    FolioDetailLine(title: "On-screen text", text: text)
+                }
+
+                FolioDetailLine(title: "Example", text: SceneGuidance.contextExample(for: scene, in: card))
             }
         }
     }
@@ -311,13 +399,30 @@ struct SceneListView: View {
     private var storyboardRows: [GeneratedStoryboardBreakdownRow] {
         GeneratedStoryboardBreakdown.rows(for: card)
     }
+
+    private func thumbnailURL(for index: Int) -> URL? {
+        storyboardRows[safe: index]?.thumbnailURL
+            ?? (card.storyboardThumbnailAssets ?? [])
+            .first(where: { $0.rowIndex == index })?
+            .publicURL
+            .flatMap(URL.init(string:))
+    }
+
+    private func timecode(for index: Int, scene: ShotScene) -> String {
+        if let stamped = card.shotTimeline?[safe: index]?.timestamp.nilIfBlank {
+            return stamped
+        }
+        if let window = SceneTiming.windows(for: card.scenes)[safe: index] {
+            return window
+        }
+        return scene.duration
+    }
 }
 
 struct SceneDetailView: View {
     @Environment(AppServices.self) private var services
     let card: DailyCard
     let scene: ShotScene
-    @State private var markShotPulse = false
 
     var body: some View {
         EditorialScreen {
@@ -328,23 +433,13 @@ struct SceneDetailView: View {
                         .foregroundStyle(MCOTheme.Color.oxblood)
                     Text(scene.title)
                         .font(MCOType.screenTitle)
-                        .tracking(MCOType.screenTitleTracking)
                         .foregroundStyle(MCOTheme.Color.ink)
                     HStack(spacing: MCOSpace.s) {
-                        StatusChip(text: storyboardRow?.timecode ?? scene.duration)
+                        StatusChip(text: scene.duration)
                         StatusChip(
                             text: services.isSceneShot(scene) ? "Shot" : "Not shot",
                             tone: services.isSceneShot(scene) ? .ready : .warning
                         )
-                        .scaleEffect(services.isSceneShot(scene) ? 1 : 0.97)
-                        .animation(MCOMotion.press, value: services.isSceneShot(scene))
-                    }
-                }
-
-                if let thumbnailURL = storyboardRow?.thumbnailURL {
-                    JournalBlock {
-                        FolioStoryboardThumbnail(url: thumbnailURL, height: 168)
-                            .frame(maxWidth: .infinity)
                     }
                 }
 
@@ -353,10 +448,6 @@ struct SceneDetailView: View {
 
                 if let onScreenText = SceneGuidance.onScreenText(at: sceneIndex, in: card) {
                     detailBlock(title: "On-screen text", text: onScreenText)
-                }
-                if let dialogue = storyboardRow?.audioDialogue.nilIfBlank,
-                   dialogue != "No voiceover specified." {
-                    detailBlock(title: "Script line", text: dialogue)
                 }
                 if let postInstructions = services.todayCard.postInstructions?.nilIfBlank {
                     detailBlock(title: "Post guidance", text: postInstructions)
@@ -372,10 +463,8 @@ struct SceneDetailView: View {
                     systemImage: services.isSceneShot(scene) ? "checkmark.circle.fill" : "checkmark.seal"
                 ) {
                     services.markSceneShot(scene)
-                    markShotPulse.toggle()
                 }
                 .disabled(services.isSceneShot(scene))
-                .sensoryFeedback(.success, trigger: markShotPulse)
             }
         }
         .navigationTitle("Scene \(scene.number)")
@@ -398,136 +487,6 @@ struct SceneDetailView: View {
 
     private var sceneIndex: Int {
         card.scenes.firstIndex { $0.id == scene.id } ?? max(scene.number - 1, 0)
-    }
-
-    private var storyboardRow: GeneratedStoryboardBreakdownRow? {
-        GeneratedStoryboardBreakdown.rows(for: card)[safe: sceneIndex]
-    }
-}
-
-/// Script package: voiceover lines with the same storyboard thumbnails + timestamps
-/// as the Storyboard tab, plus a full-script copy action.
-struct CreatorScriptPackageView: View {
-    let card: DailyCard
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.m) {
-            if rows.isEmpty {
-                CopyBlock(
-                    title: "Script",
-                    bodyText: card.script?.nilIfBlank ?? "No script recorded for today."
-                )
-            } else {
-                ForEach(rows) { row in
-                    FolioTimedContentRow(
-                        eyebrow: "SCENE \(String(format: "%02d", row.sceneNumber))",
-                        timecode: row.timecode,
-                        thumbnailURL: row.thumbnailURL,
-                        bodyText: row.audioDialogue
-                    )
-                }
-
-                CopyBlock(
-                    title: "Full script",
-                    bodyText: card.script?.nilIfBlank ?? rows.map(\.audioDialogue).joined(separator: "\n")
-                )
-            }
-        }
-        .accessibilityIdentifier("today.shootFolio.script")
-    }
-
-    private var rows: [GeneratedStoryboardBreakdownRow] {
-        GeneratedStoryboardBreakdown.rows(for: card)
-    }
-}
-
-/// Caption package: Instagram post caption plus timed on-screen captions that
-/// reuse storyboard thumbnails and timeline timestamps.
-struct CreatorCaptionPackageView: View {
-    let card: DailyCard
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.m) {
-            CopyBlock(
-                title: "Caption",
-                bodyText: card.caption?.nilIfBlank ?? "No caption recorded for today."
-            )
-
-            if !onScreenRows.isEmpty {
-                Text("On-screen captions")
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
-                    .padding(.top, MCOSpace.xxs)
-
-                ForEach(onScreenRows) { row in
-                    FolioTimedContentRow(
-                        eyebrow: "SCENE \(String(format: "%02d", row.sceneNumber))",
-                        timecode: row.timecode,
-                        thumbnailURL: row.thumbnailURL,
-                        bodyText: row.onScreenText,
-                        secondaryText: row.onScreenTextPlacement
-                    )
-                }
-            }
-        }
-        .accessibilityIdentifier("today.shootFolio.caption")
-    }
-
-    private var onScreenRows: [GeneratedStoryboardBreakdownRow] {
-        GeneratedStoryboardBreakdown.rows(for: card).filter { row in
-            row.onScreenText.nilIfBlank != nil && row.onScreenText != "No on-screen text."
-        }
-    }
-}
-
-private struct FolioTimedContentRow: View {
-    let eyebrow: String
-    let timecode: String
-    let thumbnailURL: URL?
-    let bodyText: String
-    var secondaryText: String? = nil
-
-    var body: some View {
-        JournalBlock {
-            HStack(alignment: .top, spacing: MCOSpace.s) {
-                FolioStoryboardThumbnail(url: thumbnailURL, height: 88)
-
-                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                    HStack(alignment: .firstTextBaseline, spacing: MCOSpace.s) {
-                        Text(eyebrow)
-                            .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.oxblood)
-                        Spacer(minLength: MCOSpace.s)
-                        Text(timecode)
-                            .font(MCOType.caption.weight(.semibold))
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
-                    }
-                    Text(bodyText)
-                        .font(MCOType.bodySmall)
-                        .foregroundStyle(MCOTheme.Color.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let secondaryText = secondaryText?.nilIfBlank {
-                        Text(secondaryText)
-                            .font(MCOType.caption)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(eyebrow), \(timecode), \(bodyText)")
-    }
-}
-
-private struct FolioStoryboardThumbnail: View {
-    let url: URL?
-    var height: CGFloat = 88
-
-    var body: some View {
-        GeneratedStoryboardThumbnail(url: url)
-            .frame(width: height * 16 / 9, height: height)
-            .clipped()
     }
 }
 
@@ -613,6 +572,108 @@ struct CopyBlock: View {
         UIPasteboard.general.string = bodyText
         #endif
         didCopy = true
+    }
+}
+
+struct ScriptTimelineCopyBlock: View {
+    let card: DailyCard
+    var isEditing: Bool = false
+    @Binding var draftScript: String
+    @State private var didCopy = false
+
+    init(
+        card: DailyCard,
+        isEditing: Bool = false,
+        draftScript: Binding<String> = .constant("")
+    ) {
+        self.card = card
+        self.isEditing = isEditing
+        self._draftScript = draftScript
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MCOSpace.m) {
+            if isEditing {
+                JournalBlock {
+                    VStack(alignment: .leading, spacing: MCOSpace.s) {
+                        Text("Script")
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(MCOTheme.Color.oxblood)
+                        Text("One line per beat. Timestamps stay tied to scene order.")
+                            .font(MCOType.caption)
+                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                        TextEditor(text: $draftScript)
+                            .font(MCOType.body)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 180)
+                            .accessibilityIdentifier("shootFolio.script.editor")
+                    }
+                }
+            } else if rows.isEmpty {
+                CopyBlock(title: "Script", bodyText: "No script recorded for today.")
+            } else {
+                JournalBlock {
+                    VStack(alignment: .leading, spacing: MCOSpace.s) {
+                        HStack(spacing: MCOSpace.s) {
+                            Text("Script")
+                                .font(MCOType.tinyLabel)
+                                .foregroundStyle(MCOTheme.Color.oxblood)
+                            Spacer(minLength: MCOSpace.s)
+                            Text("\(rows.count) lines")
+                                .font(MCOType.caption)
+                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                        }
+
+                        ForEach(rows) { row in
+                            HStack(alignment: .top, spacing: MCOSpace.s) {
+                                GeneratedStoryboardThumbnail(
+                                    url: row.thumbnailURL,
+                                    fallbackSystemImage: card.scenes[safe: row.sceneNumber - 1]?.symbol
+                                )
+                                    .frame(width: 72, height: 54)
+                                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                                    Text(row.timecode)
+                                        .font(MCOType.captionEmphasis)
+                                        .foregroundStyle(MCOTheme.Color.oxblood)
+                                    Text(row.audioDialogue)
+                                        .font(MCOType.bodySmall)
+                                        .foregroundStyle(MCOTheme.Color.ink)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(MCOSpace.s)
+                            .background(MCOTheme.Color.paperRaised.opacity(0.58))
+                            .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                            .accessibilityIdentifier("shoot.script.line.\(row.sceneNumber)")
+                        }
+
+                        SecondaryActionButton(title: didCopy ? "Copied" : "Copy full script") {
+                            #if canImport(UIKit)
+                            UIPasteboard.general.string = copyableScript
+                            #endif
+                            didCopy = true
+                        }
+                    }
+                }
+                .accessibilityIdentifier("shoot.script.timeline")
+            }
+        }
+        .onChange(of: card.script) {
+            didCopy = false
+        }
+    }
+
+    private var rows: [GeneratedStoryboardBreakdownRow] {
+        GeneratedStoryboardBreakdown.rows(for: card)
+    }
+
+    private var copyableScript: String {
+        if let script = card.script?.nilIfBlank {
+            return script
+        }
+        return rows.map(\.audioDialogue).joined(separator: "\n")
     }
 }
 

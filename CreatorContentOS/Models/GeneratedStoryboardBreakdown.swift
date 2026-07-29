@@ -13,65 +13,68 @@ struct GeneratedStoryboardBreakdownRow: Identifiable, Hashable, Sendable {
 }
 
 enum GeneratedStoryboardBreakdown {
-    static func rows(for card: GeneratedDailyCardDraft) -> [GeneratedStoryboardBreakdownRow] {
-        rows(
-            cardID: card.id,
-            scenes: card.sceneList,
-            shotTimeline: card.shotTimeline,
-            voiceoverTimeline: card.voiceoverTimeline,
-            onScreenTextTimeline: card.onScreenTextTimeline,
-            onScreenText: card.onScreenText,
-            script: card.script,
-            storyboardThumbnailAssets: card.storyboardThumbnailAssets
-        )
-    }
-
-    /// Same storyboard rows the manager Daily preview uses, built from the
-    /// published Today / Shoot Folio `DailyCard` so creator and manager stay in sync.
     static func rows(for card: DailyCard) -> [GeneratedStoryboardBreakdownRow] {
         rows(
-            cardID: card.id,
-            scenes: card.scenes,
-            shotTimeline: card.shotTimeline ?? [],
-            voiceoverTimeline: card.voiceoverTimeline ?? [],
-            onScreenTextTimeline: card.onScreenTextTimeline ?? [],
-            onScreenText: card.onScreenText ?? [],
-            script: card.script ?? "",
-            storyboardThumbnailAssets: card.storyboardThumbnailAssets
+            for: GeneratedDailyCardDraft(
+                id: card.id,
+                scheduledDate: card.scheduledDate ?? "",
+                status: "published",
+                title: card.title,
+                whyToday: card.whyToday,
+                growthJob: card.whyToday,
+                contentPillar: card.sourceNote ?? "Pattern",
+                shootability: "easy",
+                estimatedShootMinutes: 0,
+                energyRequired: "low",
+                languageMode: "Natural",
+                hook: card.hook,
+                sceneList: card.scenes,
+                shotTimeline: card.shotTimeline ?? [],
+                voiceoverTimeline: card.voiceoverTimeline ?? [],
+                onScreenTextTimeline: card.onScreenTextTimeline ?? [],
+                script: card.script ?? "",
+                noVoiceoverVersion: card.noVoiceoverVersion ?? "",
+                onScreenText: card.onScreenText ?? [],
+                caption: card.caption ?? "",
+                cta: card.cta ?? "",
+                hashtags: card.hashtags ?? [],
+                coverText: card.coverText ?? "",
+                postInstructions: card.postInstructions ?? "",
+                brandEventNotes: card.brandEventNotes ?? "",
+                backupStory: card.backupStory ?? "",
+                backupCaptionOnly: card.backupCaptionOnly ?? "",
+                audioOptionNotes: card.audioOptionNotes ?? "",
+                creatorFitScore: card.creatorFitScore ?? 0,
+                riskNotes: card.riskNotes ?? [],
+                assumptions: card.assumptions ?? [],
+                sourceNote: card.sourceNote ?? "",
+                storyboardThumbnailAssets: card.storyboardThumbnailAssets ?? []
+            )
         )
     }
 
-    private static func rows(
-        cardID: UUID,
-        scenes: [ShotScene],
-        shotTimeline: [ProductionTimelineItem],
-        voiceoverTimeline: [ProductionTimelineItem],
-        onScreenTextTimeline: [ProductionTimelineItem],
-        onScreenText: [String],
-        script: String,
-        storyboardThumbnailAssets: [StoryboardThumbnailAsset]
-    ) -> [GeneratedStoryboardBreakdownRow] {
+    static func rows(for card: GeneratedDailyCardDraft) -> [GeneratedStoryboardBreakdownRow] {
         let rowCount = [
-            scenes.count,
-            shotTimeline.count,
-            voiceoverTimeline.count,
-            onScreenTextTimeline.count,
-            onScreenText.count
+            card.sceneList.count,
+            card.shotTimeline.count,
+            card.voiceoverTimeline.count,
+            card.onScreenTextTimeline.count,
+            card.onScreenText.count
         ]
             .max() ?? 0
 
         guard rowCount > 0 else { return [] }
 
-        let derivedTimecodes = timecodes(for: scenes)
-        let thumbnailsByRow = storyboardThumbnailAssets.reduce(into: [Int: StoryboardThumbnailAsset]()) { result, asset in
+        let derivedTimecodes = timecodes(for: card.sceneList)
+        let thumbnailsByRow = card.storyboardThumbnailAssets.reduce(into: [Int: StoryboardThumbnailAsset]()) { result, asset in
             result[asset.rowIndex] = asset
         }
 
         return (0..<rowCount).map { index in
-            let scene = element(at: index, in: scenes)
-            let shot = element(at: index, in: shotTimeline)
-            let voiceover = element(at: index, in: voiceoverTimeline)
-            let text = element(at: index, in: onScreenTextTimeline)
+            let scene = element(at: index, in: card.sceneList)
+            let shot = element(at: index, in: card.shotTimeline)
+            let voiceover = element(at: index, in: card.voiceoverTimeline)
+            let text = element(at: index, in: card.onScreenTextTimeline)
             let thumbnailURL = thumbnailsByRow[index]?.publicURL
                 .flatMap { URL(string: $0) }
 
@@ -84,7 +87,7 @@ enum GeneratedStoryboardBreakdown {
             ) ?? "Scene \(index + 1)"
 
             return GeneratedStoryboardBreakdownRow(
-                id: "\(cardID.uuidString)-\(index)-\(timecode)",
+                id: "\(card.id.uuidString)-\(index)-\(timecode)",
                 sceneNumber: scene?.number ?? index + 1,
                 timecode: timecode,
                 visualShot: firstPresent(
@@ -102,12 +105,12 @@ enum GeneratedStoryboardBreakdown {
                     voiceover?.voiceover,
                     voiceover?.detail,
                     voiceover?.title,
-                    scriptLine(from: script, at: index)
+                    scriptLine(from: card.script, at: index)
                 ) ?? "No voiceover specified.",
                 onScreenText: firstPresent(
                     text?.onScreenText,
                     text?.title,
-                    element(at: index, in: onScreenText)
+                    element(at: index, in: card.onScreenText)
                 ) ?? "No on-screen text.",
                 onScreenTextPlacement: firstPresent(
                     text?.placement,
