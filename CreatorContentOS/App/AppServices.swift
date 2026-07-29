@@ -440,6 +440,8 @@ final class AppServices {
             if let refreshedEntries = try? await repositories.archive.entries(for: context) {
                 archiveEntries = refreshedEntries
             }
+            // Fixture archives ignore persist; keep the synced entry visible locally.
+            upsertLocalArchiveEntry(entry, for: pendingSync.card)
             guard isCurrentTodayDecisionSync(pendingSync) else {
                 return pendingSync.localEntry
             }

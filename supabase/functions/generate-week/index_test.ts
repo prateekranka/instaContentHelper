@@ -25,7 +25,7 @@ const dailyCardIDs = Array.from(
   (_, index) => `77777777-7777-4777-8777-77777777777${index}`,
 );
 
-Deno.test("generate-week rejects creator role", async () => {
+Deno.test("generate-week allows creator role but retires full-week generation", async () => {
   const response = await callHandler(
     {
       creator_id: creatorID,
@@ -34,8 +34,9 @@ Deno.test("generate-week rejects creator role", async () => {
     { memberRole: "creator" },
   );
 
-  assertEquals(response.status, 403);
-  assertEquals(await errorCode(response), "role_not_allowed");
+  // Creators may call day generation; full-week payloads stay retired.
+  assertEquals(response.status, 400);
+  assertEquals(await errorCode(response), "full_week_generation_retired");
 });
 
 Deno.test("generate-week status returns queued day-job progress", async () => {

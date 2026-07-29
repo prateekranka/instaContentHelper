@@ -652,6 +652,14 @@ enum WeeklyDayState: String, CaseIterable, Codable, Hashable, Sendable {
             "Open"
         }
     }
+
+    var sourceTone: ChipTone {
+        switch self {
+        case .planned: .ready
+        case .backup: .warning
+        case .open: .quiet
+        }
+    }
 }
 
 extension WeeklyDayState {

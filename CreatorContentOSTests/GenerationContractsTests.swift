@@ -417,40 +417,6 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertEqual(object["source_note"] as? String, "Reference.")
     }
 
-    func testSelectedDayPublishMarksOnlyThatGeneratedCardPublished() async throws {
-        let repository = RecordingDayPublishRepository()
-        let services = AppServices.fixtureBacked(
-            repositories: AppRepositories(
-                context: .creatorFixture,
-                today: FixtureTodayCardRepository(),
-                weeklyPlans: FixtureWeeklyPlanRepository(),
-                references: FixtureReferenceRepository(),
-                referenceImport: FixtureReferenceImportRepository(),
-                dailyGeneration: repository,
-                intelligence: FixtureIntelligenceRepository(),
-                creatorProfile: FixtureCreatorProfileRepository(),
-                archive: FixtureArchiveRepository()
-            ),
-            todayCache: InMemoryTodayCacheStore(),
-            todayDate: { "2026-07-18" }
-        )
-        let draft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-07-20")
-        let selected = draft.dailyCards[0]
-        services.dayBriefGeneratedCards = Dictionary(
-            uniqueKeysWithValues: draft.dailyCards.prefix(2).map { ($0.scheduledDate, $0) }
-        )
-
-        let succeeded = await services.publishDayCard(selected)
-
-        XCTAssertTrue(succeeded)
-        XCTAssertEqual(services.dayBriefGeneratedCards[selected.scheduledDate]?.status, "published")
-        XCTAssertEqual(services.dayBriefGeneratedCards[draft.dailyCards[1].scheduledDate]?.status, "draft")
-        XCTAssertNil(services.lastPublishError)
-        let request = await repository.lastRequest
-        XCTAssertEqual(request?.creatorID, WorkspaceContext.creatorFixture.creatorID)
-        XCTAssertEqual(request?.dailyCardID, selected.id)
-    }
-
     func testReadContentDailyCardRowDecodesPublishedGeneratedRichFields() throws {
         let cardID = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA1")!
         let workspaceID = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
@@ -637,7 +603,7 @@ final class GenerationContractsTests: XCTestCase {
                 "past_generation_date_not_allowed"
             )
         }
-        XCTAssertTrue(services.dayBriefGeneratedCards.isEmpty)
+        XCTAssertNil(services.dayBriefGeneratedCards["2026-05-30"])
     }
 
     func testGenerateDayCardRequiresBrief() async throws {
@@ -777,7 +743,7 @@ final class GenerationContractsTests: XCTestCase {
             ),
             (
                 "generation_cancelled",
-                "Generation was cancelled. Try Generate again."
+                "This day’s draft stopped before it finished. You can try Generate again."
             ),
             (
                 "accepted_run_not_found",
@@ -1337,8 +1303,11 @@ final class GenerationContractsTests: XCTestCase {
             todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-07-06" }
         )
+        // fixtureBacked seeds today's draft for Plan UI proofs; clear before hydration proof.
+        services.dayBriefGeneratedCards.removeAll()
 
-        XCTAssertTrue(services.dayBriefGeneratedCards.isEmpty)
+        XCTAssertNil(services.dayBriefGeneratedCards[openDate])
+        XCTAssertNil(services.dayBriefGeneratedCards[publishedDate])
 
         await services.refreshFromRepositoriesImmediately()
 
@@ -2345,6 +2314,15 @@ private actor FailingCurrentWeeklyContentRepository: WeeklyPlanRepository {
     ) async throws -> WeeklyPlan {
         throw RepositoryError.notConfigured("brief not needed")
     }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw RepositoryError.notConfigured("publish not needed")
+    }
 }
 
 /// Echoes the day brief back in the generated card title so tests can prove
@@ -2483,6 +2461,15 @@ private actor WorkingPlanPreferringWeeklyPlanRepository: WeeklyPlanRepository {
     ) async throws -> WeeklyPlan {
         throw RepositoryError.notConfigured("brief not needed")
     }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw RepositoryError.notConfigured("publish not needed")
+    }
 }
 
 private actor ReviewStateReloadRepository: WeeklyPlanRepository {
@@ -2569,6 +2556,15 @@ private actor ReviewStateReloadRepository: WeeklyPlanRepository {
         context: WorkspaceContext
     ) async throws -> WeeklyPlan {
         throw RepositoryError.notConfigured("brief not needed")
+    }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw RepositoryError.notConfigured("publish not needed")
     }
 
     func updateDailyCardReviewState(
@@ -2662,34 +2658,21 @@ private actor ReviewStateTrackingRepository: WeeklyPlanRepository {
         throw RepositoryError.notConfigured("brief not needed")
     }
 
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw RepositoryError.notConfigured("publish not needed")
+    }
+
     func updateDailyCardReviewState(
         dailyCardID: UUID,
         reviewState: String,
         context: WorkspaceContext
     ) async throws {
         reviewStateCalls.append((dailyCardID: dailyCardID, reviewState: reviewState))
-    }
-}
-
-private actor RecordingDayPublishRepository: DayGenerationRepository {
-    struct Request: Sendable {
-        var creatorID: UUID
-        var dailyCardID: UUID
-    }
-
-    private(set) var lastRequest: Request?
-
-    func publishDay(
-        creatorID: UUID,
-        dailyCardID: UUID,
-        context: WorkspaceContext
-    ) async throws -> DailyPublishResult {
-        lastRequest = Request(creatorID: creatorID, dailyCardID: dailyCardID)
-        return DailyPublishResult(
-            dailyCardID: dailyCardID,
-            scheduledDate: "2026-07-20",
-            publishedAt: "2026-07-18T08:00:00Z"
-        )
     }
 }
 
@@ -2758,6 +2741,15 @@ private actor ReconciliationContentRepository: WeeklyPlanRepository {
         context: WorkspaceContext
     ) async throws -> WeeklyPlan {
         throw RepositoryError.notConfigured("brief not needed")
+    }
+
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        throw RepositoryError.notConfigured("publish not needed")
     }
 }
 

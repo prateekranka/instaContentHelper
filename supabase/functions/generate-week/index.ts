@@ -67,6 +67,7 @@ import { createDayGenerationRun } from "./generation-run-start.ts";
 import {
   insertWeekGenerationRun,
   linkGenerationRunWeeklyPlan,
+  updateGenerationRunProgress,
 } from "./generation-run-store.ts";
 import { isTerminalDayGenerationState } from "./generation-day-progress.ts";
 import {
@@ -93,12 +94,10 @@ import {
   readGenerationStatus,
   type StatusHandlerPreparedDayGeneration,
 } from "./generation-status-handler.ts";
-import {
-  dayGenerationRetryContext,
-  type PerDayRunnerHost,
-  scheduleNextPendingDayGeneration as scheduleNextPendingDayGenerationRunner,
-  updateGenerationProgress,
-} from "./generation-per-day-runner.ts";
+import type {
+  DayGenerationState,
+  PerDayGenerationSnapshot,
+} from "./generation-status.ts";
 import {
   runDayGenerationPipeline,
   scheduleSingleDayGeneration,
@@ -330,94 +329,7 @@ export async function handleGenerateWeekRequest(
     return implicitRetirement;
   }
 
-  const preparedResult = await prepareGeneration(
-    admin,
-    env,
-    rawBody,
-    session,
-  );
-  if ("response" in preparedResult) {
-    return preparedResult.response;
-  }
-
-  const { prepared } = preparedResult;
-  const runResult = await createGenerationRun(
-    admin,
-    session.workspaceID,
-    prepared.request,
-    session.memberID,
-    prepared.model,
-    prepared.inputSnapshot,
-  );
-  if ("response" in runResult) {
-    return runResult.response;
-  }
-
-  logGenerationLifecycle({
-    action: "generate_week",
-    phase: "request_accepted",
-    status: "running",
-    generation_id: runResult.run.id,
-    weekly_plan_id: null,
-    week_start_date: prepared.request.week_start_date,
-    scheduled_date: null,
-    day_index: null,
-    duration_ms: null,
-    day_guidance_present: null,
-    day_guidance_chars: null,
-  });
-
-  if (prepared.request.response_mode === "async") {
-    const progress = initialPerDayGenerationSnapshot(
-      prepared.request.week_start_date,
-    );
-    const progressResult = await updateGenerationProgress(
-      admin,
-      runResult.run.id,
-      progress,
-    );
-    if ("response" in progressResult) {
-      return progressResult.response;
-    }
-
-    const scheduledResult = await scheduleNextPendingDayGenerationRunner(
-      admin,
-      runResult.run.id,
-      prepared,
-      progress,
-      buildPerDayRunnerHost(dependencies),
-    );
-    if ("response" in scheduledResult) {
-      return scheduledResult.response;
-    }
-
-    const summary = weekGenerationStatusSummary(
-      scheduledResult.progress,
-      "running",
-      (day) => isTerminalDayGenerationState(day, maxDayGenerationAttempts()),
-    );
-    return jsonResponse({
-      generation_id: runResult.run.id,
-      weekly_plan_id: null,
-      status: "running",
-      message: "generation_started",
-      ...summary,
-      poll_after_seconds: 5,
-    }, 202);
-  }
-
-  const pipelinePromise = runGenerationPipeline(
-    admin,
-    prepared,
-    runResult.run.id,
-    dependencies,
-  );
-  const pipelineResult = await pipelinePromise;
-  if ("response" in pipelineResult) {
-    return pipelineResult.response;
-  }
-
-  return jsonResponse(pipelineResult.payload);
+  return jsonResponse({ error: "invalid_generation_payload" }, 400);
 }
 
 function isRegenerateDayAction(body: unknown): body is Record<string, unknown> {
@@ -1392,35 +1304,48 @@ function buildSingleDayRunnerHost(
   };
 }
 
-function buildPerDayRunnerHost(
-  dependencies: GenerateWeekDependencies,
-): PerDayRunnerHost {
+async function updateGenerationProgress(
+  admin: SupabaseAdminClient,
+  generationID: string,
+  progress: PerDayGenerationSnapshot | SingleDayGenerationSnapshot,
+): Promise<{ ok: true } | { response: Response }> {
+  const { error } = await updateGenerationRunProgress(
+    admin,
+    generationID,
+    progress,
+  );
+
+  if (error) {
+    return generationPersistFailure("update_generation_progress", error);
+  }
+  return { ok: true };
+}
+
+function dayGenerationRetryContext(
+  day: DayGenerationState,
+  dayIndex: number,
+  nextAttempts: number,
+): Record<string, unknown> | undefined {
+  if (nextAttempts <= 1) {
+    return undefined;
+  }
+
+  const retryKind = day.status === "running"
+    ? "stale_day_repair"
+    : "failed_day_repair";
+  const retryReason = day.error_code ??
+    (day.status === "running" ? "generation_stale" : "previous_day_failed");
   return {
-    generateDayOutput: (
-      prepared,
-      scheduledDate,
-      dayIndex,
-      generationID,
-      phase,
-      retryContext,
-    ) =>
-      generateDayOutput(
-        prepared,
-        scheduledDate,
-        dayIndex,
-        dependencies,
-        generationID,
-        phase,
-        retryContext,
-      ),
-    markGenerationRunFailed,
-    persistGeneratedWeek,
-    makeGenerateWeekDraftResponse,
-    completeGenerationRun,
-    persistenceFailureStep,
-    makeInitialWeekStrategyOutput,
-    scheduleBackgroundTask: (promise) =>
-      scheduleBackgroundGeneration(promise, dependencies),
+    retry_kind: retryKind,
+    retry_reason: retryReason,
+    scheduled_date: day.scheduled_date,
+    day_index: dayIndex + 1,
+    day_attempt: nextAttempts,
+    previous_status: day.status,
+    previous_started_at: day.started_at ?? null,
+    previous_completed_at: day.completed_at ?? null,
+    instruction:
+      "Retry only this daily card. Keep the target scheduled_date fixed, simplify the concept if the prior run timed out, and return a complete valid daily-card contract.",
   };
 }
 

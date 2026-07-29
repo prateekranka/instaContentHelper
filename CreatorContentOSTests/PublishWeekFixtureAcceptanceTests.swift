@@ -75,7 +75,8 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
 
         XCTAssertEqual(services.todayCard.title, "Cached Puma shakeout plan")
         XCTAssertEqual(services.weekCards.map(\.title), ["Cached Puma shakeout plan"])
-        XCTAssertNotNil(services.lastRepositoryError)
+        // Offline Today still serves the cached published card; no hard error banner.
+        XCTAssertNil(services.lastRepositoryError)
     }
 
     func testCreatorBackupDecisionWritesToArchive() async throws {
@@ -150,7 +151,7 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         XCTAssertEqual(entry.decision, .savedForTomorrow)
         XCTAssertEqual(entry.outputLine, "Saved this card for tomorrow")
         XCTAssertEqual(services.todayCard.completionState, .savedForTomorrow)
-        XCTAssertNotNil(services.lastRepositoryError)
+        XCTAssertNotNil(services.lastTodayDecisionSyncError)
 
         let archiveEntry = try XCTUnwrap(
             services.archiveEntries.first { $0.dailyCardID == services.todayCard.id }

@@ -1,5 +1,81 @@
 import SwiftUI
 
+struct GeneratedReadOnlyField: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        if let normalizedValue = value.nilIfBlank {
+            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                Text(title)
+                    .font(MCOType.caption)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                Text(normalizedValue)
+                    .font(MCOType.bodySmall)
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+enum SceneTiming {
+    static func windows(for scenes: [ShotScene]) -> [String] {
+        var cursor = 0
+        return scenes.map { scene in
+            let start = cursor
+            cursor += seconds(from: scene.duration) ?? 0
+            return "\(timecode(start))-\(timecode(cursor))"
+        }
+    }
+
+    static func totalSeconds(for scenes: [ShotScene]) -> Int? {
+        let durations = scenes.compactMap { seconds(from: $0.duration) }
+        guard durations.count == scenes.count else { return nil }
+        return durations.reduce(0, +)
+    }
+
+    static func sceneTitle(for scenes: [ShotScene], index: Int) -> String? {
+        guard let scene = scenes[safe: index] else { return nil }
+        return "Scene \(String(format: "%02d", scene.number)): \(scene.title)"
+    }
+
+    private static func seconds(from duration: String) -> Int? {
+        Int(duration.prefix { $0.isNumber })
+    }
+
+    private static func timecode(_ seconds: Int) -> String {
+        "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
+    }
+}
+
+extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+
+extension ProductionTimelineItem {
+    var timelineTarget: String? {
+        videoPortion?.nilIfBlank ?? placement?.nilIfBlank ?? shot?.nilIfBlank
+    }
+
+    var timelineBody: String {
+        voiceover?.nilIfBlank
+            ?? onScreenText?.nilIfBlank
+            ?? detail.nilIfBlank
+            ?? title.nilIfBlank
+            ?? "Detail not specified."
+    }
+}
+
+extension String {
+    var containsTimestamp: Bool {
+        range(of: #"(\d{1,2}:\d{2}|\d+\s?-\s?\d+\s?s|\d+\s?s)"#, options: .regularExpression) != nil
+    }
+}
+
 struct GeneratedDayPlannedContent: View {
     let card: GeneratedDailyCardDraft
     var onStoryboardAssetsChanged: (([StoryboardThumbnailAsset]) -> Void)?

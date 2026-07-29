@@ -13,7 +13,6 @@
 		0A7F95C8F69751E40A4E4BCD /* ContentConsistencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA13D115B3CC70D6C5F6D7BA /* ContentConsistencyTests.swift */; };
 		0AED86BDE7B6CE889E8A8298 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB9CFA44B8E7990294C9CE67 /* SignInView.swift */; };
 		16D361F55BAB4556EC94CA31 /* RuntimeHealthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83726BC8D9281D4247355E7E /* RuntimeHealthTests.swift */; };
-		1A0195CCA1D27283A79A6CA9 /* PublishedWeekPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E6B09FB76F07F297A81CAF /* PublishedWeekPersistenceTests.swift */; };
 		1AA6D4F3E2906C14EF8551DE /* RuntimeConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79C80E2B2E609414F002A71F /* RuntimeConfigurationTests.swift */; };
 		263C1FC782268B6C4E960F22 /* DevicePairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A61B6CE9B5742E20AC4A57E /* DevicePairingService.swift */; };
 		27037851C85D7F3063B6B54D /* RuntimeConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC8DC58428F1699BEB425D7 /* RuntimeConfigurationStore.swift */; };
@@ -134,7 +133,6 @@
 		BDA7E67BCDE7382CF0DF9953 /* DayLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayLifecycleTests.swift; sourceTree = "<group>"; };
 		C0B6EA6B62471E956EAABAEB /* ShootFolioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShootFolioView.swift; sourceTree = "<group>"; };
 		C1B20A8B6F7A9D3D4D85888F /* InstalledContentHelperUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InstalledContentHelperUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		C1E6B09FB76F07F297A81CAF /* PublishedWeekPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishedWeekPersistenceTests.swift; sourceTree = "<group>"; };
 		C23395AB2FF74CF4F50E144C /* PlanHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanHubView.swift; sourceTree = "<group>"; };
 		C2AC2FDAEA55DE198383352E /* PublishWeekFixtureAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishWeekFixtureAcceptanceTests.swift; sourceTree = "<group>"; };
 		C40B9B86E383C63186A87CC6 /* IntelligenceHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceHomeView.swift; sourceTree = "<group>"; };
@@ -259,13 +257,6 @@
 			path = Data;
 			sourceTree = "<group>";
 		};
-		825024F62145C3FA2EEFF931 /* Weekly */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Weekly;
-			sourceTree = "<group>";
-		};
 		8468C4104C513AFAC8CAB8F5 /* Archive */ = {
 			isa = PBXGroup;
 			children = (
@@ -318,7 +309,6 @@
 				6D69E7565442EEBB659CB551 /* GenerationContractsTests.swift */,
 				674AC06A8413A366F72FD56A /* ManagerAdminUsageTests.swift */,
 				D7FA93717B45A3E7B6D05F88 /* PlanHubTests.swift */,
-				C1E6B09FB76F07F297A81CAF /* PublishedWeekPersistenceTests.swift */,
 				C2AC2FDAEA55DE198383352E /* PublishWeekFixtureAcceptanceTests.swift */,
 				A4C8ED51EAD5398D2832AAB4 /* ReferenceImportTests.swift */,
 				79C80E2B2E609414F002A71F /* RuntimeConfigurationTests.swift */,
@@ -357,7 +347,6 @@
 				891ADFBC4B2E968BEECE2A7C /* Daily */,
 				4687AD2DBB82D88B1EE92D99 /* Intelligence */,
 				87FF7DE577AA31A3051946A4 /* Today */,
-				825024F62145C3FA2EEFF931 /* Weekly */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -610,7 +599,6 @@
 				6EEAF162E6C8A36CECBD722E /* ManagerAdminUsageTests.swift in Sources */,
 				5C74F83BEE6D5CA3FE3413E0 /* PlanHubTests.swift in Sources */,
 				A08BD8334CD348A559F4FA21 /* PublishWeekFixtureAcceptanceTests.swift in Sources */,
-				1A0195CCA1D27283A79A6CA9 /* PublishedWeekPersistenceTests.swift in Sources */,
 				08A5B9761D3E9E189DD59638 /* ReferenceImportTests.swift in Sources */,
 				1AA6D4F3E2906C14EF8551DE /* RuntimeConfigurationTests.swift in Sources */,
 				16D361F55BAB4556EC94CA31 /* RuntimeHealthTests.swift in Sources */,

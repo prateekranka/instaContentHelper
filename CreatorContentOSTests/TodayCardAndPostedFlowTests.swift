@@ -56,8 +56,8 @@ final class TodayCardAndPostedFlowTests: XCTestCase {
         XCTAssertEqual(card.whyToday, "One movement.")
     }
 
-    func testShootFolioDefaultsToStoryboardTabAndSurfacesGeminiThumbnails() {
-        XCTAssertEqual(PackageSection.allCases.first, .storyboard)
+    func testShootFolioDefaultsToScenesTabAndSurfacesGeminiThumbnails() {
+        XCTAssertEqual(PackageSection.allCases.first, .scenes)
 
         let card = DailyCard(
             title: "Gym day",
