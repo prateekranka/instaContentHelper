@@ -59,6 +59,8 @@ export {
   optionalSceneList,
   parseGeneratedDayJSON,
   parseGeneratedWeekJSON,
+  coerceGeneratedDayOutputShape,
+  hasConflictingWeekdayClaim,
   storedBackupLine,
   validateGeneratedDayOutput,
   validateGeneratedWeek,
@@ -175,6 +177,8 @@ export type GenerationInputSnapshot = {
 };
 
 const DEFAULT_AI_REQUEST_TIMEOUT_MS = 240_000;
+/** Day path should fail fast; 240s × repair attempts caused multi-minute hangs. */
+const DEFAULT_AI_DAY_REQUEST_TIMEOUT_MS = 75_000;
 
 export type GeneratedScene = {
   number: number;
@@ -243,6 +247,7 @@ export type GeneratedDailyCard = {
   assumptions: string[];
   source_note: string;
   source_reference_ids: string[];
+  storyboard_thumbnail_assets?: Record<string, unknown>[];
 };
 
 export type GeneratedIdea = {
@@ -567,6 +572,7 @@ function buildDayPromptMessages(
       "Set content_pillar to gym, lifestyle, eating, or recovery. Frame first-person lived observation, never follower instruction.",
       "Ban coach language: 'do this exercise', 'fix your form', 'my clients', 'your clients', 'training clients', 'upper body cue' as the main angle, generic 'training angle', and coach-like imperatives.",
       "All day-of-week language must match the requested scheduled_date.",
+      "In title, why_today, weekly_brief_anchor, brief_alignment, growth_job, post_instructions, and source_note: do not claim another weekday is today. Residual references like 'after Monday' or 'Monday's legs' are allowed when they describe prior context.",
       "Prioritize shootability, retention-first hooks, creator safety, and one clear creative turn.",
       "Never invent biography, quotes, family reactions, exact durations, locations, history, equipment failures, or dialogue. Place any uncertainty in assumptions or risk_notes.",
       "Explicit save CTA is allowed on at most two named weekdays; do NOT end every script with a save CTA. Follow day_intent for pillar, footage, CTA eligibility, and age eligibility.",
@@ -1736,6 +1742,10 @@ export function buildDeepSeekDayChatRequest(
   dayIndex: number,
 ): Record<string, unknown> {
   const messages = buildDayPromptMessages(input, scheduledDate, dayIndex);
+  // DeepSeek V4 only offers thinking on/off plus high/max. low/medium map to
+  // high. Live probe showed non-thinking first-pass usually fails validation,
+  // then repair-with-thinking succeeds — paying both costs (~35–43s text).
+  // Prefer thinking-high on flash so the first pass can complete in one call.
   return {
     model,
     messages: [
@@ -1747,21 +1757,27 @@ export function buildDeepSeekDayChatRequest(
           "Return one valid JSON object only. Do not wrap the JSON in Markdown.",
           `Hard day/date lock: this output is only for scheduled_date ${scheduledDate}, day ${
             dayIndex + 1
-          }. Do not mention another weekday unless the weekly brief explicitly names it as context.`,
+          }. Do not claim another weekday is today in title/why_today/weekly_brief_anchor/brief_alignment/growth_job/post_instructions/source_note. Residual references like "after Monday" are allowed.`,
           "Copy the exact required_contract.daily_card_template key structure. Replace sample values with specific content. Fields shown as arrays must remain arrays.",
           "Set top-level idea_bank to [] unless the brief explicitly asks for extra saved ideas.",
           "Every required string field must contain specific non-empty text; do not use empty strings, TBD, placeholders, null, or undefined.",
-          "Use timestamp ranges like 0:00-0:03 in every timeline field.",
+          "Use timestamp ranges like 0:00-0:03 in every timeline field. Prefer ASCII hyphen ranges, not en-dashes.",
+          "Every voiceover_timeline item needs non-empty video_portion and voiceover strings. Prefer 3-5 complete rows over trailing empty rows.",
+          "cta must be a non-empty concrete closing line or question. Do not leave cta blank.",
           "Never use day_of_week instead of scheduled_date.",
         ].join("\n"),
       },
     ],
     response_format: { type: "json_object" },
     thinking: { type: "enabled" },
-    reasoning_effort: "max",
+    reasoning_effort: deepSeekDayReasoningEffort(model),
     max_tokens: 12000,
     temperature: 0.2,
   };
+}
+
+function deepSeekDayReasoningEffort(model: string): "high" | "max" {
+  return /flash/i.test(model) ? "high" : "max";
 }
 
 function generatedWeekOutputContract(
@@ -2236,6 +2252,8 @@ export async function callAIProvidersForDay(
   instrumentation?: AIGenerationInstrumentation,
 ): Promise<GeneratedDayOutput> {
   let lastError: unknown = new Error("ai_provider_request_failed");
+  // First pass + one focused validation repair. Extra attempts inflate
+  // script-ready p95 past 60s when repair is needed.
   for (const provider of providers) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const attemptInput = attempt === 0 ? input : withDayRetryContext(
@@ -2288,17 +2306,66 @@ function dayRepairRetryContext(
   providerAttempt: number,
 ): Record<string, unknown> {
   const sanitized = sanitizeAIGenerationError(error);
+  const weekday = weekdayName(scheduledDate);
+  const rule = sanitized.validationError?.rule ?? "validation_failed";
+  const path = sanitized.validationError?.path;
+  const focusedFix = dayRepairFocusedInstruction(
+    rule,
+    path,
+    sanitized.message,
+    weekday,
+    scheduledDate,
+  );
   return {
     retry_kind: "validation_repair",
     retry_reason: sanitized.category,
     scheduled_date: scheduledDate,
     day_index: dayIndex + 1,
+    weekday,
     provider_attempt: providerAttempt,
     validation_error: sanitized.validationError,
     error_message: sanitized.message,
     instruction:
-      "Repair only the failed daily card for this scheduled_date. Keep the same idea if possible, fix the validation issue, and return the full daily-card JSON contract.",
+      `Repair only the failed daily card for ${scheduledDate} (${weekday}). Keep the same idea if possible. ${focusedFix} Return one complete valid daily-card JSON object with idea_bank as [] unless a complete extra idea is present.`,
   };
+}
+
+function dayRepairFocusedInstruction(
+  rule: string,
+  path: string | null | undefined,
+  message: string,
+  weekday: string,
+  scheduledDate: string,
+): string {
+  switch (rule) {
+    case "conflicting_weekday_language":
+      return `Hard date lock: every title/why_today/weekly_brief_anchor/brief_alignment/growth_job/post_instructions/source_note claim must stay on ${weekday} ${scheduledDate}. Residual phrases like "after Monday" are ok; do not say another weekday is today.`;
+    case "timestamp_format":
+      return `Fix timestamp ranges to exactly M:SS-M:SS (example 0:00-0:03)${
+        path ? ` at ${path}` : ""
+      }.`;
+    case "required_timeline":
+    case "scene_count":
+      return `Fill every required timeline/scene array with concrete non-empty items${
+        path ? ` (missing/invalid: ${path})` : ""
+      }.`;
+    case "required_string":
+    case "required_non_empty_string_array":
+    case "placeholder_content":
+      if (path === "cta" || path?.endsWith(".cta")) {
+        return "cta is required and must be a concrete closing line or question. Prefer a short earned question tied to the day's idea; never leave cta blank.";
+      }
+      return `Replace empty/placeholder text with specific copy${
+        path ? ` for ${path}` : ""
+      }.`;
+    case "instructor_phrasing":
+    case "instructor_ending":
+      return "Rewrite in first-person lived observation. Remove coach/instructor framing and banned endings.";
+    default:
+      return `Fix the validation issue${
+        path ? ` at ${path}` : ""
+      }: ${message}`;
+  }
 }
 
 export async function callAIProvider(
@@ -3149,10 +3216,13 @@ export function resolveAIDayRequestTimeoutMs(
   configured: string | undefined,
   generalConfigured?: string,
 ): number {
-  if (!configured) {
+  if (configured) {
+    return resolveAIRequestTimeoutMs(configured);
+  }
+  if (generalConfigured) {
     return resolveAIRequestTimeoutMs(generalConfigured);
   }
-  return resolveAIRequestTimeoutMs(configured);
+  return DEFAULT_AI_DAY_REQUEST_TIMEOUT_MS;
 }
 
 function aiDayRequestTimeoutMS(): number {

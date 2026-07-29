@@ -9,6 +9,7 @@ import {
   completeFullWeekGenerationRun,
   completeGenerationRunMinimal,
   markGenerationRunFailed as markGenerationRunFailedStore,
+  patchCompletedDayOutputSnapshot as patchCompletedDayOutputSnapshotStore,
 } from "./generation-run-store.ts";
 
 export async function completeDayGenerationRun(
@@ -39,6 +40,22 @@ export async function completeDayGenerationRun(
     if ("response" in fallback) {
       return fallback;
     }
+  }
+  return { ok: true };
+}
+
+export async function patchCompletedDayGenerationSnapshot(
+  admin: SupabaseAdminClient,
+  generationID: string,
+  payload: RegenerateDayDraftResponse,
+): Promise<{ ok: true } | { error: unknown }> {
+  const { error } = await patchCompletedDayOutputSnapshotStore(
+    admin,
+    generationID,
+    payload,
+  );
+  if (error) {
+    return { error };
   }
   return { ok: true };
 }
@@ -120,6 +137,11 @@ export async function markGenerationRunFailed(
   admin: SupabaseAdminClient,
   generationID: string,
   errorCode: string,
+  detail?: {
+    error_message?: string | null;
+    validation_error?: Record<string, unknown> | null;
+    output_snapshot_patch?: Record<string, unknown>;
+  },
 ): Promise<void> {
-  await markGenerationRunFailedStore(admin, generationID, errorCode);
+  await markGenerationRunFailedStore(admin, generationID, errorCode, detail);
 }

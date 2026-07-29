@@ -28,6 +28,7 @@ import {
   normalizeRegenerateDayRequest,
   RegenerateDayRequest,
   validateGeneratedWeek,
+  validationFailureDetail,
   weekDates,
   weekStartDateForDate,
 } from "./generation.ts";
@@ -60,6 +61,7 @@ import {
   completeDayGenerationRun,
   completeGenerationRun,
   markGenerationRunFailed,
+  patchCompletedDayGenerationSnapshot,
 } from "./generation-run-completion.ts";
 import { createDayGenerationRun } from "./generation-run-start.ts";
 import {
@@ -100,6 +102,7 @@ import {
 import {
   runDayGenerationPipeline,
   scheduleSingleDayGeneration,
+  type SingleDayGenerationStageTimings,
   type SingleDayRunnerHost,
   type SingleDayRunnerPreparedGeneration,
 } from "./generation-single-day-runner.ts";
@@ -164,15 +167,19 @@ type GenerationLifecycleLog = {
     | "generation_started"
     | "generation_completed"
     | "generation_failed"
+    | "storyboard_visuals_started"
+    | "storyboard_visuals_completed"
+    | "storyboard_visuals_failed"
     | "day_job_queued"
     | "day_job_retrying";
-  status: "running" | "completed" | "failed" | "queued" | "retrying";
+  status: "running" | "completed" | "failed" | "queued" | "retrying" | "pending";
   generation_id: string | null;
   weekly_plan_id: string | null;
   week_start_date: string | null;
   scheduled_date: string | null;
   day_index: number | null;
   duration_ms: number | null;
+  stage_timings_ms?: SingleDayGenerationStageTimings;
   day_guidance_present: boolean | null;
   day_guidance_chars: number | null;
 };
@@ -210,7 +217,7 @@ type CreatorRecord = Record<string, unknown> & {
   display_name?: string;
 };
 
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const PROMPT_VERSION = "creator-weekly-generation-v1";
 
@@ -649,7 +656,7 @@ async function startPreparedDayGeneration(
       weekly_plan_id: prepared.request.weekly_plan_id,
       status: "running",
       target_scheduled_date: prepared.request.scheduled_date,
-      poll_after_seconds: 5,
+      poll_after_seconds: 2,
     }, 202);
   }
 
@@ -767,6 +774,7 @@ async function prepareDayGeneration(
     existing_week_cards: cardsResult.cards,
     day_guidance: request.day_guidance,
   };
+  inputSnapshot = withSynthesizedDayBriefSetup(inputSnapshot, request, targetCard);
   if (
     request.input_overrides &&
     env.get("MCO_ALLOW_AI_INPUT_OVERRIDES") === "1"
@@ -795,6 +803,45 @@ async function prepareDayGeneration(
       model: providerModelSummary(providers),
       mockEnabled,
     },
+  };
+}
+
+/**
+ * Day-at-a-time regenerate often has weekly_setup_id=null on the thin draft
+ * container. generate_day injects day_brief as weekly_setup.notes; regenerate
+ * must do the same from day_guidance (or the existing card brief) so day intent
+ * / brief tags / validators have the same anchor as the success path.
+ */
+export function withSynthesizedDayBriefSetup(
+  inputSnapshot: GenerationInputSnapshot,
+  request: { day_guidance?: string },
+  targetCard?: Record<string, unknown> | null,
+): GenerationInputSnapshot {
+  if (isRecord(inputSnapshot.weekly_setup)) {
+    const notes = stringValue(inputSnapshot.weekly_setup.notes);
+    if (notes) {
+      return inputSnapshot;
+    }
+  }
+
+  const guidance = stringValue(request.day_guidance)?.trim();
+  const cardAnchor = targetCard
+    ? stringValue(targetCard.weekly_brief_anchor) ??
+      stringValue(targetCard.why_today) ??
+      stringValue(targetCard.brief_alignment)
+    : undefined;
+  const notes = guidance || cardAnchor;
+  if (!notes) {
+    return inputSnapshot;
+  }
+
+  return {
+    ...inputSnapshot,
+    weekly_setup: {
+      ...(isRecord(inputSnapshot.weekly_setup) ? inputSnapshot.weekly_setup : {}),
+      notes,
+    },
+    day_guidance: inputSnapshot.day_guidance ?? guidance,
   };
 }
 
@@ -1322,8 +1369,18 @@ function buildSingleDayRunnerHost(
         targetCard: prepared.targetCard,
       }, generatedCard),
     completeDayGenerationRun,
+    patchCompletedDayGenerationSnapshot,
     markGenerationRunFailed,
     stableGenerationError,
+    validationFailureDetail: (error) => {
+      if (error instanceof GenerateWeekValidationError) {
+        return validationFailureDetail(error) as unknown as Record<
+          string,
+          unknown
+        >;
+      }
+      return null;
+    },
     updateGenerationProgress,
     scheduleBackgroundTask: (promise) =>
       scheduleBackgroundGeneration(promise, dependencies),
@@ -2299,7 +2356,7 @@ function stableGenerationError(error: unknown): string {
   return "invalid_generated_week";
 }
 
-function aiProviderConfigs(env: EnvReader): AIProviderConfig[] {
+export function aiProviderConfigs(env: EnvReader): AIProviderConfig[] {
   const deepSeekKey = env.get("DEEPSEEK_API_KEY")?.trim();
   const openAIKey = env.get("OPENAI_API_KEY")?.trim();
   const deepSeekModel = env.get("MCO_DEEPSEEK_MODEL")?.trim() ||
@@ -2322,7 +2379,9 @@ function aiProviderConfigs(env: EnvReader): AIProviderConfig[] {
       ? { provider: "openai", model: openAIModel, apiKey: openAIKey }
       : undefined,
   };
-  const order = (env.get("MCO_AI_PROVIDER_ORDER") ?? "openai,deepseek")
+  // Flash-first: DeepSeek Flash is the default primary for day latency;
+  // OpenAI remains the quality/reliability fallback.
+  const order = (env.get("MCO_AI_PROVIDER_ORDER") ?? "deepseek,openai")
     .split(",")
     .map((provider) => provider.trim().toLowerCase())
     .filter((provider) => provider.length > 0);

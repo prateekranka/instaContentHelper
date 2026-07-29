@@ -54,6 +54,7 @@ import {
 } from "./generation-run-snapshot.ts";
 import type {
   GenerationRunStatusRecord,
+  RegenerateDayDraftResponse,
   SingleDayGenerationSnapshot,
 } from "./generation-run-snapshot.ts";
 import { readGenerationRunStatus } from "./generation-run-store.ts";
@@ -256,7 +257,15 @@ export async function readGenerationStatus(
       });
     }
     if (isDayDraftResponseSnapshot(data.output_snapshot)) {
-      return jsonResponse({ ...data.output_snapshot });
+      return jsonResponse(
+        await hydrateDayDraftVisualsFromSavedCard(
+          admin,
+          session,
+          data as GenerationRunStatusRecord,
+          data.output_snapshot,
+          host,
+        ),
+      );
     }
     const run = data as GenerationRunStatusRecord;
     const inputSnapshot = normalizeStoredInputSnapshot(run.input_snapshot);
@@ -296,28 +305,45 @@ export async function readGenerationStatus(
   }
 
   if (status === "failed") {
-    const inputSnapshot = normalizeStoredInputSnapshot(
-      (data as GenerationRunStatusRecord).input_snapshot,
+    const run = data as GenerationRunStatusRecord;
+    const dayFailure = normalizeSingleDayGenerationSnapshot(
+      run.output_snapshot,
+      run,
     );
+    if (dayFailure?.status === "failed" || isDayGenerationRun(run)) {
+      return jsonResponse({
+        generation_id: generationID,
+        status: "failed",
+        error: stringValue(run.error_code) ??
+          dayFailure?.error_code ??
+          "invalid_generated_week",
+        error_message: dayFailure?.error_message ?? null,
+        validation_error: dayFailure?.validation_error ?? null,
+        scheduled_date: dayFailure?.scheduled_date ??
+          stringValue(run.target_scheduled_date) ??
+          null,
+        stage_timings_ms: dayFailure?.stage_timings_ms,
+        poll_after_seconds: null,
+      });
+    }
+    const inputSnapshot = normalizeStoredInputSnapshot(run.input_snapshot);
     if (inputSnapshot) {
       const progress = normalizePerDayGenerationSnapshot(
-        (data as GenerationRunStatusRecord).output_snapshot,
+        run.output_snapshot,
         inputSnapshot.week_start_date,
       );
       if (progress.kind === "parallel_week_generation_v1") {
         return await readParallelGenerationStatus(
           admin,
           generationID,
-          data as GenerationRunStatusRecord,
+          run,
           session,
           inputSnapshot,
           progress,
           env,
           host,
           {
-            readOnly: isLegacyGenerationStatusReadOnly(
-              data as GenerationRunStatusRecord,
-            ),
+            readOnly: isLegacyGenerationStatusReadOnly(run),
           },
         );
       }
@@ -563,7 +589,7 @@ async function resumeSingleDayGeneration(
     weekly_plan_id: weeklyPlanID,
     status: "running",
     target_scheduled_date: scheduledDate,
-    poll_after_seconds: 5,
+    poll_after_seconds: 2,
   });
 }
 
@@ -841,4 +867,67 @@ async function readParallelGenerationStatus(
     ...summary,
     poll_after_seconds: summary.overall_status === "running" ? 5 : null,
   });
+}
+
+/**
+ * When script-ready completed with async visuals still pending, merge the
+ * latest persisted storyboard assets from daily_cards so polls can observe
+ * server-driven attach without waiting for snapshot patch races.
+ */
+async function hydrateDayDraftVisualsFromSavedCard(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  run: GenerationRunStatusRecord,
+  snapshot: RegenerateDayDraftResponse,
+  host: GenerationStatusHandlerHost,
+): Promise<RegenerateDayDraftResponse> {
+  if (snapshot.visuals_status !== "pending") {
+    return { ...snapshot };
+  }
+
+  const weeklyPlanID = stringValue(run.weekly_plan_id) ??
+    snapshot.weekly_plan_id;
+  const creatorID = stringValue(run.creator_id);
+  const cardID = stringValue(snapshot.daily_card?.id);
+  if (!weeklyPlanID || !creatorID || !cardID) {
+    return { ...snapshot };
+  }
+
+  const saved = await host.readSavedDailyCards(
+    admin,
+    session.workspaceID,
+    creatorID,
+    weeklyPlanID,
+  );
+  if ("response" in saved) {
+    return { ...snapshot };
+  }
+
+  const savedCard = saved.dailyCards.find((card) => card.id === cardID);
+  const assets = savedCard?.storyboard_thumbnail_assets;
+  if (!Array.isArray(assets) || assets.length === 0) {
+    return { ...snapshot };
+  }
+
+  const hasGenerated = assets.some((asset) =>
+    isRecord(asset) && asset.status === "generated"
+  );
+  if (!hasGenerated) {
+    return {
+      ...snapshot,
+      daily_card: {
+        ...snapshot.daily_card,
+        storyboard_thumbnail_assets: assets,
+      },
+    };
+  }
+
+  return {
+    ...snapshot,
+    visuals_status: "ready",
+    daily_card: {
+      ...snapshot.daily_card,
+      storyboard_thumbnail_assets: assets,
+    },
+  };
 }

@@ -174,6 +174,24 @@ export async function completeDayGenerationRun(
   return { error: error ?? null };
 }
 
+/**
+ * Patch a completed day run's output_snapshot after async storyboard
+ * visuals finish. Does not reopen the run or clear completed_at.
+ */
+export async function patchCompletedDayOutputSnapshot(
+  admin: SupabaseAdminClient,
+  generationID: string,
+  outputSnapshot: unknown,
+): Promise<{ error: unknown | null }> {
+  const { error } = await admin
+    .from("weekly_generation_runs")
+    .update({ output_snapshot: outputSnapshot })
+    .eq("id", generationID)
+    .eq("status", "completed");
+
+  return { error: error ?? null };
+}
+
 export async function completeGenerationRunMinimal(
   admin: SupabaseAdminClient,
   generationID: string,
@@ -191,14 +209,25 @@ export async function markGenerationRunFailed(
   admin: SupabaseAdminClient,
   generationID: string,
   errorCode: string,
+  detail?: {
+    error_message?: string | null;
+    validation_error?: Record<string, unknown> | null;
+    output_snapshot_patch?: Record<string, unknown>;
+  },
 ): Promise<void> {
+  const update: Record<string, unknown> = {
+    status: "failed",
+    error_code: errorCode,
+    completed_at: new Date().toISOString(),
+  };
+  if (detail?.output_snapshot_patch) {
+    // Store failure detail inside output_snapshot so status polls can surface
+    // the validation rule without a schema migration.
+    update.output_snapshot = detail.output_snapshot_patch;
+  }
   await admin
     .from("weekly_generation_runs")
-    .update({
-      status: "failed",
-      error_code: errorCode,
-      completed_at: new Date().toISOString(),
-    })
+    .update(update)
     .eq("id", generationID);
 }
 
