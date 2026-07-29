@@ -541,6 +541,28 @@ Deno.test("DeepSeek Chat request uses JSON object mode with max thinking effort"
   assert(messages[1].content.includes("Never use day_of_week"));
 });
 
+Deno.test("day DeepSeek flash request uses high reasoning effort", () => {
+  const flash = buildDeepSeekDayChatRequest(
+    fixtureInput(),
+    "deepseek-v4-flash",
+    "2026-06-10",
+    2,
+  );
+  const flashThinking = recordValue(flash.thinking);
+  assertEquals(flashThinking.type, "enabled");
+  assertEquals(flash.reasoning_effort, "high");
+
+  const pro = buildDeepSeekDayChatRequest(
+    fixtureInput(),
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const proThinking = recordValue(pro.thinking);
+  assertEquals(proThinking.type, "enabled");
+  assertEquals(pro.reasoning_effort, "max");
+});
+
 Deno.test("day AI request includes target day intent and diversity guidance", () => {
   const request = buildDeepSeekDayChatRequest(
     fixtureInput(),
@@ -1082,10 +1104,44 @@ Deno.test("daily AI provider caller makes second validation attempt repair-speci
   assertEquals(retryContexts[1]?.retry_reason, "invalid_generated_week");
   assertEquals(retryContexts[1]?.scheduled_date, "2026-06-10");
   assertEquals(retryContexts[1]?.day_index, 3);
+  assertEquals(retryContexts[1]?.weekday, "Wednesday");
   assertEquals(
     recordValue(retryContexts[1]?.validation_error).rule,
     "scene_count",
   );
+  assert(
+    String(retryContexts[1]?.instruction).includes("Fill every required timeline/scene"),
+    "repair instruction should include focused timeline/scene fix",
+  );
+});
+
+Deno.test("daily AI provider caller stops after one validation repair attempt", async () => {
+  const input = fixtureInput();
+  let attempts = 0;
+  let thrown: unknown = null;
+  try {
+    await callAIProvidersForDay(
+      input,
+      [{
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        apiKey: "deepseek-key",
+      }],
+      "2026-06-09",
+      1,
+      async () => {
+        attempts += 1;
+        throw new GenerateWeekValidationError(
+          "invalid_generated_week",
+          "Generated card mentions monday for Tuesday.",
+        );
+      },
+    );
+  } catch (error) {
+    thrown = error;
+  }
+  assertEquals(attempts, 2);
+  assert(thrown instanceof GenerateWeekValidationError);
 });
 
 Deno.test("daily OpenAI provider instrumentation logs retries, usage, finish reason, and quality metrics", async () => {
@@ -1166,7 +1222,7 @@ Deno.test("daily OpenAI provider instrumentation logs retries, usage, finish rea
     logs[0].request_metrics?.request_input_version,
     "creator_day_prompt_input_v2",
   );
-  assertEquals(logs[0].request_metrics?.request_timeout_ms, 240_000);
+  assertEquals(logs[0].request_metrics?.request_timeout_ms, 75_000);
   assert(
     (logs[0].request_metrics?.prompt_total_chars ?? 0) > 0,
     "prompt size metrics should be logged",
@@ -1199,7 +1255,7 @@ Deno.test("daily OpenAI provider instrumentation logs retries, usage, finish rea
     logs[1].request_metrics?.request_input_version,
     "creator_day_prompt_repair_input_v2",
   );
-  assertEquals(logs[1].request_metrics?.request_timeout_ms, 240_000);
+  assertEquals(logs[1].request_metrics?.request_timeout_ms, 75_000);
   assert(
     (logs[1].request_metrics?.dropped_reference_context_chars ?? 0) > 0,
     "repair retry should log dropped reference context unless the failure needs it",
@@ -1966,6 +2022,10 @@ Deno.test("resolveAIRequestTimeoutMs applies maximum cap of 240_000 ms", () => {
 
 Deno.test("resolveAIDayRequestTimeoutMs inherits the general timeout by default", () => {
   assertEquals(resolveAIDayRequestTimeoutMs(undefined, "180000"), 180_000);
+});
+
+Deno.test("resolveAIDayRequestTimeoutMs uses a tighter day default when unset", () => {
+  assertEquals(resolveAIDayRequestTimeoutMs(undefined, undefined), 75_000);
 });
 
 Deno.test("resolveAIDayRequestTimeoutMs accepts a day-specific override", () => {

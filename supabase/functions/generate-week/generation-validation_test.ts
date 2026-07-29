@@ -3,6 +3,7 @@ import {
   makeMockGeneratedWeek,
 } from "./generation.ts";
 import {
+  coerceGeneratedDayOutputShape,
   parseGeneratedDayJSON,
   parseGeneratedWeekJSON,
   validateGeneratedDayOutput,
@@ -66,6 +67,150 @@ Deno.test("per-day validator rejects weekday language that conflicts with schedu
     () => validateGeneratedDayOutput({ daily_card: card }, "2026-06-21", 0),
     "invalid_generated_week",
   );
+});
+
+Deno.test("per-day validator allows residual weekday references without identity claims", () => {
+  const card = {
+    ...makeMockGeneratedWeek(fixtureInput()).daily_cards[1],
+    scheduled_date: "2026-06-09",
+    title: "Bombay recovery bowl",
+    why_today:
+      "Tuesday recovery after Monday's legs — still in Bombay kitchen mode.",
+    weekly_brief_anchor: "Back in Bombay and restarting the gym routine.",
+    brief_alignment:
+      "Uses the weekly Bombay gym-return brief with residual prior-day leg context.",
+    growth_job: "Share one practical recovery meal.",
+    post_instructions: "Film the kitchen bowl sequence today.",
+    source_note: "Used weekly brief and day guidance.",
+  };
+
+  const validated = validateGeneratedDayOutput(
+    { daily_card: card },
+    "2026-06-09",
+    1,
+  );
+  assertEquals(validated.daily_card.scheduled_date, "2026-06-09");
+});
+
+Deno.test("day JSON coerce drops incomplete trailing voiceover rows", () => {
+  const base = makeMockGeneratedWeek(fixtureInput()).daily_cards[1];
+  const card = {
+    ...base,
+    scheduled_date: "2026-06-09",
+    title: "Bombay recovery bowl",
+    why_today: "Tuesday recovery food after a hard leg session.",
+    weekly_brief_anchor: "Back in Bombay and restarting the gym routine.",
+    brief_alignment: "Uses the weekly Bombay gym-return brief.",
+    growth_job: "Share one practical recovery meal.",
+    post_instructions: "Film the kitchen bowl sequence today.",
+    source_note: "Used weekly brief and day guidance.",
+    voiceover_timeline: [
+      {
+        timestamp: "0:00-0:03",
+        video_portion: "Kitchen wide",
+        voiceover: "Recovery mode on.",
+      },
+      {
+        timestamp: "0:03-0:06",
+        video_portion: "Bowl close-up",
+        voiceover: "",
+      },
+      {
+        timestamp: "0:06-0:09",
+        video_portion: "Spoon lift",
+        dialogue: "Simple food, real fuel.",
+      },
+    ],
+  };
+
+  const coerced = coerceGeneratedDayOutputShape({
+    daily_card: card,
+    idea_bank: [],
+    strategy_note: "ok",
+    warnings: [],
+    assumptions: [],
+    source_summary: "ok",
+  }) as Record<string, unknown>;
+  const dailyCard = coerced.daily_card as Record<string, unknown>;
+  const voiceover = dailyCard.voiceover_timeline as Record<string, unknown>[];
+  assertEquals(voiceover.length, 2);
+  assertEquals(voiceover[1].voiceover, "Simple food, real fuel.");
+  const validated = validateGeneratedDayOutput(coerced, "2026-06-09", 1);
+  assertEquals(validated.daily_card.voiceover_timeline.length, 2);
+});
+
+Deno.test("day JSON coerce recovers blank cta from caption question", () => {
+  const base = makeMockGeneratedWeek(fixtureInput()).daily_cards[1];
+  const card = {
+    ...base,
+    scheduled_date: "2026-06-09",
+    title: "Bombay recovery bowl",
+    why_today: "Tuesday recovery food after a hard leg session.",
+    weekly_brief_anchor: "Back in Bombay and restarting the gym routine.",
+    brief_alignment: "Uses the weekly Bombay gym-return brief.",
+    growth_job: "Share one practical recovery meal.",
+    post_instructions: "Film the kitchen bowl sequence today.",
+    source_note: "Used weekly brief and day guidance.",
+    caption:
+      "Back in Bombay after travel. My recovery bowl is dal rice and ghee. What's your go-to after legs?",
+    cta: "",
+  };
+  const coerced = coerceGeneratedDayOutputShape({
+    daily_card: card,
+    idea_bank: [],
+    strategy_note: "ok",
+    warnings: [],
+    assumptions: [],
+    source_summary: "ok",
+  });
+  const validated = validateGeneratedDayOutput(coerced, "2026-06-09", 1);
+  assertEquals(
+    validated.daily_card.cta,
+    "What's your go-to after legs?",
+  );
+});
+
+Deno.test("day JSON coerce recovers en-dash timestamps and drops incomplete idea_bank", () => {
+  const base = makeMockGeneratedWeek(fixtureInput()).daily_cards[1];
+  const card = {
+    ...base,
+    scheduled_date: "2026-06-09",
+    title: "Bombay recovery bowl",
+    why_today: "Tuesday recovery food after a hard leg session.",
+    weekly_brief_anchor: "Back in Bombay and restarting the gym routine.",
+    brief_alignment: "Uses the weekly Bombay gym-return brief.",
+    growth_job: "Share one practical recovery meal.",
+    post_instructions: "Film the kitchen bowl sequence today.",
+    source_note: "Used weekly brief and day guidance.",
+    shot_timeline: [{ timestamp: "0:00–0:03", detail: "Kitchen wide" }],
+    voiceover_timeline: [{
+      timestamp: "0:00 – 0:03",
+      video_portion: "Kitchen wide",
+      voiceover: "Recovery mode on.",
+    }],
+    silent_version_timeline: [{
+      timestamp: "0:00—0:03",
+      detail: "Silent kitchen wide",
+    }],
+    on_screen_text_timeline: [{
+      timestamp: "0:00−0:03",
+      text: "Bombay recovery",
+      placement: "center",
+    }],
+    backup_story_detail: [{ timestamp: "0:00-0:03", detail: "Poll sticker" }],
+  };
+
+  const coerced = coerceGeneratedDayOutputShape({
+    daily_card: card,
+    idea_bank: [{ title: "incomplete idea only" }],
+    strategy_note: "ok",
+    warnings: [],
+    assumptions: [],
+    source_summary: "ok",
+  });
+  const validated = validateGeneratedDayOutput(coerced, "2026-06-09", 1);
+  assertEquals(validated.daily_card.shot_timeline[0].timestamp, "0:00-0:03");
+  assertEquals(validated.idea_bank.length, 0);
 });
 
 Deno.test("validator rejects malformed AI JSON", () => {
