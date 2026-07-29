@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
+  CONTENT_CREATOR_ROLES,
   corsHeaders,
   jsonResponse,
   verifyDeviceSession,
@@ -43,8 +44,7 @@ Deno.serve(async (request) => {
   });
 
   const authResult = await verifyDeviceSession(request, admin, [
-    "owner",
-    "editor",
+    ...CONTENT_CREATOR_ROLES,
   ]);
   if ("response" in authResult) {
     return authResult.response;
