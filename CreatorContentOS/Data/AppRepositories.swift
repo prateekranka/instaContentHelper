@@ -24,6 +24,7 @@ struct AppRepositories: Sendable {
     let creatorProfile: any CreatorProfileRepository
     let archive: any ArchiveRepository
     let testerAccess: any TesterAccessRepository
+    let runtimeHealth: any RuntimeHealthRepository
 
     init(
         context: WorkspaceContext,
@@ -36,7 +37,8 @@ struct AppRepositories: Sendable {
         intelligence: any IntelligenceRepository,
         creatorProfile: any CreatorProfileRepository,
         archive: any ArchiveRepository,
-        testerAccess: any TesterAccessRepository = FixtureTesterAccessRepository()
+        testerAccess: any TesterAccessRepository = FixtureTesterAccessRepository(),
+        runtimeHealth: any RuntimeHealthRepository = FixtureRuntimeHealthRepository()
     ) {
         self.context = context
         self.today = today
@@ -49,6 +51,7 @@ struct AppRepositories: Sendable {
         self.creatorProfile = creatorProfile
         self.archive = archive
         self.testerAccess = testerAccess
+        self.runtimeHealth = runtimeHealth
     }
 
     static var fixture: AppRepositories {
@@ -148,8 +151,8 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
 
         return WeeklyPlan(
             id: draft.weeklyPlanID,
-            title: "Daily content",
-            eyebrow: "DAILY CONTENT",
+            title: "Generate a Week",
+            eyebrow: "MANAGER AI REVIEW",
             weekRange: SupabaseDateFormatting.weekRange(starting: weekStartDate),
             weekStartDate: weekStartDate,
             weekEndDate: SupabaseDateFormatting.weekEndDate(starting: weekStartDate),
@@ -169,8 +172,6 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
         setupSections: [WeeklySetupSection],
         weeklyBriefText: String
     ) -> WeeklyPlan? {
-        guard !cardRows.isEmpty else { return nil }
-
         let daysByDate = Dictionary(
             uniqueKeysWithValues: cardRows.map { ($0.scheduledDate, $0.weeklyDay()) }
         )
@@ -205,8 +206,8 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
 
         return WeeklyPlan(
             id: planRow.id,
-            title: "Daily content",
-            eyebrow: "DAILY CONTENT",
+            title: "Generate a Week",
+            eyebrow: "MANAGER AI REVIEW",
             weekRange: SupabaseDateFormatting.weekRange(starting: planRow.weekStartDate),
             weekStartDate: planRow.weekStartDate,
             weekEndDate: SupabaseDateFormatting.weekEndDate(starting: planRow.weekStartDate),
@@ -224,6 +225,12 @@ protocol WeeklyPlanRepository: Sendable {
     func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft?
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea]
     func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,
@@ -245,6 +252,29 @@ protocol WeeklyPlanRepository: Sendable {
         reviewState: String,
         context: WorkspaceContext
     ) async throws
+
+    /// Promotes one draft day to a ready package (published status) without week soft-lock.
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult
+
+    /// Demotes a ready/decision day to draft. Clears live Decision; retains Archive rows.
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult
+
+    /// Light-edits package fields on a ready/decision day without demoting status
+    /// or requiring week soft-lock unlock.
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        package: ReadyDayPackageUpdate,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult
 }
 
 protocol DayGenerationRepository: Sendable {
@@ -263,12 +293,6 @@ protocol DayGenerationRepository: Sendable {
         dayGuidance: String?,
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult
-
-    func publishDay(
-        creatorID: UUID,
-        dailyCardID: UUID,
-        context: WorkspaceContext
-    ) async throws -> DailyPublishResult
 }
 
 extension DayGenerationRepository {
@@ -290,14 +314,6 @@ extension DayGenerationRepository {
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult {
         throw RepositoryError.notConfigured("regenerate_day_not_configured")
-    }
-
-    func publishDay(
-        creatorID: UUID,
-        dailyCardID: UUID,
-        context: WorkspaceContext
-    ) async throws -> DailyPublishResult {
-        throw RepositoryError.notConfigured("publish_day_not_configured")
     }
 }
 
@@ -350,6 +366,31 @@ extension WeeklyPlanRepository {
         context: WorkspaceContext
     ) async throws {
     }
+
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID? = nil,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult {
+        throw RepositoryError.notConfigured("make_day_available_not_configured")
+    }
+
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID? = nil,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult {
+        throw RepositoryError.notConfigured("unpublish_day_not_configured")
+    }
+
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID? = nil,
+        package: ReadyDayPackageUpdate,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult {
+        throw RepositoryError.notConfigured("update_ready_day_package_not_configured")
+    }
 }
 
 protocol ReferenceRepository: Sendable {
@@ -367,6 +408,11 @@ protocol CreatorProfileRepository: Sendable {
 
 protocol ArchiveRepository: Sendable {
     func entries(for context: WorkspaceContext) async throws -> [ArchiveEntry]
+    func persistDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        context: WorkspaceContext
+    ) async throws
     func upsertDecision(
         _ entry: ArchiveEntry,
         for card: DailyCard,
@@ -386,10 +432,85 @@ struct WeeklySelectionUpdate: Hashable, Sendable {
     var ideaBank: [WeeklyIdea]
 }
 
-struct DailyPublishResult: Hashable, Sendable {
+struct WeeklyPublishResult: Hashable, Sendable {
+    var weeklyPlan: WeeklyPlan
+    var weekCards: [DailyCard]
+    var todayCard: DailyCard?
+    var summary: String
+}
+
+struct DayAvailabilityResult: Hashable, Sendable {
     var dailyCardID: UUID
     var scheduledDate: String
-    var publishedAt: String
+    var status: String
+    var weeklyPlanID: UUID
+    var weekIsSoftLocked: Bool
+}
+
+struct DayUnpublishResult: Hashable, Sendable {
+    var dailyCardID: UUID
+    var scheduledDate: String
+    var status: String
+    var previousStatus: String
+    var clearedLiveDecision: Bool
+    var archiveRetained: Bool
+    var weeklyPlanID: UUID
+}
+
+struct ReadyDayPackageUpdate: Hashable, Sendable {
+    var title: String?
+    var whyToday: String?
+    var caption: String?
+    var script: String?
+    var backupStory: String?
+    var backupCaptionOnly: String?
+    var shootability: String?
+    var estimatedShootMinutes: Int?
+    var sceneList: [ShotScene]?
+}
+
+struct DayPackageUpdateResult: Hashable, Sendable {
+    var dailyCardID: UUID
+    var scheduledDate: String
+    var status: String
+    var weeklyPlanID: UUID
+    var title: String
+    var caption: String?
+}
+
+enum DayPackageLifecycleStatus {
+    static let readyOrDecision: Set<String> = [
+        "published",
+        "in_decision",
+        "shot",
+        "posted",
+        "used_backup",
+        "saved_for_tomorrow",
+        "skipped_intentionally"
+    ]
+
+    /// Draft package statuses, including Manager review_state values mapped onto draft cards
+    /// (`open` / `ready` / `backup` via `draftReviewStatus`).
+    static let draftLike: Set<String> = [
+        "draft",
+        "open",
+        "ready",
+        "backup"
+    ]
+
+    static func requiresOverwriteConfirmation(_ status: String?) -> Bool {
+        guard let status else { return false }
+        return readyOrDecision.contains(status)
+    }
+
+    static func isDraftPackage(_ status: String?) -> Bool {
+        guard let status = status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !status.isEmpty
+        else {
+            return false
+        }
+        return draftLike.contains(status)
+    }
 }
 
 struct CreatorProfileSummary: Hashable, Sendable {
@@ -468,4 +589,39 @@ struct CreatorProfileUpdate: Hashable, Sendable {
         noGoTopics = summary.noGoTopics
         recurringFormats = summary.recurringFormats
     }
+}
+
+enum RuntimeHealthStatus: Hashable, Sendable {
+    case unknown
+    case sample
+    case checking
+    case live
+    case down(String?)
+
+    var chipLabel: String {
+        switch self {
+        case .unknown:
+            "—"
+        case .sample:
+            "Sample"
+        case .checking:
+            "Checking"
+        case .live:
+            "Live"
+        case .down:
+            "Down"
+        }
+    }
+}
+
+struct RuntimeHealthReport: Hashable, Sendable {
+    var supabaseOK: Bool
+    var geminiOK: Bool
+    var supabaseDetail: String?
+    var geminiDetail: String?
+    var checkedAt: Date
+}
+
+protocol RuntimeHealthRepository: Sendable {
+    func checkHealth(for context: WorkspaceContext) async throws -> RuntimeHealthReport
 }

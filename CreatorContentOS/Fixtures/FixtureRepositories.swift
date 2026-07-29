@@ -96,6 +96,40 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        let publishedPlan = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
+            generatedDraft.markedPublished.weeklyPlan(
+                setupSections: plan.setupSections,
+                weeklyBriefText: plan.weeklyBriefText
+            ).softLockedForPublish
+        } else {
+            plan.softLockedForPublish
+        }
+        let cards = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
+            generatedDraft.markedPublished.publishedWeekCards
+        } else {
+            DailyCard.publishedCards(from: publishedPlan)
+        }
+
+        self.plan = publishedPlan
+        self.ideas = ideaBank
+
+        let todayCard = DailyCard.bestTodayCard(from: cards)
+        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
+
+        return WeeklyPublishResult(
+            weeklyPlan: publishedPlan,
+            weekCards: cards,
+            todayCard: todayCard,
+            summary: "Published \(cards.count) cards to Creator Today."
+        )
+    }
+
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,
@@ -157,6 +191,120 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         currentPlan.days[dayIndex].state = newState
         self.plan = currentPlan
     }
+
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult {
+        let cardID = dailyCardID ?? UUID()
+        let readyCard = DailyCard(
+            id: cardID,
+            title: "Ready package \(scheduledDate)",
+            context: SupabaseDateFormatting.contextLine(for: scheduledDate),
+            effortLabel: "Easy - 12 min",
+            whyToday: "Available on Today from draft.",
+            scheduledDate: scheduledDate,
+            scenes: [
+                ShotScene(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
+                ShotScene(number: 2, title: "One steady movement", duration: "5 sec", symbol: "figure.run"),
+                ShotScene(number: 3, title: "Useful close", duration: "4 sec", symbol: "text.quote")
+            ]
+        )
+
+        var cards = await publishedStore?.readWeekCards() ?? []
+        cards.removeAll { $0.scheduledDate == scheduledDate }
+        cards.append(readyCard)
+        cards.sort { ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "") }
+
+        let today = SupabaseDateFormatting.todayDateString()
+        let todayCard = cards.first { $0.scheduledDate == today }
+        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
+
+        return DayAvailabilityResult(
+            dailyCardID: cardID,
+            scheduledDate: scheduledDate,
+            status: "published",
+            weeklyPlanID: plan.id,
+            weekIsSoftLocked: false
+        )
+    }
+
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult {
+        var cards = await publishedStore?.readWeekCards() ?? []
+        let existing = cards.first { card in
+            if let dailyCardID { return card.id == dailyCardID }
+            return card.scheduledDate == scheduledDate
+        }
+        guard let existing else {
+            throw RepositoryError.edgeFunction("daily_card_not_found")
+        }
+
+        cards.removeAll { $0.id == existing.id }
+        let today = SupabaseDateFormatting.todayDateString()
+        let todayCard = cards.first { $0.scheduledDate == today }
+        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
+
+        return DayUnpublishResult(
+            dailyCardID: existing.id,
+            scheduledDate: existing.scheduledDate ?? scheduledDate,
+            status: "draft",
+            previousStatus: "published",
+            clearedLiveDecision: false,
+            archiveRetained: true,
+            weeklyPlanID: plan.id
+        )
+    }
+
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        package: ReadyDayPackageUpdate,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult {
+        var cards = await publishedStore?.readWeekCards() ?? []
+        guard let index = cards.firstIndex(where: { card in
+            if let dailyCardID { return card.id == dailyCardID }
+            return card.scheduledDate == scheduledDate
+        }) else {
+            throw RepositoryError.edgeFunction("daily_card_not_found")
+        }
+
+        var card = cards[index]
+        if let title = package.title?.nilIfBlank {
+            card.title = title
+        }
+        if let whyToday = package.whyToday?.nilIfBlank {
+            card.whyToday = whyToday
+        }
+        if let caption = package.caption {
+            card.caption = caption
+        }
+        if let script = package.script {
+            card.script = script
+        }
+        if let sceneList = package.sceneList {
+            card.scenes = sceneList
+        }
+        cards[index] = card
+
+        let today = SupabaseDateFormatting.todayDateString()
+        let todayCard = cards.first { $0.scheduledDate == today }
+        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
+
+        return DayPackageUpdateResult(
+            dailyCardID: card.id,
+            scheduledDate: card.scheduledDate ?? scheduledDate,
+            status: "published",
+            weeklyPlanID: plan.id,
+            title: card.title,
+            caption: card.caption
+        )
+    }
 }
 
 struct AppFixtureDayGenerationUnavailableRepository: DayGenerationRepository {}
@@ -199,11 +347,22 @@ struct FixtureArchiveRepository: ArchiveRepository {
         ArchiveEntry.fixtures
     }
 
+    func persistDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        context: WorkspaceContext
+    ) async throws {
+        _ = entry
+        _ = card
+        _ = context
+    }
+
     func upsertDecision(
         _ entry: ArchiveEntry,
         for card: DailyCard,
         context: WorkspaceContext
     ) async throws -> [ArchiveEntry] {
+        try await persistDecision(entry, for: card, context: context)
         var entries = ArchiveEntry.fixtures
         if let index = entries.firstIndex(where: { archiveEntry in
             archiveEntry.dailyCardID == card.id || archiveEntry.cardTitle == card.title
@@ -264,6 +423,19 @@ struct FixtureTesterAccessRepository: TesterAccessRepository {
             status: "revoked",
             createdAt: nil,
             updatedAt: nil
+        )
+    }
+}
+
+struct FixtureRuntimeHealthRepository: RuntimeHealthRepository {
+    func checkHealth(for context: WorkspaceContext) async throws -> RuntimeHealthReport {
+        _ = context
+        return RuntimeHealthReport(
+            supabaseOK: false,
+            geminiOK: false,
+            supabaseDetail: "sample_runtime",
+            geminiDetail: "sample_runtime",
+            checkedAt: Date()
         )
     }
 }

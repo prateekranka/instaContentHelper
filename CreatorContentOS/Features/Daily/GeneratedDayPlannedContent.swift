@@ -1,81 +1,5 @@
 import SwiftUI
 
-struct GeneratedReadOnlyField: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        if let normalizedValue = value.nilIfBlank {
-            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                Text(title)
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
-                Text(normalizedValue)
-                    .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
-enum SceneTiming {
-    static func windows(for scenes: [ShotScene]) -> [String] {
-        var cursor = 0
-        return scenes.map { scene in
-            let start = cursor
-            cursor += seconds(from: scene.duration) ?? 0
-            return "\(timecode(start))-\(timecode(cursor))"
-        }
-    }
-
-    static func totalSeconds(for scenes: [ShotScene]) -> Int? {
-        let durations = scenes.compactMap { seconds(from: $0.duration) }
-        guard durations.count == scenes.count else { return nil }
-        return durations.reduce(0, +)
-    }
-
-    static func sceneTitle(for scenes: [ShotScene], index: Int) -> String? {
-        guard let scene = scenes[safe: index] else { return nil }
-        return "Scene \(String(format: "%02d", scene.number)): \(scene.title)"
-    }
-
-    private static func seconds(from duration: String) -> Int? {
-        Int(duration.prefix { $0.isNumber })
-    }
-
-    private static func timecode(_ seconds: Int) -> String {
-        "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
-    }
-}
-
-extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
-}
-
-extension ProductionTimelineItem {
-    var timelineTarget: String? {
-        videoPortion?.nilIfBlank ?? placement?.nilIfBlank ?? shot?.nilIfBlank
-    }
-
-    var timelineBody: String {
-        voiceover?.nilIfBlank
-            ?? onScreenText?.nilIfBlank
-            ?? detail.nilIfBlank
-            ?? title.nilIfBlank
-            ?? "Detail not specified."
-    }
-}
-
-extension String {
-    var containsTimestamp: Bool {
-        range(of: #"(\d{1,2}:\d{2}|\d+\s?-\s?\d+\s?s|\d+\s?s)"#, options: .regularExpression) != nil
-    }
-}
-
 struct GeneratedDayPlannedContent: View {
     let card: GeneratedDailyCardDraft
     var onStoryboardAssetsChanged: (([StoryboardThumbnailAsset]) -> Void)?
@@ -87,6 +11,7 @@ struct GeneratedDayPlannedContent: View {
                 card: card,
                 onStoryboardAssetsChanged: onStoryboardAssetsChanged
             )
+            GeneratedScriptTimelineBlock(card: card)
             InstagramCaptionPostBlock(card: card)
         }
     }
@@ -214,7 +139,7 @@ struct GeneratedStoryboardBreakdownContent: View {
         .buttonStyle(.plain)
         .disabled(isGeneratingThumbnails)
         .opacity(isGeneratingThumbnails ? 0.72 : 1)
-        .accessibilityIdentifier("daily.storyboard.generateVisuals")
+        .accessibilityIdentifier("weekly.storyboard.generateVisuals")
     }
 
     private var rows: [GeneratedStoryboardBreakdownRow] {
@@ -290,9 +215,8 @@ struct GeneratedStoryboardBreakdownContent: View {
 struct GeneratedStoryboardTable: View {
     let rows: [GeneratedStoryboardBreakdownRow]
     private let headerHeight: CGFloat = 38
-    private let rowHeight: CGFloat = 152
-    private let timeColumnWidth: CGFloat = 62
-    private let visualColumnWidth: CGFloat = 188
+    private let rowHeight: CGFloat = 168
+    private let sceneColumnWidth: CGFloat = 220
     private let whatColumnWidth: CGFloat = 182
     private let audioColumnWidth: CGFloat = 194
     private let textColumnWidth: CGFloat = 184
@@ -301,14 +225,14 @@ struct GeneratedStoryboardTable: View {
         HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 0) {
                 GeneratedStoryboardHeaderCell(
-                    title: "TIME",
-                    width: timeColumnWidth,
+                    title: "SCENE / VISUAL",
+                    width: sceneColumnWidth,
                     height: headerHeight
                 )
                 ForEach(rows) { row in
-                    GeneratedStoryboardTimeCell(
+                    GeneratedStoryboardSceneCell(
                         row: row,
-                        width: timeColumnWidth,
+                        width: sceneColumnWidth,
                         height: rowHeight
                     )
                 }
@@ -317,11 +241,6 @@ struct GeneratedStoryboardTable: View {
             ScrollView(.horizontal, showsIndicators: true) {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
-                        GeneratedStoryboardHeaderCell(
-                            title: "VISUAL / SHOT",
-                            width: visualColumnWidth,
-                            height: headerHeight
-                        )
                         GeneratedStoryboardHeaderCell(
                             title: "WHAT TO SHOW",
                             width: whatColumnWidth,
@@ -340,11 +259,6 @@ struct GeneratedStoryboardTable: View {
                     }
                     ForEach(rows) { row in
                         HStack(alignment: .top, spacing: 0) {
-                            GeneratedStoryboardVisualCell(
-                                row: row,
-                                width: visualColumnWidth,
-                                height: rowHeight
-                            )
                             GeneratedStoryboardTextCell(
                                 text: row.whatToShow,
                                 width: whatColumnWidth,
@@ -390,53 +304,43 @@ struct GeneratedStoryboardHeaderCell: View {
     }
 }
 
-struct GeneratedStoryboardTimeCell: View {
+struct GeneratedStoryboardSceneCell: View {
     let row: GeneratedStoryboardBreakdownRow
     let width: CGFloat
     let height: CGFloat
 
     var body: some View {
-        VStack(spacing: MCOSpace.xxs) {
-            Text(row.timecode.replacingOccurrences(of: " ", with: "\n"))
-                .font(MCOType.caption.weight(.semibold))
-                .foregroundStyle(MCOTheme.Color.ink)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-                .minimumScaleFactor(0.72)
-            Text(String(format: "%02d", row.sceneNumber))
-                .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-        }
-        .frame(width: width, height: height)
-        .background(MCOTheme.Color.paperRaised.opacity(0.78))
-        .storyboardGridLines()
-    }
-}
-
-struct GeneratedStoryboardVisualCell: View {
-    let row: GeneratedStoryboardBreakdownRow
-    let width: CGFloat
-    let height: CGFloat
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.xs) {
+        VStack(alignment: .leading, spacing: MCOSpace.xxs) {
             GeneratedStoryboardThumbnail(url: row.thumbnailURL)
-                .frame(height: 88)
+                .frame(width: width - 16, height: 54)
+            HStack(spacing: MCOSpace.xxs) {
+                Text(String(format: "%02d", row.sceneNumber))
+                    .font(MCOType.caption.weight(.semibold))
+                    .foregroundStyle(MCOTheme.Color.oxblood)
+                Text(row.timecode)
+                    .font(MCOType.caption.weight(.semibold))
+                    .foregroundStyle(MCOTheme.Color.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
             Text(row.visualShot)
                 .font(MCOType.caption)
                 .foregroundStyle(MCOTheme.Color.ink)
-                .lineLimit(2)
+                .lineLimit(4)
                 .minimumScaleFactor(0.8)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(MCOSpace.xs)
         .frame(width: width, height: height, alignment: .topLeading)
-        .background(MCOTheme.Color.paperRaised.opacity(0.58))
+        .background(MCOTheme.Color.paperRaised.opacity(0.78))
         .storyboardGridLines()
+        .accessibilityLabel("Scene \(row.sceneNumber), \(row.timecode), \(row.visualShot)")
     }
 }
 
 struct GeneratedStoryboardThumbnail: View {
     let url: URL?
+    var fallbackSystemImage: String? = nil
 
     var body: some View {
         ZStack {
@@ -483,7 +387,7 @@ struct GeneratedStoryboardThumbnail: View {
                 ProgressView()
                     .controlSize(.small)
             } else {
-                Image(systemName: "photo")
+                Image(systemName: fallbackSystemImage?.nilIfBlank ?? "photo")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(MCOTheme.Color.inkMuted)
             }
@@ -703,5 +607,57 @@ struct InstagramCaptionPostBlock: View {
     private var hashtagSummary: String {
         card.hashtags.map { "#\($0.trimmingCharacters(in: CharacterSet(charactersIn: "#")))" }
             .joined(separator: " ")
+    }
+}
+
+struct GeneratedScriptTimelineBlock: View {
+    let card: GeneratedDailyCardDraft
+
+    var body: some View {
+        let rows = GeneratedStoryboardBreakdown.rows(for: card)
+        if !rows.isEmpty {
+            JournalBlock {
+                VStack(alignment: .leading, spacing: MCOSpace.s) {
+                    HStack(spacing: MCOSpace.s) {
+                        Image(systemName: "text.alignleft")
+                            .font(MCOType.captionEmphasis)
+                        Text("Script")
+                            .font(MCOType.tinyLabel)
+                        Spacer(minLength: MCOSpace.s)
+                        Text("\(rows.count) lines")
+                            .font(MCOType.caption)
+                    }
+                    .foregroundStyle(MCOTheme.Color.paperRaised)
+                    .padding(.horizontal, MCOSpace.s)
+                    .frame(minHeight: 38)
+                    .background(MCOTheme.Color.ink, in: RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+
+                    ForEach(rows) { row in
+                        HStack(alignment: .top, spacing: MCOSpace.s) {
+                            GeneratedStoryboardThumbnail(
+                                url: row.thumbnailURL,
+                                fallbackSystemImage: card.sceneList[safe: row.sceneNumber - 1]?.symbol
+                            )
+                                .frame(width: 72, height: 54)
+                            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                                Text(row.timecode)
+                                    .font(MCOType.captionEmphasis)
+                                    .foregroundStyle(MCOTheme.Color.oxblood)
+                                Text(row.audioDialogue)
+                                    .font(MCOType.bodySmall)
+                                    .foregroundStyle(MCOTheme.Color.ink)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(MCOSpace.s)
+                        .background(MCOTheme.Color.paperRaised.opacity(0.58))
+                        .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                        .accessibilityIdentifier("plan.script.line.\(row.sceneNumber)")
+                    }
+                }
+            }
+            .accessibilityIdentifier("plan.script.timeline")
+        }
     }
 }

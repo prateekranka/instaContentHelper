@@ -138,6 +138,145 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        let response: SupabasePublishWeekResponse = try await client.functions.invoke(
+            "publish-week",
+            options: FunctionInvokeOptions(
+                body: SupabasePublishWeekRequest(
+                    plan: plan,
+                    generatedDraft: generatedDraft,
+                    context: context
+                )
+            )
+        )
+
+        let publishedPlan = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
+            generatedDraft.markedPublished.weeklyPlan(
+                setupSections: plan.setupSections,
+                weeklyBriefText: plan.weeklyBriefText
+            ).softLockedForPublish
+        } else {
+            plan.softLockedForPublish
+        }
+        let cards = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
+            generatedDraft.markedPublished.publishedWeekCards
+        } else {
+            DailyCard.publishedCards(from: publishedPlan)
+        }
+
+        return WeeklyPublishResult(
+            weeklyPlan: publishedPlan,
+            weekCards: cards,
+            todayCard: DailyCard.bestTodayCard(from: cards),
+            summary: "Published \(response.dailyCardCount) cards to Creator Today."
+        )
+    }
+
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult {
+        try await TransientNetworkRetry.run(label: "make-day-available", attempts: 3) {
+            do {
+                let response: SupabaseMakeDayAvailableResponse = try await client.functions.invoke(
+                    "make-day-available",
+                    options: FunctionInvokeOptions(
+                        body: SupabaseMakeDayAvailableRequest(
+                            creatorID: context.creatorID,
+                            scheduledDate: scheduledDate,
+                            dailyCardID: dailyCardID
+                        )
+                    )
+                )
+                return DayAvailabilityResult(
+                    dailyCardID: response.dailyCardID,
+                    scheduledDate: response.scheduledDate,
+                    status: response.status,
+                    weeklyPlanID: response.weeklyPlanID,
+                    weekIsSoftLocked: response.weekIsSoftLocked
+                )
+            } catch {
+                if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                    throw RepositoryError.edgeFunction(code)
+                }
+                throw error
+            }
+        }
+    }
+
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult {
+        do {
+            let response: SupabaseUnpublishDayResponse = try await client.functions.invoke(
+                "unpublish-day",
+                options: FunctionInvokeOptions(
+                    body: SupabaseUnpublishDayRequest(
+                        creatorID: context.creatorID,
+                        scheduledDate: scheduledDate,
+                        dailyCardID: dailyCardID
+                    )
+                )
+            )
+            return DayUnpublishResult(
+                dailyCardID: response.dailyCardID,
+                scheduledDate: response.scheduledDate,
+                status: response.status,
+                previousStatus: response.previousStatus,
+                clearedLiveDecision: response.clearedLiveDecision,
+                archiveRetained: response.archiveRetained,
+                weeklyPlanID: response.weeklyPlanID
+            )
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        package: ReadyDayPackageUpdate,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult {
+        do {
+            let response: SupabaseUpdateReadyDayPackageResponse = try await client.functions.invoke(
+                "update-ready-day-package",
+                options: FunctionInvokeOptions(
+                    body: SupabaseUpdateReadyDayPackageRequest(
+                        creatorID: context.creatorID,
+                        scheduledDate: scheduledDate,
+                        dailyCardID: dailyCardID,
+                        package: package
+                    )
+                )
+            )
+            return DayPackageUpdateResult(
+                dailyCardID: response.dailyCardID,
+                scheduledDate: response.scheduledDate,
+                status: response.status,
+                weeklyPlanID: response.weeklyPlanID,
+                title: response.title,
+                caption: response.caption
+            )
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,
@@ -204,19 +343,21 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         let publishedCardRows = response.publishedDailyCards.isEmpty
             ? response.dailyCards
             : response.publishedDailyCards
-        guard !publishedCardRows.isEmpty else {
-            throw RepositoryError.edgeFunction("weekly_plan_has_no_daily_cards")
-        }
 
         let publishedSetupSections = (response.publishedWeeklySetup ?? response.weeklySetup)?.setupSections ?? []
         let publishedBriefText = (response.publishedWeeklySetup ?? response.weeklySetup)?.weeklyBriefText ?? ""
 
-        let publishedPlan = makeWeeklyPlan(
-            row: planRow,
-            cardRows: publishedCardRows,
-            setupSections: publishedSetupSections,
-            weeklyBriefText: publishedBriefText
-        )
+        let publishedPlan = WeeklyRepositoryContent.makeWorkingPlan(
+                from: publishedCardRows,
+                planRow: planRow,
+                setupSections: publishedSetupSections,
+                weeklyBriefText: publishedBriefText
+            ) ?? makeWeeklyPlan(
+                row: planRow,
+                cardRows: publishedCardRows,
+                setupSections: publishedSetupSections,
+                weeklyBriefText: publishedBriefText
+            )
 
         let generatedDraft: GeneratedWeekDraft?
         if response.weeklyPlan != nil, !response.dailyCards.isEmpty {
@@ -226,7 +367,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         }
 
         let workingPlan: WeeklyPlan?
-        if let workingPlanRow = response.weeklyPlan, !response.dailyCards.isEmpty {
+        if let workingPlanRow = response.weeklyPlan {
             workingPlan = WeeklyRepositoryContent.makeWorkingPlan(
                 from: response.dailyCards,
                 planRow: workingPlanRow,
@@ -265,8 +406,8 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
 
         return WeeklyPlan(
             id: row.id,
-            title: "Daily content",
-            eyebrow: "DAILY CONTENT",
+            title: "Generate a Week",
+            eyebrow: "MANAGER WEEKLY CONTROL",
             weekRange: SupabaseDateFormatting.weekRange(starting: row.weekStartDate),
             weekStartDate: row.weekStartDate,
             weekEndDate: SupabaseDateFormatting.weekEndDate(starting: row.weekStartDate),
@@ -287,34 +428,6 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
 
     let client: SupabaseClient
     var runtimeConfiguration: SupabaseRuntimeConfiguration?
-
-    func publishDay(
-        creatorID: UUID,
-        dailyCardID: UUID,
-        context: WorkspaceContext
-    ) async throws -> DailyPublishResult {
-        do {
-            let response: SupabasePublishDayResponse = try await client.functions.invoke(
-                "publish-day",
-                options: FunctionInvokeOptions(
-                    body: SupabasePublishDayRequest(
-                        creatorID: creatorID,
-                        dailyCardID: dailyCardID
-                    )
-                )
-            )
-            return DailyPublishResult(
-                dailyCardID: response.dailyCardID,
-                scheduledDate: response.scheduledDate,
-                publishedAt: response.publishedAt
-            )
-        } catch {
-            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
-                throw RepositoryError.edgeFunction(code)
-            }
-            throw error
-        }
-    }
 
     func regenerateDay(
         creatorID: UUID,
@@ -524,7 +637,9 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
     }
 
     private func logGeneration(_ message: String) {
-        print("[ContentHelperGenerationRepository] \(Date()) \(message)")
+        let line = "[ContentHelperGenerationRepository] \(ISO8601DateFormatter().string(from: Date())) \(message)"
+        print(line)
+        GenerationLogFile.append(line)
     }
 
     private func dailyGenerationInvocationSummary(_ invocation: SupabaseDailyGenerationInvocation) -> String {
@@ -671,6 +786,29 @@ enum SupabaseDailyGenerationPoller {
     }
 }
 
+enum TransientNetworkRetry {
+    static func run<T>(
+        label: String,
+        attempts: Int = 3,
+        operation: () async throws -> T
+    ) async throws -> T {
+        var lastError: Error?
+        for attempt in 1...max(attempts, 1) {
+            do {
+                return try await operation()
+            } catch {
+                lastError = error
+                let canRetry = attempt < attempts && SupabaseGenerationRetryPolicy.isTransientPollingError(error)
+                guard canRetry else { throw error }
+                let delayNs = UInt64(250_000_000 * attempt)
+                print("[ContentHelperNetwork] \(label) transient failure attempt=\(attempt) retrying_after_ms=\(delayNs / 1_000_000) error=\(error.localizedDescription)")
+                try? await Task.sleep(nanoseconds: delayNs)
+            }
+        }
+        throw lastError ?? RepositoryError.edgeFunction("make_day_available_failed")
+    }
+}
+
 enum SupabaseGenerationRetryPolicy {
     private static let terminalStatusErrorCodes: Set<String> = [
         "creator_member_not_found",
@@ -693,6 +831,18 @@ enum SupabaseGenerationRetryPolicy {
         "weekly_plan_not_found",
         "weekly_setup_not_found",
     ]
+
+    static func isRetryableWriteError(_ error: Error) -> Bool {
+        if isTransientPollingError(error) {
+            return true
+        }
+
+        guard let httpError = functionHTTPError(error) else {
+            return false
+        }
+
+        return [408, 429, 500, 502, 503, 504].contains(httpError.status)
+    }
 
     static func isTransientPollingError(_ error: Error) -> Bool {
         let nsError = error as NSError
@@ -865,15 +1015,22 @@ struct SupabaseArchiveRepository: ArchiveRepository {
         return response.entries.map { $0.domainEntry() }
     }
 
+    func persistDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        context: WorkspaceContext
+    ) async throws {
+        try await client.writeContent(
+            .upsertArchiveDecision(entry, for: card, context: context)
+        )
+    }
+
     func upsertDecision(
         _ entry: ArchiveEntry,
         for card: DailyCard,
         context: WorkspaceContext
     ) async throws -> [ArchiveEntry] {
-        try await client.writeContent(
-            .upsertArchiveDecision(entry, for: card, context: context)
-        )
-
+        try await persistDecision(entry, for: card, context: context)
         return try await entries(for: context)
     }
 }
@@ -917,19 +1074,29 @@ private extension SupabaseClient {
     }
 
     func writeContent(_ request: SupabaseWriteContentRequest) async throws {
-        do {
-            let response: SupabaseWriteContentResponse = try await functions.invoke(
-                "write-content",
-                options: FunctionInvokeOptions(body: request)
-            )
-            if let error = response.error?.nilIfBlank {
-                throw RepositoryError.edgeFunction(error)
+        var attempts = 0
+        while true {
+            do {
+                let response: SupabaseWriteContentResponse = try await functions.invoke(
+                    "write-content",
+                    options: FunctionInvokeOptions(body: request)
+                )
+                if let error = response.error?.nilIfBlank {
+                    throw RepositoryError.edgeFunction(error)
+                }
+                return
+            } catch {
+                if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                    throw RepositoryError.edgeFunction(code)
+                }
+
+                attempts += 1
+                guard attempts < 3, SupabaseGenerationRetryPolicy.isRetryableWriteError(error) else {
+                    throw error
+                }
+
+                try await Task.sleep(nanoseconds: UInt64(attempts) * 1_000_000_000)
             }
-        } catch {
-            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
-                throw RepositoryError.edgeFunction(code)
-            }
-            throw error
         }
     }
 }
@@ -947,3 +1114,25 @@ private extension SupabaseIdeaRow {
         )
     }
 }
+
+struct SupabaseRuntimeHealthRepository: RuntimeHealthRepository {
+    let client: SupabaseClient
+
+    func checkHealth(for context: WorkspaceContext) async throws -> RuntimeHealthReport {
+        _ = context
+        do {
+            let response: SupabaseRuntimeHealthResponse = try await client.functions.invoke(
+                "runtime-health",
+                options: FunctionInvokeOptions(body: EmptyJSONBody())
+            )
+            return response.report()
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+}
+
+private struct EmptyJSONBody: Encodable, Sendable {}

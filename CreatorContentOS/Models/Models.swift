@@ -29,7 +29,8 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     var creatorFitScore: Double?
     var riskNotes: [String]?
     var assumptions: [String]?
-    var storyboardThumbnailAssets: [StoryboardThumbnailAsset]
+    /// Storyboard frame thumbnails keyed by scene/script row. Optional for older Today cache payloads.
+    var storyboardThumbnailAssets: [StoryboardThumbnailAsset]?
 
     init(
         id: UUID = UUID(),
@@ -60,7 +61,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         creatorFitScore: Double? = nil,
         riskNotes: [String]? = nil,
         assumptions: [String]? = nil,
-        storyboardThumbnailAssets: [StoryboardThumbnailAsset] = []
+        storyboardThumbnailAssets: [StoryboardThumbnailAsset]? = nil
     ) {
         self.id = id
         self.title = title
@@ -92,87 +93,13 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.assumptions = assumptions
         self.storyboardThumbnailAssets = storyboardThumbnailAssets
     }
-
-    enum CodingKeys: String, CodingKey {
-        case id, title, context, effortLabel, whyToday, hook, sourceNote, scheduledDate
-        case scenes, shotTimeline, voiceoverTimeline, onScreenTextTimeline, completionState
-        case script, noVoiceoverVersion, onScreenText, caption, cta, hashtags, coverText
-        case postInstructions, brandEventNotes, backupStory, backupCaptionOnly
-        case audioOptionNotes, creatorFitScore, riskNotes, assumptions, storyboardThumbnailAssets
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        title = try container.decode(String.self, forKey: .title)
-        context = try container.decode(String.self, forKey: .context)
-        effortLabel = try container.decode(String.self, forKey: .effortLabel)
-        whyToday = try container.decode(String.self, forKey: .whyToday)
-        hook = try container.decodeIfPresent(String.self, forKey: .hook)
-        sourceNote = try container.decodeIfPresent(String.self, forKey: .sourceNote)
-        scheduledDate = try container.decodeIfPresent(String.self, forKey: .scheduledDate)
-        scenes = try container.decode([ShotScene].self, forKey: .scenes)
-        shotTimeline = try container.decodeIfPresent([ProductionTimelineItem].self, forKey: .shotTimeline)
-        voiceoverTimeline = try container.decodeIfPresent([ProductionTimelineItem].self, forKey: .voiceoverTimeline)
-        onScreenTextTimeline = try container.decodeIfPresent([ProductionTimelineItem].self, forKey: .onScreenTextTimeline)
-        completionState = try container.decodeIfPresent(CompletionState.self, forKey: .completionState)
-        script = try container.decodeIfPresent(String.self, forKey: .script)
-        noVoiceoverVersion = try container.decodeIfPresent(String.self, forKey: .noVoiceoverVersion)
-        onScreenText = try container.decodeIfPresent([String].self, forKey: .onScreenText)
-        caption = try container.decodeIfPresent(String.self, forKey: .caption)
-        cta = try container.decodeIfPresent(String.self, forKey: .cta)
-        hashtags = try container.decodeIfPresent([String].self, forKey: .hashtags)
-        coverText = try container.decodeIfPresent(String.self, forKey: .coverText)
-        postInstructions = try container.decodeIfPresent(String.self, forKey: .postInstructions)
-        brandEventNotes = try container.decodeIfPresent(String.self, forKey: .brandEventNotes)
-        backupStory = try container.decodeIfPresent(String.self, forKey: .backupStory)
-        backupCaptionOnly = try container.decodeIfPresent(String.self, forKey: .backupCaptionOnly)
-        audioOptionNotes = try container.decodeIfPresent(String.self, forKey: .audioOptionNotes)
-        creatorFitScore = try container.decodeIfPresent(Double.self, forKey: .creatorFitScore)
-        riskNotes = try container.decodeIfPresent([String].self, forKey: .riskNotes)
-        assumptions = try container.decodeIfPresent([String].self, forKey: .assumptions)
-        storyboardThumbnailAssets = (try container.decodeIfPresent([StoryboardThumbnailAsset].self, forKey: .storyboardThumbnailAssets)) ?? []
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(title, forKey: .title)
-        try container.encode(context, forKey: .context)
-        try container.encode(effortLabel, forKey: .effortLabel)
-        try container.encode(whyToday, forKey: .whyToday)
-        try container.encodeIfPresent(hook, forKey: .hook)
-        try container.encodeIfPresent(sourceNote, forKey: .sourceNote)
-        try container.encodeIfPresent(scheduledDate, forKey: .scheduledDate)
-        try container.encode(scenes, forKey: .scenes)
-        try container.encodeIfPresent(shotTimeline, forKey: .shotTimeline)
-        try container.encodeIfPresent(voiceoverTimeline, forKey: .voiceoverTimeline)
-        try container.encodeIfPresent(onScreenTextTimeline, forKey: .onScreenTextTimeline)
-        try container.encodeIfPresent(completionState, forKey: .completionState)
-        try container.encodeIfPresent(script, forKey: .script)
-        try container.encodeIfPresent(noVoiceoverVersion, forKey: .noVoiceoverVersion)
-        try container.encodeIfPresent(onScreenText, forKey: .onScreenText)
-        try container.encodeIfPresent(caption, forKey: .caption)
-        try container.encodeIfPresent(cta, forKey: .cta)
-        try container.encodeIfPresent(hashtags, forKey: .hashtags)
-        try container.encodeIfPresent(coverText, forKey: .coverText)
-        try container.encodeIfPresent(postInstructions, forKey: .postInstructions)
-        try container.encodeIfPresent(brandEventNotes, forKey: .brandEventNotes)
-        try container.encodeIfPresent(backupStory, forKey: .backupStory)
-        try container.encodeIfPresent(backupCaptionOnly, forKey: .backupCaptionOnly)
-        try container.encodeIfPresent(audioOptionNotes, forKey: .audioOptionNotes)
-        try container.encodeIfPresent(creatorFitScore, forKey: .creatorFitScore)
-        try container.encodeIfPresent(riskNotes, forKey: .riskNotes)
-        try container.encodeIfPresent(assumptions, forKey: .assumptions)
-        try container.encode(storyboardThumbnailAssets, forKey: .storyboardThumbnailAssets)
-    }
 }
 
 struct ShotScene: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let number: Int
-    let title: String
-    let duration: String
+    var title: String
+    var duration: String
     let symbol: String
 
     init(
@@ -533,7 +460,6 @@ struct ArchiveEntry: Identifiable, Hashable, Sendable {
 }
 
 enum PackageSection: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case storyboard = "Storyboard"
     case scenes = "Scenes"
     case script = "Script"
     case caption = "Caption"
@@ -544,13 +470,17 @@ enum PackageSection: String, CaseIterable, Identifiable, Hashable, Sendable {
 
 enum CreatorTab: String, CaseIterable, Identifiable, Hashable, Sendable {
     case today = "Today"
+    case archive = "Archive"
     case profile = "Profile"
 
     var id: String { rawValue }
 }
 
 enum CreatorRoute: Hashable, Sendable {
-    case shootFolio
+    /// Opens Shoot Folio; `editing` starts scene/script light-edit mode.
+    case shootFolio(editing: Bool = false)
+    /// Opens Plan; optional `selectedDate` (`yyyy-MM-dd`) preselects that day.
+    case plan(selectedDate: String?)
 }
 
 enum TodaySheet: Identifiable, Hashable, Sendable {
@@ -725,16 +655,6 @@ enum WeeklyDayState: String, CaseIterable, Codable, Hashable, Sendable {
 }
 
 extension WeeklyDayState {
-    var sourceTone: ChipTone {
-        switch self {
-        case .planned: .ready
-        case .backup: .warning
-        case .open: .quiet
-        }
-    }
-}
-
-extension WeeklyDayState {
     init(generatedDraftStatus status: String) {
         switch status.lowercased() {
         case "published", "planned", "ready":
@@ -867,9 +787,9 @@ extension GeneratedWeekDraft {
 
         return WeeklyPlan(
             id: weeklyPlanID,
-            title: "Daily content",
-            eyebrow: "DAILY CONTENT",
-            weekRange: dailyCards.first.map { SupabaseDateFormatting.weekRange(starting: $0.scheduledDate) } ?? "Generated daily content",
+            title: "Generate a Week",
+            eyebrow: "MANAGER AI REVIEW",
+            weekRange: dailyCards.first.map { SupabaseDateFormatting.weekRange(starting: $0.scheduledDate) } ?? "Generated week",
             weekStartDate: dailyCards.first?.scheduledDate,
             weekEndDate: dailyCards.last?.scheduledDate,
             readinessLine: "\(generatedDays.filter { $0.state == .open }.count) open, confirm before publishing",
@@ -1052,9 +972,9 @@ extension GeneratedDailyCardDraft {
             sourceNote: sourceNote.nilIfBlank ?? contentPillar,
             scheduledDate: scheduledDate,
             scenes: sceneList,
-            shotTimeline: shotTimeline,
-            voiceoverTimeline: voiceoverTimeline,
-            onScreenTextTimeline: onScreenTextTimeline,
+            shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
+            voiceoverTimeline: voiceoverTimeline.isEmpty ? nil : voiceoverTimeline,
+            onScreenTextTimeline: onScreenTextTimeline.isEmpty ? nil : onScreenTextTimeline,
             completionState: completionState,
             script: script,
             noVoiceoverVersion: noVoiceoverVersion,
@@ -1102,7 +1022,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
             ],
             useWhen: [
                 "A training, HYROX, race, or gym moment is available.",
-                "The day brief includes confidence, return to routine, or proof of consistency.",
+                "The weekly brief includes confidence, return to routine, or proof of consistency.",
                 "The content needs a stronger first two seconds than a simple exercise demo."
             ],
             sampleCreatorIdea: "Open on the creator loading a weight or tying shoes, then voiceover: 'Women are told to be careful after a certain age. I agree with careful. I do not agree with stopping.'",
@@ -1189,8 +1109,8 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
         GrowthReference(
             id: "creator-hyrox-hybrid-proof",
             title: "HYROX / Hybrid Proof",
-            summary: "Use HYROX, running, and strength as authority signals, but only when the day brief supports it.",
-            whyItWorks: "HYROX and hybrid training are culturally current and already part of the creator's credibility. The risk is overusing old race context when the current brief is about normal life.",
+            summary: "Use HYROX, running, and strength as authority signals, but only when the weekly brief supports it.",
+            whyItWorks: "HYROX and hybrid training are culturally current and already part of the creator's credibility. The risk is overusing old race context when the current week is about normal life.",
             hookFormulas: [
                 "HYROX taught me this, but it applies to regular gym days.",
                 "You do not train for events. You train for the life you want.",
@@ -1199,7 +1119,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
             useWhen: [
                 "The week includes race reflection, training proof, or hybrid conditioning.",
                 "The story can bridge achievement back into everyday routine.",
-                "The day brief does not conflict with race/HYROX context."
+                "The weekly brief does not conflict with race/HYROX context."
             ],
             sampleCreatorIdea: "Use one race/HYROX clip as the first beat, then cut to a simple Bombay gym routine to show how event confidence becomes daily discipline.",
             sourceURLs: [
@@ -1225,7 +1145,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
                 "The day needs growth potential rather than only documentation.",
                 "The admin needs shot, voiceover, and on-screen text details."
             ],
-            sampleCreatorIdea: "Any daily idea should specify the Reel length, first-frame visual, voiceover timing, on-screen text timing, CTA, and backup story.",
+            sampleCreatorIdea: "Any weekly idea should specify the Reel length, first-frame visual, voiceover timing, on-screen text timing, CTA, and backup story.",
             sourceURLs: [
                 "https://about.instagram.com/blog/announcements/instagram-ranking-explained",
                 "https://buffer.com/resources/instagram-algorithms/",

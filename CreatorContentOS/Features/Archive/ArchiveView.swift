@@ -22,11 +22,10 @@ struct ArchiveSection: View {
         VStack(alignment: .leading, spacing: MCOSpace.l) {
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
                 Text("Archive")
-                    .font(MCOType.screenTitle)
-                    .tracking(MCOType.screenTitleTracking)
+                    .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)
                 Text("Past decisions and outputs.")
-                    .font(.system(size: 17, weight: .regular, design: .serif))
+                    .font(MCOType.dateLine)
                     .foregroundStyle(MCOTheme.Color.brass)
             }
 
@@ -40,16 +39,15 @@ struct ArchiveSection: View {
                         ArchiveTimelineRow(entry: entry)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.pressable(scale: 0.99))
+                    .buttonStyle(.plain)
                     Hairline()
                 }
             }
         }
         .sheet(item: $selectedEntry) { entry in
             ArchiveEntryDetailView(entry: entry)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
-                .presentationContentInteraction(.scrolls)
         }
     }
 
@@ -84,12 +82,27 @@ private struct ArchiveFilterBar: View {
     @Binding var selectedFilter: ArchiveFilter
 
     var body: some View {
-        FolioPillBar(
-            items: ArchiveFilter.allCases.map { ($0, $0.rawValue) },
-            selection: $selectedFilter,
-            height: 32,
-            font: MCOType.caption
-        )
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: MCOSpace.s) {
+                ForEach(ArchiveFilter.allCases) { filter in
+                    Button {
+                        selectedFilter = filter
+                    } label: {
+                        Text(filter.rawValue)
+                            .font(MCOType.caption)
+                            .foregroundStyle(selectedFilter == filter ? MCOTheme.Color.paperRaised : MCOTheme.Color.ink)
+                            .padding(.horizontal, MCOSpace.s)
+                            .frame(height: 32)
+                            .background(selectedFilter == filter ? MCOTheme.Color.oxblood : MCOTheme.Color.paperRaised.opacity(0.62))
+                            .clipShape(Capsule())
+                            .overlay {
+                                Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
 
@@ -100,7 +113,7 @@ struct ArchiveTimelineRow: View {
         HStack(alignment: .top, spacing: MCOSpace.m) {
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                 Text(entry.day)
-                    .font(.system(size: 18, weight: .regular, design: .serif))
+                    .font(MCOType.editorialHeadline)
                     .foregroundStyle(MCOTheme.Color.ink)
                 Text(entry.date)
                     .font(MCOType.caption)
@@ -115,7 +128,7 @@ struct ArchiveTimelineRow: View {
 
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
                 Text(entry.cardTitle)
-                    .font(.system(size: 18, weight: .regular, design: .serif))
+                    .font(MCOType.editorialHeadline)
                     .foregroundStyle(MCOTheme.Color.ink)
                 Text(entry.outputLine)
                     .font(MCOType.bodySmall)
@@ -126,14 +139,14 @@ struct ArchiveTimelineRow: View {
 
             if entry.hasPostThumbnail {
                 Image(systemName: "figure.run")
-                    .font(.system(size: 22, weight: .light))
+                    .font(MCOType.iconRow)
                     .foregroundStyle(MCOTheme.Color.paperRaised)
                     .frame(width: 54, height: 54)
                     .background(MCOTheme.Color.brass)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(MCOType.captionMedium)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
             }
         }
