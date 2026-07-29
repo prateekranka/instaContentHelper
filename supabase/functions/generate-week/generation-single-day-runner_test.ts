@@ -4,6 +4,7 @@ import {
   runDayGenerationPipeline,
   scheduleSingleDayGeneration,
   type SingleDayGenerationLifecycleEvent,
+  type SingleDayGenerationStageTimings,
   type SingleDayRunnerHost,
   type SingleDayRunnerPreparedGeneration,
 } from "./generation-single-day-runner.ts";
@@ -262,7 +263,210 @@ Deno.test("runDayGenerationPipeline mock path validates persists completes and e
   assertEquals(lifecycleEvents[1].status, "completed");
 });
 
-Deno.test("runDayGenerationPipeline attaches Gemini storyboard assets before completion", async () => {
+Deno.test("runDayGenerationPipeline emits ordered deterministic stage timings", async () => {
+  const lifecycleEvents: SingleDayGenerationLifecycleEvent[] = [];
+  const stageCalls: string[] = [];
+  let clockMS = 0;
+  const prepared = minimalPrepared({ mockEnabled: true });
+  const mockOutput = stubHost().mockOutput(prepared.inputSnapshot, 2);
+  const persistedCard = { ...mockOutput.daily_card, id: "card-timing" };
+  const host = stubHost({
+    nowMS: () => {
+      clockMS += 10;
+      return clockMS;
+    },
+    mockOutput: () => {
+      stageCalls.push("text_generation");
+      return mockOutput;
+    },
+    persistRegeneratedDay: async () => {
+      stageCalls.push("persistence");
+      return { dailyCard: persistedCard };
+    },
+    attachDayStoryboardThumbnails: async (_admin, _prepared, dailyCard) => {
+      stageCalls.push("storyboard_visuals");
+      return dailyCard;
+    },
+    completeDayGenerationRun: async () => {
+      stageCalls.push("finalization");
+      return { ok: true as const };
+    },
+    emitLifecycleEvent: (event) => {
+      lifecycleEvents.push(event);
+    },
+  });
+
+  const result = await runDayGenerationPipeline(
+    fakeAdmin(),
+    generationID,
+    prepared,
+    host,
+  );
+
+  assertEquals("payload" in result, true);
+  // Mock skips async visuals; storyboard is not on the script-ready path.
+  assertEquals(stageCalls, [
+    "text_generation",
+    "persistence",
+    "finalization",
+  ]);
+  assertEquals(lifecycleEvents.map((event) => event.phase), [
+    "generation_started",
+    "generation_completed",
+  ]);
+  assertEquals(lifecycleEvents[0].stage_timings_ms, {
+    text_generation: null,
+    validation: null,
+    persistence: null,
+    storyboard_visuals: null,
+    finalization: null,
+    total: null,
+  });
+  const completedTimings = lifecycleEvents[1].stage_timings_ms;
+  assertEquals(Object.keys(completedTimings), [
+    "text_generation",
+    "validation",
+    "persistence",
+    "storyboard_visuals",
+    "finalization",
+    "total",
+  ]);
+  assertEquals(completedTimings, {
+    text_generation: 10,
+    validation: 10,
+    persistence: 10,
+    storyboard_visuals: null,
+    finalization: 10,
+    // Script-ready total excludes async visuals; clock advances on each nowMS().
+    total: 100,
+  });
+  assertEquals(lifecycleEvents[1].visuals_status, "skipped");
+  assertCoherentStageTotal(completedTimings);
+  assertEquals(lifecycleEvents[1].duration_ms, completedTimings.total);
+});
+
+Deno.test("runDayGenerationPipeline retains completed stage timings on persistence failure", async () => {
+  const lifecycleEvents: SingleDayGenerationLifecycleEvent[] = [];
+  let clockMS = 0;
+  const prepared = minimalPrepared({ mockEnabled: true });
+  const host = stubHost({
+    nowMS: () => {
+      clockMS += 10;
+      return clockMS;
+    },
+    persistRegeneratedDay: async () => ({
+      response: new Response(
+        JSON.stringify({ error: "generation_persist_failed" }),
+        { status: 500 },
+      ),
+    }),
+    emitLifecycleEvent: (event) => {
+      lifecycleEvents.push(event);
+    },
+  });
+
+  const result = await runDayGenerationPipeline(
+    fakeAdmin(),
+    generationID,
+    prepared,
+    host,
+  );
+
+  assertEquals("response" in result, true);
+  if ("response" in result) {
+    assertEquals(result.response.status, 500);
+    assertEquals(await result.response.json(), {
+      error: "generation_persist_failed",
+    });
+  }
+  assertEquals(lifecycleEvents.map((event) => event.phase), [
+    "generation_started",
+    "generation_failed",
+  ]);
+  const failedTimings = lifecycleEvents[1].stage_timings_ms;
+  assertEquals(failedTimings, {
+    text_generation: 10,
+    validation: 10,
+    persistence: 10,
+    storyboard_visuals: null,
+    finalization: null,
+    total: 70,
+  });
+  assertCoherentStageTotal(failedTimings);
+  assertEquals(lifecycleEvents[1].duration_ms, failedTimings.total);
+});
+
+Deno.test("runDayGenerationPipeline completes script-ready before async storyboard soft failure", async () => {
+  const lifecycleEvents: SingleDayGenerationLifecycleEvent[] = [];
+  let clockMS = 0;
+  let softFailureHandled = false;
+  let backgroundPromise: Promise<unknown> | undefined;
+  const prepared = minimalPrepared({ mockEnabled: false });
+  const mockOutput = stubHost().mockOutput(prepared.inputSnapshot, 2);
+  const persistedCard = { ...mockOutput.daily_card, id: "card-soft-visuals" };
+  const host = stubHost({
+    nowMS: () => {
+      clockMS += 10;
+      return clockMS;
+    },
+    generateOutput: async () => mockOutput,
+    persistRegeneratedDay: async () => ({ dailyCard: persistedCard }),
+    attachDayStoryboardThumbnails: async (_admin, _prepared, dailyCard) => {
+      try {
+        throw new Error("synthetic_storyboard_thumbnail_gemini_failed");
+      } catch {
+        softFailureHandled = true;
+        return dailyCard;
+      }
+    },
+    completeDayGenerationRun: async () => ({ ok: true as const }),
+    scheduleBackgroundTask: (promise) => {
+      backgroundPromise = promise;
+    },
+    emitLifecycleEvent: (event) => {
+      lifecycleEvents.push(event);
+    },
+  });
+
+  const result = await runDayGenerationPipeline(
+    fakeAdmin(),
+    generationID,
+    prepared,
+    host,
+  );
+
+  assert("payload" in result, "soft storyboard failure changed HTTP outcome");
+  if ("payload" in result) {
+    assertEquals(result.payload.visuals_status, "pending");
+    assertEquals(
+      result.payload.stage_timings_ms?.storyboard_visuals,
+      null,
+    );
+  }
+  const completed = lifecycleEvents.find((event) =>
+    event.phase === "generation_completed"
+  );
+  assert(completed !== undefined, "expected completed lifecycle event");
+  assertEquals(completed.visuals_status, "pending");
+  assertEquals(completed.stage_timings_ms.storyboard_visuals, null);
+  assertCoherentStageTotal(completed.stage_timings_ms);
+  assertEquals(completed.duration_ms, completed.stage_timings_ms.total);
+
+  assert(backgroundPromise !== undefined, "expected async visuals task");
+  await backgroundPromise;
+  assert(softFailureHandled, "expected storyboard failure to soft-fail");
+  const visualsDone = lifecycleEvents.find((event) =>
+    event.phase === "storyboard_visuals_completed" ||
+    event.phase === "storyboard_visuals_failed"
+  );
+  assert(visualsDone !== undefined, "expected visuals lifecycle completion");
+  assert(
+    typeof visualsDone.stage_timings_ms.storyboard_visuals === "number",
+    "async storyboard soft failure was not timed",
+  );
+});
+
+Deno.test("runDayGenerationPipeline schedules Gemini storyboard attach after script-ready completion", async () => {
   const prepared = minimalPrepared({ mockEnabled: false });
   const mockOutput = stubHost().mockOutput(prepared.inputSnapshot, 2);
   const persistedCard = { ...mockOutput.daily_card, id: "card-storyboard" };
@@ -274,11 +478,19 @@ Deno.test("runDayGenerationPipeline attaches Gemini storyboard assets before com
   }];
   let attachCalled = false;
   let completedCard: unknown;
+  let completedVisualsStatus: unknown;
+  let patchedPayload: unknown;
+  let backgroundPromise: Promise<unknown> | undefined;
+  let releaseAttach: (() => void) | undefined;
+  const attachGate = new Promise<void>((resolve) => {
+    releaseAttach = resolve;
+  });
 
   const host = stubHost({
     generateOutput: async () => mockOutput,
     persistRegeneratedDay: async () => ({ dailyCard: persistedCard }),
     attachDayStoryboardThumbnails: async (_admin, _prepared, dailyCard) => {
+      await attachGate;
       attachCalled = true;
       return {
         ...dailyCard,
@@ -287,7 +499,15 @@ Deno.test("runDayGenerationPipeline attaches Gemini storyboard assets before com
     },
     completeDayGenerationRun: async (_admin, _generationID, payload) => {
       completedCard = payload.daily_card;
+      completedVisualsStatus = payload.visuals_status;
       return { ok: true as const };
+    },
+    patchCompletedDayGenerationSnapshot: async (_admin, _id, payload) => {
+      patchedPayload = payload;
+      return { ok: true as const };
+    },
+    scheduleBackgroundTask: (promise) => {
+      backgroundPromise = promise;
     },
   });
 
@@ -298,18 +518,37 @@ Deno.test("runDayGenerationPipeline attaches Gemini storyboard assets before com
     host,
   );
 
-  assertEquals(attachCalled, true);
+  assertEquals(attachCalled, false);
   assertEquals("payload" in result, true);
   if ("payload" in result) {
+    assertEquals(result.payload.visuals_status, "pending");
     assertEquals(
-      result.payload.daily_card.storyboard_thumbnail_assets,
-      storyboardAssets,
+      result.payload.daily_card.storyboard_thumbnail_assets ?? [],
+      persistedCard.storyboard_thumbnail_assets ?? [],
     );
   }
+  // Script-ready completion must not wait for thumbs on the critical path.
   assertEquals(
-    (completedCard as { storyboard_thumbnail_assets: unknown })
-      .storyboard_thumbnail_assets,
+    (completedCard as { storyboard_thumbnail_assets?: unknown })
+      .storyboard_thumbnail_assets ?? [],
+    persistedCard.storyboard_thumbnail_assets ?? [],
+  );
+  assertEquals(completedVisualsStatus, "pending");
+
+  assert(backgroundPromise !== undefined, "expected async visuals task");
+  releaseAttach?.();
+  await backgroundPromise;
+  assertEquals(attachCalled, true);
+  assertEquals(
+    (patchedPayload as {
+      daily_card: { storyboard_thumbnail_assets: unknown };
+      visuals_status: string;
+    }).daily_card.storyboard_thumbnail_assets,
     storyboardAssets,
+  );
+  assertEquals(
+    (patchedPayload as { visuals_status: string }).visuals_status,
+    "ready",
   );
 });
 
@@ -360,11 +599,9 @@ Deno.test("runDayGenerationPipeline maps provider and validation failures to 400
         testCase.expectedStatus,
         testCase.name,
       );
-      assertEquals(
-        await result.response.json(),
-        { error: testCase.stableCode },
-        testCase.name,
-      );
+      const body = await result.response.json() as Record<string, unknown>;
+      assertEquals(body.error, testCase.stableCode, testCase.name);
+      assertEquals("error_message" in body, true, testCase.name);
     }
     assertEquals(failedCodes, [testCase.stableCode], testCase.name);
   }
@@ -494,4 +731,21 @@ function assert(
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function assertCoherentStageTotal(
+  timings: SingleDayGenerationStageTimings,
+): void {
+  const completedStageTotal = [
+    timings.text_generation,
+    timings.validation,
+    timings.persistence,
+    // Async visuals are excluded from script-ready total coherence.
+    timings.finalization,
+  ].reduce<number>((total, duration) => total + (duration ?? 0), 0);
+  const total = timings.total;
+  assert(
+    typeof total === "number" && total >= completedStageTotal,
+    "total timing must cover every completed script-ready stage",
+  );
 }

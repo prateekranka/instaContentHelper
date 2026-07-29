@@ -367,6 +367,21 @@ export function validationFailureRule(message: string): string {
   if (message.includes("must be an object")) {
     return "object_type";
   }
+  if (message.includes("mentions ") && message.includes(" for ")) {
+    return "conflicting_weekday_language";
+  }
+  if (message.includes("coach/instructor framing")) {
+    return "instructor_phrasing";
+  }
+  if (message.includes("banned instructor ending")) {
+    return "instructor_ending";
+  }
+  if (message.includes("stale location context")) {
+    return "stale_location_context";
+  }
+  if (message.includes("stale race-recovery context")) {
+    return "stale_race_recovery_context";
+  }
   return "validation_failed";
 }
 
@@ -422,7 +437,205 @@ export function parseGeneratedDayJSON(
   dayIndex: number,
 ): GeneratedDayOutput {
   const parsed = parseJSONResponse(rawJSON);
-  return validateGeneratedDayOutput(parsed, scheduledDate, dayIndex);
+  return validateGeneratedDayOutput(
+    coerceGeneratedDayOutputShape(parsed),
+    scheduledDate,
+    dayIndex,
+  );
+}
+
+/**
+ * Normalize near-miss day JSON before strict validation. Keeps quality rules
+ * intact while recovering common provider shape drift that otherwise fails
+ * regenerate after both flash attempts.
+ */
+export function coerceGeneratedDayOutputShape(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const next: Record<string, unknown> = { ...value };
+  const cardValue = next.daily_card ??
+    (Array.isArray(next.daily_cards) ? next.daily_cards[0] : undefined);
+  if (isRecord(cardValue)) {
+    next.daily_card = coerceGeneratedDailyCardShape(cardValue);
+  }
+
+  if (Array.isArray(next.idea_bank)) {
+    const validIdeas = next.idea_bank.filter((idea) => {
+      try {
+        validateGeneratedIdea(idea);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    // Day contract asks for [] unless a complete extra idea is present.
+    next.idea_bank = validIdeas;
+  } else if (next.idea_bank !== undefined) {
+    next.idea_bank = [];
+  }
+
+  return next;
+}
+
+function coerceGeneratedDailyCardShape(
+  card: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...card };
+  for (
+    const field of [
+      "shot_timeline",
+      "silent_version_timeline",
+      "backup_story_detail",
+    ] as const
+  ) {
+    next[field] = coerceTimelineArray(next[field]);
+  }
+  next.voiceover_timeline = coerceVoiceoverTimelineArray(
+    next.voiceover_timeline,
+  );
+  next.on_screen_text_timeline = coerceOnScreenTextTimelineArray(
+    next.on_screen_text_timeline,
+  );
+  next.cta = coerceCtaField(next);
+  return next;
+}
+
+function coerceCtaField(card: Record<string, unknown>): unknown {
+  const direct = firstNonBlankString(
+    card.cta,
+    card.call_to_action,
+    card.callToAction,
+    card.end_cta,
+    card.cta_text,
+    card.closing_cta,
+  );
+  if (direct) {
+    return direct;
+  }
+  const caption = firstNonBlankString(card.caption);
+  if (!caption) {
+    return card.cta;
+  }
+  const sentences = caption.split(/(?<=[.!?])\s+/).map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  const last = sentences[sentences.length - 1];
+  if (last && /[?]$/.test(last) && last.length <= 120) {
+    return last;
+  }
+  return card.cta;
+}
+
+function coerceTimelineArray(value: unknown): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  return value.map((item) => {
+    if (!isRecord(item)) {
+      return item;
+    }
+    return {
+      ...item,
+      timestamp: coerceTimestampRange(item.timestamp),
+    };
+  });
+}
+
+function coerceVoiceoverTimelineArray(value: unknown): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  const coerced = value.flatMap((item) => {
+    if (!isRecord(item)) {
+      return [];
+    }
+    const voiceover = firstNonBlankString(
+      item.voiceover,
+      item.line,
+      item.text,
+      item.dialogue,
+      item.script,
+      item.spoken,
+      item.vo,
+    );
+    const videoPortion = firstNonBlankString(
+      item.video_portion,
+      item.visual,
+      item.shot,
+      item.detail,
+      item.video,
+    );
+    if (!voiceover || !videoPortion) {
+      return [];
+    }
+    return [{
+      ...item,
+      timestamp: coerceTimestampRange(item.timestamp),
+      voiceover,
+      video_portion: videoPortion,
+    }];
+  });
+  // Prefer a cleaned timeline when at least one complete row remains so a
+  // single empty trailing item does not fail the whole day after repair.
+  return coerced.length > 0 ? coerced : value;
+}
+
+function coerceOnScreenTextTimelineArray(value: unknown): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  const coerced = value.flatMap((item) => {
+    if (!isRecord(item)) {
+      return [];
+    }
+    const text = firstNonBlankString(
+      item.text,
+      item.detail,
+      item.line,
+      item.overlay,
+    );
+    if (!text) {
+      return [];
+    }
+    return [{
+      ...item,
+      timestamp: coerceTimestampRange(item.timestamp),
+      text,
+      placement: firstNonBlankString(
+        item.placement,
+        item.position,
+      ) ?? "center",
+    }];
+  });
+  return coerced.length > 0 ? coerced : value;
+}
+
+function firstNonBlankString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function coerceTimestampRange(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+  const normalized = value
+    .trim()
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\s+/g, "");
+  const match = normalized.match(
+    /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/,
+  );
+  if (!match) {
+    return normalized;
+  }
+  const [, sh, sm, eh, em] = match;
+  return `${Number(sh)}:${sm}-${Number(eh)}:${em}`;
 }
 
 function parseJSONResponse(rawJSON: string): unknown {
@@ -568,13 +781,30 @@ function assertNoConflictingWeekdayLanguage(
   ];
   const conflicting = weekdays.find((weekday) =>
     weekday !== expectedWeekday &&
-    new RegExp(`\\b${weekday}\\b`, "i").test(text)
+    hasConflictingWeekdayClaim(text, weekday)
   );
   if (conflicting) {
     throw invalidWeek(
       `Generated card mentions ${conflicting} for ${expectedWeekday}.`,
     );
   }
+}
+
+/**
+ * Allow residual references ("after Monday", "Monday's legs") while still
+ * rejecting identity claims that lock the card to the wrong weekday.
+ */
+export function hasConflictingWeekdayClaim(
+  text: string,
+  weekday: string,
+): boolean {
+  const residual = new RegExp(
+    String
+      .raw`\b(?:after|before|since|from|following|post|vs\.?|versus)\s+${weekday}\b|\b${weekday}'s\b|\b${weekday}s\b|\b${weekday}\s+(?:leg|legs|session|workout|training|squats?|upper|run|recovery)\b`,
+    "gi",
+  );
+  const cleaned = text.replace(residual, " ");
+  return new RegExp(String.raw`\b${weekday}\b`, "i").test(cleaned);
 }
 
 /**

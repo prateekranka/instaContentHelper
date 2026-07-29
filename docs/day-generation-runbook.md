@@ -117,7 +117,8 @@ Set these only in Supabase Edge Function secrets or local function env files:
 - `DEEPSEEK_API_KEY`: primary real AI provider.
 - `OPENAI_API_KEY`: fallback provider if DeepSeek fails or is not configured.
 - `MCO_DEEPSEEK_MODEL`: optional DeepSeek model override. Default:
-  `deepseek-v4-pro`.
+  `deepseek-v4-flash` (Flash-first for day latency; override to `deepseek-v4-pro`
+  only when debugging quality).
 - `MCO_DEEPSEEK_BASE_URL`: optional DeepSeek API base URL override. Default:
   `https://api.deepseek.com`.
 - `MCO_OPENAI_MODEL`: optional OpenAI fallback model override. Default:
@@ -148,6 +149,22 @@ supabase secrets set --project-ref <project-ref> --env-file <provider-secrets.en
 
 `DEEPSEEK_API_KEY` is enough for real generation. Add `OPENAI_API_KEY` when you
 want OpenAI to be available as the fallback provider.
+
+## Storyboard visuals (async after script-ready)
+
+After the day card is persisted and the generation run is marked complete
+(**script-ready**), `runDayGenerationPipeline` kicks off Gemini storyboard
+thumbnails asynchronously via `EdgeRuntime.waitUntil` (same bounded
+concurrency, Flash-lite primary with Flash image fallback, soft-fail). The
+async poll may therefore return `status: "draft"` with
+`visuals_status: "pending"` and empty/null `storyboard_thumbnail_assets` while
+visuals are still generating. When attach finishes, the completed run snapshot
+is patched (`visuals_status: "ready"`) and status polls also hydrate assets from
+`daily_cards`. The iOS client may still call `generate-storyboard-thumbnail` to
+fill gaps or force regenerate; that endpoint uses the same shared generator.
+
+**Product semantics:** a completed day poll means the script/card is usable.
+Thumbnails are best-effort and may appear shortly after.
 
 ## Local mock smoke
 

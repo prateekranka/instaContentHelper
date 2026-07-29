@@ -1,4 +1,5 @@
 import {
+  aiProviderConfigs,
   availableParallelDayJobSlots,
   handleGenerateWeekRequest,
   overrideTodayISO,
@@ -970,6 +971,7 @@ Deno.test({
 Deno.test("regenerate_day updates exactly one draft card and leaves the other six unchanged", async () => {
   const state = dayGenerationState();
   const before = structuredClone(state.dailyCards);
+  let observedProviders: Array<{ provider: string; model: string }> = [];
   const response = await handleGenerateWeekRequest(
     requestFor({
       action: "regenerate_day",
@@ -979,10 +981,13 @@ Deno.test("regenerate_day updates exactly one draft card and leaves the other si
       preserve_manual_edits: false,
     }),
     {
-      env: fakeEnv("openai-key"),
+      env: fakeEnv("openai-key", false, "deepseek-key"),
       createAdminClient: () => fakeAdmin(state),
       generateDayAI: async (input, providers, scheduledDate, dayIndex) => {
-        assertEquals(providers[0].provider, "openai");
+        observedProviders = providers.map(({ provider, model }) => ({
+          provider,
+          model,
+        }));
         const mock = makeMockGeneratedWeek(input);
         return {
           strategy_note: "Regenerated Wednesday only.",
@@ -1001,6 +1006,13 @@ Deno.test("regenerate_day updates exactly one draft card and leaves the other si
   );
 
   assertEquals(response.status, 200);
+  assertEquals(
+    JSON.stringify(observedProviders),
+    JSON.stringify([
+      { provider: "deepseek", model: "deepseek-v4-flash" },
+      { provider: "openai", model: "gpt-4.1-mini" },
+    ]),
+  );
   const body = await response.json();
   assertEquals(body.target_scheduled_date, "2026-06-10");
   assertEquals(body.daily_card.title, "Fresh Wednesday");
@@ -1013,6 +1025,46 @@ Deno.test("regenerate_day updates exactly one draft card and leaves the other si
     );
   }
   assertEquals(state.updatedDailyCardIDs.join(","), dailyCardIDs[2]);
+});
+
+Deno.test("day provider defaults degrade safely and preserve explicit overrides", () => {
+  const summarized = (
+    env: ReturnType<typeof fakeEnv>,
+  ): Array<{ provider: string; model: string }> =>
+    aiProviderConfigs(env).map(({ provider, model }) => ({ provider, model }));
+
+  assertEquals(
+    JSON.stringify(summarized(fakeEnv(undefined, false, "deepseek-key"))),
+    JSON.stringify([
+      { provider: "deepseek", model: "deepseek-v4-flash" },
+    ]),
+  );
+  assertEquals(
+    JSON.stringify(summarized(fakeEnv("openai-key"))),
+    JSON.stringify([
+      { provider: "openai", model: "gpt-4.1-mini" },
+    ]),
+  );
+  assertEquals(
+    JSON.stringify(summarized(fakeEnv("openai-key", false, "deepseek-key", {
+      MCO_AI_PROVIDER_ORDER: "unknown, openai, deepseek, openai",
+    }))),
+    JSON.stringify([
+      { provider: "openai", model: "gpt-4.1-mini" },
+      { provider: "deepseek", model: "deepseek-v4-flash" },
+    ]),
+  );
+  assertEquals(
+    JSON.stringify(summarized(fakeEnv("openai-key", false, "deepseek-key", {
+      MCO_AI_PROVIDER_ORDER: "deepseek,openai",
+      MCO_DEEPSEEK_MODEL: "deepseek-explicit-model",
+      MCO_OPENAI_MODEL: "openai-explicit-model",
+    }))),
+    JSON.stringify([
+      { provider: "deepseek", model: "deepseek-explicit-model" },
+      { provider: "openai", model: "openai-explicit-model" },
+    ]),
+  );
 });
 
 Deno.test("regenerate_day retries a failed draft day and keeps the other six cards", async () => {
@@ -1294,7 +1346,7 @@ Deno.test("regenerate_day async mode creates a missing card and polls to draft",
   assertEquals(initialBody.weekly_plan_id, weeklyPlanID);
   assertEquals(initialBody.status, "running");
   assertEquals(initialBody.target_scheduled_date, "2026-06-10");
-  assertEquals(initialBody.poll_after_seconds, 5);
+  assertEquals(initialBody.poll_after_seconds, 2);
   if (!scheduled) {
     throw new Error("Expected single-day generation to be scheduled.");
   }
@@ -1448,7 +1500,13 @@ Deno.test("regenerate_day accepts today or future scheduled_date", async () => {
 
 Deno.test("regenerate_day accepts and bounds day_guidance", async () => {
   let capturedGuidance: string | undefined;
+  let capturedSetupNotes: string | undefined;
   const state = dayGenerationState();
+  state.weeklyPlan = {
+    ...state.weeklyPlan!,
+    weekly_setup_id: null,
+  };
+  state.setupExists = false;
   const deps = {
     env: fakeEnv("openai-key"),
     createAdminClient: () => fakeAdmin(state),
@@ -1459,6 +1517,8 @@ Deno.test("regenerate_day accepts and bounds day_guidance", async () => {
       _dayIndex: number,
     ) => {
       capturedGuidance = input.day_guidance;
+      capturedSetupNotes = (input.weekly_setup as Record<string, unknown> | null)
+        ?.notes as string | undefined;
       const card = makeMockGeneratedWeek(input).daily_cards[2];
       return {
         strategy_note: "Guidance test",
@@ -1488,6 +1548,11 @@ Deno.test("regenerate_day accepts and bounds day_guidance", async () => {
   assertEquals(
     capturedGuidance,
     "Focus on the Thursday brand brief for recovery products.",
+  );
+  assertEquals(
+    capturedSetupNotes,
+    "Focus on the Thursday brand brief for recovery products.",
+    "regenerate must synthesize weekly_setup.notes from day_guidance when setup is missing",
   );
 
   const longGuidance = "x".repeat(2400);
@@ -1762,6 +1827,7 @@ function fakeEnv(
   openAIKey?: string,
   allowMockRequest = false,
   deepSeekKey?: string,
+  overrides: Record<string, string> = {},
 ): { get: (name: string) => string | undefined } {
   const values: Record<string, string> = {
     SUPABASE_URL: "http://127.0.0.1:54321",
@@ -1776,6 +1842,7 @@ function fakeEnv(
   if (allowMockRequest) {
     values.MCO_ALLOW_AI_MOCK_REQUEST = "1";
   }
+  Object.assign(values, overrides);
   return { get: (name) => values[name] };
 }
 

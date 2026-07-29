@@ -1,5 +1,6 @@
 export const DEFAULT_GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image";
 export const FALLBACK_GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image";
+export const DEFAULT_GEMINI_IMAGE_SIZE = "1K";
 export const GEMINI_API_REVISION = "2026-05-20";
 
 export type GeneratedGeminiImage = {
@@ -101,7 +102,7 @@ export async function generateGeminiImage(
           type: "image",
           mime_type: options.mimeType ?? "image/jpeg",
           aspect_ratio: options.aspectRatio ?? "16:9",
-          image_size: options.imageSize ?? "1K",
+          image_size: options.imageSize ?? DEFAULT_GEMINI_IMAGE_SIZE,
         },
       }),
     },

@@ -22,6 +22,13 @@ export type GenerateWeekDraftResponse = {
   generated_at: string;
 };
 
+/** Day-run visuals lifecycle after script-ready completion. */
+export type DayVisualsStatus =
+  | "pending"
+  | "ready"
+  | "skipped"
+  | "failed";
+
 export type RegenerateDayDraftResponse = {
   generation_id: string;
   weekly_plan_id: string;
@@ -32,6 +39,23 @@ export type RegenerateDayDraftResponse = {
   assumptions: string[];
   source_summary: string;
   generated_at: string;
+  /**
+   * Script-ready completion may precede Gemini thumbs.
+   * `pending` = usable script shipped; assets may still be empty/null.
+   * `ready` = server-driven attach finished (client may still gap-fill).
+   */
+  visuals_status?: DayVisualsStatus;
+  /** Server-side pipeline stage timings for live latency diagnosis. */
+  stage_timings_ms?: {
+    text_generation: number | null;
+    validation: number | null;
+    persistence: number | null;
+    /** Null at script-ready when visuals run async off the critical path. */
+    storyboard_visuals: number | null;
+    finalization: number | null;
+    /** Wall-clock to script-ready (excludes async visuals). */
+    total: number | null;
+  };
 };
 
 export type GenerationRunStatusRecord = Record<string, unknown> & {
@@ -54,11 +78,15 @@ export type SingleDayGenerationSnapshot = {
   kind: "single_day_generation_v1";
   scheduled_date: string;
   preserve_manual_edits: boolean;
-  status: "pending" | "running";
+  status: "pending" | "running" | "failed";
   started_at?: string;
   // Last proof-of-life write from the worker owning this run.
   heartbeat_at?: string;
   updated_at: string;
+  error_code?: string | null;
+  error_message?: string | null;
+  validation_error?: Record<string, unknown> | null;
+  stage_timings_ms?: RegenerateDayDraftResponse["stage_timings_ms"];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -125,7 +153,11 @@ export function normalizeSingleDayGenerationSnapshot(
   ) {
     return null;
   }
-  const status = value.status === "running" ? "running" : "pending";
+  const status = value.status === "running"
+    ? "running"
+    : value.status === "failed"
+    ? "failed"
+    : "pending";
   return {
     kind: "single_day_generation_v1",
     scheduled_date: scheduledDate,
@@ -134,6 +166,16 @@ export function normalizeSingleDayGenerationSnapshot(
     started_at: stringValue(value.started_at),
     heartbeat_at: stringValue(value.heartbeat_at),
     updated_at: stringValue(value.updated_at) ?? nowISO,
+    error_code: stringValue(value.error_code) ??
+      (status === "failed" ? stringValue(run.error_code) : null) ??
+      null,
+    error_message: stringValue(value.error_message) ?? null,
+    validation_error: isRecord(value.validation_error)
+      ? value.validation_error
+      : null,
+    stage_timings_ms: isRecord(value.stage_timings_ms)
+      ? value.stage_timings_ms as SingleDayGenerationSnapshot["stage_timings_ms"]
+      : undefined,
   };
 }
 
