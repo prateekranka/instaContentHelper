@@ -7,8 +7,11 @@ final class AppState {
     var activeMode: AppMode
     var runtime: AppRuntime
     var authenticationPhase: AuthenticationPhase
-    var pendingEmail: String?
     var authenticationError: String?
+    /// Consumed by `CreatorShellView` to switch tabs (e.g. Available on Today → Today).
+    var pendingCreatorTab: CreatorTab?
+    /// Consumed by `PlanHubView` to preselect a calendar date (Edit / ⋯ / empty Today CTA).
+    var planSelectedDate: String?
 
     private let authenticationService: any AuthenticationServicing
     private let liveRuntimeBuilder: @MainActor (PairedDeviceSession) -> AppRuntime
@@ -42,6 +45,22 @@ final class AppState {
         self.runtime = runtime
     }
 
+    func requestCreatorTab(_ tab: CreatorTab) {
+        pendingCreatorTab = tab
+    }
+
+    /// Preselects a Plan calendar date (`yyyy-MM-dd`) before opening Plan.
+    func preparePlan(selecting date: String?) {
+        planSelectedDate = date?.nilIfBlank
+    }
+
+    /// Returns and clears a pending Plan date selection.
+    func consumePlanSelectedDate() -> String? {
+        let date = planSelectedDate
+        planSelectedDate = nil
+        return date
+    }
+
     func restoreAuthentication() async {
         guard authenticationPhase == .restoring else { return }
         debugAuthLog("restore:start")
@@ -67,52 +86,30 @@ final class AppState {
         }
     }
 
-    func requestEmailOTP(_ email: String) async {
-        guard authenticationPhase != .requestingCode,
-              authenticationPhase != .verifyingCode
-        else { return }
+    func signInWithApple(idToken: String, fullName: String? = nil) async {
+        guard authenticationPhase != .signingIn else { return }
 
-        authenticationPhase = .requestingCode
+        authenticationPhase = .signingIn
         authenticationError = nil
         do {
-            try await authenticationService.requestEmailOTP(email: email)
-            pendingEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            authenticationPhase = .signedOut
-        } catch {
-            authenticationError = error.localizedDescription
-            authenticationPhase = .failed
-        }
-    }
-
-    func verifyEmailOTP(_ token: String) async {
-        guard let pendingEmail else {
-            authenticationError = "Request a new code first."
-            authenticationPhase = .failed
-            return
-        }
-
-        authenticationPhase = .verifyingCode
-        authenticationError = nil
-        do {
-            debugAuthLog("otp:verify:start")
-            let session = try await authenticationService.verifyEmailOTP(
-                email: pendingEmail,
-                token: token
+            debugAuthLog("apple:sign-in:start")
+            let session = try await authenticationService.signInWithApple(
+                idToken: idToken,
+                fullName: fullName
             )
-            debugAuthLog("otp:verify:session-ready")
+            debugAuthLog("apple:sign-in:session-ready")
             await activate(session: session)
-            debugAuthLog("otp:verify:activated")
+            debugAuthLog("apple:sign-in:activated")
         } catch {
             authenticationError = error.localizedDescription
             authenticationPhase = .failed
-            debugAuthLog("otp:verify:failed \(error.localizedDescription)")
+            debugAuthLog("apple:sign-in:failed \(error.localizedDescription)")
         }
     }
 
-    func resetSignIn() {
-        pendingEmail = nil
-        authenticationError = nil
-        authenticationPhase = .signedOut
+    func failSignIn(message: String) async {
+        authenticationError = message
+        authenticationPhase = .failed
     }
 
     func signOut() async {
@@ -143,7 +140,6 @@ final class AppState {
         debugAuthLog("activate:set-live")
         self.runtime = runtime
         activeMode = .creator
-        pendingEmail = nil
         authenticationError = nil
         authenticationPhase = .live
 
@@ -156,7 +152,6 @@ final class AppState {
 
     private func finishLocalSignOut() {
         activeMode = .creator
-        pendingEmail = nil
         runtime = .fixtures()
         authenticationPhase = .signedOut
     }
@@ -171,8 +166,7 @@ final class AppState {
 enum AuthenticationPhase: Hashable, Sendable {
     case restoring
     case signedOut
-    case requestingCode
-    case verifyingCode
+    case signingIn
     case live
     case failed
 }
@@ -184,6 +178,8 @@ private extension AppRuntimeMode {
     }
 }
 
+/// Product shell is always Creator. `.admin` exists only so DEBUG fixture launches can
+/// open `AdminShellView` (`MCO_FORCE_APP_MODE=admin`); Release live routing ignores it.
 enum AppMode: String, CaseIterable, Codable, Hashable {
     case creator
     case admin
