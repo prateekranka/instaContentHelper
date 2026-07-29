@@ -5,30 +5,26 @@ import UIKit
 #endif
 
 protocol AuthenticationServicing: Sendable {
-    func requestEmailOTP(email: String) async throws
-    func verifyEmailOTP(email: String, token: String) async throws -> PairedDeviceSession
+    func signInWithApple(idToken: String, fullName: String?) async throws -> PairedDeviceSession
     func restoreSession() async throws -> PairedDeviceSession?
     func signOut(deviceSession: PairedDeviceSession?) async throws
     func authenticationEvents() -> AsyncStream<AuthenticationSessionEvent>
 }
 
 enum AuthenticationServiceError: LocalizedError, Equatable {
-    case invalidEmail
-    case invalidOTP
+    case invalidAppleIdentityToken
     case missingBootstrapConfiguration
     case missingAuthSession
     case backend(String)
 
     var errorDescription: String? {
         switch self {
-        case .invalidEmail:
-            "Enter a valid approved email address."
-        case .invalidOTP:
-            "Enter the six-digit code from your email."
+        case .invalidAppleIdentityToken:
+            "Apple sign-in did not return a usable identity token."
         case .missingBootstrapConfiguration:
             "Live Supabase is not configured for this build."
         case .missingAuthSession:
-            "Your sign-in session expired. Request a new code."
+            "Your sign-in session expired. Sign in with Apple again."
         case .backend(let code):
             Self.message(for: code)
         }
@@ -37,13 +33,13 @@ enum AuthenticationServiceError: LocalizedError, Equatable {
     private static func message(for code: String) -> String {
         switch code {
         case "tester_not_approved":
-            "This email has not been approved for testing."
+            "This Apple account is not connected to ContentHelper yet."
         case "member_revoked":
-            "Access for this tester has been revoked."
+            "Access for this account has been revoked."
         case "workspace_unavailable", "creator_unavailable":
-            "Your tester account is not connected to the Creator workspace."
+            "Your account is not connected to a Creator workspace."
         case "invalid_auth_session":
-            "Your sign-in session expired. Request a new code."
+            "Your sign-in session expired. Sign in with Apple again."
         case "device_session_failed":
             "Signed in, but device access could not be created. Try again."
         case "session_revoke_failed":
@@ -73,31 +69,29 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
         }
     }
 
-    func requestEmailOTP(email: String) async throws {
-        let email = try normalizedEmail(email)
-        let client = try configuredClient()
-        try await client.auth.signInWithOTP(email: email, shouldCreateUser: false)
-    }
-
-    func verifyEmailOTP(email: String, token: String) async throws -> PairedDeviceSession {
-        let email = try normalizedEmail(email)
-        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard token.count == 6, token.allSatisfy(\.isNumber) else {
-            throw AuthenticationServiceError.invalidOTP
+    func signInWithApple(idToken: String, fullName: String?) async throws -> PairedDeviceSession {
+        let idToken = idToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !idToken.isEmpty else {
+            throw AuthenticationServiceError.invalidAppleIdentityToken
         }
 
         let client = try configuredClient()
-        debugAuthLog("supabase:verify-otp:start")
-        let response = try await client.auth.verifyOTP(
-            email: email,
-            token: token,
-            type: .email
+        debugAuthLog("supabase:sign-in-apple:start")
+        let session = try await client.auth.signInWithIdToken(
+            credentials: .init(
+                provider: .apple,
+                idToken: idToken
+            )
         )
-        debugAuthLog("supabase:verify-otp:done")
-        guard response.session != nil else {
-            throw AuthenticationServiceError.missingAuthSession
+        debugAuthLog("supabase:sign-in-apple:done")
+
+        if let fullName, !fullName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            _ = try? await client.auth.update(
+                user: UserAttributes(data: ["full_name": .string(fullName)])
+            )
         }
-        return try await exchangeAuthenticatedSession(email: response.user.email ?? email)
+
+        return try await exchangeAuthenticatedSession(email: session.user.email)
     }
 
     func restoreSession() async throws -> PairedDeviceSession? {
@@ -229,14 +223,6 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
             throw AuthenticationServiceError.missingBootstrapConfiguration
         }
         return client
-    }
-
-    private func normalizedEmail(_ rawValue: String) throws -> String {
-        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard value.contains("@"), value.contains("."), !value.contains(" ") else {
-            throw AuthenticationServiceError.invalidEmail
-        }
-        return value
     }
 
     private func mappedFunctionError(_ error: Error) -> Error {
