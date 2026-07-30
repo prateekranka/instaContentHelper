@@ -505,24 +505,24 @@
 
   /* =========================
      VARIANT 3 — Pocket Sheet
-     Axis: single sticky primary + denser list (action model)
+     Axis: single sticky primary + denser list (monochrome)
      ========================= */
   .ps {
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: #fcfcfb;
-    color: #1c1917;
+    background: #fafafa;
+    color: #111;
     font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
   }
-  .ps .sb { color: #1c1917; }
+  .ps .sb { color: #111; }
   .ps-head {
     padding: 4px 20px 12px;
   }
   .ps-kicker {
     font-size: 12px;
     font-weight: 600;
-    color: #78716c;
+    color: #737373;
     margin-bottom: 6px;
   }
   .ps-title {
@@ -534,7 +534,7 @@
   }
   .ps-hook {
     font-size: 13px;
-    color: #57534e;
+    color: #525252;
     margin: 0;
     line-height: 1.4;
   }
@@ -552,19 +552,19 @@
     font-weight: 600;
     padding: 8px 12px;
     border-radius: 999px;
-    background: #f5f5f4;
-    color: #44403c;
-    border: 1px solid #e7e5e4;
+    background: #f5f5f5;
+    color: #404040;
+    border: 1px solid #e5e5e5;
   }
   .ps-pill[data-on] {
-    background: #1c1917;
-    color: #fafaf9;
-    border-color: #1c1917;
+    background: #111;
+    color: #fafafa;
+    border-color: #111;
   }
   .ps-list {
     flex: 1;
     overflow-y: auto;
-    border-top: 1px solid #e7e5e4;
+    border-top: 1px solid #e5e5e5;
   }
   .ps-row {
     display: grid;
@@ -573,51 +573,51 @@
     align-items: center;
     min-height: 64px;
     padding: 12px 20px;
-    border-bottom: 1px solid #e7e5e4;
+    border-bottom: 1px solid #e5e5e5;
     cursor: pointer;
   }
-  .ps-row:active { background: #f5f5f4; }
+  .ps-row:active { background: #f5f5f5; }
   .ps-num {
     width: 40px;
     height: 40px;
     display: grid;
     place-items: center;
     border-radius: 12px;
-    background: #f5f5f4;
+    background: #f5f5f5;
     font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
     font-size: 13px;
     font-weight: 600;
-    color: #57534e;
+    color: #525252;
     transition: background 160ms ease-out, color 160ms ease-out;
   }
   .ps-row[data-shot] .ps-num {
-    background: #0f766e;
+    background: #111;
     color: #fff;
   }
-  .ps-row[data-shot] .ps-row-t { color: #a8a29e; text-decoration: line-through; }
+  .ps-row[data-shot] .ps-row-t { color: #a3a3a3; text-decoration: line-through; }
   .ps-row-t { font-size: 15px; font-weight: 600; }
-  .ps-row-d { font-size: 12px; color: #78716c; margin-top: 2px; }
+  .ps-row-d { font-size: 12px; color: #737373; margin-top: 2px; }
   .ps-mark {
     height: 34px;
     padding: 0 10px;
     border-radius: 10px;
-    border: 1px solid #d6d3d1;
+    border: 1px solid #d4d4d4;
     background: #fff;
     font-size: 12px;
     font-weight: 650;
-    color: #44403c;
+    color: #404040;
     cursor: pointer;
-    transition: transform 140ms ease-out;
+    transition: transform 140ms ease-out, background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out;
   }
   .ps-row[data-shot] .ps-mark {
-    border-color: #99f6e4;
-    background: #f0fdfa;
-    color: #0f766e;
+    border-color: #111;
+    background: #111;
+    color: #fff;
   }
   .ps-pkg {
     padding: 14px 20px 8px;
-    background: #fafaf9;
-    border-top: 1px solid #e7e5e4;
+    background: #f5f5f5;
+    border-top: 1px solid #e5e5e5;
   }
   .ps-pkg-row {
     display: flex;
@@ -626,19 +626,19 @@
     gap: 12px;
     padding: 10px 0;
   }
-  .ps-pkg-row + .ps-pkg-row { border-top: 1px solid #e7e5e4; }
+  .ps-pkg-row + .ps-pkg-row { border-top: 1px solid #e5e5e5; }
   .ps-pkg-label {
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #a8a29e;
+    color: #a3a3a3;
     margin-bottom: 4px;
   }
   .ps-pkg-body {
     font-size: 13px;
     line-height: 1.4;
-    color: #44403c;
+    color: #404040;
     max-width: 42ch;
   }
   .ps-pkg-copy {
@@ -646,24 +646,25 @@
     height: 34px;
     padding: 0 12px;
     border-radius: 10px;
-    border: 1px solid #d6d3d1;
+    border: 1px solid #d4d4d4;
     background: #fff;
     font-size: 12px;
     font-weight: 650;
+    color: #111;
     cursor: pointer;
     transition: transform 140ms ease-out;
   }
   .ps-dock {
     padding: 12px 16px 18px;
     background: #fff;
-    border-top: 1px solid #e7e5e4;
+    border-top: 1px solid #e5e5e5;
   }
   .ps-primary {
     width: 100%;
     height: 52px;
     border: 0;
     border-radius: 14px;
-    background: #0f766e;
+    background: #111;
     color: #fff;
     font-size: 15px;
     font-weight: 700;
@@ -676,7 +677,7 @@
     height: 40px;
     border: 0;
     background: transparent;
-    color: #78716c;
+    color: #737373;
     font-size: 13px;
     font-weight: 650;
     cursor: pointer;
@@ -686,13 +687,13 @@
     display: flex;
     justify-content: space-around;
     padding: 8px 8px 12px;
-    background: #fcfcfb;
-    border-top: 1px solid #e7e5e4;
+    background: #fafafa;
+    border-top: 1px solid #e5e5e5;
     font-size: 11px;
     font-weight: 650;
-    color: #a8a29e;
+    color: #a3a3a3;
   }
-  .ps-tabs span[data-on] { color: #1c1917; }
+  .ps-tabs span[data-on] { color: #111; }
 </style>
 </head>
 <body>
@@ -744,7 +745,7 @@ const CARD = {
 const axes = [
   "Steady List — Call Sheet IA + calm verbs",
   "Morning Brief — Soft Coach greeting over list",
-  "Pocket Sheet — one primary CTA, denser cues",
+  "Pocket Sheet — monochrome, one primary CTA",
 ];
 
 const shot = new Set();

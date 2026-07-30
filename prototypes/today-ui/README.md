@@ -22,4 +22,4 @@ Picker · `←`/`→` · `1`–`3` · `R` · `?v=1|2|3`
 | --- | --- | --- | --- | --- |
 | 1 | Steady List | Call Sheet IA + calm verbs | Closest hybrid; daily tool clarity | Least distinctive visually |
 | 2 | Morning Brief | Soft Coach greeting over list | Reassurance before the run-of-show | Greeting eats vertical space |
-| 3 | Pocket Sheet | One sticky primary + denser cues | Explicit per-scene Shot/Undo | Extra control chrome per row |
+| 3 | Pocket Sheet | One sticky primary + denser cues, **monochrome** | Explicit per-scene Shot/Undo | Extra control chrome per row |
