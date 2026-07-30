@@ -3,12 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PROTOTYPE — Today riff · Call Sheet × Soft Coach</title>
+<title>PROTOTYPE — Content Helper · Pocket Sheet shell</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
-  /* ——— Harness shell (not a contestant) ——— */
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   body {
@@ -21,7 +20,7 @@
     min-height: 100%;
     display: grid;
     place-items: center;
-    padding: 32px 16px 120px;
+    padding: 32px 16px 48px;
     background:
       radial-gradient(ellipse 80% 50% at 50% -10%, #1a1a1f, transparent),
       #0c0c0d;
@@ -38,7 +37,6 @@
     pointer-events: none;
     font-size: 12px;
     color: rgba(255,255,255,0.45);
-    letter-spacing: 0.02em;
   }
   .harness-meta strong { color: rgba(255,255,255,0.72); font-weight: 600; }
   .phone {
@@ -50,7 +48,7 @@
     box-shadow:
       0 0 0 1px rgba(255,255,255,0.08),
       0 40px 80px rgba(0,0,0,0.55);
-    background: #000;
+    background: #fafafa;
   }
   .phone-notch {
     position: absolute;
@@ -64,101 +62,41 @@
     z-index: 5;
     pointer-events: none;
   }
-  #stage { width: 100%; height: 100%; overflow: hidden; }
-
-  /* ——— Verbatim picker from emilkowalski/skills prototype/PICKER.md ——— */
-  .proto-picker {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 2147483647;
+  #app {
+    width: 100%;
+    height: 100%;
     display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 4px;
-    border-radius: 999px;
-    background: rgba(10, 10, 10, 0.82);
-    -webkit-backdrop-filter: blur(12px) saturate(1.4);
-    backdrop-filter: blur(12px) saturate(1.4);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-      0 8px 24px rgba(0, 0, 0, 0.24),
-      0 2px 6px rgba(0, 0, 0, 0.12);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 13px;
-    line-height: 1;
-    -webkit-font-smoothing: antialiased;
-    user-select: none;
-    -webkit-user-select: none;
+    flex-direction: column;
+    font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    color: #111;
+    background: #fafafa;
   }
-  .proto-picker-highlight {
-    position: absolute;
-    top: 4px;
-    left: 0;
-    height: 28px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.12);
-    will-change: transform;
-  }
-  .proto-picker[data-ready] .proto-picker-highlight {
-    transition:
-      transform 250ms cubic-bezier(0.23, 1, 0.32, 1),
-      width 250ms cubic-bezier(0.23, 1, 0.32, 1);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .proto-picker[data-ready] .proto-picker-highlight { transition: none; }
-  }
-  .proto-picker-item {
-    position: relative;
-    display: flex;
-    align-items: center;
-    height: 28px;
-    padding: 0 12px;
-    border: 0;
-    border-radius: 999px;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.55);
-    font: inherit;
-    cursor: pointer;
-    transition: color 150ms ease-out;
-  }
-  .proto-picker-item:hover { color: rgba(255, 255, 255, 0.85); }
-  .proto-picker-item:active { transform: scale(0.97); }
-  .proto-picker-item:focus-visible {
-    outline: 2px solid rgba(255, 255, 255, 0.4);
-    outline-offset: 2px;
-  }
-  .proto-picker-item[data-active] { color: #fff; }
-  .proto-picker-divider {
-    width: 1px;
-    height: 16px;
-    margin: 0 4px;
-    background: rgba(255, 255, 255, 0.12);
-  }
-  .proto-picker-replay { padding: 0 10px; font-size: 14px; }
-
   .sb {
     display: flex;
     justify-content: space-between;
     padding: 16px 28px 8px;
     font-size: 14px;
     font-weight: 600;
-    letter-spacing: -0.01em;
   }
+  .screen {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .press:active { transform: scale(0.97); }
 
   .toast {
     position: absolute;
     left: 16px;
     right: 16px;
     bottom: 96px;
-    z-index: 20;
+    z-index: 40;
     padding: 12px 14px;
     border-radius: 14px;
     background: rgba(10,10,10,0.88);
     color: #fff;
     font-size: 13px;
-    font-weight: 560;
+    font-weight: 600;
     text-align: center;
     opacity: 0;
     transform: translateY(8px);
@@ -167,358 +105,31 @@
   }
   .toast[data-show] { opacity: 1; transform: none; }
 
-  /* Shared press feedback */
-  .press:active { transform: scale(0.97); }
-
-  /* =========================
-     VARIANT 1 — Steady List
-     Axis: Call Sheet IA + Soft Coach verbs (closest blend)
-     ========================= */
-  .sl {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background: #f8fafc;
-    color: #0f172a;
-    font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
-  }
-  .sl .sb { color: #0f172a; }
-  .sl-head {
-    padding: 4px 20px 14px;
-    border-bottom: 1px solid #e2e8f0;
-  }
-  .sl-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    font-size: 12px;
-    color: #64748b;
-    margin-bottom: 8px;
-  }
-  .sl-title {
-    font-size: 22px;
-    font-weight: 650;
-    letter-spacing: -0.02em;
-    line-height: 1.2;
-    margin: 0 0 6px;
-  }
-  .sl-sub {
-    font-size: 14px;
-    color: #475569;
-    margin: 0;
-    line-height: 1.4;
-  }
-  .sl-progress {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 20px;
-    background: #fff;
-    border-bottom: 1px solid #e2e8f0;
-    font-size: 13px;
-    color: #475569;
-  }
-  .sl-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 99px;
-    background: #0f766e;
-  }
-  .sl-list { flex: 1; overflow-y: auto; background: #fff; }
-  .sl-section {
-    padding: 10px 20px 6px;
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #94a3b8;
-    background: #f1f5f9;
-    border-bottom: 1px solid #e2e8f0;
-  }
-  .sl-row {
+  /* Shared tab bar */
+  .tabs {
     display: grid;
-    grid-template-columns: 36px 1fr auto;
-    gap: 12px;
-    align-items: center;
-    padding: 14px 20px;
-    border-bottom: 1px solid #e2e8f0;
-    cursor: pointer;
-    background: #fff;
-    transition: background 140ms ease-out;
-  }
-  .sl-row:active { background: #f1f5f9; }
-  .sl-num {
-    width: 36px;
-    height: 36px;
-    display: grid;
-    place-items: center;
-    border-radius: 10px;
-    border: 1.5px solid #0f172a;
-    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-    font-size: 13px;
-    font-weight: 600;
-    transition: background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out;
-  }
-  .sl-row[data-shot] .sl-num {
-    background: #0f766e;
-    border-color: #0f766e;
-    color: #fff;
-  }
-  .sl-row[data-shot] .sl-row-t { color: #94a3b8; text-decoration: line-through; }
-  .sl-row-t { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
-  .sl-row-d { font-size: 12px; color: #64748b; margin-top: 2px; }
-  .sl-dur {
-    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-    font-size: 12px;
-    color: #64748b;
-  }
-  .sl-copy {
-    padding: 14px 20px;
-    border-bottom: 1px solid #e2e8f0;
-  }
-  .sl-copy label {
-    display: block;
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #94a3b8;
-    margin-bottom: 6px;
-  }
-  .sl-copy p {
-    margin: 0;
-    font-size: 14px;
-    line-height: 1.45;
-    color: #334155;
-  }
-  .sl-copy-btn {
-    margin-top: 10px;
-    height: 36px;
-    padding: 0 12px;
-    border: 1px solid #cbd5e1;
-    border-radius: 10px;
-    background: #fff;
-    color: #0f172a;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: transform 140ms ease-out;
-  }
-  .sl-footer {
-    display: grid;
-    grid-template-columns: 1fr 1.2fr;
-    gap: 8px;
-    padding: 12px 16px 18px;
-    background: #fff;
-    border-top: 1px solid #e2e8f0;
-  }
-  .sl-btn {
-    height: 50px;
-    border-radius: 12px;
-    font-size: 14px;
-    font-weight: 650;
-    cursor: pointer;
-    transition: transform 140ms ease-out;
-  }
-  .sl-btn-ghost {
-    border: 1px solid #cbd5e1;
-    background: #fff;
-    color: #334155;
-  }
-  .sl-btn-fill {
-    border: 0;
-    background: #0f172a;
-    color: #fff;
-  }
-  .sl-tabs {
-    display: flex;
-    justify-content: space-around;
-    padding: 8px 8px 12px;
-    background: #f8fafc;
-    border-top: 1px solid #e2e8f0;
-    font-size: 11px;
-    font-weight: 650;
-    color: #94a3b8;
-  }
-  .sl-tabs span[data-on] { color: #0f172a; }
-
-  /* =========================
-     VARIANT 2 — Morning Brief
-     Axis: Soft Coach greeting hierarchy on Call Sheet list
-     ========================= */
-  .mb {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background: #f7faf9;
-    color: #0b2e2a;
-    font-family: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
-  }
-  .mb .sb { color: #0b2e2a; }
-  .mb-brief {
-    padding: 4px 20px 16px;
-  }
-  .mb-day {
-    font-size: 13px;
-    font-weight: 700;
-    color: #0f766e;
-    margin-bottom: 8px;
-  }
-  .mb-line {
-    font-size: 26px;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    line-height: 1.15;
-    margin: 0 0 8px;
-  }
-  .mb-support {
-    font-size: 14px;
-    line-height: 1.4;
-    color: #115e59;
-    opacity: 0.85;
-    margin: 0 0 12px;
-  }
-  .mb-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    font-weight: 700;
-    padding: 7px 11px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.85);
-    border: 1px solid rgba(15,118,110,0.16);
-    color: #0f766e;
-  }
-  .mb-list {
-    flex: 1;
-    overflow-y: auto;
-    background: #fff;
-    border-top: 1px solid rgba(15,118,110,0.12);
-  }
-  .mb-section {
-    padding: 10px 20px 6px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #5eead4;
-    background: #f0fdfa;
-    border-bottom: 1px solid rgba(15,118,110,0.1);
-  }
-  .mb-row {
-    display: grid;
-    grid-template-columns: 28px 1fr auto;
-    gap: 12px;
-    align-items: start;
-    padding: 14px 20px;
-    border-bottom: 1px solid #e2e8f0;
-    cursor: pointer;
-  }
-  .mb-row:active { background: #f8fafc; }
-  .mb-check {
-    width: 22px;
-    height: 22px;
-    margin-top: 1px;
-    border-radius: 7px;
-    border: 2px solid #14b8a6;
-    transition: background 160ms ease-out, border-color 160ms ease-out;
-  }
-  .mb-row[data-shot] .mb-check {
-    background: #0f766e;
-    border-color: #0f766e;
-    box-shadow: inset 0 0 0 3px #fff;
-  }
-  .mb-row[data-shot] .mb-row-t { opacity: 0.45; text-decoration: line-through; }
-  .mb-row-t { font-size: 15px; font-weight: 700; }
-  .mb-row-d { font-size: 12px; color: #64748b; margin-top: 2px; }
-  .mb-dur { font-size: 12px; color: #94a3b8; font-weight: 600; padding-top: 2px; }
-  .mb-copy {
-    padding: 14px 20px;
-    border-bottom: 1px solid #e2e8f0;
-  }
-  .mb-copy strong {
-    display: block;
-    font-size: 12px;
-    margin-bottom: 6px;
-    color: #0f766e;
-  }
-  .mb-copy p {
-    margin: 0;
-    font-size: 14px;
-    line-height: 1.45;
-    color: #334155;
-    font-family: "IBM Plex Sans", sans-serif;
-    font-weight: 400;
-  }
-  .mb-copy-btn {
-    margin-top: 10px;
-    height: 36px;
-    padding: 0 12px;
-    border: 0;
-    border-radius: 10px;
-    background: #ccfbf1;
-    color: #0f766e;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: transform 140ms ease-out;
-  }
-  .mb-actions {
-    display: grid;
-    gap: 8px;
-    padding: 12px 16px 16px;
-    background: #fff;
-    border-top: 1px solid #e2e8f0;
-  }
-  .mb-fab {
-    height: 52px;
-    border: 0;
-    border-radius: 16px;
-    background: #0f766e;
-    color: #fff;
-    font-size: 15px;
-    font-weight: 750;
-    cursor: pointer;
-    transition: transform 140ms ease-out;
-  }
-  .mb-alt {
-    height: 44px;
-    border: 0;
-    border-radius: 14px;
-    background: #f0fdfa;
-    color: #115e59;
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: transform 140ms ease-out;
-  }
-  .mb-tabs {
-    display: flex;
-    justify-content: space-around;
-    padding: 8px 8px 12px;
-    background: rgba(255,255,255,0.7);
-    border-top: 1px solid rgba(15,118,110,0.1);
-    font-size: 11px;
-    font-weight: 750;
-    color: #99d6cb;
-  }
-  .mb-tabs span[data-on] { color: #0f766e; }
-
-  /* =========================
-     VARIANT 3 — Pocket Sheet
-     Axis: single sticky primary + denser list (monochrome)
-     ========================= */
-  .ps {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    padding: 8px 8px 14px;
     background: #fafafa;
-    color: #111;
-    font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    border-top: 1px solid #e5e5e5;
   }
-  .ps .sb { color: #111; }
-  .ps-head {
-    padding: 4px 20px 12px;
+  .tab {
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    color: #a3a3a3;
+    padding: 8px;
+    cursor: pointer;
+    transition: color 140ms ease-out, transform 140ms ease-out;
   }
+  .tab[data-on] { color: #111; }
+  .tab:active { transform: scale(0.97); }
+
+  /* ——— Today / Pocket Sheet ——— */
+  .ps-head { padding: 4px 20px 12px; }
   .ps-kicker {
     font-size: 12px;
     font-weight: 600;
@@ -536,12 +147,8 @@
     display: flex;
     gap: 8px;
     padding: 0 20px 12px;
-    overflow-x: auto;
-    scrollbar-width: none;
   }
-  .ps-rail::-webkit-scrollbar { display: none; }
   .ps-pill {
-    flex: 0 0 auto;
     font-size: 12px;
     font-weight: 600;
     padding: 8px 12px;
@@ -550,11 +157,7 @@
     color: #404040;
     border: 1px solid #e5e5e5;
   }
-  .ps-list {
-    flex: 1;
-    overflow-y: auto;
-    border-top: 1px solid #e5e5e5;
-  }
+  .ps-list { border-top: 1px solid #e5e5e5; }
   .ps-row {
     display: grid;
     grid-template-columns: 56px 1fr 52px;
@@ -573,13 +176,8 @@
     border-radius: 12px;
     overflow: hidden;
     background: #e5e5e5;
-    flex-shrink: 0;
   }
-  .ps-thumb svg {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
+  .ps-thumb svg { width: 100%; height: 100%; display: block; }
   .ps-thumb-n {
     position: absolute;
     left: 6px;
@@ -666,7 +264,7 @@
     transition: transform 140ms ease-out;
   }
   .ps-dock {
-    padding: 12px 16px 18px;
+    padding: 12px 16px 10px;
     background: #fff;
     border-top: 1px solid #e5e5e5;
   }
@@ -694,53 +292,314 @@
     cursor: pointer;
     transition: transform 140ms ease-out;
   }
-  .ps-tabs {
-    display: flex;
-    justify-content: space-around;
-    padding: 8px 8px 12px;
-    background: #fafafa;
-    border-top: 1px solid #e5e5e5;
-    font-size: 11px;
+
+  /* ——— Archive ——— */
+  .ar-head { padding: 4px 20px 12px; }
+  .ar-title {
+    font-size: 28px;
     font-weight: 650;
+    letter-spacing: -0.03em;
+    margin: 0 0 4px;
+  }
+  .ar-sub {
+    font-size: 13px;
+    color: #737373;
+    margin: 0;
+  }
+  .ar-filters {
+    display: flex;
+    gap: 8px;
+    padding: 0 20px 14px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ar-filters::-webkit-scrollbar { display: none; }
+  .ar-filter {
+    flex: 0 0 auto;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid #e5e5e5;
+    background: #fff;
+    color: #404040;
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: transform 140ms ease-out, background 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
+  }
+  .ar-filter[data-on] {
+    background: #111;
+    border-color: #111;
+    color: #fff;
+  }
+  .ar-list { border-top: 1px solid #e5e5e5; }
+  .ar-row {
+    display: grid;
+    grid-template-columns: 56px 1fr 56px;
+    gap: 12px;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e5e5e5;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border-left: 0;
+    border-right: 0;
+    border-top: 0;
+    font: inherit;
+    color: inherit;
+  }
+  .ar-row:active { background: #f5f5f5; }
+  .ar-day {
+    font-size: 14px;
+    font-weight: 650;
+  }
+  .ar-date {
+    font-size: 11px;
+    color: #737373;
+    margin-top: 2px;
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  .ar-card {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .ar-out {
+    font-size: 12px;
+    color: #525252;
+    margin-top: 3px;
+  }
+  .ar-out[data-soft] { color: #a3a3a3; }
+  .ar-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #e5e5e5;
+  }
+  .ar-thumb svg { width: 100%; height: 100%; display: block; }
+  .ar-empty {
+    padding: 48px 24px;
+    text-align: center;
+    color: #737373;
+    font-size: 14px;
+  }
+
+  /* Archive detail sheet */
+  .sheet {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    background: rgba(0,0,0,0.28);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease-out;
+  }
+  .sheet[data-open] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .sheet-panel {
+    background: #fafafa;
+    border-radius: 24px 24px 0 0;
+    padding: 10px 20px 28px;
+    transform: translateY(12px);
+    transition: transform 220ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .sheet[data-open] .sheet-panel { transform: none; }
+  .sheet-handle {
+    width: 36px;
+    height: 4px;
+    border-radius: 99px;
+    background: #d4d4d4;
+    margin: 4px auto 16px;
+  }
+  .sheet-meta {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #737373;
+    margin-bottom: 6px;
+  }
+  .sheet-title {
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin: 0 0 14px;
+    line-height: 1.2;
+  }
+  .sheet-chip {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid #e5e5e5;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 650;
+    margin-bottom: 12px;
+  }
+  .sheet-body {
+    font-size: 14px;
+    line-height: 1.45;
+    color: #404040;
+    margin: 0 0 8px;
+  }
+  .sheet-note {
+    font-size: 12px;
+    color: #737373;
+    margin: 0 0 18px;
+  }
+  .sheet-done {
+    width: 100%;
+    height: 48px;
+    border: 0;
+    border-radius: 14px;
+    background: #111;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 140ms ease-out;
+  }
+
+  /* ——— Profile ——— */
+  .pf-head { padding: 4px 20px 16px; }
+  .pf-title {
+    font-size: 28px;
+    font-weight: 650;
+    letter-spacing: -0.03em;
+    margin: 0;
+  }
+  .pf-block {
+    margin: 0 20px 14px;
+    border: 1px solid #e5e5e5;
+    border-radius: 16px;
+    background: #fff;
+    overflow: hidden;
+  }
+  .pf-block-h {
+    padding: 12px 16px 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: #a3a3a3;
   }
-  .ps-tabs span[data-on] { color: #111; }
+  .pf-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-top: 1px solid #f0f0f0;
+    font-size: 14px;
+  }
+  .pf-block > .pf-row:first-of-type { border-top: 0; }
+  .pf-row-title { font-weight: 600; }
+  .pf-row-sub {
+    font-size: 12px;
+    color: #737373;
+    margin-top: 2px;
+  }
+  .pf-chip {
+    flex: 0 0 auto;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid #e5e5e5;
+    background: #f5f5f5;
+    font-size: 11px;
+    font-weight: 650;
+    color: #404040;
+  }
+  .pf-chip[data-live] {
+    background: #111;
+    border-color: #111;
+    color: #fff;
+  }
+  .pf-link {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border: 0;
+    border-top: 1px solid #f0f0f0;
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: #111;
+    cursor: pointer;
+    text-align: left;
+    transition: transform 140ms ease-out, background 140ms ease-out;
+  }
+  .pf-link:active { background: #f5f5f5; }
+  .pf-link span { color: #a3a3a3; font-weight: 500; }
+  .pf-actions {
+    padding: 4px 20px 20px;
+  }
+  .pf-signout {
+    width: 100%;
+    height: 50px;
+    border-radius: 14px;
+    border: 1px solid #d4d4d4;
+    background: #fff;
+    font-size: 15px;
+    font-weight: 650;
+    color: #111;
+    cursor: pointer;
+    transition: transform 140ms ease-out;
+  }
+  .pf-refresh {
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid #d4d4d4;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: transform 140ms ease-out;
+  }
+  .pf-foot {
+    padding: 0 20px 8px;
+    font-size: 12px;
+    color: #a3a3a3;
+  }
 </style>
 </head>
 <body>
   <!--
     PROTOTYPE — throwaway. Do not ship.
-    Riff around Call Sheet × Soft Coach:
-    instant-scan list + lower-pressure language.
-    Switch via ?v=1|2|3
+    Full Pocket Sheet shell: Today · Archive · Profile
+    Chosen direction: monochrome Pocket Sheet
   -->
   <div class="harness-meta">
-    <div><strong>PROTOTYPE</strong> · Riff · Call Sheet × Soft Coach</div>
-    <div id="axis-label">Steady List — Call Sheet IA + calm verbs</div>
+    <div><strong>PROTOTYPE</strong> · Pocket Sheet shell</div>
+    <div id="route-label">Today</div>
   </div>
 
   <div class="harness">
     <div class="phone">
       <div class="phone-notch" aria-hidden="true"></div>
-      <div id="stage"></div>
+      <div id="app"></div>
       <div class="toast" id="toast" role="status"></div>
     </div>
   </div>
-
-  <nav class="proto-picker" aria-label="Prototype variants">
-    <span class="proto-picker-highlight" aria-hidden="true"></span>
-    <button class="proto-picker-item" data-active aria-current="true">Steady List</button>
-    <button class="proto-picker-item">Morning Brief</button>
-    <button class="proto-picker-item">Pocket Sheet</button>
-    <span class="proto-picker-divider" aria-hidden="true"></span>
-    <button class="proto-picker-item proto-picker-replay" aria-label="Replay animation (R)">↻</button>
-  </nav>
 
 <script>
 const CARD = {
   date: "30 July 2026",
   title: "Race week has entered the house",
-  hook: "Race week starts with the shoes by the door.",
   effort: "Easy · 10 min",
   scenes: [
     { n: 1, title: "Shoes by the door", duration: "3 sec" },
@@ -750,26 +609,25 @@ const CARD = {
   ],
   caption: "Race week starts quiet. Shoes by the door. One honest line in the journal. Then out.",
   audio: "Steady mid-tempo — keep VO soft over the first stride.",
-  script: "Race week starts with the shoes by the door. Then I open the journal and write one honest line. Bottle, timer, breath. Keep it small. One steady stride is enough for today.",
 };
 
-const axes = [
-  "Steady List — Call Sheet IA + calm verbs",
-  "Morning Brief — Soft Coach greeting over list",
-  "Pocket Sheet — monochrome + scene thumbnails",
+const ARCHIVE = [
+  { id: "a1", day: "Tue", date: "29 Jul", title: "Sharpen, don't chase", decision: "posted", label: "Posted", output: "Reel posted · 4 scenes", filter: "posted", thumb: 4 },
+  { id: "a2", day: "Mon", date: "28 Jul", title: "Reset Monday", decision: "posted", label: "Posted", output: "Stories posted · quiet open", filter: "posted", thumb: 2 },
+  { id: "a3", day: "Sun", date: "27 Jul", title: "Open family moment", decision: "backup", label: "Used backup", output: "Short story instead of primary", filter: "backup", thumb: 1 },
+  { id: "a4", day: "Sat", date: "26 Jul", title: "Race day. Let's go.", decision: "skipped", label: "Skipped", output: "Saved energy for race morning", filter: "skipped", thumb: null },
+  { id: "a5", day: "Fri", date: "25 Jul", title: "Shakeout and mindset", decision: "posted", label: "Shot", output: "All scenes shot · posted later", filter: "posted", thumb: 3 },
+  { id: "a6", day: "Thu", date: "24 Jul", title: "Fuel the engine", decision: "backup", label: "Used backup", output: "Caption-only fallback", filter: "backup", thumb: null },
 ];
 
-const shot = new Set();
-function toggleShot(n) {
-  if (shot.has(n)) shot.delete(n);
-  else shot.add(n);
-  showToast(shot.has(n) ? `Scene ${n} marked shot` : `Scene ${n} unmarked`);
-  mount(current);
-}
-function copyText(label, text) {
-  navigator.clipboard?.writeText(text).catch(() => {});
-  showToast(`${label} copied`);
-}
+const state = {
+  tab: "today",
+  shot: new Set(),
+  archiveFilter: "all",
+  archiveDetail: null,
+  refreshedAt: null,
+};
+
 let toastTimer;
 function showToast(msg) {
   const el = document.getElementById("toast");
@@ -783,141 +641,66 @@ function statusBar() {
   return `<div class="sb"><span>9:41</span><span>●●●</span></div>`;
 }
 
-function primaryLabel() {
-  return shot.size === CARD.scenes.length
-    ? "I’m done — mark posted"
-    : shot.size === 0
-      ? "Mark all as shot"
-      : `Mark remaining (${CARD.scenes.length - shot.size})`;
-}
-
-function steadyList() {
-  const rows = CARD.scenes.map(s => `
-    <div class="sl-row" ${shot.has(s.n) ? "data-shot" : ""} onclick="toggleShot(${s.n})">
-      <div class="sl-num">${shot.has(s.n) ? "✓" : String(s.n).padStart(2,"0")}</div>
-      <div>
-        <div class="sl-row-t">${s.title}</div>
-        ${shot.has(s.n) ? "" : `<div class="sl-row-d">Tap when you’ve got this one</div>`}
-      </div>
-      <div class="sl-dur">${s.duration}</div>
-    </div>`).join("");
+function tabs() {
   return `
-    <div class="sl">
-      ${statusBar()}
-      <div class="sl-head">
-        <div class="sl-meta"><span>Today</span><span>${CARD.date}</span></div>
-        <h1 class="sl-title">${CARD.title}</h1>
-        <p class="sl-sub">${CARD.hook}</p>
-      </div>
-      <div class="sl-progress">
-        <span class="sl-dot"></span>
-        <span>${shot.size} of ${CARD.scenes.length} shot · ${CARD.effort}</span>
-      </div>
-      <div class="sl-list">
-        <div class="sl-section">Scenes</div>
-        ${rows}
-        <div class="sl-section">Package</div>
-        <div class="sl-copy">
-          <label>Caption</label>
-          <p>${CARD.caption}</p>
-          <button class="sl-copy-btn press" onclick="event.stopPropagation(); copyText('Caption', CARD.caption)">Copy caption</button>
-        </div>
-        <div class="sl-copy">
-          <label>Audio</label>
-          <p>${CARD.audio}</p>
-          <button class="sl-copy-btn press" onclick="event.stopPropagation(); copyText('Audio', CARD.audio)">Copy audio note</button>
-        </div>
-      </div>
-      <div class="sl-footer">
-        <button class="sl-btn sl-btn-ghost press" onclick="showToast('Other ideas sheet')">Need something easier</button>
-        <button class="sl-btn sl-btn-fill press" onclick="showToast(shot.size === CARD.scenes.length ? 'Mark posted' : 'Marked remaining shot')">${primaryLabel()}</button>
-      </div>
-      <div class="sl-tabs"><span data-on>Today</span><span>Archive</span><span>Profile</span></div>
-    </div>`;
+    <nav class="tabs" aria-label="Primary">
+      <button class="tab" ${state.tab === "today" ? "data-on" : ""} onclick="setTab('today')">Today</button>
+      <button class="tab" ${state.tab === "archive" ? "data-on" : ""} onclick="setTab('archive')">Archive</button>
+      <button class="tab" ${state.tab === "profile" ? "data-on" : ""} onclick="setTab('profile')">Profile</button>
+    </nav>`;
 }
 
-function morningBrief() {
-  const rows = CARD.scenes.map(s => `
-    <div class="mb-row" ${shot.has(s.n) ? "data-shot" : ""} onclick="toggleShot(${s.n})">
-      <div class="mb-check"></div>
-      <div>
-        <div class="mb-row-t">${s.n}. ${s.title}</div>
-        ${shot.has(s.n) ? `<div class="mb-row-d">Got it</div>` : `<div class="mb-row-d">Tap when shot</div>`}
-      </div>
-      <div class="mb-dur">${s.duration}</div>
-    </div>`).join("");
-  return `
-    <div class="mb">
-      ${statusBar()}
-      <div class="mb-brief">
-        <div class="mb-day">Today · ${CARD.date}</div>
-        <h1 class="mb-line">You’ve got one easy shoot ready.</h1>
-        <p class="mb-support">${CARD.title} — ${CARD.hook}</p>
-        <span class="mb-chip">${shot.size} of ${CARD.scenes.length} shot · ${CARD.effort}</span>
-      </div>
-      <div class="mb-list">
-        <div class="mb-section">Scenes</div>
-        ${rows}
-        <div class="mb-section">Package</div>
-        <div class="mb-copy">
-          <strong>Caption</strong>
-          <p>${CARD.caption}</p>
-          <button class="mb-copy-btn press" onclick="event.stopPropagation(); copyText('Caption', CARD.caption)">Copy caption</button>
-        </div>
-        <div class="mb-copy">
-          <strong>Audio</strong>
-          <p>${CARD.audio}</p>
-          <button class="mb-copy-btn press" onclick="event.stopPropagation(); copyText('Audio', CARD.audio)">Copy audio note</button>
-        </div>
-      </div>
-      <div class="mb-actions">
-        <button class="mb-fab press" onclick="showToast(shot.size === CARD.scenes.length ? 'Mark posted' : 'Keep going — ' + (CARD.scenes.length - shot.size) + ' left')">${
-          shot.size === CARD.scenes.length ? "I’m done — mark posted" : "I’m shooting this"
-        }</button>
-        <button class="mb-alt press" onclick="showToast('Other ideas sheet')">Need something easier</button>
-      </div>
-      <div class="mb-tabs"><span data-on>Today</span><span>Archive</span><span>Profile</span></div>
-    </div>`;
-}
-
-function sceneThumb(n) {
-  // Monochrome storyboard placeholders — distinct per scene, not decorative chrome.
-  const art = [
-    // shoes by door
+function sceneArt(n) {
+  return [
     `<rect width="56" height="56" fill="#2a2a2a"/><rect x="8" y="28" width="18" height="10" rx="3" fill="#9a9a9a"/><rect x="30" y="26" width="18" height="12" rx="3" fill="#b0b0b0"/><rect x="6" y="8" width="8" height="40" rx="2" fill="#6a6a6a"/>`,
-    // journal
     `<rect width="56" height="56" fill="#1f1f1f"/><rect x="14" y="10" width="28" height="36" rx="3" fill="#d4d4d4"/><rect x="18" y="16" width="20" height="2" fill="#8a8a8a"/><rect x="18" y="22" width="16" height="2" fill="#8a8a8a"/><rect x="18" y="28" width="18" height="2" fill="#8a8a8a"/>`,
-    // bottle / timer
     `<rect width="56" height="56" fill="#333"/><rect x="12" y="18" width="12" height="26" rx="4" fill="#cfcfcf"/><circle cx="38" cy="28" r="10" fill="#a3a3a3"/><circle cx="38" cy="28" r="6" fill="#333"/><rect x="37" y="20" width="2" height="8" fill="#eee"/>`,
-    // stride
     `<rect width="56" height="56" fill="#242424"/><path d="M16 40c6-10 10-16 14-16s6 4 10 12" stroke="#d4d4d4" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="20" cy="22" r="4" fill="#bdbdbd"/>`,
   ][n - 1];
-  return `
-    <div class="ps-thumb" onclick="toggleShot(${n})">
-      <svg viewBox="0 0 56 56" aria-hidden="true">${art}</svg>
-      <span class="ps-thumb-n">${String(n).padStart(2,"0")}</span>
-    </div>`;
 }
 
-function pocketSheet() {
+function toggleShot(n) {
+  if (state.shot.has(n)) state.shot.delete(n);
+  else state.shot.add(n);
+  showToast(state.shot.has(n) ? `Scene ${n} marked shot` : `Scene ${n} unmarked`);
+  render();
+}
+
+function copyText(label, text) {
+  navigator.clipboard?.writeText(text).catch(() => {});
+  showToast(`${label} copied`);
+}
+
+function primaryLabel() {
+  const total = CARD.scenes.length;
+  if (state.shot.size === total) return "I’m done — mark posted";
+  if (state.shot.size === 0) return "Mark remaining as shot";
+  return `Mark remaining (${total - state.shot.size})`;
+}
+
+function renderToday() {
   const rows = CARD.scenes.map(s => `
-    <div class="ps-row" ${shot.has(s.n) ? "data-shot" : ""}>
-      ${sceneThumb(s.n)}
+    <div class="ps-row" ${state.shot.has(s.n) ? "data-shot" : ""}>
+      <div class="ps-thumb" onclick="toggleShot(${s.n})">
+        <svg viewBox="0 0 56 56" aria-hidden="true">${sceneArt(s.n)}</svg>
+        <span class="ps-thumb-n">${String(s.n).padStart(2,"0")}</span>
+      </div>
       <div onclick="toggleShot(${s.n})">
         <div class="ps-row-t">${s.title}</div>
         <div class="ps-row-d">${s.duration}</div>
       </div>
-      <button class="ps-mark press" onclick="event.stopPropagation(); toggleShot(${s.n})">${shot.has(s.n) ? "Undo" : "Shot"}</button>
+      <button class="ps-mark press" onclick="event.stopPropagation(); toggleShot(${s.n})">${state.shot.has(s.n) ? "Undo" : "Shot"}</button>
     </div>`).join("");
+
   return `
-    <div class="ps">
-      ${statusBar()}
+    ${statusBar()}
+    <div class="screen">
       <div class="ps-head">
         <div class="ps-kicker">Today · ${CARD.date}</div>
         <h1 class="ps-title">${CARD.title}</h1>
       </div>
       <div class="ps-rail">
-        <span class="ps-pill">${shot.size}/${CARD.scenes.length} shot</span>
+        <span class="ps-pill">${state.shot.size}/${CARD.scenes.length} shot</span>
         <span class="ps-pill">${CARD.effort}</span>
       </div>
       <div class="ps-list">${rows}</div>
@@ -937,70 +720,182 @@ function pocketSheet() {
           <button class="ps-pkg-copy press" onclick="copyText('Audio', CARD.audio)">Copy</button>
         </div>
       </div>
-      <div class="ps-dock">
-        <button class="ps-primary press" onclick="showToast(shot.size === CARD.scenes.length ? 'Mark posted' : 'Marked remaining shot')">${
-          shot.size === CARD.scenes.length ? "I’m done — mark posted" : "Mark remaining as shot"
-        }</button>
-        <button class="ps-secondary press" onclick="showToast('Other ideas sheet')">Need something easier</button>
+    </div>
+    <div class="ps-dock">
+      <button class="ps-primary press" onclick="showToast(state.shot.size === CARD.scenes.length ? 'Marked posted' : 'Marked remaining shot')">${primaryLabel()}</button>
+      <button class="ps-secondary press" onclick="showToast('Other ideas sheet')">Need something easier</button>
+    </div>
+    ${tabs()}`;
+}
+
+function setArchiveFilter(f) {
+  state.archiveFilter = f;
+  render();
+}
+
+function openArchive(id) {
+  state.archiveDetail = ARCHIVE.find(e => e.id === id) || null;
+  render();
+}
+
+function closeArchive() {
+  state.archiveDetail = null;
+  render();
+}
+
+function filteredArchive() {
+  if (state.archiveFilter === "all") return ARCHIVE;
+  return ARCHIVE.filter(e => e.filter === state.archiveFilter);
+}
+
+function renderArchive() {
+  const filters = [
+    ["all", "All"],
+    ["posted", "Completed"],
+    ["backup", "Backups"],
+    ["skipped", "Skipped"],
+  ];
+  const entries = filteredArchive();
+  const rows = entries.length
+    ? entries.map(e => `
+      <button class="ar-row" onclick="openArchive('${e.id}')">
+        <div>
+          <div class="ar-day">${e.day}</div>
+          <div class="ar-date">${e.date}</div>
+        </div>
+        <div>
+          <div class="ar-card">${e.title}</div>
+          <div class="ar-out" ${e.filter !== "posted" ? "data-soft" : ""}>${e.label} · ${e.output}</div>
+        </div>
+        ${e.thumb
+          ? `<div class="ar-thumb"><svg viewBox="0 0 56 56">${sceneArt(e.thumb)}</svg></div>`
+          : `<div class="ar-thumb" style="display:grid;place-items:center;color:#a3a3a3;font-size:18px">›</div>`}
+      </button>`).join("")
+    : `<div class="ar-empty">Nothing in this filter yet.</div>`;
+
+  const detail = state.archiveDetail;
+  const sheet = `
+    <div class="sheet" ${detail ? "data-open" : ""} onclick="if(event.target===this) closeArchive()">
+      <div class="sheet-panel" role="dialog" aria-modal="true">
+        <div class="sheet-handle"></div>
+        ${detail ? `
+          <div class="sheet-meta">${detail.day} · ${detail.date}</div>
+          <h2 class="sheet-title">${detail.title}</h2>
+          <div class="sheet-chip">${detail.label}</div>
+          <p class="sheet-body">${detail.output}</p>
+          <p class="sheet-note">${detail.thumb ? "Post output was recorded." : "No post thumbnail was attached."}</p>
+          <button class="sheet-done press" onclick="closeArchive()">Done</button>
+        ` : ""}
       </div>
-      <div class="ps-tabs"><span data-on>Today</span><span>Archive</span><span>Profile</span></div>
     </div>`;
+
+  return `
+    ${statusBar()}
+    <div class="screen">
+      <div class="ar-head">
+        <h1 class="ar-title">Archive</h1>
+        <p class="ar-sub">Past decisions — no streak pressure.</p>
+      </div>
+      <div class="ar-filters">
+        ${filters.map(([id, label]) => `
+          <button class="ar-filter press" ${state.archiveFilter === id ? "data-on" : ""} onclick="setArchiveFilter('${id}')">${label}</button>
+        `).join("")}
+      </div>
+      <div class="ar-list">${rows}</div>
+    </div>
+    ${tabs()}
+    ${sheet}`;
 }
 
-const variants = [steadyList, morningBrief, pocketSheet];
-const stage = document.getElementById("stage");
-const picker = document.querySelector(".proto-picker");
-const highlight = picker.querySelector(".proto-picker-highlight");
-const items = [...picker.querySelectorAll(".proto-picker-item:not(.proto-picker-replay)")];
-const replay = picker.querySelector(".proto-picker-replay");
-const axisLabel = document.getElementById("axis-label");
-let current = 0;
-
-function moveHighlight() {
-  const el = items[current];
-  highlight.style.width = el.offsetWidth + "px";
-  highlight.style.transform = `translateX(${el.offsetLeft}px)`;
+function refreshStatus() {
+  state.refreshedAt = new Date();
+  showToast("Status refreshed");
+  render();
 }
 
-function mount(i) {
-  stage.innerHTML = "";
-  requestAnimationFrame(() => {
-    stage.innerHTML = variants[i]();
-  });
+function renderProfile() {
+  const when = state.refreshedAt
+    ? state.refreshedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : "—";
+  return `
+    ${statusBar()}
+    <div class="screen">
+      <div class="pf-head">
+        <h1 class="pf-title">Profile</h1>
+      </div>
+
+      <div class="pf-block">
+        <div class="pf-block-h">Account</div>
+        <div class="pf-row">
+          <div>
+            <div class="pf-row-title">Signed in with Apple</div>
+            <div class="pf-row-sub">Creator · contenthelper</div>
+          </div>
+          <span class="pf-chip" data-live>Live</span>
+        </div>
+        <button class="pf-link" onclick="showToast('Open Plan hub')">
+          Plan
+          <span>Prep · generate · edit ›</span>
+        </button>
+      </div>
+
+      <div class="pf-block">
+        <div class="pf-block-h">Status</div>
+        <div class="pf-row">
+          <div class="pf-row-title">Supabase</div>
+          <span class="pf-chip" data-live>Live</span>
+        </div>
+        <div class="pf-row">
+          <div class="pf-row-title">Gemini</div>
+          <span class="pf-chip" data-live>Live</span>
+        </div>
+        <div class="pf-row">
+          <div>
+            <div class="pf-row-title">Last checked</div>
+            <div class="pf-row-sub">${when === "—" ? "Not refreshed yet" : "Up to date as of " + when}</div>
+          </div>
+          <button class="pf-refresh press" onclick="refreshStatus()">Refresh</button>
+        </div>
+      </div>
+
+      <div class="pf-actions">
+        <button class="pf-signout press" onclick="showToast('Signed out (prototype)')">Sign out</button>
+      </div>
+      <div class="pf-foot">Prototype shell — Pocket Sheet language across Today, Archive, Profile.</div>
+    </div>
+    ${tabs()}`;
 }
 
-function setActive(i) {
-  if (i < 0 || i >= variants.length) return;
-  current = i;
-  items.forEach((el, j) => {
-    el.toggleAttribute("data-active", j === i);
-    if (j === i) el.setAttribute("aria-current", "true");
-    else el.removeAttribute("aria-current");
-  });
-  axisLabel.textContent = axes[i];
-  moveHighlight();
+function setTab(tab) {
+  state.tab = tab;
+  state.archiveDetail = null;
   const url = new URL(location);
-  url.searchParams.set("v", i + 1);
+  url.searchParams.set("tab", tab);
   history.replaceState(null, "", url);
-  mount(i);
+  render();
 }
 
-items.forEach((el, i) => el.addEventListener("click", () => setActive(i)));
-replay?.addEventListener("click", () => mount(current));
-window.addEventListener("resize", moveHighlight);
+function render() {
+  const app = document.getElementById("app");
+  const label = document.getElementById("route-label");
+  label.textContent = state.tab[0].toUpperCase() + state.tab.slice(1);
+  if (state.tab === "today") app.innerHTML = renderToday();
+  else if (state.tab === "archive") app.innerHTML = renderArchive();
+  else app.innerHTML = renderProfile();
+}
 
 document.addEventListener("keydown", (e) => {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
-  const num = parseInt(e.key, 10);
-  if (num >= 1 && num <= variants.length) setActive(num - 1);
-  else if (e.key === "ArrowRight") setActive((current + 1) % variants.length);
-  else if (e.key === "ArrowLeft") setActive((current - 1 + variants.length) % variants.length);
-  else if (e.key === "r" || e.key === "R") mount(current);
+  if (e.key === "1") setTab("today");
+  else if (e.key === "2") setTab("archive");
+  else if (e.key === "3") setTab("profile");
+  else if (e.key === "Escape" && state.archiveDetail) closeArchive();
 });
 
-setActive((parseInt(new URLSearchParams(location.search).get("v"), 10) || 1) - 1);
-requestAnimationFrame(() => requestAnimationFrame(() => picker.setAttribute("data-ready", "")));
+const initial = (new URLSearchParams(location.search).get("tab") || "today").toLowerCase();
+state.tab = ["today", "archive", "profile"].includes(initial) ? initial : "today";
+render();
 </script>
 </body>
 </html>

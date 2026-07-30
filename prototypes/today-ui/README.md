@@ -1,25 +1,21 @@
-# PROTOTYPE — Today UI riff (Call Sheet × Soft Coach)
+# PROTOTYPE — Pocket Sheet shell
 
-Throwaway exploration. **Do not ship.**
+Throwaway. **Do not ship.**
 
-## Question
+Chosen direction: **Pocket Sheet** (monochrome) across the Creator shell.
 
-Given Call Sheet’s instant scan and Soft Coach’s lower-pressure language, which blend of hierarchy and action model should Today use?
+## Screens
+
+| Tab | What’s prototyped |
+| --- | --- |
+| Today | Pocket Sheet: scene thumbnails, Shot/Undo, caption/audio, calm CTAs |
+| Archive | Decision timeline + filters (All / Completed / Backups / Skipped) + detail sheet |
+| Profile | Apple account, Plan entry, Supabase/Gemini status, Sign out |
 
 ## Run
 
 ```bash
 open prototypes/today-ui/index.html
-# iPad (HTTPS, self-signed — Advanced → Proceed):
-# https://192.168.1.119:8765/
+# iPad: https://192.168.1.119:8765/
+# Tabs: ?tab=today|archive|profile · keys 1/2/3
 ```
-
-Picker · `←`/`→` · `1`–`3` · `R` · `?v=1|2|3`
-
-## Variants (riff 2)
-
-| # | Variant | Axis | When it wins | Cost |
-| --- | --- | --- | --- | --- |
-| 1 | Steady List | Call Sheet IA + calm verbs | Closest hybrid; daily tool clarity | Least distinctive visually |
-| 2 | Morning Brief | Soft Coach greeting over list | Reassurance before the run-of-show | Greeting eats vertical space |
-| 3 | Pocket Sheet | One sticky primary + denser cues, **monochrome** | Explicit per-scene Shot/Undo | Extra control chrome per row |
