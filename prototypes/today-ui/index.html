@@ -794,7 +794,6 @@ function renderArchive() {
     <div class="screen">
       <div class="ar-head">
         <h1 class="ar-title">Archive</h1>
-        <p class="ar-sub">Past decisions — no streak pressure.</p>
       </div>
       <div class="ar-filters">
         ${filters.map(([id, label]) => `
@@ -814,9 +813,6 @@ function refreshStatus() {
 }
 
 function renderProfile() {
-  const when = state.refreshedAt
-    ? state.refreshedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    : "—";
   return `
     ${statusBar()}
     <div class="screen">
@@ -833,35 +829,11 @@ function renderProfile() {
           </div>
           <span class="pf-chip" data-live>Live</span>
         </div>
-        <button class="pf-link" onclick="showToast('Open Plan hub')">
-          Plan
-          <span>Prep · generate · edit ›</span>
-        </button>
-      </div>
-
-      <div class="pf-block">
-        <div class="pf-block-h">Status</div>
-        <div class="pf-row">
-          <div class="pf-row-title">Supabase</div>
-          <span class="pf-chip" data-live>Live</span>
-        </div>
-        <div class="pf-row">
-          <div class="pf-row-title">Gemini</div>
-          <span class="pf-chip" data-live>Live</span>
-        </div>
-        <div class="pf-row">
-          <div>
-            <div class="pf-row-title">Last checked</div>
-            <div class="pf-row-sub">${when === "—" ? "Not refreshed yet" : "Up to date as of " + when}</div>
-          </div>
-          <button class="pf-refresh press" onclick="refreshStatus()">Refresh</button>
-        </div>
       </div>
 
       <div class="pf-actions">
         <button class="pf-signout press" onclick="showToast('Signed out (prototype)')">Sign out</button>
       </div>
-      <div class="pf-foot">Prototype shell — Pocket Sheet language across Today, Archive, Profile.</div>
     </div>
     ${tabs()}`;
 }
