@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PROTOTYPE — Today UI directions · Content Helper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  /* ——— Harness shell (not a contestant) ——— */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #0c0c0d;
+    color: #f4f4f5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .harness {
+    min-height: 100%;
+    display: grid;
+    place-items: center;
+    padding: 32px 16px 120px;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, #1a1a1f, transparent),
+      #0c0c0d;
+  }
+  .harness-meta {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    pointer-events: none;
+    font-size: 12px;
+    color: rgba(255,255,255,0.45);
+    letter-spacing: 0.02em;
+  }
+  .harness-meta strong { color: rgba(255,255,255,0.72); font-weight: 600; }
+  .phone {
+    width: 390px;
+    height: 844px;
+    border-radius: 44px;
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.08),
+      0 40px 80px rgba(0,0,0,0.55);
+    background: #000;
+  }
+  .phone-notch {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 120px;
+    height: 34px;
+    background: #000;
+    border-radius: 20px;
+    z-index: 5;
+    pointer-events: none;
+  }
+  #stage { width: 100%; height: 100%; overflow: hidden; }
+
+  /* ——— Verbatim picker from emilkowalski/skills prototype/PICKER.md ——— */
+  .proto-picker {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2147483647;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgba(10, 10, 10, 0.82);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    backdrop-filter: blur(12px) saturate(1.4);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+      0 8px 24px rgba(0, 0, 0, 0.24),
+      0 2px 6px rgba(0, 0, 0, 0.12);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px;
+    line-height: 1;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .proto-picker-highlight {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    height: 28px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    will-change: transform;
+  }
+  .proto-picker[data-ready] .proto-picker-highlight {
+    transition:
+      transform 250ms cubic-bezier(0.23, 1, 0.32, 1),
+      width 250ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .proto-picker[data-ready] .proto-picker-highlight { transition: none; }
+  }
+  .proto-picker-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.55);
+    font: inherit;
+    cursor: pointer;
+    transition: color 150ms ease-out;
+  }
+  .proto-picker-item:hover { color: rgba(255, 255, 255, 0.85); }
+  .proto-picker-item:active { transform: scale(0.97); }
+  .proto-picker-item:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.4);
+    outline-offset: 2px;
+  }
+  .proto-picker-item[data-active] { color: #fff; }
+  .proto-picker-divider {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    background: rgba(255, 255, 255, 0.12);
+  }
+  .proto-picker-replay { padding: 0 10px; font-size: 14px; }
+
+  /* Shared status bar inside phone */
+  .sb {
+    display: flex;
+    justify-content: space-between;
+    padding: 16px 28px 8px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  /* =========================
+     VARIANT 1 — Night Deck
+     Axis: layout + personality (immersive, media-first)
+     ========================= */
+  .nd {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    color: #f5f5f4;
+    background: #0a0a0a;
+    font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  .nd .sb { color: #fff; }
+  .nd-hero {
+    flex: 1;
+    position: relative;
+    margin: 0 12px;
+    border-radius: 28px;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, transparent 30%, rgba(0,0,0,0.85) 100%),
+      linear-gradient(135deg, #1c1917 0%, #292524 40%, #0c0a09 100%);
+    animation: nd-in 280ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes nd-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .nd-hero { animation: none; }
+  }
+  .nd-grain {
+    position: absolute;
+    inset: 0;
+    opacity: 0.18;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+  .nd-top {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    right: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 2;
+  }
+  .nd-pill {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.12);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .nd-effort {
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+    background: rgba(34,197,94,0.18);
+    color: #86efac;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .nd-body {
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    bottom: 22px;
+    z-index: 2;
+  }
+  .nd-kicker {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 10px;
+  }
+  .nd-title {
+    font-size: 34px;
+    font-weight: 650;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    margin: 0 0 14px;
+  }
+  .nd-hook {
+    font-size: 15px;
+    line-height: 1.4;
+    color: rgba(255,255,255,0.72);
+    margin: 0 0 20px;
+    max-width: 32ch;
+  }
+  .nd-scenes {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .nd-scenes::-webkit-scrollbar { display: none; }
+  .nd-scene {
+    flex: 0 0 auto;
+    width: 108px;
+    padding: 12px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    cursor: pointer;
+    transition: transform 160ms ease-out, background 160ms ease-out;
+  }
+  .nd-scene:active { transform: scale(0.97); }
+  .nd-scene[data-shot] {
+    background: rgba(34,197,94,0.16);
+    border-color: rgba(134,239,172,0.35);
+  }
+  .nd-scene-n {
+    font-size: 11px;
+    color: rgba(255,255,255,0.45);
+    margin-bottom: 6px;
+  }
+  .nd-scene-t {
+    font-size: 13px;
+    font-weight: 560;
+    line-height: 1.25;
+  }
+  .nd-dock {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 10px;
+    padding: 14px 16px 28px;
+  }
+  .nd-btn {
+    height: 54px;
+    border: 0;
+    border-radius: 18px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 140ms ease-out;
+  }
+  .nd-btn:active { transform: scale(0.97); }
+  .nd-btn-ghost {
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+  }
+  .nd-btn-primary {
+    background: #fff;
+    color: #0a0a0a;
+  }
+  .nd-tabbar {
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 12px 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    background: #0a0a0a;
+  }
+  .nd-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.35);
+  }
+  .nd-tab[data-on] { color: #fff; }
+  .nd-tab svg { width: 22px; height: 22px; }
+
+  /* =========================
+     VARIANT 2 — Call Sheet
+     Axis: density + interaction model (production list, not hero)
+     ========================= */
+  .cs {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #f8fafc;
+    color: #0f172a;
+    font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  }
+  .cs .sb { color: #0f172a; }
+  .cs-head {
+    padding: 4px 20px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    animation: cs-in 240ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes cs-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cs-head, .cs-row { animation: none; }
+  }
+  .cs-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .cs-title {
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin: 0 0 6px;
+  }
+  .cs-sub {
+    font-size: 13px;
+    color: #475569;
+    margin: 0;
+    line-height: 1.4;
+  }
+  .cs-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: #e2e8f0;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .cs-stat {
+    background: #f8fafc;
+    padding: 12px 14px;
+  }
+  .cs-stat b {
+    display: block;
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .cs-stat span {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #64748b;
+  }
+  .cs-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+  }
+  .cs-section {
+    padding: 10px 20px 6px;
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .cs-row {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e2e8f0;
+    cursor: pointer;
+    background: #fff;
+    transition: background 140ms ease-out;
+    animation: cs-in 240ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .cs-row:nth-child(2) { animation-delay: 40ms; }
+  .cs-row:nth-child(3) { animation-delay: 80ms; }
+  .cs-row:nth-child(4) { animation-delay: 120ms; }
+  .cs-row:nth-child(5) { animation-delay: 160ms; }
+  .cs-row:active { background: #f1f5f9; }
+  .cs-row[data-shot] .cs-num {
+    background: #0f172a;
+    color: #fff;
+  }
+  .cs-row[data-shot] .cs-row-t { text-decoration: line-through; color: #94a3b8; }
+  .cs-num {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    border: 1.5px solid #0f172a;
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 160ms ease-out, color 160ms ease-out;
+  }
+  .cs-row-t {
+    font-size: 15px;
+    font-weight: 560;
+    letter-spacing: -0.01em;
+  }
+  .cs-row-d {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 2px;
+  }
+  .cs-dur {
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-size: 12px;
+    color: #64748b;
+  }
+  .cs-copy {
+    padding: 14px 20px;
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .cs-copy label {
+    display: block;
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 6px;
+  }
+  .cs-copy p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.45;
+    color: #334155;
+  }
+  .cs-copy button {
+    margin-top: 8px;
+    border: 0;
+    background: transparent;
+    color: #0369a1;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0;
+    cursor: pointer;
+  }
+  .cs-footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 12px 16px 22px;
+    background: #fff;
+    border-top: 1px solid #e2e8f0;
+  }
+  .cs-btn {
+    height: 48px;
+    border-radius: 6px;
+    border: 1.5px solid #0f172a;
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform 140ms ease-out;
+  }
+  .cs-btn:active { transform: scale(0.97); }
+  .cs-btn-ghost { background: #fff; color: #0f172a; }
+  .cs-btn-fill { background: #0f172a; color: #fff; }
+  .cs-tabs {
+    display: flex;
+    justify-content: space-around;
+    padding: 6px 8px 10px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #94a3b8;
+  }
+  .cs-tabs span[data-on] { color: #0f172a; }
+
+  /* =========================
+     VARIANT 3 — Soft Coach
+     Axis: hierarchy + motion (conversational brief, accordion folio)
+     ========================= */
+  .sc {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(ellipse 120% 80% at 80% -20%, #b8f3e0 0%, transparent 55%),
+      radial-gradient(ellipse 90% 60% at 0% 100%, #cde8f5 0%, transparent 50%),
+      #e8f4f1;
+    color: #0b2e2a;
+    font-family: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+  }
+  .sc .sb { color: #0b2e2a; }
+  .sc-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 20px 20px;
+  }
+  .sc-greet {
+    animation: sc-in 280ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  @keyframes sc-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sc-greet, .sc-panel, .sc-fab { animation: none; }
+  }
+  .sc-day {
+    font-size: 13px;
+    font-weight: 700;
+    color: #0f766e;
+    letter-spacing: 0.02em;
+    margin-bottom: 8px;
+  }
+  .sc-line {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin: 0 0 10px;
+  }
+  .sc-support {
+    font-size: 15px;
+    line-height: 1.45;
+    color: #115e59;
+    opacity: 0.82;
+    margin: 0 0 22px;
+  }
+  .sc-chiprow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 22px;
+  }
+  .sc-chip {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.7);
+    color: #0f766e;
+    border: 1px solid rgba(15,118,110,0.18);
+  }
+  .sc-panel {
+    background: rgba(255,255,255,0.78);
+    border: 1px solid rgba(15,118,110,0.12);
+    border-radius: 22px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    animation: sc-in 280ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+  .sc-panel:nth-of-type(2) { animation-delay: 40ms; }
+  .sc-panel:nth-of-type(3) { animation-delay: 80ms; }
+  .sc-panel:nth-of-type(4) { animation-delay: 120ms; }
+  .sc-panel summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px;
+    cursor: pointer;
+    font-weight: 750;
+    font-size: 15px;
+    user-select: none;
+  }
+  .sc-panel summary::-webkit-details-marker { display: none; }
+  .sc-panel summary::after {
+    content: "+";
+    font-weight: 500;
+    font-size: 20px;
+    color: #14b8a6;
+    transition: transform 180ms ease-out;
+  }
+  .sc-panel[open] summary::after {
+    content: "−";
+  }
+  .sc-panel-body {
+    padding: 0 18px 16px;
+    font-size: 14px;
+    line-height: 1.45;
+    color: #134e4a;
+  }
+  .sc-scene-li {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 10px 0;
+    border-top: 1px solid rgba(15,118,110,0.1);
+    cursor: pointer;
+  }
+  .sc-check {
+    width: 22px;
+    height: 22px;
+    border-radius: 8px;
+    border: 2px solid #14b8a6;
+    flex: 0 0 auto;
+    margin-top: 1px;
+    transition: background 160ms ease-out, border-color 160ms ease-out;
+  }
+  .sc-scene-li[data-shot] .sc-check {
+    background: #0f766e;
+    border-color: #0f766e;
+    box-shadow: inset 0 0 0 3px #fff;
+  }
+  .sc-scene-li[data-shot] .sc-scene-name { opacity: 0.5; text-decoration: line-through; }
+  .sc-scene-name { font-weight: 700; }
+  .sc-scene-dur { font-size: 12px; opacity: 0.6; margin-top: 2px; }
+  .sc-copy-btn {
+    margin-top: 8px;
+    border: 0;
+    background: #ccfbf1;
+    color: #0f766e;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: transform 140ms ease-out;
+  }
+  .sc-copy-btn:active { transform: scale(0.97); }
+  .sc-actions {
+    display: grid;
+    gap: 10px;
+    padding: 8px 20px 18px;
+  }
+  .sc-fab {
+    height: 56px;
+    border: 0;
+    border-radius: 20px;
+    background: #0f766e;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 12px 28px rgba(15,118,110,0.28);
+    transition: transform 140ms ease-out;
+    animation: sc-in 280ms cubic-bezier(0.23, 1, 0.32, 1) 120ms both;
+  }
+  .sc-fab:active { transform: scale(0.97); }
+  .sc-alt {
+    height: 48px;
+    border: 0;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.65);
+    color: #115e59;
+    font-size: 14px;
+    font-weight: 750;
+    cursor: pointer;
+    transition: transform 140ms ease-out;
+  }
+  .sc-alt:active { transform: scale(0.97); }
+  .sc-tabs {
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 12px 14px;
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(15,118,110,0.1);
+    font-size: 11px;
+    font-weight: 750;
+    color: #99d6cb;
+  }
+  .sc-tabs span[data-on] { color: #0f766e; }
+
+  .toast {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    bottom: 96px;
+    z-index: 20;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(10,10,10,0.88);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 560;
+    text-align: center;
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 180ms ease-out, transform 180ms ease-out;
+  }
+  .toast[data-show] {
+    opacity: 1;
+    transform: none;
+  }
+</style>
+</head>
+<body>
+  <!--
+    PROTOTYPE — throwaway. Do not ship.
+    Question: What should Creator Today feel like if we abandon the current
+    cream / serif / oxblood editorial journal system?
+    Three variants on Today (ready package), switchable via ?v=1|2|3
+  -->
+  <div class="harness-meta">
+    <div><strong>PROTOTYPE</strong> · Today · Content Helper</div>
+    <div id="axis-label">Night Deck — immersive, media-first</div>
+  </div>
+
+  <div class="harness">
+    <div class="phone">
+      <div class="phone-notch" aria-hidden="true"></div>
+      <div id="stage"></div>
+      <div class="toast" id="toast" role="status"></div>
+    </div>
+  </div>
+
+  <nav class="proto-picker" aria-label="Prototype variants">
+    <span class="proto-picker-highlight" aria-hidden="true"></span>
+    <button class="proto-picker-item" data-active aria-current="true">Night Deck</button>
+    <button class="proto-picker-item">Call Sheet</button>
+    <button class="proto-picker-item">Soft Coach</button>
+    <span class="proto-picker-divider" aria-hidden="true"></span>
+    <button class="proto-picker-item proto-picker-replay" aria-label="Replay animation (R)">↻</button>
+  </nav>
+
+<script>
+const CARD = {
+  date: "30 July 2026",
+  title: "Race week has entered the house",
+  hook: "Race week starts with the shoes by the door.",
+  effort: "Easy · 10 min",
+  scenes: [
+    { n: 1, title: "Shoes by the door", duration: "3 sec" },
+    { n: 2, title: "Open the journal", duration: "4 sec" },
+    { n: 3, title: "Bottle, timer, breath", duration: "3 sec" },
+    { n: 4, title: "One steady stride", duration: "2 sec" },
+  ],
+  caption: "Race week starts quiet. Shoes by the door. One honest line in the journal. Then out.",
+  audio: "Steady mid-tempo — keep VO soft over the first stride.",
+  script: "Race week starts with the shoes by the door. Then I open the journal and write one honest line. Bottle, timer, breath. Keep it small. One steady stride is enough for today.",
+};
+
+const axes = [
+  "Night Deck — immersive, media-first",
+  "Call Sheet — production density, list-first",
+  "Soft Coach — conversational brief, accordion folio",
+];
+
+const shot = new Set();
+function toggleShot(n) {
+  if (shot.has(n)) shot.delete(n);
+  else shot.add(n);
+  showToast(shot.has(n) ? `Scene ${n} marked shot` : `Scene ${n} unmarked`);
+  // Re-render current variant in place without remount animation path via mount
+  mount(current, { keepShot: true });
+}
+function copyText(label, text) {
+  navigator.clipboard?.writeText(text).catch(() => {});
+  showToast(`${label} copied`);
+}
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.setAttribute("data-show", "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.removeAttribute("data-show"), 1400);
+}
+
+function statusBar(light) {
+  return `<div class="sb" style="color:${light ? '#0f172a' : '#fff'}"><span>9:41</span><span>●●●</span></div>`;
+}
+
+function tabIcons(active, dark) {
+  const c = dark ? "rgba(255,255,255,0.35)" : "#94a3b8";
+  const on = dark ? "#fff" : "#0f172a";
+  return `
+    <div class="nd-tabbar" style="${dark ? '' : 'background:#f8fafc;border-color:#e2e8f0'}">
+      <div class="nd-tab" data-on style="color:${on}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        Today
+      </div>
+      <div class="nd-tab" style="color:${c}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16v13H4z"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        Archive
+      </div>
+      <div class="nd-tab" style="color:${c}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+        Profile
+      </div>
+    </div>`;
+}
+
+function nightDeck() {
+  const scenes = CARD.scenes.map(s => `
+    <button class="nd-scene" ${shot.has(s.n) ? "data-shot" : ""} onclick="toggleShot(${s.n})">
+      <div class="nd-scene-n">${shot.has(s.n) ? "SHOT" : "SCENE " + s.n}</div>
+      <div class="nd-scene-t">${s.title}</div>
+    </button>`).join("");
+  return `
+    <div class="nd">
+      ${statusBar(false)}
+      <div class="nd-hero">
+        <div class="nd-grain"></div>
+        <div class="nd-top">
+          <div class="nd-pill">${CARD.date}</div>
+          <div class="nd-effort">${CARD.effort}</div>
+        </div>
+        <div class="nd-body">
+          <div class="nd-kicker">Ready to shoot</div>
+          <h1 class="nd-title">${CARD.title}</h1>
+          <p class="nd-hook">${CARD.hook}</p>
+          <div class="nd-scenes">${scenes}</div>
+        </div>
+      </div>
+      <div class="nd-dock">
+        <button class="nd-btn nd-btn-ghost" onclick="showToast('Other ideas sheet')">Other ideas</button>
+        <button class="nd-btn nd-btn-primary" onclick="showToast('Open Shoot Folio')">Open folio</button>
+      </div>
+      ${tabIcons("today", true)}
+    </div>`;
+}
+
+function callSheet() {
+  const rows = CARD.scenes.map(s => `
+    <div class="cs-row" ${shot.has(s.n) ? "data-shot" : ""} onclick="toggleShot(${s.n})">
+      <div class="cs-num">${shot.has(s.n) ? "✓" : String(s.n).padStart(2,"0")}</div>
+      <div>
+        <div class="cs-row-t">${s.title}</div>
+        <div class="cs-row-d">Cue · mark shot when done</div>
+      </div>
+      <div class="cs-dur">${s.duration}</div>
+    </div>`).join("");
+  return `
+    <div class="cs">
+      ${statusBar(true)}
+      <div class="cs-head">
+        <div class="cs-meta"><span>CH · TODAY</span><span>${CARD.date}</span></div>
+        <h1 class="cs-title">${CARD.title}</h1>
+        <p class="cs-sub">${CARD.hook}</p>
+      </div>
+      <div class="cs-stats">
+        <div class="cs-stat"><b>${CARD.scenes.length}</b><span>Scenes</span></div>
+        <div class="cs-stat"><b>${shot.size}/${CARD.scenes.length}</b><span>Shot</span></div>
+        <div class="cs-stat"><b>10m</b><span>Budget</span></div>
+      </div>
+      <div class="cs-list">
+        <div class="cs-section">Run of show</div>
+        ${rows}
+        <div class="cs-section">Package</div>
+        <div class="cs-copy">
+          <label>Caption</label>
+          <p>${CARD.caption}</p>
+          <button onclick="event.stopPropagation(); copyText('Caption', CARD.caption)">Copy caption</button>
+        </div>
+        <div class="cs-copy">
+          <label>Audio</label>
+          <p>${CARD.audio}</p>
+          <button onclick="event.stopPropagation(); copyText('Audio', CARD.audio)">Copy audio note</button>
+        </div>
+      </div>
+      <div class="cs-footer">
+        <button class="cs-btn cs-btn-ghost" onclick="showToast('Other ideas sheet')">Alt ideas</button>
+        <button class="cs-btn cs-btn-fill" onclick="showToast(shot.size === CARD.scenes.length ? 'Mark posted' : 'Mark remaining shot')">
+          ${shot.size === CARD.scenes.length ? "Mark posted" : "Mark all shot"}
+        </button>
+      </div>
+      <div class="cs-tabs">
+        <span data-on>Today</span><span>Archive</span><span>Profile</span>
+      </div>
+    </div>`;
+}
+
+function softCoach() {
+  const scenes = CARD.scenes.map(s => `
+    <div class="sc-scene-li" ${shot.has(s.n) ? "data-shot" : ""} onclick="toggleShot(${s.n})">
+      <div class="sc-check"></div>
+      <div>
+        <div class="sc-scene-name">${s.n}. ${s.title}</div>
+        <div class="sc-scene-dur">${s.duration}</div>
+      </div>
+    </div>`).join("");
+  return `
+    <div class="sc">
+      ${statusBar(true)}
+      <div class="sc-main">
+        <div class="sc-greet">
+          <div class="sc-day">Today · ${CARD.date}</div>
+          <h1 class="sc-line">You’ve got one easy shoot ready.</h1>
+          <p class="sc-support">${CARD.title} — ${CARD.hook}</p>
+          <div class="sc-chiprow">
+            <span class="sc-chip">${CARD.effort}</span>
+            <span class="sc-chip">${shot.size} of ${CARD.scenes.length} shot</span>
+          </div>
+        </div>
+        <details class="sc-panel" open>
+          <summary>Scenes</summary>
+          <div class="sc-panel-body">${scenes}</div>
+        </details>
+        <details class="sc-panel">
+          <summary>Script</summary>
+          <div class="sc-panel-body">
+            <p>${CARD.script.replace(/\n/g, "<br>")}</p>
+            <button class="sc-copy-btn" onclick="event.stopPropagation(); copyText('Script', CARD.script)">Copy script</button>
+          </div>
+        </details>
+        <details class="sc-panel">
+          <summary>Caption & audio</summary>
+          <div class="sc-panel-body">
+            <p><strong>Caption</strong><br>${CARD.caption}</p>
+            <button class="sc-copy-btn" onclick="event.stopPropagation(); copyText('Caption', CARD.caption)">Copy caption</button>
+            <p style="margin-top:14px"><strong>Audio</strong><br>${CARD.audio}</p>
+          </div>
+        </details>
+      </div>
+      <div class="sc-actions">
+        <button class="sc-fab" onclick="showToast(shot.size === CARD.scenes.length ? 'Mark posted' : 'Keep shooting — ' + (CARD.scenes.length - shot.size) + ' left')">
+          ${shot.size === CARD.scenes.length ? "I’m done — mark posted" : "I’m shooting this"}
+        </button>
+        <button class="sc-alt" onclick="showToast('Other ideas sheet')">Need something easier</button>
+      </div>
+      <div class="sc-tabs">
+        <span data-on>Today</span><span>Archive</span><span>Profile</span>
+      </div>
+    </div>`;
+}
+
+const variants = [nightDeck, callSheet, softCoach];
+const stage = document.getElementById("stage");
+const picker = document.querySelector(".proto-picker");
+const highlight = picker.querySelector(".proto-picker-highlight");
+const items = [...picker.querySelectorAll(".proto-picker-item:not(.proto-picker-replay)")];
+const replay = picker.querySelector(".proto-picker-replay");
+const axisLabel = document.getElementById("axis-label");
+let current = 0;
+
+function moveHighlight() {
+  const el = items[current];
+  highlight.style.width = el.offsetWidth + "px";
+  highlight.style.transform = `translateX(${el.offsetLeft}px)`;
+}
+
+function mount(i, opts = {}) {
+  if (!opts.keepShot) {
+    // remount for entrance animations; keep shot state across switches intentionally
+  }
+  stage.innerHTML = "";
+  requestAnimationFrame(() => {
+    stage.innerHTML = variants[i]();
+  });
+}
+
+function setActive(i) {
+  if (i < 0 || i >= variants.length) return;
+  current = i;
+  items.forEach((el, j) => {
+    el.toggleAttribute("data-active", j === i);
+    if (j === i) el.setAttribute("aria-current", "true");
+    else el.removeAttribute("aria-current");
+  });
+  axisLabel.textContent = axes[i];
+  moveHighlight();
+  const url = new URL(location);
+  url.searchParams.set("v", i + 1);
+  history.replaceState(null, "", url);
+  mount(i);
+}
+
+items.forEach((el, i) => el.addEventListener("click", () => setActive(i)));
+replay?.addEventListener("click", () => mount(current));
+window.addEventListener("resize", moveHighlight);
+
+document.addEventListener("keydown", (e) => {
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const num = parseInt(e.key, 10);
+  if (num >= 1 && num <= variants.length) setActive(num - 1);
+  else if (e.key === "ArrowRight") setActive((current + 1) % variants.length);
+  else if (e.key === "ArrowLeft") setActive((current - 1 + variants.length) % variants.length);
+  else if (e.key === "r" || e.key === "R") mount(current);
+});
+
+setActive((parseInt(new URLSearchParams(location.search).get("v"), 10) || 1) - 1);
+requestAnimationFrame(() => requestAnimationFrame(() => picker.setAttribute("data-ready", "")));
+</script>
+</body>
+</html>
