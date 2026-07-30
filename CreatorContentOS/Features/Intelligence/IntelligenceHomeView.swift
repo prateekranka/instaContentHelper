@@ -9,7 +9,6 @@ struct IntelligenceHomeView: View {
     }
 
     @Environment(\.openURL) private var openURL
-    @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @State private var editingReviewItem: IntelligenceItem?
     var presentation: Presentation = .standalone
@@ -103,9 +102,6 @@ struct IntelligenceHomeView: View {
                 .disabled(!services.isLiveSupabaseRuntime)
                 .accessibilityLabel("Open Reference Import")
 
-                FloatingIconButton(systemImage: "ellipsis", label: "Back to Creator Mode") {
-                    appState.activeMode = .creator
-                }
             }
 
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
@@ -813,7 +809,7 @@ struct ReferenceItemDetailView: View {
     private var usageGuidance: String {
         switch item.kind {
         case .pattern:
-            "Use this as a repeatable content structure when drafting weekly cards. It should shape framing, not override the weekly brief."
+            "Use this as a repeatable content structure when drafting daily cards. It should shape framing, not override the planning brief."
         case .trend:
             "Use this as context for a timely angle. Keep it grounded in the creator's current week before using it."
         case .audio:

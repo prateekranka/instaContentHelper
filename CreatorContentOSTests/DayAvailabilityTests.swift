@@ -199,15 +199,6 @@ private actor DayAvailabilityWeeklyPlanRepository: WeeklyPlanRepository {
         WeeklyRepositoryContent(publishedPlan: plan, generatedDraft: nil, ideaBank: [])
     }
 
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish_week_not_used")
-    }
-
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,
@@ -315,15 +306,6 @@ private actor FailingMakeDayAvailableWeeklyPlanRepository: WeeklyPlanRepository 
 
     func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
         WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
-    }
-
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish_week_not_used")
     }
 
     func selectIdeaForNextOpenDay(

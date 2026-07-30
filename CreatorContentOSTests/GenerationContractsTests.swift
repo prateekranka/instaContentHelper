@@ -1743,23 +1743,6 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertNil(services.lastRepositoryError)
     }
 
-    // MARK: — Publish Error Isolation
-
-    func testGeneralRepositoryErrorDoesNotSetLastPublishError() async throws {
-        let services = AppServices.fixtureBacked(
-            todayCache: InMemoryTodayCacheStore(),
-            todayDate: { "2026-06-01" }
-        )
-
-        services.lastRepositoryError = "network connection lost"
-        services.lastPublishError = nil
-
-        XCTAssertNotNil(services.lastRepositoryError,
-                        "lastRepositoryError should be set for general error")
-        XCTAssertNil(services.lastPublishError,
-                     "lastPublishError should remain nil for non-publish error")
-    }
-
     // MARK: — Stale Date Normalization
 
     func testNormalizeManagerWeekStartSkipsWhenWorkingDraftExists() async throws {
@@ -2315,14 +2298,6 @@ private actor FailingCurrentWeeklyContentRepository: WeeklyPlanRepository {
         throw RepositoryError.notConfigured("brief not needed")
     }
 
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish not needed")
-    }
 }
 
 /// Echoes the day brief back in the generated card title so tests can prove
@@ -2462,14 +2437,6 @@ private actor WorkingPlanPreferringWeeklyPlanRepository: WeeklyPlanRepository {
         throw RepositoryError.notConfigured("brief not needed")
     }
 
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish not needed")
-    }
 }
 
 private actor ReviewStateReloadRepository: WeeklyPlanRepository {
@@ -2556,15 +2523,6 @@ private actor ReviewStateReloadRepository: WeeklyPlanRepository {
         context: WorkspaceContext
     ) async throws -> WeeklyPlan {
         throw RepositoryError.notConfigured("brief not needed")
-    }
-
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish not needed")
     }
 
     func updateDailyCardReviewState(
@@ -2658,15 +2616,6 @@ private actor ReviewStateTrackingRepository: WeeklyPlanRepository {
         throw RepositoryError.notConfigured("brief not needed")
     }
 
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish not needed")
-    }
-
     func updateDailyCardReviewState(
         dailyCardID: UUID,
         reviewState: String,
@@ -2743,14 +2692,6 @@ private actor ReconciliationContentRepository: WeeklyPlanRepository {
         throw RepositoryError.notConfigured("brief not needed")
     }
 
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish not needed")
-    }
 }
 
 private actor DailyGenerationPollingScript {

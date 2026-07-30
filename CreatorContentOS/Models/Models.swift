@@ -795,9 +795,9 @@ extension GeneratedWeekDraft {
 
         return WeeklyPlan(
             id: weeklyPlanID,
-            title: "Generate a Week",
-            eyebrow: "MANAGER AI REVIEW",
-            weekRange: dailyCards.first.map { SupabaseDateFormatting.weekRange(starting: $0.scheduledDate) } ?? "Generated week",
+            title: "Daily Plan",
+            eyebrow: "DAILY PLAN",
+            weekRange: dailyCards.first.map { SupabaseDateFormatting.weekRange(starting: $0.scheduledDate) } ?? "Generated plan",
             weekStartDate: dailyCards.first?.scheduledDate,
             weekEndDate: dailyCards.last?.scheduledDate,
             readinessLine: "\(generatedDays.filter { $0.state == .open }.count) open, confirm before publishing",
@@ -1030,7 +1030,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
             ],
             useWhen: [
                 "A training, HYROX, race, or gym moment is available.",
-                "The weekly brief includes confidence, return to routine, or proof of consistency.",
+                "The planning brief includes confidence, return to routine, or proof of consistency.",
                 "The content needs a stronger first two seconds than a simple exercise demo."
             ],
             sampleCreatorIdea: "Open on the creator loading a weight or tying shoes, then voiceover: 'Women are told to be careful after a certain age. I agree with careful. I do not agree with stopping.'",
@@ -1079,7 +1079,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
             useWhen: [
                 "There is footage of training, recovery, HYROX prep, or a daily routine.",
                 "The idea risks sounding preachy if it starts as advice.",
-                "The weekly card needs stronger watch-time potential."
+                "The daily card needs stronger watch-time potential."
             ],
             sampleCreatorIdea: "Open with a 2-second set, cut to breath/reset, then voiceover explains one useful cue or mindset from that exact movement.",
             sourceURLs: [
@@ -1117,7 +1117,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
         GrowthReference(
             id: "creator-hyrox-hybrid-proof",
             title: "HYROX / Hybrid Proof",
-            summary: "Use HYROX, running, and strength as authority signals, but only when the weekly brief supports it.",
+            summary: "Use HYROX, running, and strength as authority signals, but only when the planning brief supports it.",
             whyItWorks: "HYROX and hybrid training are culturally current and already part of the creator's credibility. The risk is overusing old race context when the current week is about normal life.",
             hookFormulas: [
                 "HYROX taught me this, but it applies to regular gym days.",
@@ -1127,7 +1127,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
             useWhen: [
                 "The week includes race reflection, training proof, or hybrid conditioning.",
                 "The story can bridge achievement back into everyday routine.",
-                "The weekly brief does not conflict with race/HYROX context."
+                "The planning brief does not conflict with race/HYROX context."
             ],
             sampleCreatorIdea: "Use one race/HYROX clip as the first beat, then cut to a simple Bombay gym routine to show how event confidence becomes daily discipline.",
             sourceURLs: [
@@ -1153,7 +1153,7 @@ struct GrowthReference: Identifiable, Hashable, Sendable {
                 "The day needs growth potential rather than only documentation.",
                 "The admin needs shot, voiceover, and on-screen text details."
             ],
-            sampleCreatorIdea: "Any weekly idea should specify the Reel length, first-frame visual, voiceover timing, on-screen text timing, CTA, and backup story.",
+            sampleCreatorIdea: "Any daily idea should specify the Reel length, first-frame visual, voiceover timing, on-screen text timing, CTA, and backup story.",
             sourceURLs: [
                 "https://about.instagram.com/blog/announcements/instagram-ranking-explained",
                 "https://buffer.com/resources/instagram-algorithms/",

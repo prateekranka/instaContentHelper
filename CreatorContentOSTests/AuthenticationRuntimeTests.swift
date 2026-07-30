@@ -80,25 +80,7 @@ final class AuthenticationRuntimeTests: XCTestCase {
 
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.live(session))
-        XCTAssertEqual(state.activeMode, AppMode.creator)
         XCTAssertEqual(authentication.restoreCallCount, 1)
-    }
-
-    func testRestoreForcesCreatorModeEvenWhenStartedAsAdmin() async {
-        let session = makeSession(email: "creator@example.com", role: "creator")
-        let authentication = AuthenticationServiceStub(restoredSession: session)
-        let state = AppState(
-            activeMode: .admin,
-            authenticationService: authentication,
-            liveRuntimeBuilder: { session in
-                Self.fixtureLiveRuntime(session)
-            }
-        )
-
-        await state.restoreAuthentication()
-
-        XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
-        XCTAssertEqual(state.activeMode, AppMode.creator)
     }
 
     func testMissingLiveBootstrapConfigurationRestoresStableError() async {
@@ -141,7 +123,6 @@ final class AuthenticationRuntimeTests: XCTestCase {
 
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.live)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.live(session))
-        XCTAssertEqual(state.activeMode, AppMode.creator)
         XCTAssertNil(state.authenticationError)
         XCTAssertEqual(authentication.appleIDToken, "stub-apple-id-token")
         XCTAssertEqual(authentication.appleFullName, "Creator Name")
@@ -276,7 +257,6 @@ final class AuthenticationRuntimeTests: XCTestCase {
 
         XCTAssertEqual(authentication.signedOutSession, session)
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
-        XCTAssertEqual(state.activeMode, AppMode.creator)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
     }
 
@@ -299,7 +279,6 @@ final class AuthenticationRuntimeTests: XCTestCase {
         XCTAssertEqual(authentication.signedOutSession, session)
         XCTAssertEqual(state.authenticationError, "The server could not revoke this device session.")
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
-        XCTAssertEqual(state.activeMode, AppMode.creator)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
     }
 
@@ -307,7 +286,6 @@ final class AuthenticationRuntimeTests: XCTestCase {
         let session = makeSession(email: "creator@example.com")
         let authentication = AuthenticationServiceStub()
         let state = AppState(
-            activeMode: .admin,
             runtime: Self.fixtureLiveRuntime(session),
             authenticationPhase: AuthenticationPhase.live,
             authenticationService: authentication,
@@ -327,7 +305,6 @@ final class AuthenticationRuntimeTests: XCTestCase {
         await observation.value
 
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
-        XCTAssertEqual(state.activeMode, AppMode.creator)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
     }
 
@@ -335,7 +312,6 @@ final class AuthenticationRuntimeTests: XCTestCase {
         let session = makeSession(email: "creator@example.com")
         let authentication = AuthenticationServiceStub()
         let state = AppState(
-            activeMode: .admin,
             runtime: Self.fixtureLiveRuntime(session),
             authenticationPhase: AuthenticationPhase.live,
             authenticationService: authentication,
@@ -355,7 +331,6 @@ final class AuthenticationRuntimeTests: XCTestCase {
         await observation.value
 
         XCTAssertEqual(state.authenticationPhase, AuthenticationPhase.signedOut)
-        XCTAssertEqual(state.activeMode, AppMode.creator)
         XCTAssertEqual(state.runtime.mode, AppRuntimeMode.fixtures)
     }
 

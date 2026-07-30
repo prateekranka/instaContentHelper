@@ -4,7 +4,6 @@ import Observation
 @MainActor
 @Observable
 final class AppState {
-    var activeMode: AppMode
     var runtime: AppRuntime
     var authenticationPhase: AuthenticationPhase
     var authenticationError: String?
@@ -17,7 +16,6 @@ final class AppState {
     private let liveRuntimeBuilder: @MainActor (PairedDeviceSession) -> AppRuntime
 
     init(
-        activeMode: AppMode = .creator,
         runtime: AppRuntime? = nil,
         authenticationPhase: AuthenticationPhase? = nil,
         authenticationService: any AuthenticationServicing = SupabaseAuthenticationService(),
@@ -26,7 +24,6 @@ final class AppState {
         }
     ) {
         let initialRuntime = runtime ?? AppRuntime.makeAuthenticationShellRuntime()
-        self.activeMode = activeMode
         self.runtime = initialRuntime
         self.authenticationService = authenticationService
         self.liveRuntimeBuilder = liveRuntimeBuilder
@@ -139,7 +136,6 @@ final class AppState {
     private func activate(runtime: AppRuntime) async {
         debugAuthLog("activate:set-live")
         self.runtime = runtime
-        activeMode = .creator
         authenticationError = nil
         authenticationPhase = .live
 
@@ -151,7 +147,6 @@ final class AppState {
     }
 
     private func finishLocalSignOut() {
-        activeMode = .creator
         runtime = .fixtures()
         authenticationPhase = .signedOut
     }
@@ -176,11 +171,4 @@ private extension AppRuntimeMode {
         guard case .live(let session) = self else { return nil }
         return session
     }
-}
-
-/// Product shell is always Creator. `.admin` exists only so DEBUG fixture launches can
-/// open `AdminShellView` (`MCO_FORCE_APP_MODE=admin`); Release live routing ignores it.
-enum AppMode: String, CaseIterable, Codable, Hashable {
-    case creator
-    case admin
 }

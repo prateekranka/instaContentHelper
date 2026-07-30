@@ -138,45 +138,6 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        let response: SupabasePublishWeekResponse = try await client.functions.invoke(
-            "publish-week",
-            options: FunctionInvokeOptions(
-                body: SupabasePublishWeekRequest(
-                    plan: plan,
-                    generatedDraft: generatedDraft,
-                    context: context
-                )
-            )
-        )
-
-        let publishedPlan = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
-            generatedDraft.markedPublished.weeklyPlan(
-                setupSections: plan.setupSections,
-                weeklyBriefText: plan.weeklyBriefText
-            ).softLockedForPublish
-        } else {
-            plan.softLockedForPublish
-        }
-        let cards = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
-            generatedDraft.markedPublished.publishedWeekCards
-        } else {
-            DailyCard.publishedCards(from: publishedPlan)
-        }
-
-        return WeeklyPublishResult(
-            weeklyPlan: publishedPlan,
-            weekCards: cards,
-            todayCard: DailyCard.bestTodayCard(from: cards),
-            summary: "Published \(response.dailyCardCount) cards to Creator Today."
-        )
-    }
-
     func makeDayAvailable(
         scheduledDate: String,
         dailyCardID: UUID?,
@@ -337,7 +298,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
 
     private func makeWeeklyContent(from response: SupabaseWeeklyReadResponse) throws -> WeeklyRepositoryContent {
         guard let planRow = response.publishedWeeklyPlan ?? response.weeklyPlan else {
-            throw RepositoryError.missingFixture("No published weekly plan exists.")
+            throw RepositoryError.missingFixture("No planning data exists for this day.")
         }
 
         let publishedCardRows = response.publishedDailyCards.isEmpty
@@ -406,8 +367,8 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
 
         return WeeklyPlan(
             id: row.id,
-            title: "Generate a Week",
-            eyebrow: "MANAGER WEEKLY CONTROL",
+            title: "Daily Plan",
+            eyebrow: "DAILY PLAN",
             weekRange: SupabaseDateFormatting.weekRange(starting: row.weekStartDate),
             weekStartDate: row.weekStartDate,
             weekEndDate: SupabaseDateFormatting.weekEndDate(starting: row.weekStartDate),

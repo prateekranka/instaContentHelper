@@ -13,10 +13,7 @@ struct CreatorShellView: View {
                     case .shootFolio(let editing):
                         ShootFolioView(startsInEditingMode: editing)
                     case .plan(let selectedDate):
-                        PlanHubView(
-                            showsModeSwitch: false,
-                            initialSelectedDate: selectedDate
-                        )
+                        PlanHubView(initialSelectedDate: selectedDate)
                     }
                 }
             }

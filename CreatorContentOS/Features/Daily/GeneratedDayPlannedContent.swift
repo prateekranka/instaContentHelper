@@ -215,7 +215,7 @@ struct GeneratedStoryboardBreakdownContent: View {
         .buttonStyle(.plain)
         .disabled(isGeneratingThumbnails)
         .opacity(isGeneratingThumbnails ? 0.72 : 1)
-        .accessibilityIdentifier("weekly.storyboard.generateVisuals")
+        .accessibilityIdentifier("daily.storyboard.generateVisuals")
     }
 
     private var rows: [GeneratedStoryboardBreakdownRow] {

@@ -96,40 +96,6 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        let publishedPlan = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
-            generatedDraft.markedPublished.weeklyPlan(
-                setupSections: plan.setupSections,
-                weeklyBriefText: plan.weeklyBriefText
-            ).softLockedForPublish
-        } else {
-            plan.softLockedForPublish
-        }
-        let cards = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
-            generatedDraft.markedPublished.publishedWeekCards
-        } else {
-            DailyCard.publishedCards(from: publishedPlan)
-        }
-
-        self.plan = publishedPlan
-        self.ideas = ideaBank
-
-        let todayCard = DailyCard.bestTodayCard(from: cards)
-        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
-
-        return WeeklyPublishResult(
-            weeklyPlan: publishedPlan,
-            weekCards: cards,
-            todayCard: todayCard,
-            summary: "Published \(cards.count) cards to Creator Today."
-        )
-    }
-
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,

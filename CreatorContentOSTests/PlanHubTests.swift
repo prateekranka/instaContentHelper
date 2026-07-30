@@ -283,15 +283,6 @@ private actor PlanHubWeeklyPlanRepository: WeeklyPlanRepository {
         WeeklyRepositoryContent(publishedPlan: plan, generatedDraft: nil, ideaBank: [])
     }
 
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        throw RepositoryError.notConfigured("publish_week_not_used")
-    }
-
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,

@@ -151,8 +151,8 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
 
         return WeeklyPlan(
             id: draft.weeklyPlanID,
-            title: "Generate a Week",
-            eyebrow: "MANAGER AI REVIEW",
+            title: "Daily Plan",
+            eyebrow: "DAILY PLAN",
             weekRange: SupabaseDateFormatting.weekRange(starting: weekStartDate),
             weekStartDate: weekStartDate,
             weekEndDate: SupabaseDateFormatting.weekEndDate(starting: weekStartDate),
@@ -206,8 +206,8 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
 
         return WeeklyPlan(
             id: planRow.id,
-            title: "Generate a Week",
-            eyebrow: "MANAGER AI REVIEW",
+            title: "Daily Plan",
+            eyebrow: "DAILY PLAN",
             weekRange: SupabaseDateFormatting.weekRange(starting: planRow.weekStartDate),
             weekStartDate: planRow.weekStartDate,
             weekEndDate: SupabaseDateFormatting.weekEndDate(starting: planRow.weekStartDate),
@@ -225,12 +225,6 @@ protocol WeeklyPlanRepository: Sendable {
     func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft?
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea]
     func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult
     func selectIdeaForNextOpenDay(
         _ idea: WeeklyIdea,
         in plan: WeeklyPlan,
@@ -430,13 +424,6 @@ protocol TesterAccessRepository: Sendable {
 struct WeeklySelectionUpdate: Hashable, Sendable {
     var weeklyPlan: WeeklyPlan
     var ideaBank: [WeeklyIdea]
-}
-
-struct WeeklyPublishResult: Hashable, Sendable {
-    var weeklyPlan: WeeklyPlan
-    var weekCards: [DailyCard]
-    var todayCard: DailyCard?
-    var summary: String
 }
 
 struct DayAvailabilityResult: Hashable, Sendable {

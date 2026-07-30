@@ -43,13 +43,10 @@ final class AppServices {
     var todayContentState: TodayContentState
     var lastNotificationSchedule: TodayNotificationSchedule?
     var lastNotificationError: String?
-    var isPublishingWeek = false
     var isSavingWeeklyBrief = false
     var weeklyBriefEditError: String?
     var isSavingCreatorProfile = false
     var creatorProfileEditError: String?
-    var lastPublishSummary: String?
-    var lastPublishError: String?
     var isMakingDayAvailable = false
     var lastMakeDayAvailableError: String?
     var isUnpublishingDay = false
@@ -288,7 +285,7 @@ final class AppServices {
             ),
             archiveEntries: [],
             weeklyPlan: WeeklyPlan(
-                title: "Generate a Week",
+                title: "Daily Plan",
                 eyebrow: "LIVE WORKSPACE",
                 weekRange: "Checking schedule",
                 readinessLine: "Loading live plan",
@@ -477,32 +474,6 @@ final class AppServices {
         weeklyPlan.days.first { $0.state == .open }
     }
 
-    var canPublishCurrentWeek: Bool {
-        guard canGenerateContent,
-              !isPublishingWeek,
-              !weeklyPlan.isSoftLocked,
-              weeklyPlan.days.count == 7,
-              weeklyPlan.openDayCount == 0
-        else {
-            return false
-        }
-
-        guard let draft = latestGenerationSummary else {
-            return weeklyPlan.days.allSatisfy { $0.state != .open }
-        }
-
-        guard draft.weeklyPlanID == weeklyPlan.id,
-              draft.isCompleteWeekDraft,
-              weeklyPlan.openDayCount == 0
-        else {
-            return false
-        }
-
-        let planDates = Set(weeklyPlan.days.compactMap(\.scheduledDate))
-        let draftDates = Set(draft.dailyCards.map(\.scheduledDate))
-        return planDates.count == 7 && planDates == draftDates
-    }
-
     var isWeeklyBriefDirty: Bool {
         weeklyBriefDraftText.trimmingCharacters(in: .whitespacesAndNewlines) !=
             weeklyPlan.weeklyBriefText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -599,7 +570,6 @@ final class AppServices {
         weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
         latestGenerationSummary = projectedDraft
         generationError = nil
-        lastPublishError = nil
     }
 
     func applyGeneratedDraft(_ draft: GeneratedWeekDraft) {
@@ -1107,7 +1077,7 @@ final class AppServices {
             )
             weeklyBriefEditError = nil
             lastRepositoryError = nil
-            lastActionMessage = "Weekly brief saved."
+            lastActionMessage = "Planning brief saved."
 
             return true
         } catch {
@@ -1133,7 +1103,7 @@ final class AppServices {
             weeklyBriefDraftText = weeklyPlan.weeklyBriefText
             weeklyBriefEditError = nil
             lastRepositoryError = nil
-            lastActionMessage = "Weekly brief saved."
+            lastActionMessage = "Planning brief saved."
 
             return true
         } catch {
@@ -1163,50 +1133,6 @@ final class AppServices {
             creatorProfileEditError = error.localizedDescription
             lastRepositoryError = error.localizedDescription
             return false
-        }
-    }
-
-    func publishCurrentWeek() {
-        Task {
-            await publishCurrentWeekImmediately()
-        }
-    }
-
-    func publishCurrentWeekImmediately() async {
-        guard !isPublishingWeek else { return }
-        guard canPublishCurrentWeek else {
-            lastPublishError = "Review all seven generated days before publishing."
-            return
-        }
-
-        isPublishingWeek = true
-        defer { isPublishingWeek = false }
-
-        do {
-            let result = try await publishWeekWithOneTransientRetry(
-                weeklyPlan,
-                ideaBank: weeklyIdeas,
-                generatedDraft: latestGenerationSummary,
-                context: context
-            )
-            weeklyPlan = result.weeklyPlan
-            weekCards = result.weekCards
-            if let draft = latestGenerationSummary, draft.weeklyPlanID == result.weeklyPlan.id {
-                latestGenerationSummary = draft.markedPublished
-                hydrateDayBriefGeneratedCardsFromLatestDraft()
-            }
-            if let todayCard = result.todayCard {
-                self.todayCard = todayCard
-            }
-            lastPublishSummary = result.summary
-            lastActionMessage = "Week published. Creator Today is updated."
-            lastRepositoryError = nil
-            lastPublishError = nil
-            await refreshPublishedContentAfterPublishImmediately()
-            saveTodaySnapshot(source: "week-publish")
-            await scheduleTodayNotificationIfNeededImmediately()
-        } catch {
-            lastPublishError = error.localizedDescription
         }
     }
 
@@ -1423,33 +1349,6 @@ final class AppServices {
             let message = DayLifecycleErrorDisplay.message(for: error)
             lastReadyDayPackageEditError = message
             throw RepositoryError.edgeFunction(message)
-        }
-    }
-
-    private func publishWeekWithOneTransientRetry(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        let effectiveDraft = generatedDraft?.weeklyPlanID == plan.id ? generatedDraft : nil
-        do {
-            return try await repositories.weeklyPlans.publishWeek(
-                plan,
-                ideaBank: ideaBank,
-                generatedDraft: effectiveDraft,
-                context: context
-            )
-        } catch {
-            guard SupabaseGenerationRetryPolicy.isTransientPollingError(error) else {
-                throw error
-            }
-            return try await repositories.weeklyPlans.publishWeek(
-                plan,
-                ideaBank: ideaBank,
-                generatedDraft: effectiveDraft,
-                context: context
-            )
         }
     }
 
@@ -2145,8 +2044,8 @@ private enum DayGenerationErrorDisplay {
         "missing_openai_api_key": "AI generation is not configured in Supabase.",
         "invalid_generation_payload": "The generation request could not be accepted. Refresh and try again.",
         "generation_persist_failed": "The draft could not be saved. Try Generate again.",
-        "weekly_setup_not_found": "The weekly brief could not be found. Save the brief and try again.",
-        "existing_published_week_locked": "This week is already published and locked.",
+        "weekly_setup_not_found": "The planning brief could not be found. Save it and try again.",
+        "existing_published_week_locked": "This planning period is already published and locked.",
         "past_generation_date_not_allowed": "You cannot generate content for a past date. Select today or a future date.",
         "generation_timeout": "Generation timed out. Wait a moment, then try Generate again.",
         "generation_cancelled": "This day’s draft stopped before it finished. You can try Generate again.",

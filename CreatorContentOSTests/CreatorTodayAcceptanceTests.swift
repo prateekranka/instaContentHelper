@@ -2,45 +2,7 @@ import XCTest
 @testable import CreatorContentOS
 
 @MainActor
-final class PublishWeekFixtureAcceptanceTests: XCTestCase {
-    func testManagerPublishesFixtureWeekAndCreatorTodayReadsPublishedCard() async throws {
-        let cache = MemoryTodayCacheStore()
-        let services = AppServices.fixtureBacked(todayCache: cache)
-
-        XCTAssertFalse(services.weeklyPlan.isSoftLocked)
-        XCTAssertEqual(services.weeklyPlan.days.count, 7)
-        XCTAssertEqual(services.weekCards.count, 7)
-        XCTAssertNil(services.lastRepositoryError)
-
-        await markAllFixtureDaysPlanned(in: services)
-        await services.publishCurrentWeekImmediately()
-
-        XCTAssertTrue(services.weeklyPlan.isSoftLocked)
-        XCTAssertTrue(services.weeklyPlan.days.allSatisfy(\.isSoftLocked))
-        XCTAssertEqual(services.weekCards.count, 7)
-        let expectedTodayCard = try expectedPublishedFixtureTodayCard()
-        XCTAssertEqual(services.todayCard.title, expectedTodayCard.title)
-        XCTAssertEqual(services.todayCard.scheduledDate, expectedTodayCard.scheduledDate)
-        XCTAssertEqual(services.lastPublishSummary, "Published 7 cards to Creator Today.")
-        XCTAssertEqual(services.lastActionMessage, "Week published. Creator Today is updated.")
-        XCTAssertNil(services.lastRepositoryError)
-    }
-
-    func testPublishingWeekStoresPublishedCardForOfflineToday() async throws {
-        let cache = MemoryTodayCacheStore()
-        let services = AppServices.fixtureBacked(todayCache: cache)
-
-        await markAllFixtureDaysPlanned(in: services)
-        await services.publishCurrentWeekImmediately()
-
-        let snapshot = try XCTUnwrap(cache.loadSnapshot(for: .creatorFixture))
-        let expectedTodayCard = try expectedPublishedFixtureTodayCard()
-        XCTAssertEqual(snapshot.todayCard.title, expectedTodayCard.title)
-        XCTAssertEqual(snapshot.todayCard.scheduledDate, expectedTodayCard.scheduledDate)
-        XCTAssertEqual(snapshot.weekCards.count, 7)
-        XCTAssertEqual(snapshot.source, "week-publish")
-    }
-
+final class CreatorTodayAcceptanceTests: XCTestCase {
     func testCreatorTodayUsesCachedPublishedCardWhenRepositoryIsOffline() async throws {
         let cache = MemoryTodayCacheStore()
         var cachedCard = DailyCard.raceWeekToday
@@ -295,11 +257,6 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         XCTAssertEqual(state.runtime.services.context.memberID, session.memberID)
     }
 
-    private func expectedPublishedFixtureTodayCard() throws -> DailyCard {
-        let cards = DailyCard.publishedCards(from: WeeklyPlan.raceWeek.softLockedForPublish)
-        return try XCTUnwrap(DailyCard.bestTodayCard(from: cards))
-    }
-
     private func makeLiveSession(memberRole: String) throws -> PairedDeviceSession {
         PairedDeviceSession(
             projectURL: try XCTUnwrap(URL(string: "https://example.supabase.co")),
@@ -331,11 +288,6 @@ final class PublishWeekFixtureAcceptanceTests: XCTestCase {
         ]
     }
 
-    private func markAllFixtureDaysPlanned(in services: AppServices) async {
-        for day in services.weeklyPlan.days {
-            await services.updateWeeklyDayStateImmediately(dayID: day.id, state: .planned)
-        }
-    }
 }
 
 private struct EmptyRuntimeConfigurationStore: RuntimeConfigurationStoring {

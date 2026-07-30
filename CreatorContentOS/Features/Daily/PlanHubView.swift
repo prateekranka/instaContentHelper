@@ -15,8 +15,6 @@ struct PlanHubView: View {
     @State private var lightEditCaption = ""
     @State private var isCreatorProfileExpanded = false
     @State private var isReferencesExpanded = false
-    /// When true (DEBUG Admin Daily), show Admin “Creator mode” chrome. Creator Plan passes false.
-    var showsModeSwitch: Bool = false
     /// Optional `yyyy-MM-dd` preselection from Today Edit / ⋯ / empty CTA.
     var initialSelectedDate: String? = nil
 
@@ -39,7 +37,7 @@ struct PlanHubView: View {
                 }
                 if let error = surfacedGenerationError {
                     let cancelled = Self.isCancellationMessage(error)
-                    AdminSignalBlock(
+                    PlanSignalBlock(
                         title: cancelled ? "Generation stopped" : "Generation error",
                         value: error,
                         systemImage: cancelled ? "xmark.circle" : "exclamationmark.triangle",
@@ -47,7 +45,7 @@ struct PlanHubView: View {
                     )
                 }
                 if let error = services.lastMakeDayAvailableError?.nilIfBlank {
-                    AdminSignalBlock(
+                    PlanSignalBlock(
                         title: "Approve",
                         value: error,
                         systemImage: "exclamationmark.triangle",
@@ -55,7 +53,7 @@ struct PlanHubView: View {
                     )
                 }
                 if let error = services.lastUnpublishDayError?.nilIfBlank {
-                    AdminSignalBlock(
+                    PlanSignalBlock(
                         title: "Unpublish",
                         value: error,
                         systemImage: "exclamationmark.triangle",
@@ -63,7 +61,7 @@ struct PlanHubView: View {
                     )
                 }
                 if let error = services.lastReadyDayPackageEditError?.nilIfBlank {
-                    AdminSignalBlock(
+                    PlanSignalBlock(
                         title: "Save edits",
                         value: error,
                         systemImage: "exclamationmark.triangle",
@@ -219,11 +217,6 @@ struct PlanHubView: View {
 
                 Spacer(minLength: MCOSpace.s)
 
-                if showsModeSwitch {
-                    FloatingIconButton(systemImage: "ellipsis", label: "Back to Creator Mode") {
-                        appState.activeMode = .creator
-                    }
-                }
             }
 
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
@@ -498,7 +491,7 @@ struct PlanHubView: View {
                 unpublishActionBlock
             }
         } else {
-            AdminSignalBlock(
+            PlanSignalBlock(
                 title: "No card yet",
                 value: "Write the prompt for the selected day and generate to see the storyboard and caption here.",
                 systemImage: "wand.and.stars",
@@ -584,7 +577,7 @@ struct PlanHubView: View {
             isExpanded: $isCreatorProfileExpanded,
             accessibilityID: "plan.accordion.creatorProfile"
         ) {
-            CreatorProfileAdminView(presentation: .embedded)
+            CreatorProfileEditorView()
         }
     }
 
@@ -683,10 +676,6 @@ struct PlanHubView: View {
     }
 
     private func navigateToTodayAfterAvailable() {
-        appState.activeMode = .creator
-        if showsModeSwitch {
-            return
-        }
         dismiss()
         appState.requestCreatorTab(.today)
     }
