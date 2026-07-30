@@ -12,3 +12,5 @@ xcuserdata/
 CreatorContentOS/Config/LocalRuntime.xcconfig
 supabase/.env
 supabase/functions/.env
+
+prototypes/today-ui/.certs/
