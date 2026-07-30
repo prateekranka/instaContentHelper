@@ -1,28 +1,25 @@
-# PROTOTYPE — Today UI directions
+# PROTOTYPE — Today UI riff (Call Sheet × Soft Coach)
 
 Throwaway exploration. **Do not ship.**
 
 ## Question
 
-What should Creator **Today** feel like if we abandon the current cream / serif / oxblood editorial journal system?
+Given Call Sheet’s instant scan and Soft Coach’s lower-pressure language, which blend of hierarchy and action model should Today use?
 
 ## Run
 
 ```bash
 open prototypes/today-ui/index.html
-# or
-python3 -m http.server 8765 --directory prototypes/today-ui
-# then http://localhost:8765/?v=1
+# iPad (HTTPS, self-signed — Advanced → Proceed):
+# https://192.168.1.119:8765/
 ```
 
-Flip with the bottom picker, `←`/`→`, `1`–`3`, or `R` to replay entrance motion.
+Picker · `←`/`→` · `1`–`3` · `R` · `?v=1|2|3`
 
-## Variants
+## Variants (riff 2)
 
 | # | Variant | Axis | When it wins | Cost |
 | --- | --- | --- | --- | --- |
-| 1 | Night Deck | Layout + personality — immersive media-first | Daily open should feel like “start the shoot,” not read a journal | Less editorial warmth; weaker for empty/missing states |
-| 2 | Call Sheet | Density + IA — production list, no hero | Creator wants cues and package copy in one scannable sheet | Least brandable; can feel cold/ops-heavy |
-| 3 | Soft Coach | Hierarchy + interaction — brief + accordion folio | Reassurance and low pressure matter more than spectacle | Eats vertical space; accordion hides package depth |
-
-Selection persists via `?v=1|2|3`.
+| 1 | Steady List | Call Sheet IA + calm verbs | Closest hybrid; daily tool clarity | Least distinctive visually |
+| 2 | Morning Brief | Soft Coach greeting over list | Reassurance before the run-of-show | Greeting eats vertical space |
+| 3 | Pocket Sheet | One sticky primary + denser cues | Explicit per-scene Shot/Undo | Extra control chrome per row |
