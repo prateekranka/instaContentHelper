@@ -13,6 +13,8 @@ enum PocketSheetTheme {
         static let fillMuted = SwiftUI.Color(hex: 0xF5F5F5)
         static let inversePaper = SwiftUI.Color(hex: 0xFFFFFF)
         static let inverseInk = SwiftUI.Color(hex: 0x111111)
+        /// Onboarding reference validation attention (prototype `data-attn` red).
+        static let validationAttention = SwiftUI.Color(hex: 0xDC2626)
     }
 }
 

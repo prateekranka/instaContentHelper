@@ -30,6 +30,35 @@ final class CreatorShellNavigationTests: XCTestCase {
         XCTAssertEqual(state.pendingCreatorTab, .plan)
     }
 
+    func testHandoffFirstDayFromOnboardingOpensPlanOnToday() {
+        let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
+        let handoff = OnboardingFirstDayHandoff(
+            scheduledDate: "2026-08-07",
+            dayBrief: "Content about Food",
+            completedData: OnboardingCompletedData(
+                selectedCategoryIDs: ["food"],
+                categoryOtherText: "",
+                references: [],
+                voiceDeferred: true
+            )
+        )
+
+        state.handoffFirstDayFromOnboarding(handoff)
+
+        XCTAssertEqual(state.pendingCreatorTab, .plan)
+        XCTAssertEqual(state.planSelectedDate, "2026-08-07")
+        XCTAssertEqual(state.consumeFirstDayHandoff(), handoff)
+        XCTAssertNil(state.consumeFirstDayHandoff())
+    }
+
+    func testConsumePlanSelectedDateReturnsAndClearsPendingDate() {
+        let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
+        state.preparePlan(selecting: "2026-08-07")
+
+        XCTAssertEqual(state.consumePlanSelectedDate(), "2026-08-07")
+        XCTAssertNil(state.consumePlanSelectedDate())
+    }
+
     func testCreatorCanGenerateWithoutOwnerOrEditorRole() {
         XCTAssertTrue(AppServices.fixtureBacked(memberRole: "creator").canGenerateContent)
         XCTAssertTrue(AppServices.fixtureBacked(memberRole: "owner").canGenerateContent)

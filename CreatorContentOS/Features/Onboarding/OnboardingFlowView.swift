@@ -194,7 +194,7 @@ struct OnboardingFlowView: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
                         .stroke(
-                            inputShowsAttention ? PocketSheetTheme.Color.inverseInk : PocketSheetTheme.Color.hairline,
+                            inputShowsAttention ? PocketSheetTheme.Color.validationAttention : PocketSheetTheme.Color.hairline,
                             lineWidth: inputShowsAttention ? 2 : 1
                         )
                 }
@@ -259,7 +259,11 @@ struct OnboardingFlowView: View {
             if let hint = model.displayedReferenceHint {
                 Text(hint)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .foregroundStyle(
+                        model.referenceValidationMessage != nil
+                            ? PocketSheetTheme.Color.validationAttention
+                            : PocketSheetTheme.Color.inkMuted
+                    )
                     .accessibilityIdentifier("onboarding.refHint")
                     .accessibilityAddTraits(model.referenceValidationMessage != nil ? .isStaticText : [])
             }
@@ -291,7 +295,7 @@ struct OnboardingFlowView: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
                         .stroke(
-                            showAttention ? PocketSheetTheme.Color.inverseInk : PocketSheetTheme.Color.hairline,
+                            showAttention ? PocketSheetTheme.Color.validationAttention : PocketSheetTheme.Color.hairline,
                             lineWidth: showAttention ? 2 : 1
                         )
                 }

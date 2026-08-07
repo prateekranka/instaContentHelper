@@ -39,10 +39,17 @@ struct CreatorShellView: View {
             .accessibilityIdentifier("shell.tab.you")
         }
         .background(PocketSheetTheme.Color.paper)
-        .onChange(of: appState.pendingCreatorTab) { _, tab in
-            guard let tab else { return }
-            selectedTab = tab
-            appState.pendingCreatorTab = nil
+        .onAppear {
+            applyPendingCreatorTabIfNeeded()
         }
+        .onChange(of: appState.pendingCreatorTab) { _, _ in
+            applyPendingCreatorTabIfNeeded()
+        }
+    }
+
+    private func applyPendingCreatorTabIfNeeded() {
+        guard let tab = appState.pendingCreatorTab else { return }
+        selectedTab = tab
+        appState.pendingCreatorTab = nil
     }
 }

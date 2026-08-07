@@ -250,12 +250,128 @@ final class OnboardingTests: XCTestCase {
     func testContinueFromReferencesDoesNotAdvanceWhenMixIncomplete() {
         let store = UserDefaultsOnboardingStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         let model = OnboardingViewModel(store: store)
+        model.step = .references
 
         model.continueFromReferences(reduceMotion: true)
-        XCTAssertEqual(model.step, .categories)
+        XCTAssertEqual(model.step, .references)
         XCTAssertTrue(model.referenceValidation.reel)
         XCTAssertTrue(model.referenceValidation.profile)
         XCTAssertFalse(model.referenceValidation.motion)
+        XCTAssertEqual(
+            model.referenceValidationMessage,
+            "Add at least one reel URL and one profile @handle to continue."
+        )
+    }
+
+    func testContinueFromReferencesFlagsOnlyMissingReel() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.step = .references
+        model.references = [profile]
+
+        model.continueFromReferences(reduceMotion: false)
+
+        XCTAssertEqual(model.step, .references)
+        XCTAssertTrue(model.referenceValidation.reel)
+        XCTAssertFalse(model.referenceValidation.profile)
+        XCTAssertTrue(model.referenceValidation.motion)
+        XCTAssertEqual(model.referenceInputKind, .reel)
+        XCTAssertEqual(
+            model.referenceValidationMessage,
+            "Add at least one reel URL to continue."
+        )
+    }
+
+    func testContinueFromReferencesFlagsOnlyMissingProfile() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.step = .references
+        model.references = [reel]
+
+        model.continueFromReferences(reduceMotion: false)
+
+        XCTAssertEqual(model.step, .references)
+        XCTAssertFalse(model.referenceValidation.reel)
+        XCTAssertTrue(model.referenceValidation.profile)
+        XCTAssertTrue(model.referenceValidation.motion)
+        XCTAssertEqual(model.referenceInputKind, .profile)
+        XCTAssertEqual(
+            model.referenceValidationMessage,
+            "Add at least one profile @handle to continue."
+        )
+    }
+
+    func testContinueFromReferencesAdvancesWhenMixComplete() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.step = .references
+        model.references = [reel, profile]
+
+        model.continueFromReferences(reduceMotion: false)
+
+        XCTAssertEqual(model.step, .confirm)
+        XCTAssertEqual(model.referenceValidation, .none)
+    }
+
+    func testConsumeReferenceAttentionMotionKeepsValidationFlags() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.referenceValidation = OnboardingReferenceValidationFlags(reel: true, profile: true, motion: true)
+
+        model.consumeReferenceAttentionMotionIfNeeded()
+
+        XCTAssertTrue(model.referenceValidation.reel)
+        XCTAssertTrue(model.referenceValidation.profile)
+        XCTAssertFalse(model.referenceValidation.motion)
+    }
+
+    func testSoftSkipDoesNotRequireReferenceMix() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.step = .references
+
+        model.softSkip()
+
+        XCTAssertTrue(model.sessionDismissed)
+        XCTAssertEqual(model.step, .references)
+        XCTAssertEqual(model.references.count, 0)
+    }
+
+    func testAddProfileVerificationVerifiedShowsProfileAdded() async {
+        let model = OnboardingViewModel(
+            store: UserDefaultsOnboardingStore(defaults: defaults),
+            profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .verified)
+        )
+        model.referenceInputKind = .profile
+        model.referenceDraftText = "@creator"
+
+        await model.addReference()
+
+        XCTAssertEqual(model.references.count, 1)
+        XCTAssertEqual(model.toastMessage, "Profile added")
+    }
+
+    func testAddProfileVerificationNotFoundDoesNotAppendReference() async {
+        let model = OnboardingViewModel(
+            store: UserDefaultsOnboardingStore(defaults: defaults),
+            profileVerifier: FixtureOnboardingProfileVerifier(notFoundHandles: ["ghost"])
+        )
+        model.referenceInputKind = .profile
+        model.referenceDraftText = "@ghost"
+
+        await model.addReference()
+
+        XCTAssertTrue(model.references.isEmpty)
+        XCTAssertEqual(model.toastMessage, "@ghost wasn't found on Instagram")
+    }
+
+    func testAddProfileVerificationTemporarilyUnavailableKeepsProfile() async {
+        let model = OnboardingViewModel(
+            store: UserDefaultsOnboardingStore(defaults: defaults),
+            profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .temporarilyUnavailable)
+        )
+        model.referenceInputKind = .profile
+        model.referenceDraftText = "@creator"
+
+        await model.addReference()
+
+        XCTAssertEqual(model.references.count, 1)
+        XCTAssertEqual(model.toastMessage, "Profile added. We couldn't check Instagram right now.")
     }
 
     func testFinishMarksStoreComplete() {

@@ -19,9 +19,9 @@
     "15-daygen-prompts": { "status": "done", "title": "Daygen prompts" },
     "16-execution-package-done-loop": { "status": "done", "title": "Execution package + done loop" },
     "17-references-freemium-paywall": { "status": "superseded", "title": "References are unlimited" },
-    "18-onboarding-reference-validation-motion": { "status": "todo", "title": "Onboarding reference validation motion" },
-    "19-profile-verification-diagnostics": { "status": "todo", "title": "Profile verification diagnostics" },
-    "20-first-day-generation-handoff": { "status": "todo", "title": "First-day generation handoff", "notes": "Generate my first day completes onboarding only; Plan handoff pending" },
+    "18-onboarding-reference-validation-motion": { "status": "done", "title": "Onboarding reference validation motion", "notes": "Continue stays enabled; one-shot attention on invalid Continue; red static border under Reduce Motion" },
+    "19-profile-verification-diagnostics": { "status": "done", "title": "Profile verification diagnostics", "notes": "import-references preview path; verified/not_found/temporarily_unavailable; prototype unavatar removed" },
+    "20-first-day-generation-handoff": { "status": "done", "title": "First-day generation handoff", "notes": "Generate my first day → Plan on local today → single day-only generation; shell applies pending Plan tab on appear" },
     "21-selected-day-idea-launcher": { "status": "done", "title": "Selected-day idea launcher", "notes": "Five ideas + Other below eligible dates" },
     "22-you-content-inputs-navigation": { "status": "done", "title": "You content inputs navigation", "notes": "You owns inputs; Plan summary links with return context" }
   }
