@@ -33,6 +33,7 @@ struct CreatorContentOSApp: App {
 
 struct CreatorContentOSAppView: View {
     @Environment(AppState.self) private var appState
+    @State private var onboardingModel = OnboardingViewModel()
 
     var body: some View {
         Group {
@@ -62,11 +63,24 @@ struct CreatorContentOSAppView: View {
             case .restoring:
                 AuthenticationRestoringView()
             case .live:
-                CreatorShellView()
+                if onboardingModel.shouldPresentOnboarding {
+                    OnboardingFlowView(
+                        model: onboardingModel,
+                        onSoftSkip: {},
+                        onComplete: handleOnboardingComplete
+                    )
+                } else {
+                    CreatorShellView()
+                }
             case .signedOut, .signingIn, .failed:
                 SignInView()
             }
         }
+    }
+
+    private func handleOnboardingComplete(_ handoff: OnboardingFirstDayHandoff) {
+        appState.handoffFirstDayFromOnboarding(handoff)
+        onboardingModel.sessionDismissed = false
     }
 
 #if DEBUG
@@ -85,6 +99,10 @@ private extension AppState {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> AppState {
 #if DEBUG
+        if environment["MCO_RESET_ONBOARDING"] == "1" {
+            UserDefaultsOnboardingStore().resetAll()
+        }
+
         if environment["MCO_FORCE_SIGN_IN"] == "1" {
             return AppState(authenticationPhase: .signedOut)
         }

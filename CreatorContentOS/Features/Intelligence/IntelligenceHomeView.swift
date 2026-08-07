@@ -6,6 +6,8 @@ struct IntelligenceHomeView: View {
         case standalone
         /// Nested under Plan accordion — shelves only.
         case embedded
+        /// Creator You destination — shelves only, no admin chrome.
+        case you
     }
 
     @Environment(\.openURL) private var openURL
@@ -31,7 +33,7 @@ struct IntelligenceHomeView: View {
                     }
                 }
                 .navigationBarHidden(true)
-            case .embedded:
+            case .embedded, .you:
                 VStack(alignment: .leading, spacing: MCOSpace.l) {
                     referencesBody
                 }

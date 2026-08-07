@@ -1,39 +1,48 @@
 import SwiftUI
 
-/// Buried Plan hub: calendar → brief → Generate → result / Approve / Unpublish →
-/// collapsed Creator Profile and References.
+/// Plan hub: selected date → five ideas or Other → one day-only generation → draft / Approve.
 struct PlanHubView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @State private var selectedDate = Date()
     @State private var visibleMonth = Date()
-    @State private var dayBrief = ""
     @State private var generationStartTime: Date?
+    @State private var showCalendarSheet = false
     @State private var showUnpublishConfirmation = false
     @State private var showOverwriteConfirmation = false
+    @State private var pendingGenerationBrief: String?
+    @State private var hasDispatchedGeneration = false
+    @State private var isOtherIdeaOpen = false
+    @State private var otherIdeaText = ""
     @State private var lightEditCaption = ""
-    @State private var isCreatorProfileExpanded = false
-    @State private var isReferencesExpanded = false
     /// When true (DEBUG Admin Daily), show Admin “Creator mode” chrome. Creator Plan passes false.
     var showsModeSwitch: Bool = false
     /// Optional `yyyy-MM-dd` preselection from Today Edit / ⋯ / empty CTA.
     var initialSelectedDate: String? = nil
 
     var body: some View {
-        EditorialScreen(bottomContentPadding: 200) {
+        EditorialScreen(bottomContentPadding: 120, showsBottomBar: false) {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
-                calendarSection
+                selectedDateHeader
                 if let otherLabel = otherDayGeneratingLabel {
                     Text("Still drafting \(otherLabel) in the background — you can keep planning other days.")
                         .font(MCOType.caption)
                         .foregroundStyle(MCOTheme.Color.inkMuted)
                         .accessibilityIdentifier("plan.generation.backgroundHint")
                 }
-                briefComposer
-                creatorProfileAccordion
-                referencesAccordion
+                if isSelectedDayEligible {
+                    PlanDayIdeaLauncher(
+                        ideas: dayIdeas,
+                        isBusy: isGeneratingSelectedDay || hasDispatchedGeneration,
+                        isInteractionDisabled: !canGenerate,
+                        isOtherOpen: $isOtherIdeaOpen,
+                        otherText: $otherIdeaText,
+                        onSelectIdea: { requestGeneration(brief: $0.dayBrief) },
+                        onSubmitOther: submitOtherIdea
+                    )
+                }
                 if isGeneratingSelectedDay {
                     generationProgressBlock
                 }
@@ -71,21 +80,23 @@ struct PlanHubView: View {
                     )
                 }
                 resultBlock
+                PlanGenerationInputsSummary(setup: setupSummary, selectedDate: scheduledDateString)
             }
         } bottomBar: {
-            GlassCommandBar {
-                PrimaryActionButton(
-                    title: generateButtonTitle,
-                    systemImage: isGeneratingSelectedDay ? "hourglass" : "sparkles"
-                ) {
-                    requestGenerate()
-                }
-                .disabled(!canSubmit)
-                .opacity(canSubmit ? 1 : 0.48)
-                .accessibilityIdentifier("daily.generate.submit")
-            }
+            EmptyView()
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showCalendarSheet) {
+            PlanCalendarSheet(
+                selectedDate: $selectedDate,
+                visibleMonth: $visibleMonth,
+                packageStatusForDate: { services.dayPackage(for: $0)?.status },
+                onSelectDate: { date in
+                    resetIdeaLauncherState()
+                    visibleMonth = date
+                }
+            )
+        }
         .alert("Unpublish this day?", isPresented: $showUnpublishConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Unpublish", role: .destructive) {
@@ -95,9 +106,14 @@ struct PlanHubView: View {
             Text("Returns this ready package to draft. If there was a Decision, the live Decision clears and Archive history stays.")
         }
         .alert("Overwrite ready package?", isPresented: $showOverwriteConfirmation) {
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) {
+                pendingGenerationBrief = nil
+            }
             Button("Overwrite", role: .destructive) {
-                generate(confirmOverwrite: true)
+                if let brief = pendingGenerationBrief {
+                    generate(brief: brief, confirmOverwrite: true)
+                }
+                pendingGenerationBrief = nil
             }
         } message: {
             Text("This replaces the ready package with a new draft. Any live Decision clears; Archive history stays. You will need to approve again.")
@@ -107,12 +123,29 @@ struct PlanHubView: View {
         }
         .onChange(of: selectedDate) { _, newDate in
             visibleMonth = newDate
+            resetIdeaLauncherState()
             lightEditCaption = displayedCard?.caption ?? ""
+            syncPersistedPlanDate()
+        }
+        .onChange(of: isGeneratingSelectedDay) { wasGenerating, isGenerating in
+            if isGenerating && !wasGenerating {
+                hasDispatchedGeneration = true
+            }
+            if wasGenerating && !isGenerating {
+                hasDispatchedGeneration = false
+            }
         }
         .onAppear {
             applyPendingPlanDateSelection()
             visibleMonth = selectedDate
             lightEditCaption = displayedCard?.caption ?? ""
+            if isGeneratingSelectedDay {
+                hasDispatchedGeneration = true
+            }
+            applyFirstDayHandoffIfNeeded()
+        }
+        .onChange(of: appState.planSelectedDate) { _, _ in
+            applyPendingPlanDateSelection()
         }
     }
 
@@ -121,9 +154,11 @@ struct PlanHubView: View {
         if let initial = initialSelectedDate?.nilIfBlank {
             appState.preparePlan(selecting: initial)
             candidate = initial
+        } else if let pending = appState.consumePlanSelectedDate() {
+            candidate = pending
+        } else if let persisted = appState.persistedPlanSelectedDate() {
+            candidate = persisted
         } else {
-            // Profile / Admin Plan opens on local today — drop any leftover Edit date.
-            _ = appState.consumePlanSelectedDate()
             candidate = nil
         }
         guard let candidate, let date = Self.parseLocalDate(candidate) else { return }
@@ -131,10 +166,48 @@ struct PlanHubView: View {
         visibleMonth = date
     }
 
+    private func syncPersistedPlanDate() {
+        appState.preparePlan(selecting: scheduledDateString)
+    }
+
+    private func applyFirstDayHandoffIfNeeded() {
+        guard let handoff = appState.consumeFirstDayHandoff(),
+              handoff.scheduledDate == scheduledDateString
+        else {
+            return
+        }
+        requestGeneration(brief: handoff.dayBrief)
+    }
+
+    private func resetIdeaLauncherState() {
+        hasDispatchedGeneration = false
+        isOtherIdeaOpen = false
+        otherIdeaText = ""
+        pendingGenerationBrief = nil
+    }
+
     // MARK: - State helpers
+
+    private var setupSummary: PlanDaySetupSummary {
+        PlanDaySetupSummary.from(
+            profile: services.creatorProfileSummary,
+            intelligenceHome: services.intelligenceHome
+        )
+    }
+
+    private var dayIdeas: [PlanDayIdeaCandidate] {
+        PlanDayIdeaBuilder.buildIdeas(
+            scheduledDate: scheduledDateString,
+            setup: setupSummary
+        )
+    }
 
     private var canGenerate: Bool {
         services.canGenerateContent
+    }
+
+    private var isSelectedDayEligible: Bool {
+        selectedDate >= Self.startOfToday()
     }
 
     private var isGeneratingSelectedDay: Bool {
@@ -145,11 +218,6 @@ struct PlanHubView: View {
         let others = services.generatingDayBriefDates.filter { $0 != scheduledDateString }.sorted()
         guard let first = others.first else { return nil }
         return shortLabel(for: first)
-    }
-
-    private var canSubmit: Bool {
-        canGenerate && !isGeneratingSelectedDay &&
-            !dayBrief.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var canMakeAvailable: Bool {
@@ -172,16 +240,6 @@ struct PlanHubView: View {
             && !isGeneratingSelectedDay
             && !services.isUpdatingReadyDayPackage
             && DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status)
-    }
-
-    private var generateButtonTitle: String {
-        if isGeneratingSelectedDay {
-            return "Generating \(shortLabel(for: scheduledDateString))"
-        }
-        if DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status) {
-            return "Overwrite \(shortLabel(for: scheduledDateString))"
-        }
-        return "Generate \(shortLabel(for: scheduledDateString))"
     }
 
     private var scheduledDateString: String {
@@ -233,7 +291,7 @@ struct PlanHubView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                     .accessibilityIdentifier("plan.title")
-                Text("Pick a date, brief it, generate a draft, then make it available on Today.")
+                Text("Pick a day, choose an idea, then approve the draft for Today.")
                     .font(MCOType.body)
                     .foregroundStyle(MCOTheme.Color.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -241,217 +299,43 @@ struct PlanHubView: View {
         }
     }
 
-    private var calendarSection: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
-            WeeklySectionTitle(
-                title: "Calendar",
-                subtitle: "Select the day to plan. Dots show package state."
-            )
-            JournalBlock {
-                VStack(alignment: .leading, spacing: MCOSpace.m) {
-                    calendarLegend
-                    monthHeader
-                    weekdayHeader
-                    monthGrid
-                }
-            }
-            .accessibilityIdentifier("plan.calendar")
-        }
-    }
-
-    private var calendarLegend: some View {
-        HStack(spacing: MCOSpace.m) {
-            legendItem(color: MCOTheme.Color.success, label: "Ready")
-            legendItem(color: MCOTheme.Color.warning, label: "Draft")
-            HStack(spacing: MCOSpace.xs) {
-                Circle()
-                    .stroke(MCOTheme.Color.hairlineStrong, lineWidth: 1)
-                    .frame(width: 8, height: 8)
-                Text("Empty")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Legend: green ready, yellow draft, none empty")
-        .accessibilityIdentifier("plan.calendar.legend")
-    }
-
-    private func legendItem(color: Color, label: String) -> some View {
-        HStack(spacing: MCOSpace.xs) {
-            Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
-            Text(label)
-                .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-        }
-    }
-
-    private var monthHeader: some View {
-        HStack {
-            Button {
-                shiftMonth(by: -1)
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(MCOType.iconCompact)
-                    .frame(width: 36, height: 36)
-                    .foregroundStyle(MCOTheme.Color.ink)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Previous month")
-
-            Spacer()
-            Text(monthTitle(for: visibleMonth))
-                .font(MCOType.headline)
-                .foregroundStyle(MCOTheme.Color.ink)
-            Spacer()
-
-            Button {
-                shiftMonth(by: 1)
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(MCOType.iconCompact)
-                    .frame(width: 36, height: 36)
-                    .foregroundStyle(MCOTheme.Color.ink)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Next month")
-        }
-    }
-
-    private var weekdayHeader: some View {
-        let symbols = Calendar(identifier: .gregorian).veryShortWeekdaySymbols
-        return HStack(spacing: 0) {
-            ForEach(Array(symbols.enumerated()), id: \.offset) { _, symbol in
-                Text(symbol)
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-    }
-
-    private var monthGrid: some View {
-        let days = daysInVisibleMonth()
-        return LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
-            spacing: MCOSpace.xs
-        ) {
-            ForEach(Array(days.enumerated()), id: \.offset) { _, day in
-                if let day {
-                    calendarDayCell(day)
-                } else {
-                    Color.clear.frame(height: 44)
-                }
-            }
-        }
-    }
-
-    private func calendarDayCell(_ date: Date) -> some View {
-        let dateString = Self.dateString(from: date)
-        let state = PlanCalendarDayState.from(packageStatus: services.dayPackage(for: dateString)?.status)
-        let isSelected = dateString == scheduledDateString
-        let isSelectable = date >= Self.startOfToday()
-        let dayNumber = Calendar(identifier: .gregorian).component(.day, from: date)
-
-        return Button {
-            selectedDate = date
+    private var selectedDateHeader: some View {
+        Button {
+            visibleMonth = selectedDate
+            showCalendarSheet = true
         } label: {
-            VStack(spacing: 4) {
-                Text("\(dayNumber)")
-                    .font(MCOType.bodySmall)
-                    .foregroundStyle(
-                        isSelected
-                            ? MCOTheme.Color.oxblood
-                            : (isSelectable ? MCOTheme.Color.ink : MCOTheme.Color.inkMuted.opacity(0.45))
-                    )
-                Group {
-                    switch state {
-                    case .ready:
-                        Circle()
-                            .fill(MCOTheme.Color.success)
-                            .frame(width: 6, height: 6)
-                    case .draft:
-                        Circle()
-                            .fill(MCOTheme.Color.warning)
-                            .frame(width: 6, height: 6)
-                    case .empty:
-                        Circle()
-                            .fill(Color.clear)
-                            .frame(width: 6, height: 6)
+            HStack(alignment: .center, spacing: MCOSpace.s) {
+                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    if let formatted = PlanDayDateFormatting.formattedDate(for: scheduledDateString) {
+                        Text(formatted.weekday)
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                            .textCase(.uppercase)
+                        Text(formatted.label)
+                            .font(MCOType.headline)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                    } else {
+                        Text(scheduledDateString)
+                            .font(MCOType.headline)
+                            .foregroundStyle(MCOTheme.Color.ink)
                     }
                 }
-                .accessibilityHidden(true)
+                Spacer(minLength: MCOSpace.s)
+                Image(systemName: "chevron.right")
+                    .font(MCOType.iconCompact)
+                    .foregroundStyle(MCOTheme.Color.inkMuted)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 44)
-            .background(
-                isSelected
-                    ? MCOTheme.Color.oxblood.opacity(0.12)
-                    : Color.clear
-            )
+            .padding(MCOSpace.m)
+            .background(MCOTheme.Color.paperRaised.opacity(0.86))
             .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
             .overlay {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                        .stroke(MCOTheme.Color.oxblood.opacity(0.62), lineWidth: 1)
-                }
+                RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
+                    .stroke(MCOTheme.Color.hairlineStrong, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
-        .disabled(!isSelectable)
-        .accessibilityLabel(calendarAccessibilityLabel(dateString: dateString, dayNumber: dayNumber, state: state))
-        .accessibilityIdentifier("plan.calendar.day.\(dateString)")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private func calendarAccessibilityLabel(
-        dateString: String,
-        dayNumber: Int,
-        state: PlanCalendarDayState
-    ) -> String {
-        let stateLabel: String
-        switch state {
-        case .ready: stateLabel = "ready"
-        case .draft: stateLabel = "draft"
-        case .empty: stateLabel = "empty"
-        }
-        return "Day \(dayNumber), \(stateLabel), \(dateString)"
-    }
-
-    private var briefComposer: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
-            WeeklySectionTitle(
-                title: "Daily generation prompt",
-                subtitle: "What is happening, what should the content feel like, and any one-off asks."
-            )
-            JournalBlock {
-                ZStack(alignment: .topLeading) {
-                    if dayBrief.isEmpty {
-                        Text("e.g. Back in Bombay, first gym session after travel. Or: brand deliverable — unbox the recovery drink at home, honest tone, one Reel.")
-                            .font(MCOType.bodySmall)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                    }
-                    TextEditor(text: $dayBrief)
-                        .font(MCOType.bodySmall)
-                        .foregroundStyle(MCOTheme.Color.ink)
-                        .scrollContentBackground(.hidden)
-                        .disabled(isGeneratingSelectedDay || !canGenerate)
-                        .accessibilityIdentifier("daily.generate.brief")
-                }
-                .padding(MCOSpace.s)
-                .frame(minHeight: 128, alignment: .topLeading)
-                .background(MCOTheme.Color.paperRaised.opacity(0.86))
-                .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                        .stroke(MCOTheme.Color.hairlineStrong.opacity(0.8), lineWidth: 1)
-                }
-            }
-        }
+        .accessibilityLabel("Change selected day")
+        .accessibilityIdentifier("plan.date.header")
     }
 
     private var generationProgressBlock: some View {
@@ -478,6 +362,7 @@ struct PlanHubView: View {
                 }
             }
         }
+        .accessibilityIdentifier("plan.generation.progress")
     }
 
     @ViewBuilder
@@ -497,13 +382,6 @@ struct PlanHubView: View {
                 approveActionBlock
                 unpublishActionBlock
             }
-        } else {
-            AdminSignalBlock(
-                title: "No card yet",
-                value: "Write the prompt for the selected day and generate to see the storyboard and caption here.",
-                systemImage: "wand.and.stars",
-                tone: .quiet
-            )
         }
     }
 
@@ -578,91 +456,54 @@ struct PlanHubView: View {
         }
     }
 
-    private var creatorProfileAccordion: some View {
-        planAccordion(
-            title: "Creator Profile",
-            isExpanded: $isCreatorProfileExpanded,
-            accessibilityID: "plan.accordion.creatorProfile"
-        ) {
-            CreatorProfileAdminView(presentation: .embedded)
-        }
-    }
-
-    private var referencesAccordion: some View {
-        planAccordion(
-            title: "References",
-            isExpanded: $isReferencesExpanded,
-            accessibilityID: "plan.accordion.references"
-        ) {
-            IntelligenceHomeView(presentation: .embedded)
-        }
-    }
-
-    private func planAccordion<Content: View>(
-        title: String,
-        isExpanded: Binding<Bool>,
-        accessibilityID: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.wrappedValue.toggle()
-                }
-            } label: {
-                HStack {
-                    Text(title)
-                        .font(MCOType.headline)
-                        .foregroundStyle(MCOTheme.Color.ink)
-                    Spacer(minLength: MCOSpace.s)
-                    Image(systemName: "chevron.right")
-                        .font(MCOType.iconCompact)
-                        .foregroundStyle(MCOTheme.Color.ink)
-                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier(accessibilityID)
-
-            if isExpanded.wrappedValue {
-                content()
-            }
-        }
-    }
-
     private func readyPackageSubtitle(for card: GeneratedDailyCardDraft) -> String {
         if DayPackageLifecycleStatus.requiresOverwriteConfirmation(card.status) {
-            return "\(shortLabel(for: card.scheduledDate)) — ready package. Light edit keeps it ready; Overwrite yields a new draft."
+            return "\(shortLabel(for: card.scheduledDate)) — ready package. Light edit keeps it ready; choose another idea to overwrite."
         }
         return "\(shortLabel(for: card.scheduledDate)) — review the storyboard and caption, then approve."
     }
 
     // MARK: - Actions
 
-    private func requestGenerate() {
+    private func submitOtherIdea() {
+        let brief = otherIdeaText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !brief.isEmpty else { return }
+        requestGeneration(brief: brief)
+    }
+
+    private func requestGeneration(brief: String) {
+        guard !hasDispatchedGeneration, !isGeneratingSelectedDay else { return }
+        let trimmed = brief.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
         if DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status) {
+            pendingGenerationBrief = trimmed
             showOverwriteConfirmation = true
             return
         }
-        generate(confirmOverwrite: false)
+        generate(brief: trimmed, confirmOverwrite: false)
     }
 
-    private func generate(confirmOverwrite: Bool) {
+    private func generate(brief: String, confirmOverwrite: Bool) {
+        guard !hasDispatchedGeneration || confirmOverwrite else { return }
         let dateString = scheduledDateString
+        hasDispatchedGeneration = true
         generationStartTime = Date()
         Task { @MainActor in
             defer { generationStartTime = nil }
             do {
                 _ = try await services.generateDayCard(
                     scheduledDate: dateString,
-                    dayBrief: dayBrief,
+                    dayBrief: brief,
                     confirmOverwrite: confirmOverwrite
                 )
-                dayBrief = ""
+                isOtherIdeaOpen = false
+                otherIdeaText = ""
                 lightEditCaption = services.dayPackage(for: dateString)?.caption ?? ""
             } catch {
-                // Surfaced via services.dayBriefGenerationErrors.
+                if !isGeneratingSelectedDay {
+                    hasDispatchedGeneration = false
+                }
             }
         }
     }
@@ -718,43 +559,7 @@ struct PlanHubView: View {
         }
     }
 
-    // MARK: - Calendar helpers
-
-    private func shiftMonth(by value: Int) {
-        guard let next = Calendar(identifier: .gregorian).date(byAdding: .month, value: value, to: visibleMonth) else {
-            return
-        }
-        visibleMonth = next
-    }
-
-    private func monthTitle(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: date)
-    }
-
-    private func daysInVisibleMonth() -> [Date?] {
-        let calendar = Calendar(identifier: .gregorian)
-        guard let monthInterval = calendar.dateInterval(of: .month, for: visibleMonth),
-              let firstWeekdayIndex = calendar.dateComponents([.weekday], from: monthInterval.start).weekday
-        else {
-            return []
-        }
-
-        let leadingBlanks = (firstWeekdayIndex - calendar.firstWeekday + 7) % 7
-        let dayCount = calendar.range(of: .day, in: .month, for: visibleMonth)?.count ?? 0
-        var days: [Date?] = Array(repeating: nil, count: leadingBlanks)
-        for offset in 0..<dayCount {
-            if let date = calendar.date(byAdding: .day, value: offset, to: monthInterval.start) {
-                days.append(date)
-            }
-        }
-        while days.count % 7 != 0 {
-            days.append(nil)
-        }
-        return days
-    }
+    // MARK: - Date helpers
 
     private func shortLabel(for dateString: String) -> String {
         if dateString == Self.dateString(from: Date()) {
@@ -781,10 +586,7 @@ struct PlanHubView: View {
     }
 
     private static func parseLocalDate(_ dateString: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: dateString)
+        PlanDayDateFormatting.parseLocalDate(dateString)
     }
 
     private static func elapsedText(_ interval: TimeInterval) -> String {
@@ -818,7 +620,6 @@ enum PlanCalendarDayState: Equatable, Sendable {
 extension PlanHubView {
     fileprivate static func isCancellationMessage(_ message: String) -> Bool {
         let lowered = message.lowercased()
-        // Raw codes ("cancelled") and the friendly copy both count.
         return lowered.contains("cancel")
             || lowered.contains("stopped before it finished")
     }

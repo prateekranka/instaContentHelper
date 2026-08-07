@@ -9,6 +9,34 @@
 /* Begin PBXBuildFile section */
 		006F38C338FAD348CA0C0EDD /* CreatorContentOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54E107AF78B3000D2A9C264 /* CreatorContentOSApp.swift */; };
 		066BE6E745C55E2B1EA202DA /* PlanHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23395AB2FF74CF4F50E144C /* PlanHubView.swift */; };
+		A1B2C3D4E5F6012345678AB /* PlanDayIdeaBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6012345678AB /* PlanDayIdeaBuilder.swift */; };
+		A2B3C4D5E6F7012345678AC /* PlanDayIdeaLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7012345678AC /* PlanDayIdeaLauncher.swift */; };
+		A3B4C5D6E7F8012345678AD /* PlanCalendarSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C4D5E6F7A8012345678AD /* PlanCalendarSheet.swift */; };
+		A4B5C6D7E8F9012345678AE /* PlanGenerationInputsSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C5D6E7F8A9012345678AE /* PlanGenerationInputsSummary.swift */; };
+		A5B6C7D8E9FA012345678AF /* PlanDayIdeaBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5C6D7E8F9AA012345678AF /* PlanDayIdeaBuilderTests.swift */; };
+		A6B7C8D9EAFB012345678B0 /* PlanDayGenerationDispatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C7D8E9FABB012345678B0 /* PlanDayGenerationDispatchTests.swift */; };
+		A7B8C9DAEBFC012345678B1 /* PlanSelectedDateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C8D9EAEBBC012345678B1 /* PlanSelectedDateStore.swift */; };
+		A8B9CADBECFD012345678B2 /* AcceptedDayGenerationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C9DAEBECCD012345678B2 /* AcceptedDayGenerationStore.swift */; };
+		A9BACDBED00E12345678B3 /* TodayInlineExecutionPackage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9CADBEED00D12345678B3 /* TodayInlineExecutionPackage.swift */; };
+		AABBCDBF011F12345678B4 /* PlanPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BACDBEF011E12345678B4 /* PlanPersistenceTests.swift */; };
+		0B1C2D3E4F5A60718293A4B5 /* PocketSheetTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F708192A3B4C5 /* PocketSheetTheme.swift */; };
+		0C2D3E4F5A60718293A4B5C6 /* PocketSheetComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3C4D5E6F708192A3B4C5D6 /* PocketSheetComponents.swift */; };
+		0E4F5A60718293A4B5C6D7E8 /* YouNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5E6F708192A3B4C5D6E7F8 /* YouNavigation.swift */; };
+		0F5A60718293A4B5C6D7E8F9 /* ContentCategorySelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E6F708192A3B4C5D6E7F809 /* ContentCategorySelection.swift */; };
+		105A60718293A4B5C6D7E8FA /* YouContentCategoriesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F708192A3B4C5D6E7F8091A /* YouContentCategoriesView.swift */; };
+		115A60718293A4B5C6D7E8FB /* YouCreatorVoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 708192A3B4C5D6E7F8091A2B /* YouCreatorVoiceView.swift */; };
+		125A60718293A4B5C6D7E8FC /* YouReferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8192A3B4C5D6E7F8091A2B3C /* YouReferencesView.swift */; };
+		135A60718293A4B5C6D7E8FD /* YouAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A3B4C5D6E7F8091A2B3C4D /* YouAccountView.swift */; };
+		145A60718293A4B5C6D7E8FE /* YouFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B4C5D6E7F8091A2B3C4D5E /* YouFeatureTests.swift */; };
+		0D3E4F5A60718293A4B5C6D7 /* YouView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C4D5E6F708192A3B4C5D6E7 /* YouView.swift */; };
+		F1A2B3C4D5E60718293A4B01 /* OnboardingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E60718293A4B01 /* OnboardingModels.swift */; };
+		F1A2B3C4D5E60718293A4B02 /* OnboardingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E60718293A4B02 /* OnboardingStore.swift */; };
+		F1A2B3C4D5E60718293A4B03 /* OnboardingReferenceParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E60718293A4B03 /* OnboardingReferenceParsing.swift */; };
+		F1A2B3C4D5E60718293A4B04 /* OnboardingProfileVerification.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E60718293A4B04 /* OnboardingProfileVerification.swift */; };
+		F1A2B3C4D5E60718293A4B08 /* OnboardingReferenceImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E60718293A4B08 /* OnboardingReferenceImport.swift */; };
+		F1A2B3C4D5E60718293A4B05 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E60718293A4B05 /* OnboardingViewModel.swift */; };
+		F1A2B3C4D5E60718293A4B06 /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E60718293A4B06 /* OnboardingFlowView.swift */; };
+		F1A2B3C4D5E60718293A4B07 /* OnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A2B3C4D5E60718293A4B07 /* OnboardingTests.swift */; };
 		08A5B9761D3E9E189DD59638 /* ReferenceImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4C8ED51EAD5398D2832AAB4 /* ReferenceImportTests.swift */; };
 		0A7F95C8F69751E40A4E4BCD /* ContentConsistencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA13D115B3CC70D6C5F6D7BA /* ContentConsistencyTests.swift */; };
 		0AED86BDE7B6CE889E8A8298 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB9CFA44B8E7990294C9CE67 /* SignInView.swift */; };
@@ -88,14 +116,32 @@
 		0D7E49F920DF70C5EEE2E7C2 /* GeneratedStoryboardBreakdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedStoryboardBreakdown.swift; sourceTree = "<group>"; };
 		0E483DCB6AAA413D2EF0C22E /* TodayCardAndPostedFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayCardAndPostedFlowTests.swift; sourceTree = "<group>"; };
 		1075444BEDE6E2FA7B31576A /* AppRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRuntime.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F708192A3B4C5 /* PocketSheetTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketSheetTheme.swift; sourceTree = "<group>"; };
 		1172250F68C714C25A18EE6D /* ReferenceImportRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportRepository.swift; sourceTree = "<group>"; };
 		11ADF2B693A8CFF7257A50E4 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		18121756824E332BBFDD15A9 /* ReferenceImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportView.swift; sourceTree = "<group>"; };
+		2B3C4D5E6F708192A3B4C5D6 /* PocketSheetComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketSheetComponents.swift; sourceTree = "<group>"; };
 		1A61B6CE9B5742E20AC4A57E /* DevicePairingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePairingService.swift; sourceTree = "<group>"; };
 		2D402309616D1FCDEB1EB137 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2DE94010C1FB456F02A3D2A3 /* ContentQualityLearningLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentQualityLearningLoopTests.swift; sourceTree = "<group>"; };
 		37F9A7463B86BBE57EF99AB5 /* ContentQualityLearningLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentQualityLearningLoop.swift; sourceTree = "<group>"; };
 		38046C9F47183FB73FF43F78 /* TodayNotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayNotificationScheduler.swift; sourceTree = "<group>"; };
+		3C4D5E6F708192A3B4C5D6E7 /* YouView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouView.swift; sourceTree = "<group>"; };
+		4D5E6F708192A3B4C5D6E7F8 /* YouNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouNavigation.swift; sourceTree = "<group>"; };
+		5E6F708192A3B4C5D6E7F809 /* ContentCategorySelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentCategorySelection.swift; sourceTree = "<group>"; };
+		6F708192A3B4C5D6E7F8091A /* YouContentCategoriesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouContentCategoriesView.swift; sourceTree = "<group>"; };
+		708192A3B4C5D6E7F8091A2B /* YouCreatorVoiceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouCreatorVoiceView.swift; sourceTree = "<group>"; };
+		8192A3B4C5D6E7F8091A2B3C /* YouReferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouReferencesView.swift; sourceTree = "<group>"; };
+		92A3B4C5D6E7F8091A2B3C4D /* YouAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouAccountView.swift; sourceTree = "<group>"; };
+		A3B4C5D6E7F8091A2B3C4D5E /* YouFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouFeatureTests.swift; sourceTree = "<group>"; };
+		E1A2B3C4D5E60718293A4B01 /* OnboardingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingModels.swift; sourceTree = "<group>"; };
+		E1A2B3C4D5E60718293A4B02 /* OnboardingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingStore.swift; sourceTree = "<group>"; };
+		E1A2B3C4D5E60718293A4B03 /* OnboardingReferenceParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingReferenceParsing.swift; sourceTree = "<group>"; };
+		E1A2B3C4D5E60718293A4B04 /* OnboardingProfileVerification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingProfileVerification.swift; sourceTree = "<group>"; };
+		E1A2B3C4D5E60718293A4B08 /* OnboardingReferenceImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingReferenceImport.swift; sourceTree = "<group>"; };
+		E1A2B3C4D5E60718293A4B05 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModel.swift; sourceTree = "<group>"; };
+		E1A2B3C4D5E60718293A4B06 /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
+		E1A2B3C4D5E60718293A4B07 /* OnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingTests.swift; sourceTree = "<group>"; };
 		418C02D02DD29D0BB6D88EBF /* CreatorShellNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatorShellNavigationTests.swift; sourceTree = "<group>"; };
 		42BD41A8C80F9A15CA1DAD88 /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
 		44554BE3268355F5F4330553 /* GeneratedDayPlannedContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedDayPlannedContent.swift; sourceTree = "<group>"; };
@@ -134,6 +180,16 @@
 		C0B6EA6B62471E956EAABAEB /* ShootFolioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShootFolioView.swift; sourceTree = "<group>"; };
 		C1B20A8B6F7A9D3D4D85888F /* InstalledContentHelperUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InstalledContentHelperUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C23395AB2FF74CF4F50E144C /* PlanHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanHubView.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6012345678AB /* PlanDayIdeaBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDayIdeaBuilder.swift; sourceTree = "<group>"; };
+		B2C3D4E5F6A7012345678AC /* PlanDayIdeaLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDayIdeaLauncher.swift; sourceTree = "<group>"; };
+		B3C4D5E6F7A8012345678AD /* PlanCalendarSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCalendarSheet.swift; sourceTree = "<group>"; };
+		B4C5D6E7F8A9012345678AE /* PlanGenerationInputsSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanGenerationInputsSummary.swift; sourceTree = "<group>"; };
+		B5C6D7E8F9AA012345678AF /* PlanDayIdeaBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDayIdeaBuilderTests.swift; sourceTree = "<group>"; };
+		B6C7D8E9FABB012345678B0 /* PlanDayGenerationDispatchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDayGenerationDispatchTests.swift; sourceTree = "<group>"; };
+		B7C8D9EAEBBC012345678B1 /* PlanSelectedDateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSelectedDateStore.swift; sourceTree = "<group>"; };
+		B8C9DAEBECCD012345678B2 /* AcceptedDayGenerationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcceptedDayGenerationStore.swift; sourceTree = "<group>"; };
+		B9CADBEED00D12345678B3 /* TodayInlineExecutionPackage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayInlineExecutionPackage.swift; sourceTree = "<group>"; };
+		BACDBEF011E12345678B4 /* PlanPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPersistenceTests.swift; sourceTree = "<group>"; };
 		C2AC2FDAEA55DE198383352E /* PublishWeekFixtureAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishWeekFixtureAcceptanceTests.swift; sourceTree = "<group>"; };
 		C40B9B86E383C63186A87CC6 /* IntelligenceHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceHomeView.swift; sourceTree = "<group>"; };
 		C90557DA178FDB72809DE825 /* ReferenceImportDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferenceImportDTOs.swift; sourceTree = "<group>"; };
@@ -270,6 +326,7 @@
 			children = (
 				7CA513EE516274570D68E102 /* NotTodaySheet.swift */,
 				C0B6EA6B62471E956EAABAEB /* ShootFolioView.swift */,
+				B9CADBEED00D12345678B3 /* TodayInlineExecutionPackage.swift */,
 				8E7EEA64764CBFE7F1C70689 /* TodayView.swift */,
 			);
 			path = Today;
@@ -278,8 +335,14 @@
 		891ADFBC4B2E968BEECE2A7C /* Daily */ = {
 			isa = PBXGroup;
 			children = (
+				B8C9DAEBECCD012345678B2 /* AcceptedDayGenerationStore.swift */,
+				B3C4D5E6F7A8012345678AD /* PlanCalendarSheet.swift */,
 				F60A8FF2DCE5BCCB70962CBC /* DayGenerationView.swift */,
 				44554BE3268355F5F4330553 /* GeneratedDayPlannedContent.swift */,
+				B1C2D3E4F5A6012345678AB /* PlanDayIdeaBuilder.swift */,
+				B2C3D4E5F6A7012345678AC /* PlanDayIdeaLauncher.swift */,
+				B4C5D6E7F8A9012345678AE /* PlanGenerationInputsSummary.swift */,
+				B7C8D9EAEBBC012345678B1 /* PlanSelectedDateStore.swift */,
 				C23395AB2FF74CF4F50E144C /* PlanHubView.swift */,
 			);
 			path = Daily;
@@ -309,6 +372,9 @@
 				6D69E7565442EEBB659CB551 /* GenerationContractsTests.swift */,
 				674AC06A8413A366F72FD56A /* ManagerAdminUsageTests.swift */,
 				D7FA93717B45A3E7B6D05F88 /* PlanHubTests.swift */,
+				B6C7D8E9FABB012345678B0 /* PlanDayGenerationDispatchTests.swift */,
+				BACDBEF011E12345678B4 /* PlanPersistenceTests.swift */,
+				B5C6D7E8F9AA012345678AF /* PlanDayIdeaBuilderTests.swift */,
 				C2AC2FDAEA55DE198383352E /* PublishWeekFixtureAcceptanceTests.swift */,
 				A4C8ED51EAD5398D2832AAB4 /* ReferenceImportTests.swift */,
 				79C80E2B2E609414F002A71F /* RuntimeConfigurationTests.swift */,
@@ -317,6 +383,8 @@
 				99A7AEA0EFE2AB580A6F2775 /* TestGeneratedDraftFactory.swift */,
 				0E483DCB6AAA413D2EF0C22E /* TodayCardAndPostedFlowTests.swift */,
 				89542C68A1D54D9D59222CFC /* TodayPlanEntryTests.swift */,
+				E1A2B3C4D5E60718293A4B07 /* OnboardingTests.swift */,
+				A3B4C5D6E7F8091A2B3C4D5E /* YouFeatureTests.swift */,
 			);
 			path = CreatorContentOSTests;
 			sourceTree = "<group>";
@@ -339,14 +407,54 @@
 			path = Authentication;
 			sourceTree = "<group>";
 		};
+		A1B2C3D4E5F60718293A4B5C /* Design */ = {
+			isa = PBXGroup;
+			children = (
+				2B3C4D5E6F708192A3B4C5D6 /* PocketSheetComponents.swift */,
+				1A2B3C4D5E6F708192A3B4C5 /* PocketSheetTheme.swift */,
+			);
+			path = Design;
+			sourceTree = "<group>";
+		};
+		B2C3D4E5F60718293A4B5C6D /* You */ = {
+			isa = PBXGroup;
+			children = (
+				5E6F708192A3B4C5D6E7F809 /* ContentCategorySelection.swift */,
+				92A3B4C5D6E7F8091A2B3C4D /* YouAccountView.swift */,
+				6F708192A3B4C5D6E7F8091A /* YouContentCategoriesView.swift */,
+				708192A3B4C5D6E7F8091A2B /* YouCreatorVoiceView.swift */,
+				4D5E6F708192A3B4C5D6E7F8 /* YouNavigation.swift */,
+				8192A3B4C5D6E7F8091A2B3C /* YouReferencesView.swift */,
+				3C4D5E6F708192A3B4C5D6E7 /* YouView.swift */,
+			);
+			path = You;
+			sourceTree = "<group>";
+		};
+		C3D4E5F60718293A4B5C6D7E /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				E1A2B3C4D5E60718293A4B06 /* OnboardingFlowView.swift */,
+				E1A2B3C4D5E60718293A4B01 /* OnboardingModels.swift */,
+				E1A2B3C4D5E60718293A4B04 /* OnboardingProfileVerification.swift */,
+				E1A2B3C4D5E60718293A4B08 /* OnboardingReferenceImport.swift */,
+				E1A2B3C4D5E60718293A4B03 /* OnboardingReferenceParsing.swift */,
+				E1A2B3C4D5E60718293A4B02 /* OnboardingStore.swift */,
+				E1A2B3C4D5E60718293A4B05 /* OnboardingViewModel.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
 		D01644699C60513B968701BE /* Features */ = {
 			isa = PBXGroup;
 			children = (
 				8468C4104C513AFAC8CAB8F5 /* Archive */,
 				C61D96FCD326C26E3DD2AA0B /* Authentication */,
+				A1B2C3D4E5F60718293A4B5C /* Design */,
 				891ADFBC4B2E968BEECE2A7C /* Daily */,
 				4687AD2DBB82D88B1EE92D99 /* Intelligence */,
+				C3D4E5F60718293A4B5C6D7E /* Onboarding */,
 				87FF7DE577AA31A3051946A4 /* Today */,
+				B2C3D4E5F60718293A4B5C6D /* You */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -554,8 +662,24 @@
 				C00BF1D82198593B383A01A2 /* GenerationLogFile.swift in Sources */,
 				9E8E80AA9E831480188CA14A /* IntelligenceHomeView.swift in Sources */,
 				733F66CC1224251437A7D210 /* Models.swift in Sources */,
+				F1A2B3C4D5E60718293A4B06 /* OnboardingFlowView.swift in Sources */,
+				F1A2B3C4D5E60718293A4B01 /* OnboardingModels.swift in Sources */,
+				F1A2B3C4D5E60718293A4B04 /* OnboardingProfileVerification.swift in Sources */,
+				F1A2B3C4D5E60718293A4B08 /* OnboardingReferenceImport.swift in Sources */,
+				F1A2B3C4D5E60718293A4B03 /* OnboardingReferenceParsing.swift in Sources */,
+				F1A2B3C4D5E60718293A4B02 /* OnboardingStore.swift in Sources */,
+				F1A2B3C4D5E60718293A4B05 /* OnboardingViewModel.swift in Sources */,
 				E3BD409D4CCB2EFABDB5049F /* NotTodaySheet.swift in Sources */,
 				066BE6E745C55E2B1EA202DA /* PlanHubView.swift in Sources */,
+				A3B4C5D6E7F8012345678AD /* PlanCalendarSheet.swift in Sources */,
+				A1B2C3D4E5F6012345678AB /* PlanDayIdeaBuilder.swift in Sources */,
+				A2B3C4D5E6F7012345678AC /* PlanDayIdeaLauncher.swift in Sources */,
+				A4B5C6D7E8F9012345678AE /* PlanGenerationInputsSummary.swift in Sources */,
+				A7B8C9DAEBFC012345678B1 /* PlanSelectedDateStore.swift in Sources */,
+				A8B9CADBECFD012345678B2 /* AcceptedDayGenerationStore.swift in Sources */,
+				A9BACDBED00E12345678B3 /* TodayInlineExecutionPackage.swift in Sources */,
+				0C2D3E4F5A60718293A4B5C6 /* PocketSheetComponents.swift in Sources */,
+				0B1C2D3E4F5A60718293A4B5 /* PocketSheetTheme.swift in Sources */,
 				7AB0A3DD52A25BAB5902E1A8 /* ReferenceImportDTOs.swift in Sources */,
 				8A19428E4B449705C0122B28 /* ReferenceImportPreviewView.swift in Sources */,
 				819EF924B23E127FD1FA6F5B /* ReferenceImportRepository.swift in Sources */,
@@ -570,6 +694,13 @@
 				D6FA5625DF2179CB5D127FDD /* TodayCacheStore.swift in Sources */,
 				88C182864E867EB5D142FB09 /* TodayNotificationScheduler.swift in Sources */,
 				84507BFC8C21EAF5D1D07C40 /* TodayView.swift in Sources */,
+				0D3E4F5A60718293A4B5C6D7 /* YouView.swift in Sources */,
+				0E4F5A60718293A4B5C6D7E8 /* YouNavigation.swift in Sources */,
+				0F5A60718293A4B5C6D7E8F9 /* ContentCategorySelection.swift in Sources */,
+				105A60718293A4B5C6D7E8FA /* YouContentCategoriesView.swift in Sources */,
+				115A60718293A4B5C6D7E8FB /* YouCreatorVoiceView.swift in Sources */,
+				125A60718293A4B5C6D7E8FC /* YouReferencesView.swift in Sources */,
+				135A60718293A4B5C6D7E8FD /* YouAccountView.swift in Sources */,
 				68EF9C0F94D2447AF4A1E0DD /* WeeklyPublishingModels.swift in Sources */,
 				45CD8BDB68F53E5B36BCC233 /* WriteContentDTOs.swift in Sources */,
 			);
@@ -598,6 +729,9 @@
 				2B31F168775F479CCC4708DE /* GenerationContractsTests.swift in Sources */,
 				6EEAF162E6C8A36CECBD722E /* ManagerAdminUsageTests.swift in Sources */,
 				5C74F83BEE6D5CA3FE3413E0 /* PlanHubTests.swift in Sources */,
+				A5B6C7D8E9FA012345678AF /* PlanDayIdeaBuilderTests.swift in Sources */,
+				A6B7C8D9EAFB012345678B0 /* PlanDayGenerationDispatchTests.swift in Sources */,
+				AABBCDBF011F12345678B4 /* PlanPersistenceTests.swift in Sources */,
 				A08BD8334CD348A559F4FA21 /* PublishWeekFixtureAcceptanceTests.swift in Sources */,
 				08A5B9761D3E9E189DD59638 /* ReferenceImportTests.swift in Sources */,
 				1AA6D4F3E2906C14EF8551DE /* RuntimeConfigurationTests.swift in Sources */,
@@ -606,6 +740,8 @@
 				788DF179289E2B563CDB5CEE /* TestGeneratedDraftFactory.swift in Sources */,
 				7EE38E606D038C7C6DA0BAEB /* TodayCardAndPostedFlowTests.swift in Sources */,
 				903474E20767DA6EF5F9A8FD /* TodayPlanEntryTests.swift in Sources */,
+				F1A2B3C4D5E60718293A4B07 /* OnboardingTests.swift in Sources */,
+				145A60718293A4B5C6D7E8FE /* YouFeatureTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

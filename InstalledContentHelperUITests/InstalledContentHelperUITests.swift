@@ -254,7 +254,29 @@ final class InstalledContentHelperUITests: XCTestCase {
     }
 
     @MainActor
+    func testCreatorTodayInlinePackageIsReachableInInstalledApp() throws {
+        let app = launchInstalledApp()
+        waitForCreatorRuntime(in: app)
+        openTodayIfNeeded(in: app)
+        attachScreenshot(named: "01-today", app: app)
+
+        XCTAssertTrue(app.staticTexts["Today"].waitForExistence(timeout: 20), diagnostics("Today screen did not load", app: app))
+
+        let hasInlinePackage = app.otherElements["today.package.content"].waitForExistence(timeout: 10)
+            || app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "Storyboard")).firstMatch.waitForExistence(timeout: 5)
+            || app.buttons["Give me other ideas"].waitForExistence(timeout: 5)
+            || app.buttons["Plan today’s content"].waitForExistence(timeout: 3)
+
+        XCTAssertTrue(
+            hasInlinePackage,
+            diagnostics("Today did not show inline package, empty state, or fallback entry", app: app)
+        )
+        attachScreenshot(named: "02-today-inline-package", app: app)
+    }
+
+    @MainActor
     func testCreatorTodayAndShootFolioAreReachableInInstalledApp() throws {
+        throw XCTSkip("Retired Folio-first Today path (ticket 09 slice 6); use testCreatorTodayInlinePackageIsReachableInInstalledApp.")
         let app = launchInstalledApp()
         waitForCreatorRuntime(in: app)
         openTodayIfNeeded(in: app)
@@ -542,17 +564,32 @@ final class InstalledContentHelperUITests: XCTestCase {
     }
 
     @MainActor
+    private func openYou(in app: XCUIApplication) {
+        let youTab = app.tabBars.buttons["You"]
+        XCTAssertTrue(youTab.waitForExistence(timeout: 10), diagnostics("You tab is not available", app: app))
+        youTab.tap()
+        XCTAssertTrue(
+            app.staticTexts["You"].waitForExistence(timeout: 10),
+            diagnostics("You screen did not open", app: app)
+        )
+    }
+
+    @MainActor
     private func openProfile(in app: XCUIApplication) {
-        let profileTab = app.tabBars.buttons["Profile"]
-        XCTAssertTrue(profileTab.waitForExistence(timeout: 10), diagnostics("Profile tab is not available", app: app))
-        profileTab.tap()
+        openYou(in: app)
     }
 
     @MainActor
     private func openArchive(in app: XCUIApplication) {
-        let archiveTab = app.tabBars.buttons["Archive"]
-        XCTAssertTrue(archiveTab.waitForExistence(timeout: 10), diagnostics("Archive tab is not available", app: app))
-        archiveTab.tap()
+        openYou(in: app)
+        let seeMore = app.buttons["you.archive.seeMore"]
+        if seeMore.waitForExistence(timeout: 5) {
+            seeMore.tap()
+        } else {
+            let archiveRow = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] %@", "See more")).firstMatch
+            XCTAssertTrue(archiveRow.waitForExistence(timeout: 5), diagnostics("Archive entry is not available under You", app: app))
+            archiveRow.tap()
+        }
         XCTAssertTrue(
             app.staticTexts["Archive"].waitForExistence(timeout: 10),
             diagnostics("Archive screen did not open", app: app)

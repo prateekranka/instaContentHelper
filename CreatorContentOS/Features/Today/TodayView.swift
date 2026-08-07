@@ -6,7 +6,7 @@ struct TodayView: View {
     @State private var sheet: TodaySheet?
 
     var body: some View {
-        EditorialScreen {
+        EditorialScreen(bottomContentPadding: 120) {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
                 ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
@@ -15,11 +15,11 @@ struct TodayView: View {
                 }
                 switch services.todayContentState {
                 case .ready:
-                    NavigationLink(value: CreatorRoute.shootFolio()) {
-                        TodayHeroCard(card: services.todayCard)
+                    if let package = services.todayExecutionPackageDraft() {
+                        TodayInlineExecutionPackage(card: package)
+                    } else {
+                        TodayLoadingCard()
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open today's Shoot Folio")
                 case .loading:
                     TodayLoadingCard()
                 case .missingPublishedCard(let date):
@@ -31,9 +31,29 @@ struct TodayView: View {
         } bottomBar: {
             if case .ready = services.todayContentState {
                 GlassCommandBar {
+                    if services.canMarkPosted {
+                        PrimaryActionButton(
+                            title: "Mark posted",
+                            systemImage: "paperplane.fill"
+                        ) {
+                            services.markPosted()
+                        }
+                        .accessibilityIdentifier("today.markPosted")
+                    } else if !services.todayCard.scenes.isEmpty {
+                        PrimaryActionButton(
+                            title: services.areAllScenesShot ? "All scenes shot" : "Mark all as shot",
+                            systemImage: services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal"
+                        ) {
+                            services.markAllScenesShot()
+                        }
+                        .disabled(services.areAllScenesShot)
+                        .accessibilityIdentifier("today.markAllScenesShot")
+                    }
+
                     SecondaryActionButton(title: "Give me other ideas") {
                         sheet = .notToday
                     }
+                    .accessibilityIdentifier("today.notEasier")
                 }
             }
         }
@@ -54,51 +74,38 @@ struct TodayView: View {
                 Text("Today")
                     .font(MCOType.display)
                     .foregroundStyle(MCOTheme.Color.ink)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("today.title")
                 Text(todayDateLine)
                     .font(MCOType.dateLine)
                     .foregroundStyle(MCOTheme.Color.brass)
+                    .accessibilityIdentifier("today.dateLine")
             }
             Spacer(minLength: MCOSpace.s)
             if case .ready = services.todayContentState {
                 readyPlanEntries
             }
         }
+        .accessibilityIdentifier("today.header")
     }
 
-    /// Edit opens Shoot Folio in light-edit mode; `⋯` still reaches Plan.
+    /// Plan remains reachable from overflow; Shoot Folio is no longer the primary path.
     private var readyPlanEntries: some View {
-        HStack(spacing: MCOSpace.xs) {
-            NavigationLink(value: CreatorRoute.shootFolio(editing: true)) {
-                Text("Edit")
-                    .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
-                    .padding(.horizontal, MCOSpace.s)
-                    .frame(height: 42)
-                    .background(MCOTheme.Color.paperRaised.opacity(0.72), in: Capsule())
-                    .overlay {
-                        Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                    }
+        Menu {
+            NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
+                Label("Plan", systemImage: "calendar")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Edit today’s scenes and script")
-            .accessibilityIdentifier("today.edit")
-
-            Menu {
-                NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
-                    Label("Plan", systemImage: "calendar")
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(MCOType.iconInline)
-                    .frame(width: 42, height: 42)
-                    .foregroundStyle(MCOTheme.Color.ink)
-                    .glassEffect(.regular.interactive(), in: .circle)
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .accessibilityLabel("Today options")
-            .accessibilityIdentifier("today.overflow")
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(MCOType.iconInline)
+                .frame(width: 42, height: 42)
+                .foregroundStyle(MCOTheme.Color.ink)
+                .glassEffect(.regular.interactive(), in: .circle)
         }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Today options")
+        .accessibilityIdentifier("today.overflow")
     }
 
     private var planDateForReadyCard: String {
@@ -185,6 +192,7 @@ private struct TodayLoadingCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityIdentifier("today.loading")
     }
 }
 
@@ -228,118 +236,6 @@ private struct MissingTodayCardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("today.emptyCard")
-    }
-}
-
-struct TodayHeroCard: View {
-    let card: DailyCard
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(hex: 0x17130F),
-                            Color(hex: 0x4A3829),
-                            Color(hex: 0x17130F)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            GeometryReader { proxy in
-                Image(systemName: "shoeprints.fill")
-                    .font(MCOType.iconHeroMark)
-                    .foregroundStyle(.white.opacity(0.06))
-                    .rotationEffect(.degrees(-18))
-                    .position(x: proxy.size.width * 0.78, y: proxy.size.height * 0.28)
-            }
-            VStack(alignment: .leading, spacing: MCOSpace.m) {
-                HStack(alignment: .center) {
-                    Text(card.effortLabel)
-                        .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.paperRaised)
-                        .padding(.horizontal, MCOSpace.s)
-                        .padding(.vertical, 7)
-                        .background(MCOTheme.Color.sageDeep.opacity(0.78), in: Capsule())
-                        .overlay {
-                            Capsule()
-                                .stroke(MCOTheme.Color.paperRaised.opacity(0.28), lineWidth: 1)
-                        }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(MCOType.bodyEmphasis)
-                        .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.7))
-                }
-
-                Text(card.title)
-                    .font(MCOType.heroTitle)
-                    .foregroundStyle(MCOTheme.Color.paperRaised)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.85)
-
-                if let hook = card.effectiveHook?.nilIfBlank {
-                    HStack(alignment: .top, spacing: MCOSpace.xs) {
-                        Text("Hook")
-                            .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.6))
-                            .padding(.top, 2)
-                        Text(hook)
-                            .font(MCOType.dateLine)
-                            .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.9))
-                            .multilineTextAlignment(.leading)
-                            .lineLimit(3)
-                    }
-                }
-
-                if !scenePlanLines.isEmpty {
-                    VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                        ForEach(Array(scenePlanLines.enumerated()), id: \.offset) { _, sceneLine in
-                            HStack(alignment: .top, spacing: MCOSpace.xs) {
-                            Text("\(sceneLine.number)")
-                                    .font(MCOType.captionEmphasis)
-                                    .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.5))
-                                    .frame(width: 16, alignment: .leading)
-                                Text(sceneLine.text)
-                                    .font(MCOType.caption)
-                                    .lineLimit(2)
-                                    .foregroundStyle(MCOTheme.Color.paperRaised.opacity(0.78))
-                            }
-                        }
-                    }
-                    .padding(.top, MCOSpace.xs)
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(MCOSpace.l)
-        }
-        .frame(minHeight: 300)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    /// Ordered scene plan shown on the Today card: every meaningful scene as an
-    /// action line (not just the first two), so the creator sees the full shape
-    /// of the shoot before opening the folio.
-    private var scenePlanLines: [(number: Int, text: String)] {
-        card.scenes.map { scene in
-            (scene.number, scene.title.nilIfBlank ?? "Scene \(scene.number)")
-        }
-    }
-}
-
-extension DailyCard {
-    /// The hook shown on the Today card. Prefers the generated `hook` (the
-    /// answer to "what are we enticing people to stop for?"). When the source
-    /// card has no hook, derive a fallback from the richest available copy so
-    /// the card stays useful without simply repeating the title.
-    var effectiveHook: String? {
-        if let hook { return hook }
-        return caption?.nilIfBlank
-            ?? script?.nilIfBlank
-            ?? title.nilIfBlank
     }
 }
 

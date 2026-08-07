@@ -80,6 +80,8 @@ final class AppServices {
     var testerAccessMessage: String?
     var lastActionMessage: String?
     private let todayDate: TodayDateProvider
+    private let acceptedGenerationStore: any AcceptedDayGenerationStoring
+    private var recoveringAcceptedGenerationDates: Set<String> = []
 
     /// Resolves the Plan package for a date from session cards or the latest draft summary.
     func dayPackage(for scheduledDate: String) -> GeneratedDailyCardDraft? {
@@ -185,7 +187,8 @@ final class AppServices {
         intelligenceHome: IntelligenceHome,
         creatorProfileSummary: CreatorProfileSummary,
         weekCards: [DailyCard],
-        todayContentState: TodayContentState = .ready
+        todayContentState: TodayContentState = .ready,
+        acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared
     ) {
         self.context = repositories.context
         self.isLiveSupabaseRuntime = isLiveSupabaseRuntime
@@ -194,6 +197,7 @@ final class AppServices {
         self.todayCache = todayCache
         self.notifications = notifications
         self.todayDate = todayDate
+        self.acceptedGenerationStore = acceptedGenerationStore
         self.todayCard = todayCard
         shotSceneIDs = todayCard.completionState == .shot || todayCard.completionState == .posted
             ? Set(todayCard.scenes.map(\.id))
@@ -239,7 +243,8 @@ final class AppServices {
         memberRole: String = "owner",
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
         notifications: any TodayNotificationScheduling = NoopTodayNotificationScheduler(),
-        todayDate: @escaping TodayDateProvider = { SupabaseDateFormatting.todayDateString() }
+        todayDate: @escaping TodayDateProvider = { SupabaseDateFormatting.todayDateString() },
+        acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared
     ) -> AppServices {
         let today = todayDate()
         let services = AppServices(
@@ -255,7 +260,8 @@ final class AppServices {
             weeklyIdeas: WeeklyIdea.raceWeekBank,
             intelligenceHome: .raceWeekLibrary,
             creatorProfileSummary: .creatorFixture,
-            weekCards: DailyCard.weekFixtures
+            weekCards: DailyCard.weekFixtures,
+            acceptedGenerationStore: acceptedGenerationStore
         )
         #if DEBUG
         // Seed a reviewable draft so Plan can show Approve in fixture UI proofs.
@@ -819,6 +825,10 @@ final class AppServices {
             throw RepositoryError.edgeFunction(message)
         }
 
+        if let acceptedRun = acceptedGenerationStore.load(scheduledDate: scheduledDate) {
+            return try await resumeAcceptedDayGeneration(acceptedRun)
+        }
+
         generatingDayBriefDates.insert(scheduledDate)
         dayBriefGenerationErrors[scheduledDate] = nil
         defer { generatingDayBriefDates.remove(scheduledDate) }
@@ -831,6 +841,78 @@ final class AppServices {
                 dayBrief: brief,
                 context: context
             )
+            return try applyDayGenerationResult(result, scheduledDate: scheduledDate)
+        } catch {
+            let message = DayGenerationErrorDisplay.message(for: error)
+            dayBriefGenerationErrors[scheduledDate] = message
+            logGeneration(
+                "generate_day failed scheduled_date=\(scheduledDate) user_message=\(message) error_type=\(String(describing: type(of: error))) localized=\(error.localizedDescription) dump=\(String(describing: error))"
+            )
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
+    /// Rehydrates persisted accepted runs after relaunch and resumes status polling — no new POST.
+    func restoreAcceptedDayGenerationsIfNeeded() {
+        for run in acceptedGenerationStore.loadAll() {
+            guard !recoveringAcceptedGenerationDates.contains(run.scheduledDate) else { continue }
+            recoveringAcceptedGenerationDates.insert(run.scheduledDate)
+            generatingDayBriefDates.insert(run.scheduledDate)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer {
+                    self.recoveringAcceptedGenerationDates.remove(run.scheduledDate)
+                    self.generatingDayBriefDates.remove(run.scheduledDate)
+                }
+                _ = try? await self.resumeAcceptedDayGeneration(run, fromRecovery: true)
+            }
+        }
+    }
+
+    private func resumeAcceptedDayGeneration(
+        _ run: AcceptedDayGenerationRun,
+        fromRecovery: Bool = false
+    ) async throws -> GeneratedDailyCardDraft {
+        if !fromRecovery {
+            guard !generatingDayBriefDates.contains(run.scheduledDate) else {
+                let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
+                dayBriefGenerationErrors[run.scheduledDate] = message
+                throw RepositoryError.edgeFunction(message)
+            }
+        }
+
+        let manageGeneratingFlag = !fromRecovery && !generatingDayBriefDates.contains(run.scheduledDate)
+        if manageGeneratingFlag {
+            generatingDayBriefDates.insert(run.scheduledDate)
+        }
+        dayBriefGenerationErrors[run.scheduledDate] = nil
+        defer {
+            if manageGeneratingFlag {
+                generatingDayBriefDates.remove(run.scheduledDate)
+            }
+        }
+
+        do {
+            logGeneration("generate_day resume scheduled_date=\(run.scheduledDate) generation_id=\(run.generationID)")
+            let result = try await repositories.dailyGeneration.resumeAcceptedDayGeneration(
+                generationID: run.generationID,
+                creatorID: run.creatorID,
+                context: context
+            )
+            acceptedGenerationStore.remove(scheduledDate: run.scheduledDate)
+            return try applyDayGenerationResult(result, scheduledDate: run.scheduledDate)
+        } catch {
+            let message = DayGenerationErrorDisplay.message(for: error)
+            dayBriefGenerationErrors[run.scheduledDate] = message
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
+    @discardableResult
+    private func applyDayGenerationResult(
+        _ result: DailyGenerationResult,
+        scheduledDate: String
+    ) throws -> GeneratedDailyCardDraft {
             guard result.targetScheduledDate == scheduledDate,
                   result.dailyCard.scheduledDate == scheduledDate
             else {
@@ -844,22 +926,16 @@ final class AppServices {
                 && weeklyPlan.days.contains(where: { $0.scheduledDate == scheduledDate })
             if integratesWithCurrentWeeklyReview {
                 applyRegeneratedDay(result.dailyCard)
-                await reconcileGeneratedDayCardFromCurrentWeeklyContent(
-                    scheduledDate: scheduledDate,
-                    suppressRepositoryErrorOnFailure: true
-                )
+                Task { @MainActor in
+                    await reconcileGeneratedDayCardFromCurrentWeeklyContent(
+                        scheduledDate: scheduledDate,
+                        suppressRepositoryErrorOnFailure: true
+                    )
+                }
             }
             lastRepositoryError = nil
             logGeneration("generate_day completed scheduled_date=\(scheduledDate) daily_card_id=\(result.dailyCard.id)")
             return result.dailyCard
-        } catch {
-            let message = DayGenerationErrorDisplay.message(for: error)
-            dayBriefGenerationErrors[scheduledDate] = message
-            logGeneration(
-                "generate_day failed scheduled_date=\(scheduledDate) user_message=\(message) error_type=\(String(describing: type(of: error))) localized=\(error.localizedDescription) dump=\(String(describing: error))"
-            )
-            throw RepositoryError.edgeFunction(message)
-        }
     }
 
     func generateStoryboardThumbnails(
@@ -1587,6 +1663,10 @@ final class AppServices {
         }
     }
 
+    func verifyInstagramProfileImmediately(_ rawHandle: String) async -> OnboardingProfileVerificationResult {
+        await AppServicesOnboardingProfileVerifier(services: self).verify(handle: rawHandle)
+    }
+
     func confirmReferenceImport(
         rawText: String,
         inputType: ReferenceImportInputType,
@@ -1763,6 +1843,7 @@ final class AppServices {
 #endif
 
         normalizeManagerWeekStartIfStale()
+        restoreAcceptedDayGenerationsIfNeeded()
         await checkRuntimeHealthImmediately()
     }
 

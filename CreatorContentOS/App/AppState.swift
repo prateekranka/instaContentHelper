@@ -10,11 +10,18 @@ final class AppState {
     var authenticationError: String?
     /// Consumed by `CreatorShellView` to switch tabs (e.g. Available on Today → Today).
     var pendingCreatorTab: CreatorTab?
-    /// Consumed by `PlanHubView` to preselect a calendar date (Edit / ⋯ / empty Today CTA).
+    /// Consumed by `PlanHubView` to auto-start one day-only generation after onboarding.
+    var pendingFirstDayHandoff: OnboardingFirstDayHandoff?
+    /// Preselects a Plan calendar date (`yyyy-MM-dd`) before opening Plan.
     var planSelectedDate: String?
+    /// Consumed by `YouView` to push a You destination (Plan links or deep links).
+    var pendingYouNavigation: YouNavigationIntent?
+    /// Active return context while a You destination opened from Plan is visible.
+    var youNavigationOrigin: YouNavigationOrigin?
 
     private let authenticationService: any AuthenticationServicing
     private let liveRuntimeBuilder: @MainActor (PairedDeviceSession) -> AppRuntime
+    private let planSelectedDateStore: any PlanSelectedDateStoring
 
     init(
         activeMode: AppMode = .creator,
@@ -23,8 +30,10 @@ final class AppState {
         authenticationService: any AuthenticationServicing = SupabaseAuthenticationService(),
         liveRuntimeBuilder: @escaping @MainActor (PairedDeviceSession) -> AppRuntime = {
             AppRuntime.live(session: $0)
-        }
+        },
+        planSelectedDateStore: any PlanSelectedDateStoring = UserDefaultsPlanSelectedDateStore.shared
     ) {
+        self.planSelectedDateStore = planSelectedDateStore
         let initialRuntime = runtime ?? AppRuntime.makeAuthenticationShellRuntime()
         self.activeMode = activeMode
         self.runtime = initialRuntime
@@ -51,7 +60,28 @@ final class AppState {
 
     /// Preselects a Plan calendar date (`yyyy-MM-dd`) before opening Plan.
     func preparePlan(selecting date: String?) {
-        planSelectedDate = date?.nilIfBlank
+        let normalized = date?.nilIfBlank
+        planSelectedDate = normalized
+        planSelectedDateStore.save(normalized)
+    }
+
+    /// Restores the last persisted Plan date when no transient selection is pending.
+    func persistedPlanSelectedDate() -> String? {
+        planSelectedDate?.nilIfBlank ?? planSelectedDateStore.load()
+    }
+
+    /// Opens Plan on the given local date and queues one day-only generation.
+    func handoffFirstDayFromOnboarding(_ handoff: OnboardingFirstDayHandoff) {
+        pendingFirstDayHandoff = handoff
+        preparePlan(selecting: handoff.scheduledDate)
+        pendingCreatorTab = .plan
+    }
+
+    /// Returns and clears a pending first-day generation handoff.
+    func consumeFirstDayHandoff() -> OnboardingFirstDayHandoff? {
+        let handoff = pendingFirstDayHandoff
+        pendingFirstDayHandoff = nil
+        return handoff
     }
 
     /// Returns and clears a pending Plan date selection.
@@ -59,6 +89,28 @@ final class AppState {
         let date = planSelectedDate
         planSelectedDate = nil
         return date
+    }
+
+    func requestYouDestination(_ destination: YouRoute, from origin: YouNavigationOrigin) {
+        pendingYouNavigation = YouNavigationIntent(destination: destination, origin: origin)
+        youNavigationOrigin = origin
+        pendingCreatorTab = .you
+    }
+
+    func consumeYouNavigation() -> YouNavigationIntent? {
+        let intent = pendingYouNavigation
+        pendingYouNavigation = nil
+        return intent
+    }
+
+    func recordYouNavigationOrigin(_ origin: YouNavigationOrigin) {
+        youNavigationOrigin = origin
+    }
+
+    func returnToPlan(fromYouDestination selectedDate: String?) {
+        youNavigationOrigin = nil
+        preparePlan(selecting: selectedDate)
+        pendingCreatorTab = .plan
     }
 
     func restoreAuthentication() async {

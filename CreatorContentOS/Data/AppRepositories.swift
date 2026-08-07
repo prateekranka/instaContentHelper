@@ -293,6 +293,13 @@ protocol DayGenerationRepository: Sendable {
         dayGuidance: String?,
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult
+
+    /// Polls an already-accepted generation run to completion without issuing a new POST.
+    func resumeAcceptedDayGeneration(
+        generationID: UUID,
+        creatorID: UUID,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult
 }
 
 extension DayGenerationRepository {
@@ -314,6 +321,14 @@ extension DayGenerationRepository {
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult {
         throw RepositoryError.notConfigured("regenerate_day_not_configured")
+    }
+
+    func resumeAcceptedDayGeneration(
+        generationID: UUID,
+        creatorID: UUID,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        throw RepositoryError.notConfigured("resume_day_generation_not_configured")
     }
 }
 

@@ -126,6 +126,7 @@
     transition: color 140ms ease-out, transform 140ms ease-out;
   }
   .tab[data-on] { color: #111; }
+  .tab[data-center] { font-size: 12px; font-weight: 700; }
   .tab:active { transform: scale(0.97); }
 
   /* ——— Today / Pocket Sheet ——— */
@@ -263,6 +264,138 @@
     cursor: pointer;
     transition: transform 140ms ease-out;
   }
+  .ps-audio-section {
+    padding: 12px 0 4px;
+    border-top: 1px solid #e5e5e5;
+  }
+  .ps-audio-section .ps-pkg-label { margin-bottom: 10px; }
+  .ps-audio-track {
+    padding: 10px 0;
+    border-top: 1px solid #ebebeb;
+  }
+  .ps-audio-track:first-of-type { border-top: 0; padding-top: 0; }
+  .ps-audio-kind {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .ps-audio-kind-l {
+    font-size: 12px;
+    font-weight: 650;
+    color: #525252;
+  }
+  .ps-audio-rank {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #737373;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #e5e5e5;
+  }
+  .ps-audio-rank[data-hot] {
+    background: #111;
+    border-color: #111;
+    color: #fff;
+  }
+  .ps-audio-row {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    gap: 10px;
+    align-items: center;
+  }
+  .ps-audio-play {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    border: 1px solid #d4d4d4;
+    background: #fff;
+    font-size: 14px;
+    color: #111;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: transform 140ms ease-out, background 140ms ease-out;
+  }
+  .ps-audio-play[data-on] {
+    background: #111;
+    border-color: #111;
+    color: #fff;
+  }
+  .ps-audio-name {
+    font-size: 13px;
+    font-weight: 650;
+    color: #111;
+    line-height: 1.25;
+  }
+  .ps-audio-feel {
+    font-size: 11px;
+    color: #737373;
+    margin-top: 2px;
+    line-height: 1.3;
+  }
+  .ps-audio-scrub {
+    width: 100%;
+    margin-top: 8px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #d4d4d4;
+    border-radius: 99px;
+    outline: none;
+    cursor: pointer;
+  }
+  .ps-audio-scrub::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 99px;
+    background: #111;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #d4d4d4;
+  }
+  .ps-audio-scrub::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 99px;
+    background: #111;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #d4d4d4;
+  }
+  .ps-audio-swap {
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid #d4d4d4;
+    background: #fff;
+    font-size: 11px;
+    font-weight: 650;
+    color: #404040;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 140ms ease-out;
+  }
+  .ps-audio-time {
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-size: 10px;
+    color: #a3a3a3;
+    margin-top: 4px;
+  }
+  .pl-day-pkg {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #f0f0f0;
+  }
+  .pl-day-pkg .ps-pkg {
+    margin: 0 -4px;
+    padding: 12px 12px 4px;
+    border-radius: 12px;
+    border: 1px solid #ebebeb;
+  }
   .ps-dock {
     padding: 12px 16px 10px;
     background: #fff;
@@ -291,6 +424,66 @@
     font-weight: 650;
     cursor: pointer;
     transition: transform 140ms ease-out;
+  }
+
+  /* Empty Today */
+  .ps-head-empty {
+    padding-top: 14px; /* kicker ~10px lower than default head */
+  }
+  .ps-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 32px 20px 24px;
+    border-top: 1px solid #e5e5e5;
+    min-height: 280px;
+  }
+  .ps-empty-title {
+    font-size: 20px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    margin: 0 0 8px;
+    color: #111;
+  }
+  .ps-empty-body {
+    font-size: 14px;
+    line-height: 1.45;
+    color: #737373;
+    margin: 0;
+    max-width: 34ch;
+  }
+  .ps-dock-empty {
+    display: flex;
+    justify-content: center;
+    border-top: 0;
+    background: transparent;
+    padding: 8px 28px 18px;
+  }
+  .ps-dock-empty .ps-primary {
+    width: auto;
+    min-width: 220px;
+    max-width: 100%;
+    padding: 0 28px;
+  }
+
+  .harness-toggle {
+    pointer-events: auto;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.72);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .harness-toggle[data-on] {
+    background: rgba(255,255,255,0.14);
+    color: #fff;
+    border-color: rgba(255,255,255,0.32);
   }
 
   /* ——— Archive ——— */
@@ -470,7 +663,737 @@
     transition: transform 140ms ease-out;
   }
 
-  /* ——— Profile ——— */
+  /* ——— Plan hub ——— */
+  .pl-head { padding: 4px 20px 8px; }
+  .pl-title {
+    font-size: 28px;
+    font-weight: 650;
+    letter-spacing: -0.03em;
+    margin: 0;
+  }
+  .pl-cal {
+    margin: 0 16px 12px;
+    padding: 12px 12px 10px;
+    border: 1px solid #e5e5e5;
+    border-radius: 16px;
+    background: #fff;
+  }
+  .pl-cal-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding: 0 4px;
+  }
+  .pl-cal-month {
+    font-size: 14px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+  .pl-cal-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid #e5e5e5;
+    border-radius: 10px;
+    background: #fafafa;
+    font-size: 16px;
+    color: #404040;
+    cursor: pointer;
+    transition: transform 140ms ease-out;
+  }
+  .pl-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    text-align: center;
+  }
+  .pl-cal-dow {
+    font-size: 10px;
+    font-weight: 700;
+    color: #a3a3a3;
+    padding: 4px 0 6px;
+    letter-spacing: 0.02em;
+  }
+  .pl-cal-day {
+    aspect-ratio: 1;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #404040;
+    cursor: pointer;
+    position: relative;
+    transition: background 140ms ease-out, color 140ms ease-out;
+  }
+  .pl-cal-day[data-muted] { color: #d4d4d4; pointer-events: none; }
+  .pl-cal-day[data-sel] { background: #111; color: #fff; }
+  .pl-cal-day:not([data-sel]):active { background: #f5f5f5; }
+  .pl-cal-day[data-today]:not([data-sel]) { outline: 1px solid #d4d4d4; outline-offset: -1px; }
+  .pl-cal-dot {
+    position: absolute;
+    left: 50%;
+    bottom: 3px;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 99px;
+    background: #a3a3a3;
+  }
+  .pl-cal-day[data-sel] .pl-cal-dot { background: #fff; }
+  .pl-cal-day[data-status="ready"] .pl-cal-dot,
+  .pl-cal-day[data-status="approved"] .pl-cal-dot { background: #111; }
+  .pl-cal-day[data-sel][data-status="ready"] .pl-cal-dot,
+  .pl-cal-day[data-sel][data-status="approved"] .pl-cal-dot { background: #fff; }
+  .pl-cal-day[data-status="draft"] .pl-cal-dot { background: #d4d4d4; }
+
+  .pl-strip {
+    margin: 0 16px 12px;
+    padding: 14px 16px;
+    border: 1px solid #e5e5e5;
+    border-radius: 16px;
+    background: #fff;
+  }
+  .pl-strip-k {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #a3a3a3;
+    margin-bottom: 4px;
+  }
+  .pl-strip-t {
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin-bottom: 4px;
+    line-height: 1.25;
+  }
+  .pl-strip-s {
+    font-size: 12px;
+    color: #737373;
+    margin-bottom: 12px;
+    line-height: 1.35;
+  }
+  .pl-strip-row {
+    display: flex;
+    gap: 8px;
+  }
+  .pl-btn {
+    flex: 1;
+    height: 44px;
+    border-radius: 12px;
+    border: 1px solid #d4d4d4;
+    background: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 650;
+    color: #111;
+    cursor: pointer;
+    transition: transform 140ms ease-out;
+  }
+  .pl-btn[data-primary] {
+    background: #111;
+    border-color: #111;
+    color: #fff;
+  }
+  .pl-btn:disabled { opacity: 0.4; cursor: default; }
+
+  .pl-acc {
+    margin: 0 16px 10px;
+    border: 1px solid #e5e5e5;
+    border-radius: 16px;
+    background: #fff;
+    overflow: hidden;
+  }
+  .pl-acc-h {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 140ms ease-out;
+  }
+  .pl-acc-h:active { background: #f5f5f5; }
+  .pl-acc-title { font-size: 14px; font-weight: 650; }
+  .pl-acc-meta { font-size: 12px; color: #737373; margin-top: 2px; }
+  .pl-acc-chev {
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: #a3a3a3;
+    transition: transform 180ms ease-out;
+  }
+  .pl-acc[data-open] .pl-acc-chev { transform: rotate(180deg); }
+  .pl-acc-body {
+    display: none;
+    padding: 0 16px 14px;
+    border-top: 1px solid #f0f0f0;
+  }
+  .pl-acc[data-open] .pl-acc-body { display: block; }
+
+  .pl-field { margin-top: 12px; }
+  .pl-field:first-child { margin-top: 14px; }
+  .pl-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #a3a3a3;
+    margin-bottom: 6px;
+  }
+  .pl-req {
+    font-size: 10px;
+    font-weight: 650;
+    color: #737373;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .pl-input, .pl-textarea {
+    width: 100%;
+    border: 1px solid #e5e5e5;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.4;
+    color: #111;
+    background: #fafafa;
+    resize: vertical;
+  }
+  .pl-textarea { min-height: 72px; }
+  .pl-hint {
+    font-size: 11px;
+    color: #a3a3a3;
+    margin-top: 6px;
+    line-height: 1.35;
+  }
+  .pl-save {
+    margin-top: 12px;
+    width: 100%;
+    height: 40px;
+    border: 0;
+    border-radius: 12px;
+    background: #f5f5f5;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    color: #111;
+    cursor: pointer;
+  }
+
+  .pl-ref-list { margin-top: 12px; }
+  .pl-ref-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-top: 1px solid #f0f0f0;
+  }
+  .pl-ref-row:first-child { border-top: 0; padding-top: 0; }
+  .pl-ref-ico {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: #f5f5f5;
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+  }
+  .pl-ref-t { font-size: 13px; font-weight: 600; line-height: 1.3; }
+  .pl-ref-s { font-size: 11px; color: #737373; margin-top: 2px; }
+  .pl-ref-add {
+    margin-top: 10px;
+    width: 100%;
+    height: 40px;
+    border: 1px dashed #d4d4d4;
+    border-radius: 12px;
+    background: #fafafa;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    color: #404040;
+    cursor: pointer;
+  }
+  .pl-gate {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #f5f5f5;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #525252;
+  }
+  .pl-gate a {
+    color: #111;
+    font-weight: 650;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .pl-gate[data-soft] {
+    background: #fafafa;
+    border: 1px solid #e5e5e5;
+  }
+
+  .pl-info-btn {
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    border: 1px solid #e5e5e5;
+    border-radius: 50%;
+    background: #fafafa;
+    font-size: 11px;
+    font-weight: 700;
+    color: #737373;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+  }
+  .pl-info-btn:active { background: #f0f0f0; }
+  .pl-example {
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: #f5f5f5;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #525252;
+  }
+  .pl-example-k {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #a3a3a3;
+    margin-bottom: 4px;
+  }
+
+  .pl-voice-entry-k {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #a3a3a3;
+    margin-top: 14px;
+    margin-bottom: 8px;
+  }
+  .pl-voice-presets { display: flex; flex-direction: column; gap: 8px; }
+  .pl-voice-preset {
+    width: 100%;
+    border: 1px solid #e5e5e5;
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: #fafafa;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+  }
+  .pl-voice-preset:active { background: #f5f5f5; }
+  .pl-voice-preset-t { font-size: 14px; font-weight: 650; color: #111; }
+  .pl-voice-preset-s { font-size: 12px; color: #737373; margin-top: 4px; line-height: 1.35; }
+  .pl-voice-qa-btn {
+    margin-top: 10px;
+    width: 100%;
+    height: 40px;
+    border: 1px dashed #d4d4d4;
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    color: #404040;
+    cursor: pointer;
+  }
+
+  .pl-ref-section-k {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #a3a3a3;
+    margin-top: 12px;
+    margin-bottom: 6px;
+  }
+  .pl-ref-section-k:first-child { margin-top: 0; }
+
+  .pl-nyc-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-top: 1px solid #f0f0f0;
+  }
+  .pl-nyc-row:first-child { border-top: 0; padding-top: 0; }
+  .pl-nyc-body { flex: 1; min-width: 0; }
+  .pl-nyc-t { font-size: 13px; font-weight: 600; line-height: 1.3; }
+  .pl-nyc-s { font-size: 11px; color: #737373; margin-top: 2px; line-height: 1.35; }
+  .pl-nyc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .pl-nyc-btn {
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    background: #fafafa;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    color: #404040;
+    cursor: pointer;
+  }
+  .pl-nyc-btn[data-primary] {
+    background: #111;
+    border-color: #111;
+    color: #fff;
+  }
+  .pl-nyc-btn:active { opacity: 0.85; }
+
+  .pl-recent-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    margin: 10px 0 4px;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pl-recent-chip {
+    flex: 0 0 auto;
+    max-width: 140px;
+    padding: 8px 10px;
+    border: 1px solid #e5e5e5;
+    border-radius: 10px;
+    background: #fafafa;
+    font-size: 11px;
+    font-weight: 600;
+    color: #404040;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pl-input-summary {
+    margin: 4px 16px 16px;
+    padding: 14px 16px;
+    border: 1px solid #e5e5e5;
+    border-radius: 16px;
+    background: #fff;
+  }
+  .pl-input-summary-k {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #a3a3a3;
+    margin-bottom: 6px;
+  }
+  .pl-input-summary-copy {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #525252;
+  }
+  .pl-inline-link {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-weight: 650;
+    color: #111;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .pl-inline-link:active { color: #737373; }
+  .pl-input-summary-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin-top: 10px;
+    font-size: 11px;
+    color: #737373;
+  }
+  .pl-input-summary-meta span::before {
+    content: "·";
+    margin-right: 6px;
+    color: #a3a3a3;
+  }
+
+  .pf-account-open {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 140ms ease-out;
+  }
+  .pf-account-open:active { background: #f5f5f5; }
+  .pf-account-chev { color: #a3a3a3; font-size: 18px; line-height: 1; }
+
+  .pl-account {
+    margin: 4px 16px 16px;
+    border: 1px solid #e5e5e5;
+    border-radius: 16px;
+    background: #fff;
+    overflow: hidden;
+  }
+  .pl-account-h {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    color: #737373;
+    cursor: pointer;
+    transition: background 140ms ease-out;
+  }
+  .pl-account-h:active { background: #f5f5f5; }
+  .pl-account-body {
+    display: none;
+    padding: 0 16px 12px;
+    border-top: 1px solid #f0f0f0;
+    font-size: 13px;
+    color: #525252;
+  }
+  .pl-account[data-open] .pl-account-body { display: block; }
+  .pl-account-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-top: 1px solid #f0f0f0;
+  }
+  .pl-account-row:first-child { border-top: 0; }
+
+  .pl-date {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 16px 12px;
+    padding: 14px 16px;
+    border: 1px solid #e5e5e5;
+    border-radius: 16px;
+    background: #fff;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 140ms ease-out;
+  }
+  .pl-date:active { background: #f5f5f5; }
+  .pl-date-w {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #a3a3a3;
+    margin-bottom: 2px;
+  }
+  .pl-date-d {
+    display: block;
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    color: #111;
+  }
+  .pl-date-chev {
+    margin-left: auto;
+    font-size: 18px;
+    color: #a3a3a3;
+    line-height: 1;
+  }
+  .pl-day-body {
+    margin: 0 16px 12px;
+    padding: 14px 16px;
+    border: 1px solid #e5e5e5;
+    border-radius: 16px;
+    background: #fff;
+  }
+  .pl-day-status {
+    font-size: 12px;
+    color: #737373;
+    margin-bottom: 8px;
+    line-height: 1.35;
+  }
+  .pl-day-title {
+    font-size: 16px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin-bottom: 10px;
+    line-height: 1.25;
+  }
+  .pl-day-scenes {
+    border-top: 1px solid #f0f0f0;
+    padding-top: 8px;
+  }
+  .pl-day-scene {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: #404040;
+  }
+  .pl-day-scene span:last-child {
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    color: #a3a3a3;
+  }
+  .pl-day-empty {
+    font-size: 14px;
+    line-height: 1.45;
+    color: #525252;
+    margin: 0;
+  }
+  .pl-day-empty-s {
+    font-size: 12px;
+    color: #737373;
+    margin: 8px 0 0;
+    line-height: 1.4;
+  }
+  .pl-cta-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .pl-gen-block {
+    margin: 4px 16px 14px;
+  }
+  .pl-gen-k {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #a3a3a3;
+    margin-bottom: 8px;
+    padding: 0 4px;
+  }
+  .pl-gen-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    margin-bottom: 6px;
+    border: 1px solid #e5e5e5;
+    border-radius: 14px;
+    background: #fff;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 140ms ease-out;
+  }
+  .pl-gen-row[data-sel] {
+    border-color: #111;
+    background: #fafafa;
+  }
+  .pl-gen-row:active { background: #f5f5f5; }
+  .pl-gen-row-t { font-size: 14px; font-weight: 650; }
+  .pl-gen-row-s { font-size: 11px; color: #737373; margin-top: 2px; }
+  .pl-gen-row-chip {
+    flex: 0 0 auto;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #737373;
+  }
+  .pl-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 20px 8px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 650;
+    color: #737373;
+    cursor: pointer;
+  }
+  .pl-back:active { color: #111; }
+  .pl-cal-sheet {
+    margin-top: 4px;
+  }
+  .pl-cal-sheet .pl-cal {
+    margin: 0;
+    border: 0;
+    padding: 0;
+    background: transparent;
+  }
+
+  /* Light sheets (Plan + Today) */
+  .lsheet-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .lsheet-secondary {
+    width: 100%;
+    height: 44px;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 650;
+    color: #737373;
+    cursor: pointer;
+  }
+  .lsheet-progress {
+    margin: 12px 0 4px;
+    height: 4px;
+    border-radius: 99px;
+    background: #e5e5e5;
+    overflow: hidden;
+  }
+  .lsheet-progress > span {
+    display: block;
+    height: 100%;
+    width: 62%;
+    background: #111;
+    border-radius: 99px;
+    animation: ls-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes ls-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+  .lsheet-idea {
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    border: 1px solid #e5e5e5;
+    border-radius: 14px;
+    background: #fff;
+    font: inherit;
+    cursor: pointer;
+    transition: background 140ms ease-out;
+  }
+  .lsheet-idea:active { background: #f5f5f5; }
+  .lsheet-idea-t { font-size: 14px; font-weight: 650; margin-bottom: 4px; }
+  .lsheet-idea-s { font-size: 12px; color: #737373; line-height: 1.35; }
+
+  /* ——— You tab (account + archive entry) ——— */
   .pf-head { padding: 4px 20px 16px; }
   .pf-title {
     font-size: 28px;
@@ -511,6 +1434,9 @@
   }
   .pf-chip {
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     height: 26px;
     padding: 0 10px;
     border-radius: 999px;
@@ -518,12 +1444,72 @@
     background: #f5f5f5;
     font-size: 11px;
     font-weight: 650;
+    line-height: 1;
     color: #404040;
   }
   .pf-chip[data-live] {
     background: #111;
     border-color: #111;
     color: #fff;
+  }
+  .pf-status-led {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 28px;
+    padding: 0 12px 0 10px;
+    border-radius: 999px;
+    border: 1px solid #e5e5e5;
+    background: #fafafa;
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1;
+    color: #404040;
+  }
+  .pf-status-led::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: #facc15;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 0 8px rgba(250, 204, 21, 0.45);
+  }
+  .pf-status-led[data-status="ok"]::before {
+    background: #22c55e;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 0 8px rgba(34, 197, 94, 0.4);
+  }
+  .pf-status-led[data-status="ok"] {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+    color: #166534;
+  }
+  .pf-status-led[data-status="error"]::before {
+    background: #ef4444;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 0 8px rgba(239, 68, 68, 0.45);
+  }
+  .pf-status-led[data-status="error"] {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #991b1b;
+  }
+  .pf-status-led[data-status="unchecked"]::before {
+    background: #facc15;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 0 8px rgba(250, 204, 21, 0.45);
+  }
+  .pf-status-led[data-status="unchecked"] {
+    border-color: #fde68a;
+    background: #fffbeb;
+    color: #92400e;
+  }
+  .pf-status-led[data-status="checking"]::before {
+    background: #facc15;
+    animation: pf-led-pulse 1s ease-in-out infinite;
+  }
+  @keyframes pf-led-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
   }
   .pf-link {
     width: 100%;
@@ -544,6 +1530,98 @@
   }
   .pf-link:active { background: #f5f5f5; }
   .pf-link span { color: #a3a3a3; font-weight: 500; }
+  .pf-archive-list { border-top: 1px solid #f0f0f0; }
+  .pf-archive-row {
+    display: grid;
+    grid-template-columns: 44px 1fr 40px;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 16px;
+    border: 0;
+    border-bottom: 1px solid #f0f0f0;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    transition: background 140ms ease-out;
+  }
+  .pf-archive-row:last-of-type { border-bottom: 0; }
+  .pf-archive-row:active { background: #f5f5f5; }
+  .pf-archive-day {
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .pf-archive-date {
+    font-size: 10px;
+    color: #737373;
+    margin-top: 2px;
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  .pf-archive-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+  }
+  .pf-archive-out {
+    font-size: 11px;
+    color: #737373;
+    margin-top: 2px;
+  }
+  .pf-archive-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #e5e5e5;
+  }
+  .pf-archive-thumb svg { width: 100%; height: 100%; display: block; }
+  .pf-archive-empty {
+    padding: 14px 16px;
+    font-size: 13px;
+    color: #737373;
+    border-top: 1px solid #f0f0f0;
+    margin: 0;
+  }
+  .pf-see-more {
+    width: 100%;
+    padding: 13px 16px;
+    border: 0;
+    border-top: 1px solid #f0f0f0;
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 650;
+    color: #525252;
+    cursor: pointer;
+    text-align: center;
+    transition: background 140ms ease-out;
+  }
+  .pf-see-more:active { background: #f5f5f5; }
+  .you-subview-sub {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #737373;
+  }
+  .you-editor-body {
+    padding: 14px 16px 16px;
+    border-top: 1px solid #f0f0f0;
+  }
+  .you-editor-copy {
+    margin: 0 0 12px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #525252;
+  }
+  .you-editor-note {
+    margin: 12px 0 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #a3a3a3;
+  }
   .pf-actions {
     padding: 4px 20px 20px;
   }
@@ -570,22 +1648,415 @@
     cursor: pointer;
     transition: transform 140ms ease-out;
   }
-  .pf-foot {
-    padding: 0 20px 8px;
+  .pf-refresh:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .pf-email {
+    font-size: 18px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+  }
+  .pf-apple-sub {
+    font-size: 12px;
+    color: #737373;
+    margin-top: 4px;
+    font-weight: 500;
+  }
+
+  .ps-pkg-sub {
+    font-size: 11px;
+    color: #737373;
+    margin-top: 2px;
+    margin-bottom: 6px;
+  }
+  .ps-vo-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .ps-vo-line {
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: 10px;
+    align-items: baseline;
+  }
+  .ps-vo-time {
+    font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: #737373;
+    letter-spacing: -0.02em;
+  }
+  .ps-vo-text {
+    font-size: 14px;
+    line-height: 1.4;
+    color: #111;
+  }
+
+  .pl-refresh-hint {
+    margin-top: 10px;
     font-size: 12px;
     color: #a3a3a3;
+    line-height: 1.4;
+  }
+
+  .pl-daygen {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #f0f0f0;
+  }
+  .pl-day-body > .pl-daygen:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .pl-daygen-k {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #a3a3a3;
+    margin-bottom: 10px;
+  }
+  .pl-daygen-idea {
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    border: 1px solid #e5e5e5;
+    border-radius: 14px;
+    background: #fff;
+    font: inherit;
+    cursor: pointer;
+    transition: background 140ms ease-out, border-color 140ms ease-out;
+  }
+  .pl-daygen-idea[data-sel] {
+    border-color: #111;
+    background: #fafafa;
+  }
+  .pl-daygen-idea:active { background: #f5f5f5; }
+  .pl-daygen-idea:disabled,
+  .pl-daygen-other:disabled,
+  .pl-daygen-submit:disabled { opacity: 0.45; cursor: default; }
+  .pl-daygen-idea-t { font-size: 14px; font-weight: 650; margin-bottom: 4px; }
+  .pl-daygen-idea-s { font-size: 12px; color: #737373; line-height: 1.35; }
+  .pl-daygen-other {
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    margin-bottom: 0;
+    border: 1px dashed #d4d4d4;
+    border-radius: 14px;
+    background: #fafafa;
+    font: inherit;
+    cursor: pointer;
+    transition: background 140ms ease-out, border-color 140ms ease-out;
+  }
+  .pl-daygen-other[data-sel] {
+    border-color: #111;
+    background: #fff;
+  }
+  .pl-daygen-other:active { background: #f5f5f5; }
+  .pl-daygen-other .pl-daygen-idea-t { margin-bottom: 0; }
+  .pl-daygen-submit { margin-top: 10px; }
+  .pl-daygen-busy {
+    margin: 10px 0 0;
+    font-size: 12px;
+    color: #737373;
+    line-height: 1.4;
+  }
+  .pl-regen-note {
+    font-size: 12px;
+    color: #525252;
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+
+  .sheet-panel-sm {
+    max-height: 72%;
+  }
+
+  /* ——— Onboarding (full-screen, pre-shell) ——— */
+  .ob-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ob-head {
+    padding: 8px 20px 12px;
+  }
+  .ob-step {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #a3a3a3;
+    margin-bottom: 8px;
+  }
+  .ob-title {
+    font-size: 24px;
+    font-weight: 650;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+    margin: 0 0 8px;
+  }
+  .ob-body {
+    font-size: 14px;
+    color: #525252;
+    line-height: 1.45;
+    margin: 0;
+  }
+  .ob-content {
+    flex: 1;
+    padding: 0 20px 16px;
+  }
+  .ob-preset {
+    width: 100%;
+    text-align: left;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    border: 1px solid #e5e5e5;
+    border-radius: 16px;
+    background: #fff;
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 140ms ease-out, background 140ms ease-out;
+  }
+  .ob-preset[data-sel] {
+    border-color: #111;
+    background: #fafafa;
+  }
+  .ob-preset:active { background: #f5f5f5; }
+  .ob-preset-t { font-size: 15px; font-weight: 650; margin-bottom: 4px; }
+  .ob-preset-s { font-size: 13px; color: #737373; line-height: 1.35; }
+  .ob-field { margin-bottom: 14px; }
+  .ob-label {
+    font-size: 13px;
+    font-weight: 650;
+    margin-bottom: 6px;
+  }
+  .ob-hint {
+    font-size: 12px;
+    color: #737373;
+    margin-bottom: 8px;
+    line-height: 1.35;
+  }
+  .ob-hint-warn {
+    font-size: 12px;
+    color: #b45309;
+    margin: 10px 0 0;
+    line-height: 1.4;
+    padding: 10px 12px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 10px;
+  }
+  .ob-ref-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 13px;
+  }
+  .ob-ref-row:last-child { border-bottom: 0; }
+  .ob-dock {
+    padding: 12px 20px 20px;
+    background: #fafafa;
+    border-top: 1px solid #e5e5e5;
+  }
+  .ob-support {
+    font-size: 12px;
+    color: #737373;
+    text-align: center;
+    margin: 0 0 10px;
+    line-height: 1.4;
+  }
+  .ob-primary {
+    width: 100%;
+    height: 52px;
+    border: 0;
+    border-radius: 14px;
+    background: #111;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: transform 140ms ease-out;
+  }
+  .ob-primary:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .ob-secondary {
+    width: 100%;
+    height: 44px;
+    margin-top: 8px;
+    border: 0;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 650;
+    color: #737373;
+    cursor: pointer;
+  }
+  .ob-chip-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ob-chip {
+    border: 1px solid #e5e5e5;
+    border-radius: 999px;
+    padding: 10px 14px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    background: #fff;
+    color: #404040;
+    cursor: pointer;
+    transition: border-color 140ms ease-out, background 140ms ease-out;
+  }
+  .ob-chip[data-sel] {
+    border-color: #111;
+    background: #111;
+    color: #fff;
+  }
+  .ob-other-input {
+    width: 100%;
+    margin-top: 10px;
+    padding: 12px 14px;
+    border: 1px solid #e5e5e5;
+    border-radius: 12px;
+    font: inherit;
+    font-size: 15px;
+    background: #fff;
+    color: #111;
+  }
+  .ob-other-input:focus {
+    outline: none;
+    border-color: #111;
+  }
+  .ob-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ob-type-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .ob-type-btn {
+    height: 40px;
+    border: 1px solid #e5e5e5;
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .ob-type-btn[data-sel] {
+    border-color: #111;
+    background: #fafafa;
+  }
+  .ob-type-btn[data-attn] {
+    border-color: #dc2626;
+  }
+  .pl-textarea[data-attn] {
+    border-color: #dc2626 !important;
+  }
+  .ob-type-btn[data-attn-motion],
+  .pl-textarea[data-attn-motion] {
+    animation: ob-attn-shake 0.6s ease-in-out 1;
+  }
+  @keyframes ob-attn-shake {
+    0%, 100% { transform: translateX(0); }
+    18% { transform: translateX(-4px); }
+    36% { transform: translateX(4px); }
+    54% { transform: translateX(-3px); }
+    72% { transform: translateX(3px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ob-type-btn[data-attn-motion],
+    .pl-textarea[data-attn-motion] {
+      animation: none;
+    }
+  }
+  .ob-ref-remove {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: #a3a3a3;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 4px;
+  }
+  .ob-summary-block {
+    margin-bottom: 18px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .ob-summary-block:last-child { border-bottom: 0; }
+  .ob-summary-h {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .ob-edit-link {
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    color: #525252;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .ob-skip-link {
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    color: #737373;
+    text-decoration: underline;
+    cursor: pointer;
   }
 </style>
 </head>
 <body>
   <!--
     PROTOTYPE — throwaway. Do not ship.
-    Full Pocket Sheet shell: Today · Archive · Profile
+    Full Pocket Sheet shell: Today · Plan · You
     Chosen direction: monochrome Pocket Sheet
+
+    First-run onboarding persistence (localStorage):
+    - ch-onboarding-progress — { step, categories, refs } while incomplete
+    - ch-onboarding-done — "1" after confirm + Generate
+    - ch-onboarding-data — { categories, voiceDeferred } after complete
+    - ch-plan-days — generated day statuses and titles
+    - ch-day-generation — active single-day generation while it runs
   -->
   <div class="harness-meta">
     <div><strong>PROTOTYPE</strong> · Pocket Sheet shell</div>
-    <div id="route-label">Today</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end">
+      <button type="button" class="harness-toggle" id="empty-toggle" onclick="toggleEmpty()">Empty Today</button>
+      <button type="button" class="harness-toggle" id="first-toggle" onclick="toggleFirst()">First-run</button>
+      <div id="route-label">Today</div>
+    </div>
   </div>
 
   <div class="harness">
@@ -608,8 +2079,55 @@ const CARD = {
     { n: 4, title: "One steady stride", duration: "2 sec" },
   ],
   caption: "Race week starts quiet. Shoes by the door. One honest line in the journal. Then out.",
-  audio: "Steady mid-tempo — keep VO soft over the first stride.",
 };
+
+const VO_SCRIPT = [
+  { at: "0:00", line: "Race week starts quiet — shoes by the door." },
+  { at: "0:03", line: "One honest line in the journal." },
+  { at: "0:07", line: "Bottle, timer, breath." },
+  { at: "0:10", line: "Then out — say it like you're texting a friend, not announcing on stage." },
+];
+
+const VO_TRACKS = [
+  { id: "vo1", name: "Calm narrative", feel: "International · soft close mic", rank: 1, hot: true, badge: "#1 trending", url: "https://actions.google.com/sounds/v1/human_voices/human_speaking_gibberish.ogg", duration: 3.2 },
+  { id: "vo2", name: "Direct hook", feel: "Punchy · under 5 seconds", rank: 2, hot: false, badge: "Rising", url: "https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg", duration: 1.4 },
+  { id: "vo3", name: "Warm whisper", feel: "Soft · late-night reel tone", rank: 3, hot: false, badge: "Alt pick", url: "https://actions.google.com/sounds/v1/alarms/beep_short.ogg", duration: 0.8 },
+];
+
+const BG_TRACKS = [
+  { id: "bg1", name: "Midnight commute", feel: "International · lo-fi pulse", rank: 1, hot: true, badge: "#1 trending", url: "https://actions.google.com/sounds/v1/ambiences/coffee_shop.ogg", duration: 28 },
+  { id: "bg2", name: "Steady stride", feel: "Mid-tempo · keep VO forward", rank: 2, hot: false, badge: "Rising", url: "https://actions.google.com/sounds/v1/ambiences/windy_forrest.ogg", duration: 24 },
+  { id: "bg3", name: "Quiet momentum", feel: "Minimal · race-week energy", rank: 3, hot: false, badge: "Alt pick", url: "https://actions.google.com/sounds/v1/water/waves_crashing.ogg", duration: 18 },
+];
+
+/** Lighter alternatives on Today — easiest → moderate lift (vs full multi-scene package). */
+const EASIER_IDEAS = [
+  {
+    title: "Caption-only",
+    summary: "Skip scenes — one honest caption and a single story frame.",
+    toast: "Switched to caption-only fallback",
+  },
+  {
+    title: "Story still",
+    summary: "One photo, no video — caption carries it; optional poll sticker.",
+    toast: "Queued a single-frame story brief",
+  },
+  {
+    title: "Two-scene reel",
+    summary: "Half the shots, same voice — good for low-energy days.",
+    toast: "Queued a lighter two-scene reel",
+  },
+  {
+    title: "Talking head",
+    summary: "Single take to camera — hook, one beat, out. No B-roll planning.",
+    toast: "Queued a talking-head brief",
+  },
+  {
+    title: "Screen + voiceover",
+    summary: "One screen recording or clip — VO tells the story; minimal setup.",
+    toast: "Queued a screen + VO brief",
+  },
+];
 
 const ARCHIVE = [
   { id: "a1", day: "Tue", date: "29 Jul", title: "Sharpen, don't chase", decision: "posted", label: "Posted", output: "Reel posted · 4 scenes", filter: "posted", thumb: 4 },
@@ -620,15 +2138,196 @@ const ARCHIVE = [
   { id: "a6", day: "Thu", date: "24 Jul", title: "Fuel the engine", decision: "backup", label: "Used backup", output: "Caption-only fallback", filter: "backup", thumb: null },
 ];
 
-const state = {
-  tab: "today",
-  shot: new Set(),
-  archiveFilter: "all",
-  archiveDetail: null,
-  refreshedAt: null,
+const PLAN_DAYS = {
+  "2026-07-28": { status: "approved", title: "Reset Monday" },
+  "2026-07-29": { status: "approved", title: "Sharpen, don't chase" },
+  "2026-07-30": { status: "ready", title: "Race week has entered the house" },
+  "2026-07-31": { status: "draft", title: "Pre-race shakeout" },
+  "2026-08-01": { status: "empty", title: null },
 };
 
+const DEFAULT_REFS = [
+  { id: "r1", type: "reel", label: "@coachmaya · steady-stride reel", status: "confirmed", key: "reel:coachmaya-steady" },
+  { id: "r2", type: "audio", label: "Mid-tempo track · saved audio ref", status: "confirmed", key: "audio:mid-tempo" },
+];
+
+const DEFAULT_NEEDS_REVIEW = [
+  {
+    id: "nr1",
+    label: "instagram.com/p/Cx9k…",
+    reason: "Ambiguous post URL — confirm reel or dismiss",
+    type: "reel",
+    draftLabel: "Ambiguous reel from paste",
+  },
+];
+
+const VOICE_PRESETS = [
+  {
+    id: "calm",
+    title: "Calm & close",
+    summary: "Honest everyday moments — camera feels like a friend, not a stage.",
+    voice: {
+      positioning: "Someone sharing real life on camera — not performing, just showing up.",
+      rules: "Soft pacing. No hype words. Let silence breathe between beats.",
+      pillars: "Routine, small wins, honest setbacks",
+      captionStyle: "Short lines. One idea per sentence.",
+    },
+  },
+  {
+    id: "direct",
+    title: "Direct hook",
+    summary: "Question-led, punchy open — get to the point in the first second.",
+    voice: {
+      positioning: "Straight-talking creator who answers the question everyone asks.",
+      rules: "Hook in 2 seconds. No throat-clearing. Cut filler words.",
+      pillars: "FAQs, myth-busting, quick tips",
+      captionStyle: "Bold first line. Minimal emoji.",
+    },
+  },
+  {
+    id: "warm",
+    title: "Warm guide",
+    summary: "Supportive mentor tone — you’ve been there and want to help.",
+    voice: {
+      positioning: "Guide who’s a few steps ahead — practical, never preachy.",
+      rules: "Encouraging but specific. Name the feeling before the fix.",
+      pillars: "How-to, encouragement, behind-the-scenes",
+      captionStyle: "Warm close. Optional CTA when it fits.",
+    },
+  },
+];
+
+const ONBOARDING_CATEGORIES = [
+  { id: "fitness", label: "Fitness" },
+  { id: "books", label: "Books & movies" },
+  { id: "food", label: "Food" },
+  { id: "travel", label: "Travel" },
+  { id: "lifestyle", label: "Lifestyle" },
+  { id: "makeup", label: "Makeup" },
+  { id: "tech", label: "Tech" },
+  { id: "finance", label: "Finance" },
+  { id: "parenting", label: "Parenting" },
+  { id: "gaming", label: "Gaming" },
+];
+
+const ONBOARDING_CATEGORY_OTHER_ID = "other";
+
+const ONBOARDING_STORAGE_KEY = "ch-onboarding-progress";
+const ONBOARDING_DONE_KEY = "ch-onboarding-done";
+const ONBOARDING_DATA_KEY = "ch-onboarding-data";
+const PLAN_DAYS_STORAGE_KEY = "ch-plan-days";
+const DAY_GENERATION_STORAGE_KEY = "ch-day-generation";
+const DAY_GENERATION_DURATION_MS = 2200;
+
+const VOICE_EXAMPLES = {
+  positioning: "Weekend runner sharing honest training — not a coach, just someone who logs the miles.",
+  rules: "No hype words. Short sentences. Show shoes before stats.",
+  pillars: "Easy runs, race week, recovery meals",
+  captionStyle: "One line + period. Rare emoji.",
+};
+
+const VOICE_QA_STEPS = [
+  {
+    field: "positioning",
+    question: "Who should feel seen when they watch you?",
+    hint: "One line — who you are on camera, for whom.",
+    placeholder: "e.g. Someone sharing real training — not a guru, just consistent.",
+  },
+  {
+    field: "rules",
+    question: "What must every clip follow?",
+    hint: "Pacing, words to skip, on-camera habits.",
+    placeholder: "e.g. No hype. Short sentences. Show process first.",
+  },
+  {
+    field: "pillars",
+    question: "Themes you rotate? (optional)",
+    hint: "Skip if you’re not sure yet.",
+    placeholder: "e.g. Training, recovery, mindset",
+    optional: true,
+  },
+  {
+    field: "captionStyle",
+    question: "How should captions sound? (optional)",
+    hint: "Length, emoji, CTA style.",
+    placeholder: "e.g. One honest line. Rare emoji.",
+    optional: true,
+  },
+];
+
+function localTodayISO(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+const state = {
+  tab: "today",
+  empty: false,
+  first: false,
+  onboardingComplete: true,
+  onboardingDismissed: false,
+  onboardingStep: 0,
+  onboardingCategories: [],
+  onboardingCategoryOther: "",
+  onboardingRefs: [],
+  onboardingRefPaste: "",
+  onboardingRefType: "reel",
+  onboardingRefValidating: false,
+  onboardingRefValidation: { reel: false, profile: false, motion: false },
+  onboardingFromOnboarding: false,
+  voiceDeferred: false,
+  planCategories: [],
+  planCategoryOther: "",
+  planCategoriesOpen: false,
+  shot: new Set(),
+  youSubview: null,
+  youSubviewOrigin: null,
+  planReturnScrollTop: null,
+  planReturnWindowScrollY: null,
+  youReturnScrollTop: null,
+  youReturnWindowScrollY: null,
+  nextScrollTop: null,
+  nextWindowScrollY: null,
+  archiveDetail: null,
+  refreshedAt: null,
+  health: { supabase: "unchecked", gemini: "unchecked" },
+  healthChecking: false,
+  planYear: new Date().getFullYear(),
+  planMonth: new Date().getMonth(),
+  planSelected: localTodayISO(),
+  planVoiceOpen: false,
+  planRefsOpen: false,
+  planFocus: null,
+  voice: { positioning: "", rules: "", pillars: "", captionStyle: "" },
+  voiceExampleField: null,
+  voiceQaStep: 0,
+  voiceQaDraft: {},
+  refs: DEFAULT_REFS.map(r => ({ ...r })),
+  needsReview: DEFAULT_NEEDS_REVIEW.map(r => ({ ...r })),
+  sheet: null,
+  generating: false,
+  generationDate: null,
+  generationStartedAt: null,
+  daygenOpen: false,
+  selectedIdeaIndex: null,
+  daygenOtherOpen: false,
+  daygenPending: false,
+  daygenTargetIso: null,
+  daygenSteerText: "",
+  regenChangeText: "",
+  selectedPrompt: null,
+  importPaste: "",
+  importValidating: false,
+  importPreview: null,
+  editingReviewId: null,
+  refsRefreshing: false,
+  audioBgIdx: 0,
+  audioPlaying: null,
+};
+
+const media = { el: new Audio(), kind: null, raf: null };
+
 let toastTimer;
+let dayGenerationTimer;
 function showToast(msg) {
   const el = document.getElementById("toast");
   el.textContent = msg;
@@ -638,15 +2337,15 @@ function showToast(msg) {
 }
 
 function statusBar() {
-  return `<div class="sb"><span>9:41</span><span>●●●</span></div>`;
+  return `<div class="sb"><span>9:41</span></div>`;
 }
 
 function tabs() {
   return `
     <nav class="tabs" aria-label="Primary">
-      <button class="tab" ${state.tab === "today" ? "data-on" : ""} onclick="setTab('today')">Today</button>
-      <button class="tab" ${state.tab === "archive" ? "data-on" : ""} onclick="setTab('archive')">Archive</button>
-      <button class="tab" ${state.tab === "profile" ? "data-on" : ""} onclick="setTab('profile')">Profile</button>
+      <button type="button" class="tab" ${state.tab === "today" ? "data-on" : ""} onclick="setTab('today')">Today</button>
+      <button type="button" class="tab" data-center ${state.tab === "plan" ? "data-on" : ""} onclick="setTab('plan')">Plan</button>
+      <button type="button" class="tab" ${state.tab === "you" ? "data-on" : ""} onclick="setTab('you')">You</button>
     </nav>`;
 }
 
@@ -671,6 +2370,220 @@ function copyText(label, text) {
   showToast(`${label} copied`);
 }
 
+function currentBgTrack() { return BG_TRACKS[state.audioBgIdx] || BG_TRACKS[0]; }
+
+function formatAudioTime(sec) {
+  if (!Number.isFinite(sec) || sec < 0) return "0:00";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function stopAudioPlayback() {
+  if (media.raf) cancelAnimationFrame(media.raf);
+  media.raf = null;
+  media.el.pause();
+  state.audioPlaying = null;
+}
+
+function syncAudioScrub(kind) {
+  const scrub = document.getElementById(`${kind}-scrub`);
+  const timeEl = document.getElementById(`${kind}-time`);
+  if (!scrub || !media.el.duration) return;
+  const pct = (media.el.currentTime / media.el.duration) * 100;
+  scrub.value = String(pct);
+  if (timeEl) {
+    timeEl.textContent = `${formatAudioTime(media.el.currentTime)} / ${formatAudioTime(media.el.duration)}`;
+  }
+}
+
+function startAudioProgress(kind) {
+  if (media.raf) cancelAnimationFrame(media.raf);
+  const tick = () => {
+    if (state.audioPlaying === kind && !media.el.paused) {
+      syncAudioScrub(kind);
+      media.raf = requestAnimationFrame(tick);
+    }
+  };
+  media.raf = requestAnimationFrame(tick);
+}
+
+function toggleAudio() {
+  const tracks = BG_TRACKS;
+  const idx = state.audioBgIdx;
+  const track = tracks[idx];
+  const kind = "bg";
+  if (state.audioPlaying === kind && !media.el.paused) {
+    media.el.pause();
+    state.audioPlaying = null;
+    if (media.raf) cancelAnimationFrame(media.raf);
+    render();
+    return;
+  }
+  stopAudioPlayback();
+  media.kind = kind;
+  media.el.src = track.url;
+  media.el.onended = () => {
+    state.audioPlaying = null;
+    if (media.raf) cancelAnimationFrame(media.raf);
+    render();
+  };
+  media.el.play().catch(() => showToast("Could not play preview"));
+  state.audioPlaying = kind;
+  render();
+  startAudioProgress(kind);
+}
+
+function seekAudio(pct) {
+  const tracks = BG_TRACKS;
+  const idx = state.audioBgIdx;
+  const track = tracks[idx];
+  const kind = "bg";
+  const target = (Number(pct) / 100) * (media.el.duration || track.duration);
+  if (state.audioPlaying !== kind) {
+    stopAudioPlayback();
+    media.kind = kind;
+    media.el.src = track.url;
+    state.audioPlaying = kind;
+    media.el.onended = () => {
+      state.audioPlaying = null;
+      if (media.raf) cancelAnimationFrame(media.raf);
+      render();
+    };
+  }
+  media.el.currentTime = target;
+  syncAudioScrub(kind);
+  if (media.el.paused) {
+    media.el.play().catch(() => {});
+    startAudioProgress(kind);
+    render();
+  }
+}
+
+function openSwapSheet() {
+  stopAudioPlayback();
+  openSheet("swap-bg");
+}
+
+function selectAudioTrack(index) {
+  state.audioBgIdx = index;
+  closeSheet();
+  showToast("Background music swapped");
+  render();
+}
+
+function renderBgAudioTrack() {
+  const tracks = BG_TRACKS;
+  const idx = state.audioBgIdx;
+  const track = tracks[idx];
+  const kind = "bg";
+  const playing = state.audioPlaying === kind && media.el && !media.el.paused;
+  const scrubVal = playing && media.el.duration
+    ? (media.el.currentTime / media.el.duration) * 100
+    : 0;
+  const timeLabel = playing && media.el.duration
+    ? `${formatAudioTime(media.el.currentTime)} / ${formatAudioTime(media.el.duration)}`
+    : `0:00 / ${formatAudioTime(track.duration)}`;
+  return `
+    <div class="ps-audio-track">
+      <div class="ps-audio-kind">
+        <span class="ps-audio-kind-l">Background</span>
+        <span class="ps-audio-rank" ${track.hot ? "data-hot" : ""}>${track.badge}</span>
+      </div>
+      <div class="ps-audio-row">
+        <button type="button" class="ps-audio-play press" ${playing ? "data-on" : ""} onclick="toggleAudio()" aria-label="${playing ? "Pause" : "Play"} background music">${playing ? "❚❚" : "▶"}</button>
+        <div>
+          <div class="ps-audio-name">${esc(track.name)}</div>
+          <div class="ps-audio-feel">${esc(track.feel)}</div>
+          <input type="range" class="ps-audio-scrub" id="bg-scrub" min="0" max="100" step="0.5" value="${scrubVal}" oninput="seekAudio(this.value)" aria-label="Scrub background music preview" />
+          <div class="ps-audio-time" id="bg-time">${timeLabel}</div>
+        </div>
+        <button type="button" class="ps-audio-swap press" onclick="openSwapSheet()">Swap</button>
+      </div>
+    </div>`;
+}
+
+function voScriptPlainText() {
+  return VO_SCRIPT.map(s => `${s.at}  ${s.line}`).join("\n");
+}
+
+function copyVoScript() {
+  copyText("Voiceover script", voScriptPlainText());
+}
+
+function renderVoScriptRow() {
+  const lines = VO_SCRIPT.map(s => `
+    <div class="ps-vo-line">
+      <span class="ps-vo-time">${esc(s.at)}</span>
+      <span class="ps-vo-text">${esc(s.line)}</span>
+    </div>`).join("");
+  return `
+    <div class="ps-pkg-row">
+      <div>
+        <div class="ps-pkg-label">Voiceover script</div>
+        <div class="ps-vo-lines">${lines}</div>
+      </div>
+      <button type="button" class="ps-pkg-copy press" onclick="copyVoScript()">Copy</button>
+    </div>`;
+}
+
+function renderExecutionPackageBlock(compact) {
+  const captionRow = `
+    <div class="ps-pkg-row">
+      <div>
+        <div class="ps-pkg-label">Caption</div>
+        <div class="ps-pkg-body">${esc(CARD.caption)}</div>
+      </div>
+      <button type="button" class="ps-pkg-copy press" onclick="copyText('Caption', CARD.caption)">Copy</button>
+    </div>`;
+  const voRow = renderVoScriptRow();
+  const audioSection = `
+    <div class="ps-audio-section">
+      <div class="ps-pkg-label">Background audio · ranked for reach</div>
+      ${renderBgAudioTrack()}
+    </div>`;
+  if (compact) {
+    return `<div class="pl-day-pkg"><div class="ps-pkg">${captionRow}${voRow}${audioSection}</div></div>`;
+  }
+  return `<div class="ps-pkg">${captionRow}${voRow}${audioSection}</div>`;
+}
+
+function handlePrimaryAction() {
+  const total = CARD.scenes.length;
+  if (state.shot.size < total) {
+    const before = state.shot.size;
+    for (let i = 1; i <= total; i++) state.shot.add(i);
+    showToast(`Marked ${total - before} remaining as shot`);
+    render();
+    return;
+  }
+  markPosted();
+}
+
+function markPosted() {
+  const total = CARD.scenes.length;
+  const posted = {
+    id: `a${Date.now()}`,
+    day: "Wed",
+    date: "30 Jul",
+    title: CARD.title,
+    decision: "posted",
+    label: "Posted",
+    output: `Reel posted · ${total} scene${total === 1 ? "" : "s"}`,
+    filter: "posted",
+    thumb: 1,
+  };
+  ARCHIVE.unshift(posted);
+  state.shot.clear();
+  stopAudioPlayback();
+  state.empty = true;
+  state.tab = "you";
+  state.youSubview = "archive";
+  writeUrlState();
+  showToast("Posted — saved to Archive");
+  render();
+}
+
 function primaryLabel() {
   const total = CARD.scenes.length;
   if (state.shot.size === total) return "I’m done — mark posted";
@@ -678,7 +2591,1888 @@ function primaryLabel() {
   return `Mark remaining (${total - state.shot.size})`;
 }
 
+function syncHarnessToggles() {
+  const emptyBtn = document.getElementById("empty-toggle");
+  const firstBtn = document.getElementById("first-toggle");
+  if (emptyBtn) {
+    if (state.empty) emptyBtn.setAttribute("data-on", "");
+    else emptyBtn.removeAttribute("data-on");
+  }
+  if (firstBtn) {
+    if (state.first) firstBtn.setAttribute("data-on", "");
+    else firstBtn.removeAttribute("data-on");
+  }
+}
+
+function writeUrlState() {
+  const url = new URL(location);
+  url.searchParams.set("tab", state.tab);
+  if (state.tab === "you" && state.youSubview) {
+    url.searchParams.set("you", state.youSubview);
+    if (state.youSubviewOrigin) url.searchParams.set("from", state.youSubviewOrigin);
+    else url.searchParams.delete("from");
+  } else {
+    url.searchParams.delete("you");
+    url.searchParams.delete("from");
+  }
+  if (state.empty) url.searchParams.set("empty", "1");
+  else url.searchParams.delete("empty");
+  if (state.first) url.searchParams.set("first", "1");
+  else url.searchParams.delete("first");
+  history.replaceState(null, "", url);
+}
+
+function persistPlanDays() {
+  try {
+    localStorage.setItem(PLAN_DAYS_STORAGE_KEY, JSON.stringify(PLAN_DAYS));
+  } catch {}
+}
+
+function loadPlanDays() {
+  try {
+    const raw = localStorage.getItem(PLAN_DAYS_STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return;
+    Object.entries(data).forEach(([iso, meta]) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || !meta || typeof meta !== "object") return;
+      const status = ["empty", "draft", "ready", "approved"].includes(meta.status)
+        ? meta.status
+        : "empty";
+      PLAN_DAYS[iso] = {
+        status,
+        title: typeof meta.title === "string" ? meta.title : null,
+      };
+    });
+  } catch {}
+}
+
+function clearPlanPersistence() {
+  try { localStorage.removeItem(PLAN_DAYS_STORAGE_KEY); } catch {}
+}
+
+function persistDayGeneration(record) {
+  try {
+    localStorage.setItem(DAY_GENERATION_STORAGE_KEY, JSON.stringify(record));
+  } catch {}
+}
+
+function readDayGeneration() {
+  try {
+    const raw = localStorage.getItem(DAY_GENERATION_STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || data.status !== "generating" || !/^\d{4}-\d{2}-\d{2}$/.test(data.date)) return null;
+    const startedAt = Number(data.startedAt);
+    if (!Number.isFinite(startedAt)) return null;
+    return {
+      status: "generating",
+      date: data.date,
+      startedAt,
+      title: typeof data.title === "string" ? data.title : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearDayGenerationPersistence() {
+  try { localStorage.removeItem(DAY_GENERATION_STORAGE_KEY); } catch {}
+}
+
+function clearDayGenerationTimer() {
+  if (dayGenerationTimer) clearTimeout(dayGenerationTimer);
+  dayGenerationTimer = null;
+}
+
+function setEmpty(on) {
+  state.empty = !!on;
+  if (state.empty && state.tab !== "today") {
+    state.tab = "today";
+  }
+  writeUrlState();
+  render();
+}
+
+function toggleEmpty() {
+  setEmpty(!state.empty);
+}
+
+function resetPlanForFirstRun() {
+  const today = localTodayISO();
+  Object.keys(PLAN_DAYS).forEach(k => {
+    PLAN_DAYS[k] = { status: "empty", title: null };
+  });
+  PLAN_DAYS[today] = { status: "empty", title: null };
+  setPlanSelectedDate(today);
+}
+
+function onboardingIsDone() {
+  try { return localStorage.getItem(ONBOARDING_DONE_KEY) === "1"; } catch { return state.onboardingComplete; }
+}
+
+function needsOnboarding() {
+  if (onboardingIsDone()) return false;
+  if (state.onboardingDismissed) return false;
+  return !state.onboardingComplete;
+}
+
+function saveOnboardingProgress() {
+  try {
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({
+      step: state.onboardingStep,
+      categories: state.onboardingCategories,
+      categoryOther: state.onboardingCategoryOther,
+      refs: state.onboardingRefs,
+    }));
+  } catch {}
+}
+
+function loadOnboardingProgress() {
+  try {
+    const raw = localStorage.getItem(ONBOARDING_STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    state.onboardingStep = data.step ?? 0;
+    state.onboardingCategories = data.categories ?? [];
+    state.onboardingCategoryOther = data.categoryOther ?? "";
+    state.onboardingRefs = (data.refs ?? []).map(r => ({ ...r }));
+  } catch {}
+}
+
+function clearOnboardingProgress() {
+  try { localStorage.removeItem(ONBOARDING_STORAGE_KEY); } catch {}
+}
+
+function loadOnboardingData() {
+  try {
+    const raw = localStorage.getItem(ONBOARDING_DATA_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    state.planCategories = data.categories ?? [];
+    state.planCategoryOther = data.categoryOther ?? "";
+    state.voiceDeferred = !!data.voiceDeferred;
+    state.onboardingFromOnboarding = true;
+    if (Array.isArray(data.refs)) {
+      state.refs = data.refs.map(r => ({ ...r }));
+    }
+  } catch {}
+}
+
+function planRefFromOnboardingRef(r, index) {
+  const digits = String(r.id || "").replace(/\D/g, "") || String(Date.now() + index);
+  const type = r.type === "profile" ? "account" : r.type;
+  const status = r.status || (type === "account" ? "account" : "confirmed");
+  return { ...r, id: `r${digits}`, type, status };
+}
+
+function applyOnboardingRefsToPlan(source) {
+  const src = source ?? state.onboardingRefs;
+  if (!src?.length) return false;
+  state.refs = src.map(planRefFromOnboardingRef);
+  return true;
+}
+
+function ensurePlanRefsHydrated() {
+  if (state.refs.length > 0) return;
+
+  if (applyOnboardingRefsToPlan()) {
+    persistOnboardingData();
+    return;
+  }
+
+  try {
+    const prog = localStorage.getItem(ONBOARDING_STORAGE_KEY);
+    if (prog) {
+      const data = JSON.parse(prog);
+      if (Array.isArray(data.refs) && data.refs.length > 0) {
+        applyOnboardingRefsToPlan(data.refs);
+        persistOnboardingData();
+      }
+    }
+  } catch {}
+}
+
+function persistOnboardingData() {
+  if (!onboardingIsDone()) return;
+  try {
+    const raw = localStorage.getItem(ONBOARDING_DATA_KEY);
+    const data = raw ? JSON.parse(raw) : {};
+    localStorage.setItem(ONBOARDING_DATA_KEY, JSON.stringify({
+      ...data,
+      categories: state.planCategories,
+      categoryOther: state.planCategoryOther,
+      refs: state.refs,
+      voiceDeferred: state.voiceDeferred,
+    }));
+  } catch {}
+}
+
+function resetOnboardingState() {
+  state.onboardingComplete = false;
+  state.onboardingDismissed = false;
+  state.onboardingStep = 0;
+  state.onboardingCategories = [];
+  state.onboardingCategoryOther = "";
+  state.onboardingRefs = [];
+  state.onboardingRefPaste = "";
+  state.onboardingRefType = "reel";
+  state.onboardingRefValidating = false;
+  state.onboardingRefValidation = { reel: false, profile: false, motion: false };
+  state.onboardingFromOnboarding = false;
+  state.voiceDeferred = false;
+  state.planCategories = [];
+  state.planCategoryOther = "";
+  state.planCategoriesOpen = false;
+}
+
+function setFirst(on) {
+  state.first = !!on;
+  if (state.first) {
+    state.empty = true;
+    state.tab = "today";
+    resetOnboardingState();
+    state.voice = { positioning: "", rules: "", pillars: "", captionStyle: "" };
+    state.refs = [];
+    state.needsReview = [];
+    state.planVoiceOpen = false;
+    state.planRefsOpen = false;
+    state.voiceExampleField = null;
+    state.generating = false;
+    state.generationDate = null;
+    state.generationStartedAt = null;
+    clearDayGenerationTimer();
+    state.sheet = null;
+    state.daygenOpen = false;
+    resetPlanForFirstRun();
+    try {
+      localStorage.removeItem(ONBOARDING_DONE_KEY);
+      localStorage.removeItem(ONBOARDING_DATA_KEY);
+      clearOnboardingProgress();
+      localStorage.removeItem(PLAN_DAYS_STORAGE_KEY);
+      localStorage.removeItem(DAY_GENERATION_STORAGE_KEY);
+    } catch {}
+  } else {
+    state.onboardingComplete = true;
+  }
+  writeUrlState();
+  render();
+}
+
+function toggleFirst() {
+  setFirst(!state.first);
+}
+
+function refreshStatus() {
+  if (state.healthChecking) return;
+  state.healthChecking = true;
+  render();
+  setTimeout(() => {
+    const params = new URLSearchParams(location.search);
+    state.refreshedAt = new Date();
+    state.health = {
+      supabase: params.get("supabase") === "down" ? "error" : "ok",
+      gemini: params.get("gemini") === "down" ? "error" : "ok",
+    };
+    state.healthChecking = false;
+    const anyDown = state.health.supabase === "error" || state.health.gemini === "error";
+    showToast(anyDown ? "One or more services are down" : "All services live");
+    render();
+  }, 900);
+}
+
+function healthStatusLabel(status) {
+  if (status === "ok") return "Live";
+  if (status === "error") return "Down";
+  if (status === "checking") return "Checking…";
+  return "Not checked";
+}
+
+function renderHealthLed(service) {
+  const status = state.healthChecking ? "checking" : state.health[service];
+  return `<span class="pf-status-led" data-status="${status}">${healthStatusLabel(status)}</span>`;
+}
+
+function toggleOnboardingCategory(id) {
+  const idx = state.onboardingCategories.indexOf(id);
+  if (idx >= 0) {
+    state.onboardingCategories.splice(idx, 1);
+    if (id === ONBOARDING_CATEGORY_OTHER_ID) state.onboardingCategoryOther = "";
+  } else if (state.onboardingCategories.length < 3) {
+    state.onboardingCategories.push(id);
+  } else {
+    showToast("Max 3 categories");
+    return;
+  }
+  saveOnboardingProgress();
+  render();
+}
+
+function updateOnboardingCategoryOther(text) {
+  state.onboardingCategoryOther = text;
+  saveOnboardingProgress();
+}
+
+function onboardingCategoriesValid() {
+  if (state.onboardingCategories.length < 1) return false;
+  if (state.onboardingCategories.includes(ONBOARDING_CATEGORY_OTHER_ID) && !state.onboardingCategoryOther.trim()) {
+    return false;
+  }
+  return true;
+}
+
+function onboardingCategoryLabel(id) {
+  if (id === ONBOARDING_CATEGORY_OTHER_ID) return state.onboardingCategoryOther.trim() || "Other";
+  return ONBOARDING_CATEGORIES.find(c => c.id === id)?.label;
+}
+
+function planCategoryLabel(id) {
+  if (id === ONBOARDING_CATEGORY_OTHER_ID) return state.planCategoryOther.trim() || "Other";
+  return ONBOARDING_CATEGORIES.find(c => c.id === id)?.label;
+}
+
+function togglePlanCategory(id) {
+  const idx = state.planCategories.indexOf(id);
+  if (idx >= 0) {
+    if (state.planCategories.length <= 1) {
+      showToast("Pick at least 1 category");
+      return;
+    }
+    state.planCategories.splice(idx, 1);
+    if (id === ONBOARDING_CATEGORY_OTHER_ID) state.planCategoryOther = "";
+  } else if (state.planCategories.length < 3) {
+    state.planCategories.push(id);
+  } else {
+    showToast("Max 3 categories");
+    return;
+  }
+  persistOnboardingData();
+  render();
+}
+
+function updatePlanCategoryOther(text) {
+  state.planCategoryOther = text;
+  persistOnboardingData();
+}
+
+function onboardingReelCount() {
+  return state.onboardingRefs.filter(r => r.type === "reel").length;
+}
+
+function onboardingProfileCount() {
+  return state.onboardingRefs.filter(r => r.type === "account").length;
+}
+
+function onboardingRefMissingTypes() {
+  const missing = [];
+  if (onboardingReelCount() < 1) missing.push("reel");
+  if (onboardingProfileCount() < 1) missing.push("profile");
+  return missing;
+}
+
+function onboardingRefAttention() {
+  const pending = state.onboardingRefValidation || {};
+  const missing = onboardingRefMissingTypes();
+  const profile = !!pending.profile && missing.includes("profile");
+  const reel = !!pending.reel && missing.includes("reel");
+  return {
+    profile,
+    reel,
+    motion: !!pending.motion && (profile || reel),
+  };
+}
+
+function onboardingRefValidationMessage(attn = onboardingRefAttention()) {
+  const missing = [];
+  if (attn.reel) missing.push("reel URL");
+  if (attn.profile) missing.push("profile @handle");
+  if (missing.length === 2) return "Add at least one reel URL and one profile @handle to continue.";
+  if (missing.length === 1) return `Add at least one ${missing[0]} to continue.`;
+  return "";
+}
+
+function onboardingRefMotionEnabled() {
+  return !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+}
+
+function focusOnboardingRefValidationTarget() {
+  const input = document.querySelector(`textarea[data-onboarding-ref-input="${state.onboardingRefType}"]`);
+  const target = input || document.querySelector(".ob-type-btn[data-attn]");
+  target?.focus?.({ preventScroll: true });
+}
+
+function onboardingRefsValid() {
+  const n = state.onboardingRefs.length;
+  return n >= 2 && onboardingReelCount() >= 1 && onboardingProfileCount() >= 1;
+}
+
+const IG_HOSTS = new Set(["instagram.com", "www.instagram.com", "m.instagram.com"]);
+const IG_RESERVED = new Set([
+  "about", "accounts", "audio", "developer", "direct", "explore",
+  "p", "reel", "reels", "stories", "tv", "music",
+]);
+const PROFILE_VERIFICATION_STATUS = Object.freeze({
+  VERIFIED: "verified",
+  NOT_FOUND: "not_found",
+  TEMPORARILY_UNAVAILABLE: "temporarily_unavailable",
+});
+const PROFILE_VERIFICATION_STATUSES = new Set(Object.values(PROFILE_VERIFICATION_STATUS));
+
+function parseInstagramURL(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const urlish = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed.replace(/^\/+/, "")}`;
+  try {
+    return new URL(urlish);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeInstagramURL(value) {
+  const url = parseInstagramURL(value);
+  if (!url) return null;
+  url.hostname = url.hostname.toLowerCase();
+  url.hash = "";
+  for (const key of [...url.searchParams.keys()]) {
+    const lower = key.toLowerCase();
+    if (lower === "igshid" || lower === "fbclid" || lower.startsWith("utm_")) {
+      url.searchParams.delete(key);
+    }
+  }
+  url.pathname = url.pathname.replace(/\/+$/g, "");
+  return url.toString().replace(/\/$/g, "");
+}
+
+function instagramPathSegments(url) {
+  return url.pathname.split("/").map(s => s.trim()).filter(Boolean).map(s => decodeURIComponent(s));
+}
+
+function normalizePlainHandle(value) {
+  const handle = value.trim().replace(/^@+/, "").replace(/\/+$/g, "").toLowerCase();
+  if (!/^[a-z0-9._]{2,30}$/.test(handle)) return null;
+  if (!/[a-z]/.test(handle)) return null;
+  if (IG_RESERVED.has(handle)) return null;
+  return handle;
+}
+
+function instagramProfileURL(handle) {
+  return `https://www.instagram.com/${handle}/`;
+}
+
+function classifyInstagramURL(value) {
+  const normalized = normalizeInstagramURL(value) ?? value.trim();
+  const url = parseInstagramURL(normalized);
+  if (!url) return { kind: "malformed", url: value.trim() };
+  if (!IG_HOSTS.has(url.hostname.toLowerCase())) {
+    return { kind: "non_instagram", url: normalized };
+  }
+
+  const segments = instagramPathSegments(url);
+  if (!segments.length) return { kind: "malformed", url: normalized };
+
+  if (segments[0].toLowerCase() === "stories") {
+    return { kind: "story", url: normalized, reason: "Story links can't be used as references." };
+  }
+
+  if (segments.some(s => s.toLowerCase() === "audio" || s.toLowerCase() === "music")) {
+    return { kind: "audio", url: normalized };
+  }
+
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const seg = segments[i].toLowerCase();
+    if (seg === "reel" || seg === "reels" || seg === "p") {
+      const shortcode = segments[i + 1];
+      if (!shortcode || IG_RESERVED.has(shortcode.toLowerCase())) {
+        return { kind: "malformed", url: normalized };
+      }
+      return {
+        kind: seg === "p" ? "post" : "reel",
+        url: normalized,
+        shortcode,
+        key: `instagram:${seg === "p" ? "post" : "reel"}:${shortcode}`,
+      };
+    }
+  }
+
+  if (segments.length === 1) {
+    const handle = normalizePlainHandle(segments[0]);
+    if (handle) {
+      return {
+        kind: "profile",
+        url: instagramProfileURL(handle),
+        handle,
+        key: `handle:${handle}`,
+      };
+    }
+  }
+
+  return { kind: "malformed", url: normalized };
+}
+
+function buildOnboardingReelRef(classification) {
+  const short = classification.url.replace(/^https?:\/\/(www\.)?instagram\.com/i, "instagram.com");
+  return {
+    type: "reel",
+    label: short.length > 46 ? `${short.slice(0, 43)}…` : short,
+    status: "confirmed",
+    key: classification.key,
+    url: classification.url,
+  };
+}
+
+function buildOnboardingProfileRef(handle, url) {
+  return {
+    type: "account",
+    label: `@${handle} · profile`,
+    status: "account",
+    key: `handle:${handle}`,
+    url,
+  };
+}
+
+function parseOnboardingRefInput(text, expectedKind) {
+  const trimmed = text.trim();
+  if (!trimmed) return { ok: false, error: "Paste a reel URL or @handle" };
+
+  const asURL = /instagram\.com|https?:\/\//i.test(trimmed);
+  if (asURL) {
+    const c = classifyInstagramURL(trimmed);
+    if (c.kind === "non_instagram") {
+      return { ok: false, error: "Paste an Instagram link — instagram.com/reel/… or instagram.com/handle" };
+    }
+    if (c.kind === "story") return { ok: false, error: c.reason };
+    if (c.kind === "audio") return { ok: false, error: "Audio links aren't supported — paste a reel or profile." };
+    if (c.kind === "malformed") {
+      return { ok: false, error: expectedKind === "reel"
+        ? "That doesn't look like a reel — try instagram.com/reel/…"
+        : "That doesn't look like a profile — try @handle or instagram.com/handle" };
+    }
+    if (c.kind === "reel" || c.kind === "post") {
+      if (expectedKind === "profile") {
+        return { ok: false, error: "That's a reel link — switch to Reel URL or paste a profile @handle." };
+      }
+      return { ok: true, ref: buildOnboardingReelRef(c) };
+    }
+    if (c.kind === "profile") {
+      if (expectedKind === "reel") {
+        return { ok: false, error: "That's a profile link — switch to Profile @handle or paste a reel URL." };
+      }
+      return {
+        ok: true,
+        needsLookup: true,
+        handle: c.handle,
+        ref: buildOnboardingProfileRef(c.handle, c.url),
+      };
+    }
+  }
+
+  const handle = normalizePlainHandle(trimmed);
+  if (!handle) {
+    return {
+      ok: false,
+      error: expectedKind === "reel"
+        ? "Paste a full reel URL — e.g. instagram.com/reel/…"
+        : "Enter a valid @handle — letters, numbers, dots, underscores (2–30 chars).",
+    };
+  }
+  if (expectedKind === "reel") {
+    return { ok: false, error: "Handles are for profiles — paste a reel URL or switch to Profile @handle." };
+  }
+  return {
+    ok: true,
+    needsLookup: true,
+    handle,
+    ref: buildOnboardingProfileRef(handle, instagramProfileURL(handle)),
+  };
+}
+
+function parsePlanRefInput(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return { ok: false, error: "Paste a reel URL or @handle" };
+
+  if (/instagram\.com|https?:\/\//i.test(trimmed)) {
+    const c = classifyInstagramURL(trimmed);
+    if (c.kind === "non_instagram") {
+      return { ok: false, error: "Paste an Instagram link — instagram.com/reel/… or instagram.com/handle" };
+    }
+    if (c.kind === "story") return { ok: false, error: c.reason };
+    if (c.kind === "audio") return { ok: false, error: "Audio links aren't supported — paste a reel or profile." };
+    if (c.kind === "malformed") {
+      return { ok: false, error: "That doesn't look like a valid Instagram reel or profile link." };
+    }
+    if (c.kind === "reel" || c.kind === "post") {
+      return { ok: true, ref: buildOnboardingReelRef(c) };
+    }
+    if (c.kind === "profile") {
+      return {
+        ok: true,
+        needsLookup: true,
+        handle: c.handle,
+        ref: buildOnboardingProfileRef(c.handle, c.url),
+      };
+    }
+  }
+
+  const handle = normalizePlainHandle(trimmed);
+  if (!handle) {
+    return { ok: false, error: "Enter a reel URL or a valid @handle." };
+  }
+  return {
+    ok: true,
+    needsLookup: true,
+    handle,
+    ref: buildOnboardingProfileRef(handle, instagramProfileURL(handle)),
+  };
+}
+
+function profileVerificationStatusForPrototype(handle) {
+  const params = new URLSearchParams(location.search);
+  const target = normalizePlainHandle(params.get("profileVerificationHandle") || "");
+  if (target && target !== handle) return PROFILE_VERIFICATION_STATUS.VERIFIED;
+
+  // The prototype has no authenticated same-origin import-references client.
+  // Keep outcomes deterministic until the host supplies that adapter.
+  const configured = (params.get("profileVerification") || "").trim().toLowerCase();
+  if (PROFILE_VERIFICATION_STATUSES.has(configured)) return configured;
+
+  // Preserve the existing targeted fixture used by the prototype harness.
+  const ig404 = (params.get("ig404") || "").trim().toLowerCase();
+  if (ig404 && ig404 === handle) return PROFILE_VERIFICATION_STATUS.NOT_FOUND;
+
+  return PROFILE_VERIFICATION_STATUS.VERIFIED;
+}
+
+function profileVerificationResult(handle, status, diagnosticReason) {
+  const url = instagramProfileURL(handle);
+  const result = {
+    status,
+    url,
+    handle,
+    diagnosticReason,
+  };
+  if (status !== PROFILE_VERIFICATION_STATUS.VERIFIED) {
+    // Do not include the handle. Diagnostics need the failure reason, not user input.
+    console.debug("[profile-verification]", {
+      status: result.status,
+      reason: result.diagnosticReason,
+    });
+  }
+  return result;
+}
+
+async function verifyInstagramProfile(handle) {
+  const status = profileVerificationStatusForPrototype(handle);
+  const reasons = {
+    [PROFILE_VERIFICATION_STATUS.VERIFIED]: "prototype_fixture_verified",
+    [PROFILE_VERIFICATION_STATUS.NOT_FOUND]: "prototype_fixture_not_found",
+    [PROFILE_VERIFICATION_STATUS.TEMPORARILY_UNAVAILABLE]: "prototype_fixture_temporarily_unavailable",
+  };
+  return profileVerificationResult(handle, status, reasons[status]);
+}
+
+function onboardingRefsMixHint() {
+  const n = state.onboardingRefs.length;
+  if (n < 2 || onboardingRefsValid()) return "";
+  const reels = onboardingReelCount();
+  const profiles = onboardingProfileCount();
+  if (reels === 0 && profiles >= 2) {
+    return "You have profiles only — add at least one reel URL (use Reel URL and paste instagram.com/reel/…).";
+  }
+  if (profiles === 0 && reels >= 2) {
+    return "You have reels only — add at least one profile (use Profile @handle and paste @creator).";
+  }
+  if (reels === 0) return "Add at least one reel URL to continue.";
+  if (profiles === 0) return "Add at least one profile @handle to continue.";
+  return "";
+}
+
+function setOnboardingRefType(type) {
+  state.onboardingRefType = type;
+  render();
+}
+
+function addOnboardingRef() {
+  void addOnboardingRefAsync();
+}
+
+async function addOnboardingRefAsync() {
+  const text = state.onboardingRefPaste.trim();
+  if (!text) {
+    showToast("Paste a reel URL or @handle");
+    return;
+  }
+  if (state.onboardingRefValidating) return;
+
+  const parsed = parseOnboardingRefInput(text, state.onboardingRefType);
+  if (!parsed.ok) {
+    showToast(parsed.error);
+    return;
+  }
+
+  let ref = parsed.ref;
+  let lookup = null;
+  if (parsed.needsLookup) {
+    state.onboardingRefValidating = true;
+    render();
+    lookup = await verifyInstagramProfile(parsed.handle);
+    state.onboardingRefValidating = false;
+    if (lookup.status === PROFILE_VERIFICATION_STATUS.NOT_FOUND) {
+      showToast(`@${lookup.handle} wasn't found on Instagram`);
+      render();
+      return;
+    }
+    ref = buildOnboardingProfileRef(lookup.handle, lookup.url);
+  }
+
+  const dup = state.onboardingRefs.find(r => r.key === ref.key);
+  if (dup) {
+    showToast("Already added");
+    render();
+    return;
+  }
+
+  state.onboardingRefs.push({ id: `obr${Date.now()}`, ...ref });
+  state.onboardingRefPaste = "";
+  saveOnboardingProgress();
+  if (lookup?.status === PROFILE_VERIFICATION_STATUS.TEMPORARILY_UNAVAILABLE) {
+    showToast("Profile added. We couldn't check Instagram right now.");
+  } else {
+    showToast(ref.type === "account" ? "Profile added" : "Reel added");
+  }
+  render();
+}
+
+function removeOnboardingRef(id) {
+  state.onboardingRefs = state.onboardingRefs.filter(r => r.id !== id);
+  saveOnboardingProgress();
+  render();
+}
+
+function advanceOnboardingFromCategories() {
+  if (!onboardingCategoriesValid()) {
+    if (state.onboardingCategories.includes(ONBOARDING_CATEGORY_OTHER_ID) && !state.onboardingCategoryOther.trim()) {
+      showToast("Enter your category");
+    }
+    return;
+  }
+  state.onboardingStep = 1;
+  saveOnboardingProgress();
+  render();
+}
+
+function advanceOnboardingFromRefs() {
+  if (!onboardingRefsValid()) {
+    const missing = onboardingRefMissingTypes();
+    state.onboardingRefValidation = {
+      reel: missing.includes("reel"),
+      profile: missing.includes("profile"),
+      motion: onboardingRefMotionEnabled(),
+    };
+    if (missing.length === 1 || !missing.includes(state.onboardingRefType)) {
+      state.onboardingRefType = missing[0] || state.onboardingRefType;
+    }
+    const message = onboardingRefValidationMessage();
+    showToast(message || "Add at least one reel URL and one profile @handle to continue.");
+    render();
+    focusOnboardingRefValidationTarget();
+    return;
+  }
+  state.onboardingRefValidation = { reel: false, profile: false, motion: false };
+  state.onboardingStep = 2;
+  saveOnboardingProgress();
+  render();
+}
+
+function goToOnboardingStep(step) {
+  state.onboardingStep = step;
+  saveOnboardingProgress();
+  render();
+}
+
+function softSkipOnboarding() {
+  saveOnboardingProgress();
+  state.onboardingDismissed = true;
+  state.tab = "today";
+  state.empty = true;
+  writeUrlState();
+  showToast("Set up later — we'll ask again next launch");
+  render();
+}
+
+function finishOnboardingAndGenerate() {
+  if (state.generating) return;
+  const today = selectLocalToday();
+  const existingDay = PLAN_DAYS[today];
+  if (existingDay?.status === "ready" || existingDay?.status === "approved") return;
+  applyOnboardingRefsToPlan();
+  state.planCategories = [...state.onboardingCategories];
+  state.planCategoryOther = state.onboardingCategoryOther;
+  state.onboardingComplete = true;
+  state.onboardingFromOnboarding = true;
+  state.voiceDeferred = true;
+  state.first = false;
+  state.empty = true;
+  state.tab = "plan";
+  state.planVoiceOpen = false;
+  state.planRefsOpen = false;
+  state.planCategoriesOpen = false;
+  state.planFocus = null;
+  state.daygenOpen = false;
+  state.selectedIdeaIndex = null;
+  state.daygenSteerText = "";
+  state.regenChangeText = "";
+  state.selectedPrompt = null;
+  try {
+    localStorage.setItem(ONBOARDING_DONE_KEY, "1");
+    localStorage.setItem(ONBOARDING_DATA_KEY, JSON.stringify({
+      categories: state.planCategories,
+      categoryOther: state.planCategoryOther,
+      refs: state.refs,
+      voiceDeferred: true,
+    }));
+    clearOnboardingProgress();
+  } catch {}
+  writeUrlState();
+  startGenerate({ date: today, firstDay: true });
+}
+
+function renderOnboarding() {
+  const step = state.onboardingStep;
+  let body = "";
+  let dock = "";
+
+  if (step === 0) {
+    body = `
+      <div class="ob-content">
+        <p class="ob-hint" style="margin-top:0">Pick 1–3</p>
+        <div class="ob-chip-grid">
+          ${ONBOARDING_CATEGORIES.map(c => `
+            <button type="button" class="ob-chip press" ${state.onboardingCategories.includes(c.id) ? "data-sel" : ""} onclick="toggleOnboardingCategory('${c.id}')">${esc(c.label)}</button>
+          `).join("")}
+          <button type="button" class="ob-chip press" ${state.onboardingCategories.includes(ONBOARDING_CATEGORY_OTHER_ID) ? "data-sel" : ""} onclick="toggleOnboardingCategory('${ONBOARDING_CATEGORY_OTHER_ID}')">Other</button>
+        </div>
+        ${state.onboardingCategories.includes(ONBOARDING_CATEGORY_OTHER_ID) ? `
+          <input type="text" class="ob-other-input" placeholder="Your category…" value="${esc(state.onboardingCategoryOther)}" oninput="updateOnboardingCategoryOther(this.value)" aria-label="Custom category" />` : ""}
+      </div>`;
+    dock = `
+      <button type="button" class="ob-skip-link press" onclick="softSkipOnboarding()">Set up later</button>
+      <button type="button" class="ob-primary press" ${state.onboardingCategories.length < 1 ? "disabled" : ""} onclick="advanceOnboardingFromCategories()">Continue</button>`;
+  } else if (step === 1) {
+    const attn = onboardingRefAttention();
+    const attentionMotion = attn.motion;
+    if (attentionMotion) state.onboardingRefValidation.motion = false;
+    const validationMessage = onboardingRefValidationMessage(attn);
+    const mixHint = onboardingRefsMixHint();
+    const refHint = validationMessage || mixHint;
+    const refHintHtml = refHint
+      ? `<p ${validationMessage ? 'id="onboarding-ref-error" role="alert"' : ""} class="ob-hint-warn">${esc(refHint)}</p>`
+      : "";
+    const refRows = state.onboardingRefs.length
+      ? state.onboardingRefs.map(r => `
+          <div class="ob-ref-row">
+            <span>${r.type === "account" ? "@" : "▶"} ${esc(r.label)}</span>
+            <button type="button" class="ob-ref-remove press" onclick="removeOnboardingRef('${r.id}')" aria-label="Remove">×</button>
+          </div>`).join("")
+      : `<p class="ob-hint" style="margin:0">No references yet.</p>`;
+    const profileInputAttn = attn.profile && state.onboardingRefType === "profile";
+    const reelInputAttn = attn.reel && state.onboardingRefType === "reel";
+    body = `
+      <div class="ob-content">
+        <div class="ob-type-toggle">
+          <button type="button" class="ob-type-btn press" ${state.onboardingRefType === "reel" ? "data-sel" : ""} ${attn.reel ? "data-attn aria-invalid=\"true\"" : ""} ${attn.reel && attentionMotion ? "data-attn-motion" : ""} onclick="setOnboardingRefType('reel')">Reel URL</button>
+          <button type="button" class="ob-type-btn press" ${state.onboardingRefType === "profile" ? "data-sel" : ""} ${attn.profile ? "data-attn aria-invalid=\"true\"" : ""} ${attn.profile && attentionMotion ? "data-attn-motion" : ""} onclick="setOnboardingRefType('profile')">Profile @handle</button>
+        </div>
+        <textarea class="pl-textarea" data-onboarding-ref-input="${state.onboardingRefType}" ${profileInputAttn || reelInputAttn ? "data-attn aria-invalid=\"true\"" : ""} ${profileInputAttn || reelInputAttn ? "aria-describedby=\"onboarding-ref-error\"" : ""} ${((state.onboardingRefType === "profile" && attn.profile) || (state.onboardingRefType === "reel" && attn.reel)) && attentionMotion ? "data-attn-motion" : ""} placeholder="${state.onboardingRefType === "profile" ? "@creator" : "https://instagram.com/reel/…"}" oninput="state.onboardingRefPaste=this.value">${esc(state.onboardingRefPaste)}</textarea>
+        <button type="button" class="pl-ref-add press" style="margin-top:8px" ${state.onboardingRefValidating ? "disabled" : ""} onclick="addOnboardingRef()">${state.onboardingRefValidating ? "Checking on Instagram…" : "+ Add reference"}</button>
+        <div style="margin-top:14px">${refRows}</div>
+        <p class="ob-hint" style="margin-top:12px">${state.onboardingRefs.length}/10 · ${onboardingReelCount()} reel · ${onboardingProfileCount()} profile</p>
+        ${refHintHtml}
+      </div>`;
+    dock = `
+      <button type="button" class="ob-skip-link press" onclick="softSkipOnboarding()">Set up later</button>
+      <button type="button" class="ob-primary press" onclick="advanceOnboardingFromRefs()">Continue</button>
+      <button type="button" class="ob-secondary press" onclick="goToOnboardingStep(0)">Back</button>`;
+  } else {
+    const catLabels = state.onboardingCategories
+      .map(id => onboardingCategoryLabel(id))
+      .filter(Boolean);
+    body = `
+      <div class="ob-content">
+        <div class="ob-summary-block">
+          <div class="ob-summary-h">
+            <span>Categories</span>
+            <button type="button" class="ob-edit-link press" onclick="goToOnboardingStep(0)">Edit</button>
+          </div>
+          <div class="ob-chip-row">${catLabels.map(l => `<span class="ob-chip" data-sel>${esc(l)}</span>`).join("")}</div>
+        </div>
+        <div class="ob-summary-block">
+          <div class="ob-summary-h">
+            <span>References (${state.onboardingRefs.length})</span>
+            <button type="button" class="ob-edit-link press" onclick="goToOnboardingStep(1)">Edit</button>
+          </div>
+          ${state.onboardingRefs.map(r => `<div class="ob-ref-row">${r.type === "account" ? "@" : "▶"} ${esc(r.label)}</div>`).join("")}
+        </div>
+      </div>`;
+    dock = `
+      <p class="ob-support">We'll draft scenes, caption, and audio in Plan — then Today is ready to shoot.</p>
+      <button type="button" class="ob-primary press" onclick="finishOnboardingAndGenerate()">Generate my first day</button>
+      <button type="button" class="ob-secondary press" onclick="goToOnboardingStep(1)">Back</button>`;
+  }
+
+  const titles = [
+    "What do you create about?",
+    "Who should we learn from?",
+    "Ready to generate?",
+  ];
+  const bodies = [
+    "Pick your content categories — you can always change these later in Plan.",
+    "Reels and profiles teach us your aesthetic.",
+    "Categories and references only — aesthetic tags come later from analysis.",
+  ];
+
+  return `
+    ${statusBar()}
+    <div class="ob-screen">
+      <div class="ob-head">
+        <div class="ob-step">Step ${step + 1} of 3</div>
+        <h1 class="ob-title">${titles[step]}</h1>
+        <p class="ob-body">${bodies[step]}</p>
+      </div>
+      ${body}
+    </div>
+    <div class="ob-dock">${dock}</div>`;
+}
+
+function goToPlan(focus) {
+  state.tab = "plan";
+  state.youSubview = null;
+  state.youSubviewOrigin = null;
+  state.planFocus = null;
+  state.archiveDetail = null;
+  state.nextScrollTop = 0;
+  state.nextWindowScrollY = 0;
+  writeUrlState();
+  render();
+}
+
+function openYouSubview(subview, origin) {
+  const valid = ["categories", "voice", "refs", "archive"];
+  if (!valid.includes(subview)) return;
+
+  const resolvedOrigin = origin || (state.tab === "plan" ? "plan" : "you");
+  const currentScreen = document.querySelector("#app .screen");
+  if (resolvedOrigin === "plan") {
+    state.planReturnScrollTop = currentScreen?.scrollTop ?? 0;
+    state.planReturnWindowScrollY = window.scrollY;
+  } else {
+    state.youReturnScrollTop = currentScreen?.scrollTop ?? 0;
+    state.youReturnWindowScrollY = window.scrollY;
+  }
+
+  state.tab = "you";
+  state.youSubview = subview;
+  state.youSubviewOrigin = resolvedOrigin === "plan" ? "plan" : "you";
+  state.archiveDetail = null;
+  state.planFocus = null;
+  state.nextScrollTop = 0;
+  state.nextWindowScrollY = 0;
+  writeUrlState();
+  render();
+}
+
+function closeYouSubview() {
+  const fromPlan = state.youSubviewOrigin === "plan";
+  const planScrollTop = state.planReturnScrollTop;
+  const planWindowScrollY = state.planReturnWindowScrollY;
+  const youScrollTop = state.youReturnScrollTop;
+  const youWindowScrollY = state.youReturnWindowScrollY;
+
+  state.youSubview = null;
+  state.youSubviewOrigin = null;
+  state.archiveDetail = null;
+  state.planFocus = null;
+
+  if (fromPlan) {
+    state.tab = "plan";
+    state.nextScrollTop = planScrollTop ?? 0;
+    state.nextWindowScrollY = planWindowScrollY ?? 0;
+    state.planReturnScrollTop = null;
+    state.planReturnWindowScrollY = null;
+  } else {
+    state.tab = "you";
+    state.nextScrollTop = youScrollTop ?? 0;
+    state.nextWindowScrollY = youWindowScrollY ?? 0;
+    state.youReturnScrollTop = null;
+    state.youReturnWindowScrollY = null;
+  }
+
+  writeUrlState();
+  render();
+}
+
+function voiceComplete() {
+  return !!(state.voice.positioning.trim() && state.voice.rules.trim());
+}
+
+function refsCount() {
+  return state.refs.filter(r => r.status === "confirmed").length;
+}
+
+function setPlanSelectedDate(iso) {
+  const [year, month, day] = String(iso).split("-").map(Number);
+  if (![year, month, day].every(Number.isInteger) || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  state.planSelected = iso;
+  state.planYear = year;
+  state.planMonth = month - 1;
+  return true;
+}
+
+function ensurePlanDay(iso) {
+  if (!PLAN_DAYS[iso]) PLAN_DAYS[iso] = { status: "empty", title: null };
+  return PLAN_DAYS[iso];
+}
+
+function selectLocalToday() {
+  const today = localTodayISO();
+  ensurePlanDay(today);
+  setPlanSelectedDate(today);
+  return today;
+}
+
+function selectedPlanDay() {
+  return PLAN_DAYS[state.planSelected] || { status: "empty", title: null };
+}
+
+function formatPlanDate(iso) {
+  const d = new Date(iso + "T12:00:00");
+  return {
+    weekday: d.toLocaleDateString("en-GB", { weekday: "long" }),
+    label: d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
+    short: d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }),
+  };
+}
+
+function generatedPlanDays() {
+  return Object.entries(PLAN_DAYS)
+    .filter(([, meta]) => meta.status && meta.status !== "empty")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([iso, meta]) => ({ iso, ...meta, ...formatPlanDate(iso) }));
+}
+
+function renderDaygenPanel() {
+  const prompts = buildDaygenPrompts();
+  const busy = state.generating || state.daygenPending;
+  const otherOpen = state.daygenOtherOpen;
+  return `
+    <div class="pl-daygen" aria-label="Generate content for this day">
+      <div class="pl-daygen-k">Choose an idea for this day</div>
+      ${prompts.map((p, i) => `
+        <button type="button" class="pl-daygen-idea press" ${state.selectedIdeaIndex === i ? "data-sel" : ""} ${busy ? "disabled" : ""} onclick="selectDaygenIdea(${i})" aria-label="Generate ${esc(p.title)}">
+          <div class="pl-daygen-idea-t">${esc(p.title)}</div>
+          <div class="pl-daygen-idea-s">${esc(p.summary)}</div>
+        </button>`).join("")}
+      <button type="button" class="pl-daygen-other press" ${otherOpen ? "data-sel" : ""} ${busy ? "disabled" : ""} onclick="selectDaygenOther()" aria-label="Write another idea">
+        <div class="pl-daygen-idea-t">Other</div>
+        <div class="pl-daygen-idea-s">Write your own direction for this day.</div>
+      </button>
+      ${otherOpen ? `
+        <div class="pl-field" style="margin-top:12px">
+          <div class="pl-label">Your direction <span class="pl-req">required</span></div>
+          <div class="pl-hint">Use a specific idea, moment, or format. This creates one day only.</div>
+          <textarea class="pl-textarea" ${busy ? "disabled" : ""} placeholder="e.g. A quiet pre-race check-in before the first mile…" oninput="state.daygenSteerText=this.value">${esc(state.daygenSteerText)}</textarea>
+          <button type="button" class="pl-save pl-daygen-submit press" ${busy ? "disabled" : ""} onclick="confirmDaygen()">Generate for this day</button>
+        </div>` : ""}
+      ${busy ? `<p class="pl-daygen-busy">${state.generating ? "Generating this day…" : "Starting generation…"}</p>` : ""}
+    </div>`;
+}
+
+function buildDaygenPrompts() {
+  const { weekday, label } = formatPlanDate(state.planSelected);
+  const voiceHint = voiceComplete() ? "your voice" : "your positioning";
+  const refsHint = refsCount() > 0 ? `${refsCount()} reference${refsCount() === 1 ? "" : "s"}` : "what you save";
+  return [
+    {
+      title: "Behind the routine",
+      summary: `What ${weekday} actually looks like — one honest moment, no polish.`,
+    },
+    {
+      title: "Small win, said plainly",
+      summary: `One thing that went right before ${label.split(" ")[0]} ${label.split(" ")[1]} — quick hook, simple payoff.`,
+    },
+    {
+      title: "Process over outcome",
+      summary: `Show the prep, not the result — ${voiceHint} leads, camera follows.`,
+    },
+    {
+      title: "Question you keep getting",
+      summary: `Answer the DM you would have ignored — framed for ${weekday}'s audience.`,
+    },
+    {
+      title: "Contrast reel",
+      summary: `Two beats: expectation vs reality. ${refsHint} can set the pacing.`,
+    },
+  ];
+}
+
+function renderCalendarGrid() {
+  const cells = buildCalendarCells();
+  const dows = ["M", "T", "W", "T", "F", "S", "S"];
+  const calDays = cells.map(c => {
+    if (c.muted) return `<span class="pl-cal-dow" aria-hidden="true"></span>`;
+    return `<button type="button" class="pl-cal-day press"
+      ${c.selected ? "data-sel" : ""}
+      ${c.today ? "data-today" : ""}
+      ${c.status !== "empty" ? `data-status="${c.status}"` : ""}
+      onclick="selectPlanDay('${c.iso}')"
+      aria-label="${c.day} ${planMonthLabel()}${c.status !== "empty" ? ", " + c.status : ""}"
+    >${c.day}${c.status !== "empty" ? '<span class="pl-cal-dot"></span>' : ""}</button>`;
+  }).join("");
+  return `
+    <div class="pl-cal">
+      <div class="pl-cal-nav">
+        <button type="button" class="pl-cal-btn press" onclick="shiftPlanMonth(-1)" aria-label="Previous month">‹</button>
+        <div class="pl-cal-month">${planMonthLabel()}</div>
+        <button type="button" class="pl-cal-btn press" onclick="shiftPlanMonth(1)" aria-label="Next month">›</button>
+      </div>
+      <div class="pl-cal-grid">
+        ${dows.map(d => `<span class="pl-cal-dow">${d}</span>`).join("")}
+        ${calDays}
+      </div>
+    </div>`;
+}
+
+function planMonthLabel() {
+  return new Date(state.planYear, state.planMonth, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}
+
+function buildCalendarCells() {
+  const first = new Date(state.planYear, state.planMonth, 1);
+  const startPad = (first.getDay() + 6) % 7;
+  const daysInMonth = new Date(state.planYear, state.planMonth + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < startPad; i++) cells.push({ muted: true });
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso = `${state.planYear}-${String(state.planMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const meta = PLAN_DAYS[iso];
+    cells.push({
+      day: d,
+      iso,
+      status: meta?.status || "empty",
+      today: iso === localTodayISO(),
+      selected: iso === state.planSelected,
+    });
+  }
+  return cells;
+}
+
+function shiftPlanMonth(delta) {
+  const d = new Date(state.planYear, state.planMonth + delta, 1);
+  state.planYear = d.getFullYear();
+  state.planMonth = d.getMonth();
+  render();
+}
+
+function selectPlanDay(iso) {
+  setPlanSelectedDate(iso);
+  closeDaygen();
+  if (state.sheet === "calendar") closeSheet();
+  render();
+}
+
+function togglePlanAccordion(which) {
+  if (which === "voice") state.planVoiceOpen = !state.planVoiceOpen;
+  if (which === "refs") state.planRefsOpen = !state.planRefsOpen;
+  if (which === "categories") state.planCategoriesOpen = !state.planCategoriesOpen;
+  render();
+}
+
+function openCalendarSheet() {
+  const d = new Date(state.planSelected + "T12:00:00");
+  state.planYear = d.getFullYear();
+  state.planMonth = d.getMonth();
+  openSheet("calendar");
+}
+
+function openYouArchive() {
+  openYouSubview("archive", "you");
+}
+
+function closeYouArchive() {
+  closeYouSubview();
+}
+
+function updateVoice(field, value) {
+  state.voice[field] = value;
+}
+
+function toggleVoiceExample(field) {
+  state.voiceExampleField = state.voiceExampleField === field ? null : field;
+  render();
+}
+
+function applyVoicePreset(id) {
+  const preset = VOICE_PRESETS.find(p => p.id === id);
+  if (!preset) return;
+  state.voice = { ...preset.voice };
+  state.voiceExampleField = null;
+  state.voiceDeferred = false;
+  showToast("Preset applied — edit anytime below");
+  render();
+}
+
+function openVoiceQA() {
+  state.voiceQaStep = 0;
+  state.voiceQaDraft = {};
+  openSheet("voice-qa");
+}
+
+function voiceQaAnswer(value) {
+  const step = VOICE_QA_STEPS[state.voiceQaStep];
+  if (!step) return;
+  const trimmed = value.trim();
+  if (!step.optional && !trimmed) {
+    showToast("This one's required");
+    return;
+  }
+  state.voiceQaDraft[step.field] = trimmed;
+  if (state.voiceQaStep < VOICE_QA_STEPS.length - 1) {
+    state.voiceQaStep += 1;
+    render();
+    return;
+  }
+  finishVoiceQA();
+}
+
+function skipVoiceQaStep() {
+  const step = VOICE_QA_STEPS[state.voiceQaStep];
+  if (step?.optional) {
+    if (state.voiceQaStep < VOICE_QA_STEPS.length - 1) {
+      state.voiceQaStep += 1;
+      render();
+    } else finishVoiceQA();
+  }
+}
+
+function finishVoiceQA() {
+  const d = state.voiceQaDraft;
+  state.voice.positioning = d.positioning || "";
+  state.voice.rules = d.rules || "";
+  state.voice.pillars = d.pillars || "";
+  state.voice.captionStyle = d.captionStyle || "";
+  state.voiceQaStep = 0;
+  state.voiceQaDraft = {};
+  closeSheet();
+  if (voiceComplete()) {
+    state.voiceDeferred = false;
+    showToast("Voice saved from Q&A — edit anytime");
+  } else {
+    showToast("Positioning and voice rules required");
+    state.planVoiceOpen = true;
+  }
+  render();
+}
+
+function saveVoice() {
+  if (!voiceComplete()) {
+    showToast("Positioning and voice rules required");
+    return;
+  }
+  state.voiceDeferred = false;
+  showToast("Voice saved");
+  render();
+}
+
+function voiceGateOpen() {
+  return !voiceComplete() && !state.voiceDeferred;
+}
+
+function confirmedRefsList() {
+  return state.refs.filter(r => r.status === "confirmed");
+}
+
+function inspirationRefsList() {
+  return state.refs.filter(r => r.status === "account");
+}
+
+function openSheet(name) {
+  state.sheet = name;
+  render();
+}
+
+function closeSheet() {
+  if (state.generating && state.sheet === "gen-progress") return;
+  state.sheet = null;
+  state.importPaste = "";
+  state.importValidating = false;
+  state.importPreview = null;
+  state.editingReviewId = null;
+  render();
+}
+
+function normalizeImportKey(text) {
+  const t = text.trim();
+  if (t.startsWith("@")) return `handle:${t.replace(/^@/, "").toLowerCase()}`;
+  if (t.includes("audio")) return `audio:${t.toLowerCase()}`;
+  try {
+    const url = new URL(t.includes("://") ? t : `https://${t}`);
+    return `url:${url.hostname}${url.pathname}`.toLowerCase();
+  } catch {
+    return `raw:${t.toLowerCase()}`;
+  }
+}
+
+function findImportDuplicate(text) {
+  const key = normalizeImportKey(text);
+  const isHandle = text.startsWith("@") || (!text.includes("http") && !text.includes("/"));
+  for (const r of state.refs) {
+    if (r.key && r.key === key) {
+      return { reason: "Already saved — same reference", block: true };
+    }
+    if (isHandle && r.status === "account" && r.label.toLowerCase().includes(text.replace(/^@/, "").toLowerCase())) {
+      return { reason: "Already in Inspiration — same @handle", block: true };
+    }
+    if (!isHandle && r.status === "confirmed" && r.label.toLowerCase().includes(text.slice(0, 24).toLowerCase())) {
+      return { reason: "Likely duplicate — URL matches a saved reel/audio", block: false };
+    }
+  }
+  if (text.includes("checksum-mismatch")) {
+    return { reason: "Checksum mismatch — re-paste the original URL", block: true };
+  }
+  return null;
+}
+
+function refreshRefsList() {
+  state.refsRefreshing = true;
+  render();
+  setTimeout(() => {
+    state.refsRefreshing = false;
+    showToast("References refreshed");
+    render();
+  }, 700);
+}
+
+function approveNeedsReview(id) {
+  const item = state.needsReview.find(r => r.id === id);
+  if (!item) return;
+  state.refs.push({
+    id: `r${Date.now()}`,
+    type: item.type === "audio" ? "audio" : "reel",
+    label: item.draftLabel || item.label,
+    status: "confirmed",
+    key: normalizeImportKey(item.label),
+  });
+  state.needsReview = state.needsReview.filter(r => r.id !== id);
+  showToast("Reference confirmed");
+  persistOnboardingData();
+  render();
+}
+
+function dismissNeedsReview(id) {
+  state.needsReview = state.needsReview.filter(r => r.id !== id);
+  showToast("Dismissed from review");
+  render();
+}
+
+function openReviewEdit(id) {
+  const item = state.needsReview.find(r => r.id === id);
+  if (!item) return;
+  state.editingReviewId = id;
+  state.importPaste = item.draftLabel || item.label;
+  openSheet("review-edit");
+}
+
+function saveReviewEdit() {
+  const text = state.importPaste.trim();
+  if (!text) {
+    showToast("Add a label or URL");
+    return;
+  }
+  const item = state.needsReview.find(r => r.id === state.editingReviewId);
+  if (item) {
+    item.draftLabel = text;
+    item.label = text.length > 36 ? text.slice(0, 36) + "…" : text;
+  }
+  closeSheet();
+  showToast("Review item updated");
+}
+
+function requestGenerate() {
+  if (state.generating || state.daygenPending) return;
+  if (voiceGateOpen()) {
+    showToast("Set up voice first");
+    state.planVoiceOpen = true;
+    render();
+    return;
+  }
+  openDaygenInline();
+}
+
+function openDaygenInline() {
+  state.daygenOpen = true;
+  state.selectedIdeaIndex = null;
+  state.daygenOtherOpen = false;
+  render();
+}
+
+function closeDaygen() {
+  state.daygenOpen = false;
+  state.selectedIdeaIndex = null;
+  state.daygenOtherOpen = false;
+  state.daygenSteerText = "";
+  state.regenChangeText = "";
+  render();
+}
+
+function selectDaygenIdea(index) {
+  if (state.generating || state.daygenPending) return;
+  const prompts = buildDaygenPrompts();
+  const prompt = prompts[index];
+  if (!prompt) return;
+  if (voiceGateOpen()) {
+    showToast("Set up voice first");
+    state.planVoiceOpen = true;
+    render();
+    return;
+  }
+  state.selectedIdeaIndex = index;
+  state.daygenOtherOpen = false;
+  requestDaygenGeneration(prompt);
+}
+
+function selectDaygenOther() {
+  if (state.generating || state.daygenPending) return;
+  state.selectedIdeaIndex = null;
+  state.daygenOtherOpen = !state.daygenOtherOpen;
+  if (!state.daygenOtherOpen) state.daygenSteerText = "";
+  render();
+}
+
+function requestDaygenGeneration(prompt) {
+  if (!prompt || state.generating || state.daygenPending) return;
+  if (voiceGateOpen()) {
+    showToast("Set up voice first");
+    state.planVoiceOpen = true;
+    render();
+    return;
+  }
+  const targetIso = state.planSelected;
+  const day = PLAN_DAYS[targetIso] || { status: "empty", title: null };
+  state.selectedPrompt = prompt;
+  state.daygenTargetIso = targetIso;
+  state.daygenPending = true;
+  if (day.status === "ready" || day.status === "approved" || day.status === "draft") {
+    openSheet("overwrite");
+    return;
+  }
+  dispatchSelectedDayGeneration();
+}
+
+function confirmDaygen() {
+  if (state.generating || state.daygenPending) return;
+  const steer = state.daygenSteerText.trim();
+  if (!steer) {
+    showToast("Add a direction first");
+    return;
+  }
+  if (voiceGateOpen()) {
+    showToast("Set up voice first");
+    state.planVoiceOpen = true;
+    render();
+    return;
+  }
+  const title = steer.length > 56 ? `${steer.slice(0, 56)}…` : steer;
+  requestDaygenGeneration({ title, summary: steer, steer });
+}
+
+function confirmOverwrite() {
+  closeSheet();
+  dispatchSelectedDayGeneration();
+}
+
+function cancelOverwrite() {
+  state.sheet = null;
+  state.daygenPending = false;
+  state.daygenTargetIso = null;
+  state.selectedIdeaIndex = null;
+  state.selectedPrompt = null;
+  state.daygenOtherOpen = false;
+  state.daygenSteerText = "";
+  render();
+}
+
+function dispatchSelectedDayGeneration() {
+  if (state.generating || !state.daygenPending) return;
+  const targetIso = state.daygenTargetIso || state.planSelected;
+  const prompt = state.selectedPrompt;
+  state.daygenTargetIso = null;
+  state.daygenPending = false;
+  state.daygenOpen = false;
+  state.selectedIdeaIndex = null;
+  state.daygenOtherOpen = false;
+  state.daygenSteerText = "";
+  startGenerate({ date: targetIso, prompt });
+}
+
+function pickDaygenPrompt(index) {
+  selectDaygenIdea(index);
+}
+
+function completeDayGeneration(date, startedAt) {
+  const persisted = readDayGeneration();
+  if (persisted && (persisted.date !== date || persisted.startedAt !== startedAt)) return;
+  dayGenerationTimer = null;
+  state.generating = false;
+  state.generationDate = null;
+  state.generationStartedAt = null;
+  const title = state.selectedPrompt?.title || persisted?.title || CARD.title;
+  ensurePlanDay(date);
+  PLAN_DAYS[date] = { status: "ready", title };
+  persistPlanDays();
+  clearDayGenerationPersistence();
+  state.selectedPrompt = null;
+  if (state.sheet === "gen-progress") state.sheet = null;
+  // Keep empty=true until Approve — Today must not show the package early (ticket 05).
+  if (state.first) state.first = false;
+  writeUrlState();
+  showToast("Package ready — Approve when happy");
+  render();
+}
+
+function scheduleDayGenerationCompletion(date, startedAt) {
+  clearDayGenerationTimer();
+  const elapsed = Date.now() - startedAt;
+  const remaining = Math.max(0, DAY_GENERATION_DURATION_MS - elapsed);
+  dayGenerationTimer = setTimeout(() => completeDayGeneration(date, startedAt), remaining);
+}
+
+function restoreDayGeneration() {
+  const record = readDayGeneration();
+  if (!record) return;
+  ensurePlanDay(record.date);
+  setPlanSelectedDate(record.date);
+  state.generating = true;
+  state.generationDate = record.date;
+  state.generationStartedAt = record.startedAt;
+  state.selectedPrompt = record.title ? { title: record.title } : null;
+  state.sheet = "gen-progress";
+  scheduleDayGenerationCompletion(record.date, record.startedAt);
+}
+
+function startGenerate(options = {}) {
+  if (state.generating) return false;
+  const generationDate = options.date || state.planSelected;
+  const day = ensurePlanDay(generationDate);
+  if (options.firstDay && day.status !== "empty") return false;
+  setPlanSelectedDate(generationDate);
+  if (state.sheet) closeSheet();
+  const startedAt = Date.now();
+  state.generating = true;
+  state.generationDate = generationDate;
+  state.generationStartedAt = startedAt;
+  if (options.prompt) state.selectedPrompt = options.prompt;
+  persistDayGeneration({
+    status: "generating",
+    date: generationDate,
+    startedAt,
+    title: state.selectedPrompt?.title || null,
+  });
+  openSheet("gen-progress");
+  scheduleDayGenerationCompletion(generationDate, startedAt);
+  return true;
+}
+
+function approveDay() {
+  const day = selectedPlanDay();
+  if (day.status !== "ready") {
+    showToast("Generate a package first");
+    return;
+  }
+  PLAN_DAYS[state.planSelected].status = "approved";
+  persistPlanDays();
+  state.empty = false;
+  showToast("Approved — available on Today");
+  render();
+}
+
+function generateAnyway() {
+  if (voiceGateOpen()) {
+    showToast("Set up voice first");
+    state.planVoiceOpen = true;
+    render();
+    return;
+  }
+  openDaygenInline();
+}
+
+function pickEasierIdea(which) {
+  closeSheet();
+  const idea = EASIER_IDEAS[which];
+  showToast(idea?.toast || "Queued a lighter brief");
+  render();
+}
+
+function openImportSheet() {
+  state.importPaste = "";
+  openSheet("import");
+}
+
+function confirmImport() {
+  void confirmImportAsync();
+}
+
+async function confirmImportAsync() {
+  const text = state.importPaste.trim();
+  if (!text) {
+    showToast("Paste a reel URL or @handle");
+    return;
+  }
+  const dup = findImportDuplicate(text);
+  if (dup) {
+    state.importPreview = { text, ...dup };
+    state.sheet = "import-preview";
+    render();
+    return;
+  }
+  await finishImport(text);
+}
+
+function confirmImportAnyway() {
+  const text = state.importPreview?.text || state.importPaste.trim();
+  if (!text) return;
+  void finishImport(text);
+}
+
+async function finishImport(text) {
+  if (state.importValidating) return;
+
+  const parsed = parsePlanRefInput(text);
+  if (!parsed.ok) {
+    showToast(parsed.error);
+    return;
+  }
+
+  let ref = parsed.ref;
+
+  let lookup = null;
+  if (parsed.needsLookup) {
+    state.importValidating = true;
+    render();
+    lookup = await verifyInstagramProfile(parsed.handle);
+    state.importValidating = false;
+    if (lookup.status === PROFILE_VERIFICATION_STATUS.NOT_FOUND) {
+      showToast(`@${lookup.handle} wasn't found on Instagram`);
+      render();
+      return;
+    }
+    ref = buildOnboardingProfileRef(lookup.handle, lookup.url);
+  }
+
+  const dupKey = state.refs.find(r => r.key === ref.key);
+  if (dupKey) {
+    showToast("Already added");
+    render();
+    return;
+  }
+
+  state.refs.push({ id: `r${Date.now()}`, ...ref });
+  closeSheet();
+  if (lookup?.status === PROFILE_VERIFICATION_STATUS.TEMPORARILY_UNAVAILABLE) {
+    showToast("Profile added. We couldn't check Instagram right now.");
+  } else {
+    showToast(ref.type === "account" ? "Account added to Inspiration" : "Reference confirmed");
+  }
+  persistOnboardingData();
+  render();
+}
+
+function renderLightSheet() {
+  if (!state.sheet) return "";
+  const s = state.sheet;
+  let inner = "";
+  if (s === "gen-progress") {
+    const promptLine = state.selectedPrompt
+      ? `<p class="sheet-note" style="margin-top:-6px;margin-bottom:12px">Angle: <strong>${esc(state.selectedPrompt.title)}</strong></p>`
+      : "";
+    inner = `
+      <div class="sheet-meta">Generating</div>
+      <h2 class="sheet-title">Drafting your package</h2>
+      ${promptLine}
+      <p class="sheet-body">Pulling voice, references, and calendar context. Usually under a minute.</p>
+      <div class="lsheet-progress" aria-hidden="true"><span></span></div>
+      <p class="sheet-note">You can keep browsing Plan — we’ll surface Approve when it’s ready.</p>`;
+  } else if (s === "overwrite") {
+    inner = `
+      <div class="sheet-meta">Confirm</div>
+      <h2 class="sheet-title">Overwrite ready package?</h2>
+      <p class="sheet-body">This replaces the ready package with a new draft. Any live Decision clears; Archive history stays. You’ll need to Approve again.</p>
+      <div class="lsheet-actions">
+        <button type="button" class="sheet-done press" onclick="confirmOverwrite()">Overwrite</button>
+        <button type="button" class="lsheet-secondary press" onclick="cancelOverwrite()">Cancel</button>
+      </div>`;
+  } else if (s === "daygen-prompts") {
+    const { label } = formatPlanDate(state.planSelected);
+    const prompts = buildDaygenPrompts();
+    inner = `
+      <div class="sheet-meta">Generate · ${label}</div>
+      <h2 class="sheet-title">Pick an angle</h2>
+      <p class="sheet-note" style="margin-bottom:14px">Five prompts for this day — voice and references personalize the draft.</p>
+      ${prompts.map((p, i) => `
+        <button type="button" class="lsheet-idea press" onclick="pickDaygenPrompt(${i})">
+          <div class="lsheet-idea-t">${esc(p.title)}</div>
+          <div class="lsheet-idea-s">${esc(p.summary)}</div>
+        </button>`).join("")}
+      <button type="button" class="lsheet-secondary press" onclick="closeSheet()">Cancel</button>`;
+  } else if (s === "calendar") {
+    inner = `
+      <div class="sheet-meta">Calendar</div>
+      <h2 class="sheet-title">Choose a day</h2>
+      <div class="pl-cal-sheet">${renderCalendarGrid()}</div>
+      <button type="button" class="lsheet-secondary press" style="margin-top:12px" onclick="closeSheet()">Done</button>`;
+  } else if (s === "easier") {
+    inner = `
+      <div class="sheet-meta">Other ideas</div>
+      <h2 class="sheet-title">Need something easier?</h2>
+      <p class="sheet-note" style="margin-bottom:14px">Same day, lighter lift — pick one to regenerate toward.</p>
+      ${EASIER_IDEAS.map((idea, i) => `
+      <button type="button" class="lsheet-idea press" onclick="pickEasierIdea(${i})">
+        <div class="lsheet-idea-t">${esc(idea.title)}</div>
+        <div class="lsheet-idea-s">${esc(idea.summary)}</div>
+      </button>`).join("")}
+      <button type="button" class="lsheet-secondary press" onclick="closeSheet()">Keep current package</button>`;
+  } else if (s === "swap-bg") {
+    const tracks = BG_TRACKS;
+    const current = state.audioBgIdx;
+    inner = `
+      <div class="sheet-meta">Audio · ranked</div>
+      <h2 class="sheet-title">Swap background music</h2>
+      <p class="sheet-note" style="margin-bottom:14px">Trending and international-feel picks — tap to preview and replace.</p>
+      ${tracks.map((t, i) => `
+        <button type="button" class="lsheet-idea press" ${i === current ? 'style="border-color:#111"' : ""} onclick="selectAudioTrack(${i})">
+          <div class="lsheet-idea-t">${esc(t.badge)} · ${esc(t.name)}</div>
+          <div class="lsheet-idea-s">${esc(t.feel)}${i === current ? " · current" : ""}</div>
+        </button>`).join("")}
+      <button type="button" class="lsheet-secondary press" onclick="closeSheet()">Cancel</button>`;
+  } else if (s === "account") {
+    const when = state.refreshedAt
+      ? state.refreshedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      : "—";
+    inner = `
+      <div class="sheet-meta">Account</div>
+      <p class="pf-email" style="margin:0 0 4px">creator@contenthelper.app</p>
+      <p class="pf-apple-sub" style="margin:0 0 14px">Signed in with Apple</p>
+      <div class="pf-block" style="margin:0">
+        <div class="pf-row">
+          <div class="pf-row-title">Supabase</div>
+          ${renderHealthLed("supabase")}
+        </div>
+        <div class="pf-row">
+          <div class="pf-row-title">Gemini</div>
+          ${renderHealthLed("gemini")}
+        </div>
+        <div class="pf-row">
+          <div>
+            <div class="pf-row-title">Last checked</div>
+            <div class="pf-row-sub">${when === "—" ? "Not refreshed yet" : "Up to date as of " + when}</div>
+          </div>
+          <button type="button" class="pf-refresh press" onclick="refreshStatus()" ${state.healthChecking ? "disabled" : ""}>${state.healthChecking ? "Checking…" : "Refresh"}</button>
+        </div>
+      </div>`;
+  } else if (s === "import-preview") {
+    const prev = state.importPreview || {};
+    const block = prev.block;
+    inner = `
+      <div class="sheet-meta">Import preview</div>
+      <h2 class="sheet-title">${block ? "Can't add this reference" : "Possible duplicate"}</h2>
+      <p class="sheet-body">${esc(prev.reason || "This looks like something you already saved.")}</p>
+      <p class="sheet-note" style="margin-top:8px">Paste: <strong>${esc(prev.text || "")}</strong></p>
+      <div class="lsheet-actions" style="margin-top:14px">
+        ${block
+          ? `<button type="button" class="sheet-done press" onclick="closeSheet()">OK</button>`
+          : `<button type="button" class="sheet-done press" onclick="confirmImportAnyway()">Add anyway</button>
+             <button type="button" class="lsheet-secondary press" onclick="closeSheet()">Cancel</button>`}
+      </div>`;
+  } else if (s === "review-edit") {
+    inner = `
+      <div class="sheet-meta">Needs your call</div>
+      <h2 class="sheet-title">Edit before approve</h2>
+      <p class="sheet-note" style="margin-bottom:12px">Fix the label or URL, then save — approve from the list when ready.</p>
+      <textarea class="pl-textarea" placeholder="Reel URL or short label" oninput="state.importPaste=this.value">${esc(state.importPaste)}</textarea>
+      <div class="lsheet-actions" style="margin-top:14px">
+        <button type="button" class="sheet-done press" onclick="saveReviewEdit()">Save</button>
+        <button type="button" class="lsheet-secondary press" onclick="closeSheet()">Cancel</button>
+      </div>`;
+  } else if (s === "import") {
+    inner = `
+      <div class="sheet-meta">Add reference</div>
+      <h2 class="sheet-title">Paste reel or @handle</h2>
+      <p class="sheet-note" style="margin-bottom:12px">Reel/audio URLs count toward generation. Handles land in Inspiration.</p>
+      <textarea class="pl-textarea" placeholder="https://instagram.com/reel/… or @creator" oninput="state.importPaste=this.value">${esc(state.importPaste)}</textarea>
+      <div class="lsheet-actions" style="margin-top:14px">
+        <button type="button" class="sheet-done press" ${state.importValidating ? "disabled" : ""} onclick="confirmImport()">${state.importValidating ? "Checking…" : "Add"}</button>
+        <button type="button" class="lsheet-secondary press" onclick="closeSheet()">Cancel</button>
+      </div>`;
+  } else if (s === "voice-qa") {
+    const step = VOICE_QA_STEPS[state.voiceQaStep];
+    const draftVal = state.voiceQaDraft[step.field] || "";
+    const skipBtn = step.optional
+      ? `<button type="button" class="lsheet-secondary press" onclick="skipVoiceQaStep()">Skip</button>`
+      : "";
+    inner = `
+      <div class="sheet-meta">Guided voice · ${state.voiceQaStep + 1}/${VOICE_QA_STEPS.length}</div>
+      <h2 class="sheet-title">${esc(step.question)}</h2>
+      <p class="sheet-note" style="margin-bottom:12px">${esc(step.hint)}</p>
+      <textarea class="pl-textarea" id="voice-qa-input" placeholder="${esc(step.placeholder)}" oninput="state.voiceQaDraft['${step.field}']=this.value">${esc(draftVal)}</textarea>
+      <div class="lsheet-actions" style="margin-top:14px">
+        <button type="button" class="sheet-done press" onclick="voiceQaAnswer(document.getElementById('voice-qa-input').value)">${state.voiceQaStep < VOICE_QA_STEPS.length - 1 ? "Next" : "Finish"}</button>
+        ${skipBtn}
+        <button type="button" class="lsheet-secondary press" onclick="closeSheet()">Cancel</button>
+      </div>`;
+  }
+  return `
+    <div class="sheet" data-open onclick="if(event.target===this) closeSheet()">
+      <div class="sheet-panel${s === "account" ? " sheet-panel-sm" : ""}" role="dialog" aria-modal="true">
+        <div class="sheet-handle"></div>
+        ${inner}
+      </div>
+    </div>`;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}
+
+function stripStatusLabel(status) {
+  if (status === "approved") return "Approved · on Today";
+  if (status === "ready") return "Ready — Approve to publish to Today";
+  if (status === "draft") return "Draft in progress";
+  return "No content planned for today";
+}
+
 function renderToday() {
+  if (state.empty) {
+    const title = "No card for Today";
+    const body = "Approve a package in Plan — then come here to see what to shoot.";
+    const cta = "Open Plan";
+    const action = "goToPlan()";
+    return `
+      ${statusBar()}
+      <div class="screen" style="display:flex;flex-direction:column">
+        <div class="ps-head ps-head-empty">
+          <div class="ps-kicker">Today · ${CARD.date}</div>
+        </div>
+        <div class="ps-empty">
+          <h2 class="ps-empty-title">${title}</h2>
+          <p class="ps-empty-body">${body}</p>
+        </div>
+      </div>
+      <div class="ps-dock ps-dock-empty">
+        <button type="button" class="ps-primary press" onclick="${action}">${cta}</button>
+      </div>
+      ${tabs()}
+      ${renderLightSheet()}`;
+  }
+
   const rows = CARD.scenes.map(s => `
     <div class="ps-row" ${state.shot.has(s.n) ? "data-shot" : ""}>
       <div class="ps-thumb" onclick="toggleShot(${s.n})">
@@ -689,7 +4483,7 @@ function renderToday() {
         <div class="ps-row-t">${s.title}</div>
         <div class="ps-row-d">${s.duration}</div>
       </div>
-      <button class="ps-mark press" onclick="event.stopPropagation(); toggleShot(${s.n})">${state.shot.has(s.n) ? "Undo" : "Shot"}</button>
+      <button type="button" class="ps-mark press" onclick="event.stopPropagation(); toggleShot(${s.n})">${state.shot.has(s.n) ? "Undo" : "Shot"}</button>
     </div>`).join("");
 
   return `
@@ -704,32 +4498,17 @@ function renderToday() {
         <span class="ps-pill">${CARD.effort}</span>
       </div>
       <div class="ps-list">${rows}</div>
-      <div class="ps-pkg">
-        <div class="ps-pkg-row">
-          <div>
-            <div class="ps-pkg-label">Caption</div>
-            <div class="ps-pkg-body">${CARD.caption}</div>
-          </div>
-          <button class="ps-pkg-copy press" onclick="copyText('Caption', CARD.caption)">Copy</button>
-        </div>
-        <div class="ps-pkg-row">
-          <div>
-            <div class="ps-pkg-label">Audio</div>
-            <div class="ps-pkg-body">${CARD.audio}</div>
-          </div>
-          <button class="ps-pkg-copy press" onclick="copyText('Audio', CARD.audio)">Copy</button>
-        </div>
-      </div>
+      ${renderExecutionPackageBlock(false)}
     </div>
     <div class="ps-dock">
-      <button class="ps-primary press" onclick="showToast(state.shot.size === CARD.scenes.length ? 'Marked posted' : 'Marked remaining shot')">${primaryLabel()}</button>
-      <button class="ps-secondary press" onclick="showToast('Other ideas sheet')">Need something easier</button>
+      <button type="button" class="ps-primary press" onclick="handlePrimaryAction()">${primaryLabel()}</button>
+      <button type="button" class="ps-secondary press" onclick="openSheet('easier')">Need something easier</button>
     </div>
-    ${tabs()}`;
+    ${tabs()}
+    ${renderLightSheet()}`;
 }
 
 function setArchiveFilter(f) {
-  state.archiveFilter = f;
   render();
 }
 
@@ -744,21 +4523,14 @@ function closeArchive() {
 }
 
 function filteredArchive() {
-  if (state.archiveFilter === "all") return ARCHIVE;
-  return ARCHIVE.filter(e => e.filter === state.archiveFilter);
+  return ARCHIVE;
 }
 
-function renderArchive() {
-  const filters = [
-    ["all", "All"],
-    ["posted", "Completed"],
-    ["backup", "Backups"],
-    ["skipped", "Skipped"],
-  ];
+function renderArchiveList() {
   const entries = filteredArchive();
   const rows = entries.length
     ? entries.map(e => `
-      <button class="ar-row" onclick="openArchive('${e.id}')">
+      <button type="button" class="ar-row" onclick="openArchive('${e.id}')">
         <div>
           <div class="ar-day">${e.day}</div>
           <div class="ar-date">${e.date}</div>
@@ -771,7 +4543,7 @@ function renderArchive() {
           ? `<div class="ar-thumb"><svg viewBox="0 0 56 56">${sceneArt(e.thumb)}</svg></div>`
           : `<div class="ar-thumb" style="display:grid;place-items:center;color:#a3a3a3;font-size:18px">›</div>`}
       </button>`).join("")
-    : `<div class="ar-empty">Nothing in this filter yet.</div>`;
+    : `<div class="ar-empty">Nothing archived yet — when you mark posted on Today, items land here.</div>`;
 
   const detail = state.archiveDetail;
   const sheet = `
@@ -784,21 +4556,21 @@ function renderArchive() {
           <div class="sheet-chip">${detail.label}</div>
           <p class="sheet-body">${detail.output}</p>
           <p class="sheet-note">${detail.thumb ? "Post output was recorded." : "No post thumbnail was attached."}</p>
-          <button class="sheet-done press" onclick="closeArchive()">Done</button>
         ` : ""}
       </div>
     </div>`;
 
+  return { rows, sheet };
+}
+
+function renderArchive() {
+  const { rows, sheet } = renderArchiveList();
   return `
     ${statusBar()}
     <div class="screen">
       <div class="ar-head">
         <h1 class="ar-title">Archive</h1>
-      </div>
-      <div class="ar-filters">
-        ${filters.map(([id, label]) => `
-          <button class="ar-filter press" ${state.archiveFilter === id ? "data-on" : ""} onclick="setArchiveFilter('${id}')">${label}</button>
-        `).join("")}
+        <p class="ar-sub">Everything you posted or archived — newest first.</p>
       </div>
       <div class="ar-list">${rows}</div>
     </div>
@@ -806,67 +4578,517 @@ function renderArchive() {
     ${sheet}`;
 }
 
-function refreshStatus() {
-  state.refreshedAt = new Date();
-  showToast("Status refreshed");
-  render();
+function renderYouArchivePreview() {
+  const entries = ARCHIVE.slice(0, 5);
+  if (!entries.length) {
+    return `<p class="pf-archive-empty">Nothing archived yet — mark posted on Today to save items here.</p>`;
+  }
+  const rows = entries.map(e => `
+    <button type="button" class="pf-archive-row press" onclick="openArchive('${e.id}')">
+      <div>
+        <div class="pf-archive-day">${esc(e.day)}</div>
+        <div class="pf-archive-date">${esc(e.date)}</div>
+      </div>
+      <div>
+        <div class="pf-archive-title">${esc(e.title)}</div>
+        <div class="pf-archive-out">${esc(e.label)}</div>
+      </div>
+      ${e.thumb
+        ? `<div class="pf-archive-thumb"><svg viewBox="0 0 56 56">${sceneArt(e.thumb)}</svg></div>`
+        : `<div class="pf-archive-thumb" style="display:grid;place-items:center;color:#a3a3a3;font-size:16px">›</div>`}
+    </button>`).join("");
+  const seeMore = `<button type="button" class="pf-see-more press" onclick="openYouArchive()">See more</button>`;
+  return `<div class="pf-archive-list">${rows}</div>${seeMore}`;
 }
 
-function renderProfile() {
+function renderYou() {
+  if (["categories", "voice", "refs"].includes(state.youSubview)) {
+    return renderYouInputSubview();
+  }
+  if (state.youSubview === "archive") {
+    const { rows, sheet } = renderArchiveList();
+    return `
+      ${statusBar()}
+      <div class="screen">
+        <button type="button" class="pl-back press" onclick="closeYouArchive()">← You</button>
+        <div class="ar-head" style="padding-top:0">
+          <h1 class="ar-title">Archive</h1>
+          <p class="ar-sub">Everything you posted or archived — newest first.</p>
+        </div>
+        <div class="ar-list">${rows}</div>
+      </div>
+      ${tabs()}
+      ${sheet}`;
+  }
+
+  const when = state.refreshedAt
+    ? state.refreshedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : "—";
+
   return `
     ${statusBar()}
     <div class="screen">
       <div class="pf-head">
-        <h1 class="pf-title">Profile</h1>
+        <h1 class="pf-title">You</h1>
       </div>
-
       <div class="pf-block">
         <div class="pf-block-h">Account</div>
-        <div class="pf-row">
+        <button type="button" class="pf-account-open press" onclick="openSheet('account')">
           <div>
-            <div class="pf-row-title">Signed in with Apple</div>
-            <div class="pf-row-sub">Creator · contenthelper</div>
+            <div class="pf-email">creator@contenthelper.app</div>
+            <div class="pf-apple-sub">Signed in with Apple${when === "—" ? "" : " · checked " + when}</div>
           </div>
-          <span class="pf-chip" data-live>Live</span>
-        </div>
+          <span class="pf-account-chev">›</span>
+        </button>
       </div>
-
+      <div class="pf-block">
+        <div class="pf-block-h">Generation inputs</div>
+        ${renderYouInputRow("categories", "Content categories")}
+        ${renderYouInputRow("voice", "Creator voice")}
+        ${renderYouInputRow("refs", "References")}
+      </div>
+      <div class="pf-block">
+        <div class="pf-block-h">Archive</div>
+        ${renderYouArchivePreview()}
+      </div>
       <div class="pf-actions">
-        <button class="pf-signout press" onclick="showToast('Signed out (prototype)')">Sign out</button>
+        <button type="button" class="pf-signout press" onclick="showToast('Signed out (prototype)')">Sign out</button>
       </div>
     </div>
-    ${tabs()}`;
+    ${tabs()}
+    ${renderLightSheet()}
+    ${state.archiveDetail ? renderArchiveList().sheet : ""}`;
+}
+
+function renderNeedsReviewRow(item) {
+  return `
+    <div class="pl-nyc-row">
+      <div class="pl-ref-ico">?</div>
+      <div class="pl-nyc-body">
+        <div class="pl-nyc-t">${esc(item.label)}</div>
+        <div class="pl-nyc-s">${esc(item.reason)}</div>
+        <div class="pl-nyc-actions">
+          <button type="button" class="pl-nyc-btn press" data-primary onclick="approveNeedsReview('${item.id}')">Approve</button>
+          <button type="button" class="pl-nyc-btn press" onclick="openReviewEdit('${item.id}')">Edit</button>
+          <button type="button" class="pl-nyc-btn press" onclick="dismissNeedsReview('${item.id}')">Dismiss</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function recentRefsStrip() {
+  const recent = [...confirmedRefsList(), ...inspirationRefsList()].slice(-3).reverse();
+  if (!recent.length) return "";
+  return `
+    <div class="pl-recent-strip" aria-label="Recently used references">
+      ${recent.map(r => `<div class="pl-recent-chip">${esc(r.label.split("·")[0].trim())}</div>`).join("")}
+    </div>`;
+}
+
+function renderRefRow(r) {
+  return `
+    <div class="pl-ref-row">
+      <div class="pl-ref-ico">${r.type === "audio" ? "♪" : r.type === "account" ? "@" : "▶"}</div>
+      <div>
+        <div class="pl-ref-t">${esc(r.label)}</div>
+        <div class="pl-ref-s">${r.status === "confirmed" ? "Counts toward generation" : "Inspiration account — not used in generation today"}</div>
+      </div>
+    </div>`;
+}
+
+function renderVoiceField(key, label, required, hint) {
+  const opt = required ? `<span class="pl-req">required</span>` : `<span class="pl-req">optional</span>`;
+  const example = state.voiceExampleField === key
+    ? `<div class="pl-example"><div class="pl-example-k">Example (fitness)</div>${esc(VOICE_EXAMPLES[key])}</div>`
+    : "";
+  return `
+    <div class="pl-field">
+      <div class="pl-label">
+        ${label}
+        ${opt}
+        <button type="button" class="pl-info-btn press" onclick="toggleVoiceExample('${key}')" aria-label="Example for ${label}">ⓘ</button>
+      </div>
+      <div class="pl-hint">${hint}</div>
+      <textarea class="pl-textarea" placeholder="" oninput="updateVoice('${key}', this.value)">${esc(state.voice[key])}</textarea>
+      ${example}
+    </div>`;
+}
+
+function renderVoiceEntry() {
+  if (state.voiceDeferred) {
+    return `
+      <p class="pl-hint" style="margin-top:0">Voice comes from your references — aesthetic tags will appear after analysis. Optional: set positioning now or generate with refs alone.</p>
+      <button type="button" class="pl-voice-qa-btn press" onclick="openVoiceQA()">Set up voice now (optional)</button>
+      <div class="pl-voice-presets" style="margin-top:12px">
+        ${VOICE_PRESETS.map(p => `
+          <button type="button" class="pl-voice-preset press" onclick="applyVoicePreset('${p.id}')">
+            <div class="pl-voice-preset-t">${esc(p.title)}</div>
+            <div class="pl-voice-preset-s">${esc(p.summary)}</div>
+          </button>`).join("")}
+      </div>`;
+  }
+  return `
+    <div class="pl-voice-entry-k">Pick a starter template</div>
+    <div class="pl-voice-presets">
+      ${VOICE_PRESETS.map(p => `
+        <button type="button" class="pl-voice-preset press" onclick="applyVoicePreset('${p.id}')">
+          <div class="pl-voice-preset-t">${esc(p.title)}</div>
+          <div class="pl-voice-preset-s">${esc(p.summary)}</div>
+        </button>`).join("")}
+    </div>
+    <button type="button" class="pl-voice-qa-btn press" onclick="openVoiceQA()">Answer a few questions instead</button>
+    <p class="pl-hint" style="margin-top:10px">Templates are starting points — not niches. You can edit every field after.</p>`;
+}
+
+function renderVoiceFields() {
+  return `
+    ${renderVoiceField("positioning", "Positioning", true, "Who you are on camera — tone and audience")}
+    ${renderVoiceField("rules", "Voice rules", true, "Hard rules — pacing, words to avoid, habits")}
+    ${renderVoiceField("pillars", "Pillars", false, "Themes you rotate")}
+    ${renderVoiceField("captionStyle", "Caption style", false, "How captions should sound")}
+    <button type="button" class="pl-save press" onclick="saveVoice()">Save voice</button>`;
+}
+
+function planInputMeta(kind) {
+  if (kind === "categories") {
+    return state.planCategories.length
+      ? `${state.planCategories.length} selected`
+      : "Not set";
+  }
+  if (kind === "voice") {
+    if (voiceComplete()) return "Saved";
+    if (state.voiceDeferred) return "From references";
+    return "Not set";
+  }
+  if (kind === "refs") {
+    return `${refsCount()} confirmed · ${state.refs.length} total`;
+  }
+  return "";
+}
+
+function renderYouInputRow(kind, title) {
+  return `
+    <button type="button" class="pf-link press" onclick="openYouSubview('${kind}', 'you')">
+      <div>
+        <div class="pf-row-title">${esc(title)}</div>
+        <div class="pf-row-sub">${esc(planInputMeta(kind))}</div>
+      </div>
+      <span aria-hidden="true">›</span>
+    </button>`;
+}
+
+function renderCategoryEditor() {
+  return `
+    <div class="pf-block">
+      <div class="pf-block-h">Saved categories</div>
+      <div class="you-editor-body">
+        <p class="you-editor-copy">Pick 1–3 categories. They guide the angles and topics in Plan.</p>
+        <div class="ob-chip-grid">
+          ${ONBOARDING_CATEGORIES.map(c => `
+            <button type="button" class="ob-chip press" ${state.planCategories.includes(c.id) ? "data-sel" : ""} onclick="togglePlanCategory('${c.id}')">${esc(c.label)}</button>
+          `).join("")}
+          <button type="button" class="ob-chip press" ${state.planCategories.includes(ONBOARDING_CATEGORY_OTHER_ID) ? "data-sel" : ""} onclick="togglePlanCategory('${ONBOARDING_CATEGORY_OTHER_ID}')">Other</button>
+        </div>
+        ${state.planCategories.includes(ONBOARDING_CATEGORY_OTHER_ID) ? `
+        <input type="text" class="ob-other-input" placeholder="Your category…" value="${esc(state.planCategoryOther)}" oninput="updatePlanCategoryOther(this.value)" aria-label="Custom category" />` : ""}
+        <p class="you-editor-note">Changes save automatically and shape future ideas.</p>
+      </div>
+    </div>`;
+}
+
+function renderReferencesEditor() {
+  ensurePlanRefsHydrated();
+  const confirmedRefs = refsCount();
+  const confirmedList = confirmedRefsList();
+  const inspirationList = inspirationRefsList();
+  const reviewList = state.needsReview || [];
+  const refSections = [];
+  if (reviewList.length) {
+    refSections.push(`<div class="pl-ref-section-k">Needs your call</div>${reviewList.map(renderNeedsReviewRow).join("")}`);
+  }
+  if (confirmedList.length) {
+    refSections.push(`<div class="pl-ref-section-k">Confirmed reel / audio</div>${confirmedList.map(renderRefRow).join("")}`);
+  }
+  if (inspirationList.length) {
+    refSections.push(`<div class="pl-ref-section-k">Inspiration accounts</div>${inspirationList.map(renderRefRow).join("")}`);
+  }
+  const refListHtml = refSections.length
+    ? `<div class="pl-ref-list">${recentRefsStrip()}${refSections.join("")}</div>`
+    : `<div class="pl-ref-list">
+        <p class="pl-hint" style="margin:0 0 10px">No references yet — paste a reel URL or @handle to start.</p>
+        <button type="button" class="pl-ref-add press" onclick="openImportSheet()">Add your first reference</button>
+      </div>`;
+  const gateCopy = confirmedRefs === 0
+    ? `≥1 confirmed reel or audio recommended for stronger drafts. @handles stay in Inspiration and <strong>don't feed generation today</strong>. <a onclick="openImportSheet()">Add one</a> or generate anyway below.`
+    : `${confirmedRefs} confirmed reference${confirmedRefs === 1 ? "" : "s"} will inform this draft. Inspiration @handles are saved separately.`;
+  const gateSoft = confirmedRefs === 0 ? "data-soft" : "";
+
+  return `
+    <div class="pf-block">
+      <div class="pf-block-h">Saved references</div>
+      <div class="you-editor-body">
+        <div class="pl-gate" ${gateSoft}>${gateCopy}</div>
+        ${refListHtml}
+        ${refSections.length ? `<button type="button" class="pl-ref-add press" onclick="openImportSheet()">Add reference</button>` : ""}
+        ${confirmedRefs === 0 && (voiceComplete() || state.voiceDeferred) ? `<button type="button" class="pl-save press" style="margin-top:8px" onclick="generateAnyway()">Generate anyway</button>` : ""}
+      </div>
+    </div>`;
+}
+
+function renderYouInputSubview() {
+  const titles = {
+    categories: "Content categories",
+    voice: "Creator voice",
+    refs: "References",
+  };
+  const descriptions = {
+    categories: "Choose the topics that should shape your daily ideas.",
+    voice: "Set the tone, rules, and point of view your drafts should follow.",
+    refs: "Save reels, audio, and inspiration accounts for future drafts.",
+  };
+  const body = state.youSubview === "categories"
+    ? renderCategoryEditor()
+    : state.youSubview === "voice"
+      ? `<div class="pf-block">
+          <div class="pf-block-h">Saved voice</div>
+          <div class="you-editor-body">${!voiceComplete() ? renderVoiceEntry() : renderVoiceFields()}</div>
+        </div>`
+      : renderReferencesEditor();
+  const backLabel = state.youSubviewOrigin === "plan" ? "Plan" : "You";
+
+  return `
+    ${statusBar()}
+    <div class="screen">
+      <button type="button" class="pl-back press" onclick="closeYouSubview()">← ${backLabel}</button>
+      <div class="pf-head" style="padding-top:0">
+        <h1 class="pf-title">${titles[state.youSubview]}</h1>
+        <p class="you-subview-sub">${descriptions[state.youSubview]}</p>
+      </div>
+      ${body}
+    </div>
+    ${tabs()}
+    ${renderLightSheet()}`;
+}
+
+function renderPlanGenerationInputs() {
+  return `
+    <section class="pl-input-summary" aria-labelledby="pl-input-summary-title">
+      <div id="pl-input-summary-title" class="pl-input-summary-k">Generation inputs</div>
+      <p class="pl-input-summary-copy">
+        Your ideas use
+        <button type="button" class="pl-inline-link" onclick="openYouSubview('categories', 'plan')">Content categories</button>,
+        <button type="button" class="pl-inline-link" onclick="openYouSubview('voice', 'plan')">Creator voice</button>, and
+        <button type="button" class="pl-inline-link" onclick="openYouSubview('refs', 'plan')">References</button>.
+      </p>
+      <div class="pl-input-summary-meta" aria-label="Saved generation input status">
+        <span>${esc(planInputMeta("categories"))}</span>
+        <span>${esc(planInputMeta("voice"))}</span>
+        <span>${esc(planInputMeta("refs"))}</span>
+      </div>
+    </section>`;
+}
+
+function renderPlan() {
+  ensurePlanRefsHydrated();
+  const day = selectedPlanDay();
+  const dateFmt = formatPlanDate(state.planSelected);
+  const hasPackage = day.status !== "empty";
+  const genDays = generatedPlanDays();
+
+  const scenePreview = hasPackage
+    ? `<div class="pl-day-title">${esc(day.title || "Untitled package")}</div>
+       <div class="pl-day-scenes">
+         ${CARD.scenes.map(s => `
+           <div class="pl-day-scene"><span>${esc(s.title)}</span><span>${s.duration}</span></div>
+         `).join("")}
+       </div>
+       ${renderExecutionPackageBlock(true)}`
+    : "";
+  const daygenPanel = renderDaygenPanel();
+
+  let planCtas = "";
+  if (day.status === "approved") {
+    planCtas = `<div class="pl-cta-row">
+      <button type="button" class="pl-btn press" style="flex:1" disabled>Approved · on Today</button>
+      <button type="button" class="pl-btn press" ${state.generating ? "disabled" : ""} onclick="requestGenerate()">Regenerate</button>
+    </div>`;
+  } else if (hasPackage) {
+    const canApprove = day.status === "ready";
+    planCtas = `<div class="pl-cta-row">
+      <button type="button" class="pl-btn press" ${canApprove ? "data-primary" : ""} ${canApprove ? "" : "disabled"} onclick="approveDay()">Approve</button>
+      <button type="button" class="pl-btn press" ${state.generating ? "disabled" : ""} onclick="requestGenerate()">Regenerate</button>
+    </div>`;
+  }
+
+  const genList = genDays.length
+    ? genDays.map(g => `
+        <button type="button" class="pl-gen-row press" ${g.iso === state.planSelected ? "data-sel" : ""} onclick="selectPlanDay('${g.iso}')">
+          <div>
+            <div class="pl-gen-row-t">${esc(g.title || "Untitled")}</div>
+            <div class="pl-gen-row-s">${g.short}</div>
+          </div>
+          <span class="pl-gen-row-chip">${g.status}</span>
+        </button>`).join("")
+    : "";
+
+  const genBlock = genDays.length
+    ? `<div class="pl-gen-block">
+        <div class="pl-gen-k">Days with content</div>
+        ${genList}
+      </div>`
+    : "";
+
+  return `
+    ${statusBar()}
+    <div class="screen">
+      <div class="pl-head">
+        <h1 class="pl-title">Plan</h1>
+      </div>
+
+      <button type="button" class="pl-date press" onclick="openCalendarSheet()" aria-label="Change selected day">
+        <div>
+          <span class="pl-date-w">${dateFmt.weekday}</span>
+          <span class="pl-date-d">${dateFmt.label}</span>
+        </div>
+        <span class="pl-date-chev">›</span>
+      </button>
+
+      <div class="pl-day-body">
+        ${daygenPanel}
+        <div class="pl-day-status">${stripStatusLabel(day.status)}</div>
+        ${scenePreview}
+        ${planCtas}
+      </div>
+
+      ${genBlock}
+
+      ${renderPlanGenerationInputs()}
+    </div>
+    ${tabs()}
+    ${renderLightSheet()}`;
 }
 
 function setTab(tab) {
+  if (needsOnboarding()) return;
+  if (tab !== state.tab) stopAudioPlayback();
   state.tab = tab;
   state.archiveDetail = null;
-  const url = new URL(location);
-  url.searchParams.set("tab", tab);
-  history.replaceState(null, "", url);
+  state.youSubview = null;
+  state.youSubviewOrigin = null;
+  state.planReturnScrollTop = null;
+  state.planReturnWindowScrollY = null;
+  state.youReturnScrollTop = null;
+  state.youReturnWindowScrollY = null;
+  state.nextScrollTop = 0;
+  state.nextWindowScrollY = 0;
+  writeUrlState();
   render();
 }
 
 function render() {
   const app = document.getElementById("app");
+  const scrollEl = app.querySelector(".screen, .ob-screen");
+  const scrollTop = scrollEl?.scrollTop ?? 0;
+  const windowScrollY = window.scrollY;
+  const explicitScrollTop = state.nextScrollTop;
+  const explicitWindowScrollY = state.nextWindowScrollY;
+  state.nextScrollTop = null;
+  state.nextWindowScrollY = null;
+
   const label = document.getElementById("route-label");
-  label.textContent = state.tab[0].toUpperCase() + state.tab.slice(1);
-  if (state.tab === "today") app.innerHTML = renderToday();
-  else if (state.tab === "archive") app.innerHTML = renderArchive();
-  else app.innerHTML = renderProfile();
+  let suffix = "";
+  if (needsOnboarding()) suffix = " · onboarding";
+  else if (state.tab === "today" && state.empty) suffix = " · empty";
+  else if (state.tab === "you" && state.youSubview === "archive") suffix = " · archive";
+  label.textContent = (needsOnboarding() ? "Onboarding" : state.tab[0].toUpperCase() + state.tab.slice(1)) + suffix;
+  syncHarnessToggles();
+  let html = "";
+  if (needsOnboarding()) html = renderOnboarding();
+  else if (state.tab === "today") html = renderToday();
+  else if (state.tab === "you") html = renderYou();
+  else html = renderPlan();
+  app.innerHTML = html;
+
+  if (state.planFocus) {
+    const el = document.querySelector(`[data-focus="${state.planFocus}"]`);
+    el?.scrollIntoView?.({ block: "nearest" });
+    state.planFocus = null;
+  } else {
+    const newScrollEl = app.querySelector(".screen, .ob-screen");
+    if (newScrollEl) newScrollEl.scrollTop = explicitScrollTop ?? scrollTop;
+  }
+
+  window.scrollTo(0, explicitWindowScrollY ?? windowScrollY);
 }
 
 document.addEventListener("keydown", (e) => {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "1") setTab("today");
-  else if (e.key === "2") setTab("archive");
-  else if (e.key === "3") setTab("profile");
-  else if (e.key === "Escape" && state.archiveDetail) closeArchive();
+  else if (e.key === "2") setTab("plan");
+  else if (e.key === "3") setTab("you");
+  else if (e.key === "e" || e.key === "E") toggleEmpty();
+  else if (e.key === "f" || e.key === "F") toggleFirst();
+  else if (e.key === "Escape") {
+    if (state.sheet) closeSheet();
+    else if (state.archiveDetail) closeArchive();
+    else if (state.youSubview) closeYouSubview();
+  }
 });
 
-const initial = (new URLSearchParams(location.search).get("tab") || "today").toLowerCase();
-state.tab = ["today", "archive", "profile"].includes(initial) ? initial : "today";
+const params = new URLSearchParams(location.search);
+const initial = (params.get("tab") || "today").toLowerCase();
+if (initial === "archive") {
+  state.tab = "you";
+  state.youSubview = "archive";
+  state.youSubviewOrigin = "you";
+} else {
+  state.tab = ["today", "you", "plan"].includes(initial) ? initial : "today";
+  const initialYouSubview = params.get("you");
+  if (state.tab === "you" && ["categories", "voice", "refs", "archive"].includes(initialYouSubview)) {
+    state.youSubview = initialYouSubview;
+    state.youSubviewOrigin = params.get("from") === "plan" ? "plan" : "you";
+  }
+}
+state.empty = ["1", "true", "yes"].includes((params.get("empty") || "").toLowerCase());
+state.first = ["1", "true", "yes"].includes((params.get("first") || "").toLowerCase());
+if (state.first) {
+  state.empty = true;
+  resetOnboardingState();
+  state.refs = [];
+  state.needsReview = [];
+  state.voice = { positioning: "", rules: "", pillars: "", captionStyle: "" };
+  state.planVoiceOpen = false;
+  state.planRefsOpen = false;
+  resetPlanForFirstRun();
+  try {
+    localStorage.removeItem(ONBOARDING_DONE_KEY);
+    localStorage.removeItem(ONBOARDING_DATA_KEY);
+    clearOnboardingProgress();
+    localStorage.removeItem(PLAN_DAYS_STORAGE_KEY);
+    localStorage.removeItem(DAY_GENERATION_STORAGE_KEY);
+  } catch {}
+} else if (onboardingIsDone()) {
+  state.onboardingComplete = true;
+  loadPlanDays();
+  loadOnboardingData();
+  ensurePlanRefsHydrated();
+  restoreDayGeneration();
+} else {
+  state.onboardingComplete = false;
+  loadOnboardingProgress();
+}
+if (["1", "true", "yes"].includes((params.get("nocontent") || "").toLowerCase())) {
+  resetPlanForFirstRun();
+  clearDayGenerationTimer();
+  state.generating = false;
+  state.generationDate = null;
+  state.generationStartedAt = null;
+  state.sheet = null;
+  clearDayGenerationPersistence();
+  clearPlanPersistence();
+  state.empty = true;
+}
 render();
 </script>
 </body>

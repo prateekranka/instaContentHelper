@@ -3,11 +3,31 @@ import XCTest
 
 @MainActor
 final class CreatorShellNavigationTests: XCTestCase {
-    func testCreatorTabsAreOrderedTodayArchiveProfile() {
+    func testCreatorTabsAreOrderedTodayPlanYou() {
         XCTAssertEqual(
             CreatorTab.allCases.map(\.rawValue),
-            ["Today", "Archive", "Profile"]
+            ["Today", "Plan", "You"]
         )
+    }
+
+    func testPlanIsCenterCreatorTab() {
+        XCTAssertTrue(CreatorTab.plan.isCenterTab)
+        XCTAssertFalse(CreatorTab.today.isCenterTab)
+        XCTAssertFalse(CreatorTab.you.isCenterTab)
+    }
+
+    func testYouRouteIncludesArchiveDestination() {
+        XCTAssertEqual(YouRoute.archive, YouRoute.archive)
+    }
+
+    func testRequestCreatorTabSetsPendingTabForPlanAndTodayNavigation() {
+        let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
+        XCTAssertNil(state.pendingCreatorTab)
+        state.requestCreatorTab(.today)
+        XCTAssertEqual(state.pendingCreatorTab, .today)
+        state.pendingCreatorTab = nil
+        state.requestCreatorTab(.plan)
+        XCTAssertEqual(state.pendingCreatorTab, .plan)
     }
 
     func testCreatorCanGenerateWithoutOwnerOrEditorRole() {
@@ -15,13 +35,6 @@ final class CreatorShellNavigationTests: XCTestCase {
         XCTAssertTrue(AppServices.fixtureBacked(memberRole: "owner").canGenerateContent)
         XCTAssertTrue(AppServices.fixtureBacked(memberRole: "editor").canGenerateContent)
         XCTAssertFalse(AppServices.fixtureBacked(memberRole: "scout").canGenerateContent)
-    }
-
-    func testRequestCreatorTabSetsPendingTabForPlanAvailableNavigation() {
-        let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
-        XCTAssertNil(state.pendingCreatorTab)
-        state.requestCreatorTab(.today)
-        XCTAssertEqual(state.pendingCreatorTab, .today)
     }
 
     func testPreparePlanSelectedDateForEditAndOverflowEntries() {

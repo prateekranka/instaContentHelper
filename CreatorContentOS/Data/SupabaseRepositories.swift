@@ -428,6 +428,7 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
 
     let client: SupabaseClient
     var runtimeConfiguration: SupabaseRuntimeConfiguration?
+    var acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared
 
     func regenerateDay(
         creatorID: UUID,
@@ -514,6 +515,15 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
                 return response.domainResult
             case .running(let status):
                 logGeneration("generate_day polling_start \(statusSummary(status))")
+                acceptedGenerationStore.save(
+                    AcceptedDayGenerationRun(
+                        scheduledDate: scheduledDate,
+                        generationID: status.generationID,
+                        creatorID: creatorID,
+                        acceptedAt: Date()
+                    )
+                )
+                defer { acceptedGenerationStore.remove(scheduledDate: scheduledDate) }
                 return try await pollDailyGeneration(
                     generationID: status.generationID,
                     creatorID: creatorID,
@@ -531,6 +541,19 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
             logGeneration("generate_day failed error=\(error.localizedDescription)")
             throw error
         }
+    }
+
+    func resumeAcceptedDayGeneration(
+        generationID: UUID,
+        creatorID: UUID,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        logGeneration("generate_day resume_polling generation_id=\(generationID)")
+        return try await pollDailyGeneration(
+            generationID: generationID,
+            creatorID: creatorID,
+            logAction: .generateDay
+        )
     }
 
     func generateStoryboardThumbnails(
