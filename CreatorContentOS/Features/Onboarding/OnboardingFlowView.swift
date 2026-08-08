@@ -5,6 +5,8 @@ struct OnboardingFlowView: View {
     @Environment(AppServices.self) private var services
     @Bindable var model: OnboardingViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var reelDraft = ""
+    @State private var profileDraft = ""
 
     var onSoftSkip: () -> Void
     var onComplete: (OnboardingFirstDayHandoff) -> Void
@@ -12,14 +14,17 @@ struct OnboardingFlowView: View {
     var body: some View {
         ZStack {
             PocketSheetTheme.Color.paper.ignoresSafeArea()
-            VStack(spacing: 0) {
-                header
-                ScrollView {
+            ScrollView {
+                VStack(spacing: 0) {
+                    header
                     stepContent
                         .padding(.horizontal, PocketSheetSpace.l)
                         .padding(.top, PocketSheetSpace.m)
-                        .padding(.bottom, 160)
                 }
+                .padding(.bottom, PocketSheetSpace.l)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 dock
             }
         }
@@ -62,11 +67,14 @@ struct OnboardingFlowView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
+        let centersCategoriesHeader = model.step == .categories
+        let centersStepIndicatorOnly = model.step == .references
+        return VStack(alignment: centersCategoriesHeader ? .center : .leading, spacing: PocketSheetSpace.xs) {
             Text("Step \(model.step.rawValue + 1) of 3")
                 .font(PocketSheetType.sectionLabel)
                 .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                 .tracking(0.44)
+                .frame(maxWidth: .infinity, alignment: centersStepIndicatorOnly || centersCategoriesHeader ? .center : .leading)
                 .accessibilityIdentifier("onboarding.stepIndicator")
 
             Text(stepTitle)
@@ -77,8 +85,9 @@ struct OnboardingFlowView: View {
             Text(stepSubtitle)
                 .font(.system(size: 15))
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                .multilineTextAlignment(centersCategoriesHeader ? .center : .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: centersCategoriesHeader ? .center : .leading)
         .padding(.horizontal, PocketSheetSpace.l)
         .padding(.top, PocketSheetSpace.l)
     }
@@ -109,6 +118,8 @@ struct OnboardingFlowView: View {
             Text("Pick 1–3")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
 
             LazyVGrid(
                 columns: [GridItem(.adaptive(minimum: 120), spacing: PocketSheetSpace.xs)],
@@ -168,58 +179,26 @@ struct OnboardingFlowView: View {
     @ViewBuilder
     private var referencesStep: some View {
         let attn = model.referenceValidation
-        VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
-            HStack(spacing: PocketSheetSpace.xs) {
-                referenceTypeButton(
-                    title: "Reel URL",
-                    kind: .reel,
-                    isSelected: model.referenceInputKind == .reel,
-                    showAttention: attn.reel
-                )
-                referenceTypeButton(
-                    title: "Profile @handle",
-                    kind: .profile,
-                    isSelected: model.referenceInputKind == .profile,
-                    showAttention: attn.profile
-                )
-            }
+        VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+            referenceFieldSection(
+                title: "Reel URL",
+                placeholder: "https://instagram.com/reel/…",
+                draft: $reelDraft,
+                kind: .reel,
+                showAttention: attn.reel,
+                addTitle: "+ Add reel",
+                isAddDisabled: false
+            )
 
-            TextEditor(text: $model.referenceDraftText)
-                .font(.system(size: 15))
-                .frame(minHeight: 88)
-                .padding(PocketSheetSpace.xs)
-                .scrollContentBackground(.hidden)
-                .background(PocketSheetTheme.Color.paperRaised)
-                .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
-                        .stroke(
-                            inputShowsAttention ? PocketSheetTheme.Color.validationAttention : PocketSheetTheme.Color.hairline,
-                            lineWidth: inputShowsAttention ? 2 : 1
-                        )
-                }
-                .onboardingAttentionShake(
-                    active: inputShowsAttention && attn.motion,
-                    reduceMotion: reduceMotion
-                ) {
-                    model.consumeReferenceAttentionMotionIfNeeded()
-                }
-                .accessibilityIdentifier("onboarding.refInput.\(model.referenceInputKind.rawValue)")
-
-            Button {
-                Task { await model.addReference() }
-            } label: {
-                Text(model.isVerifyingProfile ? "Checking on Instagram…" : "+ Add reference")
-                    .font(PocketSheetType.actionSecondary)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
-                    .background(PocketSheetTheme.Color.fillMuted)
-                    .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .disabled(model.isVerifyingProfile)
-            .accessibilityIdentifier("onboarding.refAdd")
+            referenceFieldSection(
+                title: "Profile @handle",
+                placeholder: "@creator",
+                draft: $profileDraft,
+                kind: .profile,
+                showAttention: attn.profile,
+                addTitle: model.isVerifyingProfile ? "Checking on Instagram…" : "+ Add profile",
+                isAddDisabled: model.isVerifyingProfile
+            )
 
             if model.references.isEmpty {
                 Text("No references yet.")
@@ -268,29 +247,51 @@ struct OnboardingFlowView: View {
                     .accessibilityAddTraits(model.referenceValidationMessage != nil ? .isStaticText : [])
             }
         }
+        .onChange(of: reelDraft) { _, newValue in
+            model.reelDraftText = newValue
+        }
+        .onChange(of: profileDraft) { _, newValue in
+            model.profileDraftText = newValue
+        }
+        .onChange(of: model.reelDraftText) { _, newValue in
+            if newValue != reelDraft {
+                reelDraft = newValue
+            }
+        }
+        .onChange(of: model.profileDraftText) { _, newValue in
+            if newValue != profileDraft {
+                profileDraft = newValue
+            }
+        }
+        .onChange(of: model.step) { _, newStep in
+            if newStep == .references {
+                reelDraft = model.reelDraftText
+                profileDraft = model.profileDraftText
+            }
+        }
     }
 
-    private var inputShowsAttention: Bool {
-        let attn = model.referenceValidation
-        return (attn.reel && model.referenceInputKind == .reel)
-            || (attn.profile && model.referenceInputKind == .profile)
-    }
-
-    private func referenceTypeButton(
+    private func referenceFieldSection(
         title: String,
+        placeholder: String,
+        draft: Binding<String>,
         kind: OnboardingReferenceInputKind,
-        isSelected: Bool,
-        showAttention: Bool
+        showAttention: Bool,
+        addTitle: String,
+        isAddDisabled: Bool
     ) -> some View {
-        Button {
-            model.setReferenceInputKind(kind)
-        } label: {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
             Text(title)
-                .font(PocketSheetType.chip)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 40)
-                .foregroundStyle(isSelected ? PocketSheetTheme.Color.inversePaper : PocketSheetTheme.Color.ink)
-                .background(isSelected ? PocketSheetTheme.Color.inverseInk : PocketSheetTheme.Color.fillMuted)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+
+            TextField(placeholder, text: draft, axis: .vertical)
+                .lineLimit(2...4)
+                .font(.system(size: 15))
+                .frame(minHeight: 52)
+                .padding(PocketSheetSpace.xs)
+                .scrollContentBackground(.hidden)
+                .background(PocketSheetTheme.Color.paperRaised)
                 .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
@@ -299,15 +300,35 @@ struct OnboardingFlowView: View {
                             lineWidth: showAttention ? 2 : 1
                         )
                 }
+                .onboardingAttentionShake(
+                    active: showAttention && model.referenceValidation.motion,
+                    reduceMotion: reduceMotion
+                ) {
+                    model.consumeReferenceAttentionMotionIfNeeded()
+                }
+                .accessibilityIdentifier("onboarding.refInput.\(kind.rawValue)")
+
+            Button {
+                switch kind {
+                case .reel:
+                    model.reelDraftText = draft.wrappedValue
+                case .profile:
+                    model.profileDraftText = draft.wrappedValue
+                }
+                Task { await model.addReference(from: draft.wrappedValue, kind: kind) }
+            } label: {
+                Text(addTitle)
+                    .font(PocketSheetType.actionSecondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .background(PocketSheetTheme.Color.fillMuted)
+                    .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isAddDisabled)
+            .accessibilityIdentifier(kind == .reel ? "onboarding.refAdd.reel" : "onboarding.refAdd.profile")
         }
-        .buttonStyle(.plain)
-        .onboardingAttentionShake(
-            active: showAttention && model.referenceValidation.motion,
-            reduceMotion: reduceMotion
-        ) {
-            model.consumeReferenceAttentionMotionIfNeeded()
-        }
-        .accessibilityIdentifier("onboarding.refType.\(kind.rawValue)")
     }
 
     // MARK: - Confirm
@@ -375,15 +396,10 @@ struct OnboardingFlowView: View {
                 .accessibilityIdentifier("onboarding.continue.categories")
 
             case .references:
-                skipLink
                 PocketSheetPrimaryAction(title: "Continue") {
                     model.continueFromReferences(reduceMotion: reduceMotion)
                 }
                 .accessibilityIdentifier("onboarding.continue.references")
-                PocketSheetSecondaryAction(title: "Back") {
-                    model.goToStep(.categories)
-                }
-                .accessibilityIdentifier("onboarding.back.references")
 
             case .confirm:
                 Text("We'll draft scenes, caption, and audio in Plan — then Today is ready to shoot.")

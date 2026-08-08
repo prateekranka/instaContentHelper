@@ -6,33 +6,33 @@ struct SignInView: View {
 
     var body: some View {
         ZStack {
-            MCOTheme.Color.paper.ignoresSafeArea()
+            PocketSheetTheme.Color.paper.ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: MCOSpace.xl) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xl) {
                 header
                 signInActions
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, MCOSpace.l)
-            .padding(.top, MCOSpace.xxl)
-            .padding(.bottom, MCOSpace.xxl)
+            .padding(.horizontal, PocketSheetSpace.l)
+            .padding(.top, 48)
+            .padding(.bottom, 48)
         }
-        .tint(MCOTheme.Color.oxblood)
+        .tint(PocketSheetTheme.Color.ink)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
             Text("ContentHelper")
-                .font(MCOType.display)
-                .foregroundStyle(MCOTheme.Color.ink)
+                .font(PocketSheetType.screenTitle)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
             Text("Sign in with Apple to open your Creator workspace.")
-                .font(MCOType.body)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .font(PocketSheetType.rowSubtitle)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
         }
     }
 
     private var signInActions: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.m) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
             SignInWithAppleButton(.signIn) { request in
                 request.requestedScopes = [.email, .fullName]
             } onCompletion: { result in
@@ -41,21 +41,21 @@ struct SignInView: View {
             .signInWithAppleButtonStyle(.black)
             .frame(maxWidth: .infinity)
             .frame(height: 54)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
             .disabled(isBusy)
             .opacity(isBusy ? 0.52 : 1)
             .accessibilityIdentifier("sign-in-with-apple")
 
             if isBusy {
                 ProgressView()
-                    .tint(MCOTheme.Color.oxblood)
+                    .tint(PocketSheetTheme.Color.ink)
                     .accessibilityIdentifier("sign-in-progress")
             }
 
             if let error = appState.authenticationError {
                 Text(error)
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.clay)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.validationAttention)
                     .accessibilityIdentifier("authentication-error")
             }
         }

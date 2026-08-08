@@ -7,22 +7,22 @@ struct NotTodaySheet: View {
 
     var body: some View {
         ZStack {
-            MCOTheme.Color.paper.ignoresSafeArea()
-            VStack(spacing: MCOSpace.l) {
-                VStack(spacing: MCOSpace.s) {
+            PocketSheetTheme.Color.paper.ignoresSafeArea()
+            VStack(spacing: PocketSheetSpace.l) {
+                VStack(spacing: PocketSheetSpace.s) {
                     Text("Other ideas")
-                        .font(MCOType.screenTitle)
-                        .foregroundStyle(MCOTheme.Color.ink)
+                        .font(PocketSheetType.screenTitle)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
                     Rectangle()
-                        .fill(MCOTheme.Color.brass)
+                        .fill(PocketSheetTheme.Color.hairline)
                         .frame(width: 32, height: 1)
                     Text("Choose the smallest useful win.")
-                        .font(MCOType.dateLine)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 }
-                .padding(.top, MCOSpace.l)
+                .padding(.top, PocketSheetSpace.l)
 
-                VStack(spacing: MCOSpace.m) {
+                VStack(spacing: PocketSheetSpace.m) {
                     BackupOptionRow(
                         symbol: "10.circle",
                         title: "10-second story",
@@ -48,28 +48,13 @@ struct NotTodaySheet: View {
 
                 Spacer()
 
-                GlassCommandBar {
-                    Button {
-                        complete(.skippedIntentionally)
-                    } label: {
-                        Text("Skip intentionally")
-                            .font(MCOType.bodyMedium)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 54)
-                            .foregroundStyle(MCOTheme.Color.ink)
-                            .background(MCOTheme.Color.paperRaised)
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(MCOTheme.Color.hairline, lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(.plain)
+                PocketSheetSecondaryAction(title: "Skip intentionally") {
+                    complete(.skippedIntentionally)
                 }
             }
-            .padding(MCOSpace.l)
-            .padding(.top, MCOSpace.l)
-            .padding(.bottom, MCOSpace.l)
+            .padding(PocketSheetSpace.l)
+            .padding(.top, PocketSheetSpace.l)
+            .padding(.bottom, PocketSheetSpace.l)
         }
         .sheet(item: $detail) { detail in
             BackupDecisionSheet(detail: detail) {
@@ -127,19 +112,19 @@ private struct BackupDecisionSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MCOTheme.Color.paper.ignoresSafeArea()
+                PocketSheetTheme.Color.paper.ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: MCOSpace.l) {
-                        VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+                        VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                             Text(eyebrow)
-                                .font(MCOType.tinyLabel)
-                                .foregroundStyle(MCOTheme.Color.oxblood)
+                                .font(PocketSheetType.sectionLabel)
+                                .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                             Text(title)
-                                .font(MCOType.screenTitle)
-                                .foregroundStyle(MCOTheme.Color.ink)
+                                .font(PocketSheetType.screenTitle)
+                                .foregroundStyle(PocketSheetTheme.Color.ink)
                             Text(subtitle)
-                                .font(MCOType.dateLine)
-                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                                .font(PocketSheetType.rowSubtitle)
+                                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         }
 
                         if let primary = primaryText?.nilIfBlank {
@@ -155,22 +140,22 @@ private struct BackupDecisionSheet: View {
                             BackupCopyBlock(label: "Context", text: context)
                         }
 
-                        Spacer(minLength: MCOSpace.m)
+                        Spacer(minLength: PocketSheetSpace.m)
 
-                        PrimaryActionButton(title: "Use backup", systemImage: "checkmark.seal") {
+                        PocketSheetPrimaryAction(title: "Use backup", systemImage: "checkmark.seal") {
                             onUseBackup()
                             dismiss()
                         }
                     }
-                    .padding(MCOSpace.l)
+                    .padding(PocketSheetSpace.l)
                 }
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+            .tint(PocketSheetTheme.Color.ink)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cancel") { dismiss() }
-                        .foregroundStyle(MCOTheme.Color.oxblood)
                 }
             }
         }
@@ -236,17 +221,17 @@ private struct BackupCopyBlock: View {
     @State private var didCopy = false
 
     var body: some View {
-        JournalBlock {
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
+        PocketSheetCard {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 Text(label.uppercased())
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .font(PocketSheetType.sectionLabel)
+                    .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                 Text(text)
-                    .font(MCOType.body)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
-                SecondaryActionButton(title: didCopy ? "Copied" : "Copy") {
+                PocketSheetSecondaryAction(title: didCopy ? "Copied" : "Copy") {
                     copy()
                 }
             }
@@ -269,24 +254,24 @@ struct BackupOptionRow: View {
 
     var body: some View {
         Button(action: action) {
-            JournalBlock {
-                HStack(spacing: MCOSpace.m) {
+            PocketSheetCard {
+                HStack(spacing: PocketSheetSpace.m) {
                     Image(systemName: symbol)
-                        .font(MCOType.iconEmpty)
-                        .foregroundStyle(MCOTheme.Color.brass)
+                        .font(.system(size: 28, weight: .regular))
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
                         .frame(width: 44)
-                    VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                         Text(title)
-                            .font(MCOType.editorialHeadline)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .font(PocketSheetType.rowTitle)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
                         Text(subtitle)
-                            .font(MCOType.bodySmall)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     }
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                 }
             }
         }

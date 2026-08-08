@@ -10,7 +10,8 @@ final class OnboardingViewModel {
     var categoryOtherText = ""
     var references: [OnboardingReference] = []
     var referenceInputKind: OnboardingReferenceInputKind = .reel
-    var referenceDraftText = ""
+    var reelDraftText = ""
+    var profileDraftText = ""
     var isVerifyingProfile = false
     var referenceValidation: OnboardingReferenceValidationFlags = .none
     var toastMessage: String?
@@ -127,10 +128,11 @@ final class OnboardingViewModel {
         referenceInputKind = kind
     }
 
-    func addReference() async {
-        let trimmed = referenceDraftText.trimmingCharacters(in: .whitespacesAndNewlines)
+    func addReference(from rawText: String? = nil, kind: OnboardingReferenceInputKind) async {
+        let trimmed = (rawText ?? draftText(for: kind))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            toastMessage = "Paste a reel URL or @handle"
+            toastMessage = kind == .reel ? "Paste a reel URL" : "Paste a profile @handle"
             return
         }
         guard !isVerifyingProfile else { return }
@@ -139,7 +141,7 @@ final class OnboardingViewModel {
             return
         }
 
-        switch OnboardingReferenceParser.parse(trimmed, expected: referenceInputKind) {
+        switch OnboardingReferenceParser.parse(trimmed, expected: kind) {
         case .failure(let error):
             toastMessage = error.userMessage
         case .success(let parsed):
@@ -163,7 +165,7 @@ final class OnboardingViewModel {
                 )
 
                 if verification.status == .temporarilyUnavailable {
-                    appendReference(ref)
+                    appendReference(ref, clearingKind: kind)
                     toastMessage = "Profile added. We couldn't check Instagram right now."
                     return
                 }
@@ -174,19 +176,49 @@ final class OnboardingViewModel {
                 return
             }
 
-            appendReference(ref)
+            appendReference(ref, clearingKind: kind)
             toastMessage = ref.isProfile ? "Profile added" : "Reel added"
         }
     }
 
-    private func appendReference(_ ref: OnboardingReference) {
+    private func draftText(for kind: OnboardingReferenceInputKind) -> String {
+        switch kind {
+        case .reel: reelDraftText
+        case .profile: profileDraftText
+        }
+    }
+
+    private func appendReference(_ ref: OnboardingReference, clearingKind: OnboardingReferenceInputKind) {
         references.append(ref)
-        referenceDraftText = ""
+        clearDraft(for: clearingKind)
+        reconcileReferenceValidationAfterListChange()
         persistProgress()
+    }
+
+    private func clearDraft(for kind: OnboardingReferenceInputKind) {
+        switch kind {
+        case .reel: reelDraftText = ""
+        case .profile: profileDraftText = ""
+        }
+    }
+
+    private func reconcileReferenceValidationAfterListChange() {
+        if OnboardingValidation.referencesMixIsValid(references) {
+            referenceValidation = .none
+            return
+        }
+
+        let missing = OnboardingValidation.missingReferenceKinds(in: references)
+        referenceValidation = OnboardingReferenceValidationFlags(
+            reel: missing.contains(.reel),
+            profile: missing.contains(.profile),
+            motion: false
+        )
     }
 
     func removeReference(id: String) {
         references.removeAll { $0.id == id }
+        reconcileReferenceValidationAfterListChange()
         persistProgress()
     }
 

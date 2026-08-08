@@ -16,14 +16,14 @@ struct ShootFolioView: View {
     var startsInEditingMode: Bool = false
 
     var body: some View {
-        EditorialScreen {
-            VStack(alignment: .leading, spacing: MCOSpace.l) {
+        PocketSheetScreen {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
                 header
 
                 if case .ready = services.todayContentState {
-                    ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
+                    PocketSheetFeedbackBanner(message: services.lastActionMessage, kind: .ready)
                     if let saveError {
-                        ActionFeedbackBanner(message: saveError, tone: .danger)
+                        PocketSheetFeedbackBanner(message: saveError, kind: .issue)
                     }
                     sectionTabs
 
@@ -55,8 +55,8 @@ struct ShootFolioView: View {
         } bottomBar: {
             if case .ready = services.todayContentState {
                 if isEditing {
-                    GlassCommandBar {
-                        PrimaryActionButton(
+                    PocketSheetCommandBar {
+                        PocketSheetPrimaryAction(
                             title: services.isUpdatingReadyDayPackage ? "Saving…" : "Save edits",
                             systemImage: "checkmark"
                         ) {
@@ -67,8 +67,8 @@ struct ShootFolioView: View {
                         .accessibilityIdentifier("shootFolio.saveEdits")
                     }
                 } else if selection == .scenes {
-                    GlassCommandBar {
-                        PrimaryActionButton(
+                    PocketSheetCommandBar {
+                        PocketSheetPrimaryAction(
                             title: services.canMarkPosted ? "Mark as posted" : (services.areAllScenesShot ? "All scenes shot" : "Mark all as shot"),
                             systemImage: services.canMarkPosted ? "paperplane.fill" : (services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal")
                         ) {
@@ -93,26 +93,26 @@ struct ShootFolioView: View {
     }
 
     private var sceneProgress: some View {
-        JournalBlock {
-            HStack(alignment: .center, spacing: MCOSpace.m) {
+        PocketSheetCard {
+            HStack(alignment: .center, spacing: PocketSheetSpace.m) {
                 Image(systemName: services.areAllScenesShot ? "checkmark.seal.fill" : "target")
-                    .font(MCOType.cardTitle)
-                    .foregroundStyle(services.areAllScenesShot ? MCOTheme.Color.success : MCOTheme.Color.liveBlue)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(services.areAllScenesShot ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.ink)
                     .frame(width: 34)
 
-                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                     Text(services.areAllScenesShot ? "All scenes shot" : "\(services.shotSceneCount) of \(services.todayCard.scenes.count) scenes shot")
-                        .font(MCOType.headline)
-                        .foregroundStyle(MCOTheme.Color.ink)
+                        .font(PocketSheetType.rowTitle)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
                     Text(services.areAllScenesShot ? "Ready for post assembly." : "\(services.unshotSceneCount) remaining before the shoot is complete.")
-                        .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 }
 
-                Spacer(minLength: MCOSpace.s)
-                StatusChip(
+                Spacer(minLength: PocketSheetSpace.s)
+                PocketSheetStatus(
                     text: services.areAllScenesShot ? "Complete" : "\(services.unshotSceneCount) left",
-                    tone: services.areAllScenesShot ? .ready : .info
+                    kind: services.areAllScenesShot ? .ready : .pending
                 )
             }
         }
@@ -120,16 +120,16 @@ struct ShootFolioView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: MCOSpace.xs) {
-            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+        HStack(alignment: .top, spacing: PocketSheetSpace.xs) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                 Text("Shoot Folio")
-                    .font(MCOType.screenTitle)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.screenTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text(isEditing ? "Editing scenes & script" : (services.todayCard.title.nilIfBlank ?? "Today's shoot"))
-                    .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
-            Spacer(minLength: MCOSpace.s)
+            Spacer(minLength: PocketSheetSpace.s)
             if isReady {
                 shootFolioHeaderActions
             }
@@ -137,14 +137,14 @@ struct ShootFolioView: View {
     }
 
     private var shootFolioHeaderActions: some View {
-        HStack(spacing: MCOSpace.xs) {
+        HStack(spacing: PocketSheetSpace.xs) {
             if isEditing {
                 Button("Cancel") {
                     cancelEditing()
                 }
-                .font(MCOType.bodySmall)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-                .padding(.horizontal, MCOSpace.s)
+                .font(PocketSheetType.rowSubtitle)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                .padding(.horizontal, PocketSheetSpace.s)
                 .frame(height: 42)
                 .accessibilityIdentifier("shootFolio.cancelEdit")
             } else {
@@ -152,13 +152,13 @@ struct ShootFolioView: View {
                     beginEditing()
                 } label: {
                     Text("Edit")
-                        .font(MCOType.bodySmall)
-                        .foregroundStyle(MCOTheme.Color.oxblood)
-                        .padding(.horizontal, MCOSpace.s)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inverseInk)
+                        .padding(.horizontal, PocketSheetSpace.s)
                         .frame(height: 42)
-                        .background(MCOTheme.Color.paperRaised.opacity(0.72), in: Capsule())
+                        .background(PocketSheetTheme.Color.paperRaised.opacity(0.72), in: Capsule())
                         .overlay {
-                            Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                            Capsule().stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
                         }
                 }
                 .buttonStyle(.plain)
@@ -172,10 +172,13 @@ struct ShootFolioView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(MCOType.iconInline)
+                    .font(.system(size: 16, weight: .medium))
                     .frame(width: 42, height: 42)
-                    .foregroundStyle(MCOTheme.Color.ink)
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .background(PocketSheetTheme.Color.paperRaised, in: Circle())
+                    .overlay {
+                        Circle().stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
+                    }
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
@@ -203,20 +206,20 @@ struct ShootFolioView: View {
 
     private var sectionTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: MCOSpace.s) {
+            HStack(spacing: PocketSheetSpace.s) {
                 ForEach(PackageSection.allCases) { section in
                     Button {
                         selection = section
                     } label: {
                         Text(section.rawValue)
-                            .font(MCOType.bodySmall)
-                            .foregroundStyle(selection == section ? MCOTheme.Color.paperRaised : MCOTheme.Color.ink)
-                            .padding(.horizontal, MCOSpace.s)
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(selection == section ? PocketSheetTheme.Color.paperRaised : PocketSheetTheme.Color.ink)
+                            .padding(.horizontal, PocketSheetSpace.s)
                             .frame(height: 34)
-                            .background(selection == section ? MCOTheme.Color.oxblood : MCOTheme.Color.paperRaised.opacity(0.62))
+                            .background(selection == section ? PocketSheetTheme.Color.inverseInk : PocketSheetTheme.Color.paperRaised.opacity(0.62))
                             .clipShape(Capsule())
                             .overlay {
-                                Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                                Capsule().stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
                             }
                     }
                     .buttonStyle(.plain)
@@ -269,17 +272,17 @@ private struct ShootFolioEmptyState: View {
     let state: TodayContentState
 
     var body: some View {
-        JournalBlock {
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
+        PocketSheetCard {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 Image(systemName: "bookmark.slash")
-                    .font(MCOType.iconLarge)
-                    .foregroundStyle(MCOTheme.Color.brass)
+                    .font(.system(size: 30, weight: .regular))
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 Text("No Shoot Folio yet")
-                    .font(MCOType.headline)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text(message)
-                    .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .lineSpacing(4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -315,10 +318,10 @@ struct SceneListView: View {
     }
 
     var body: some View {
-        VStack(spacing: MCOSpace.m) {
+        VStack(spacing: PocketSheetSpace.m) {
             if isEditing {
                 ForEach($draftScenes) { $scene in
-                    JournalBlock {
+                    PocketSheetCard {
                         editableSceneRow(scene: $scene)
                     }
                 }
@@ -327,7 +330,7 @@ struct SceneListView: View {
                     NavigationLink {
                         SceneDetailView(card: card, scene: scene)
                     } label: {
-                        JournalBlock {
+                        PocketSheetCard {
                             readOnlySceneRow(scene: scene, index: index)
                         }
                     }
@@ -339,18 +342,18 @@ struct SceneListView: View {
     }
 
     private func editableSceneRow(scene: Binding<ShotScene>) -> some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
             Text("SCENE \(String(format: "%02d", scene.wrappedValue.number))")
-                .font(MCOType.tinyLabel)
-                .foregroundStyle(MCOTheme.Color.oxblood)
+                .font(PocketSheetType.sectionLabel)
+                .foregroundStyle(PocketSheetTheme.Color.inverseInk)
             TextField("Scene title", text: scene.title)
-                .font(MCOType.headline)
-                .foregroundStyle(MCOTheme.Color.ink)
+                .font(PocketSheetType.rowTitle)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
                 .textFieldStyle(.plain)
                 .accessibilityIdentifier("shootFolio.scene.\(scene.wrappedValue.number).title")
             TextField("Duration (e.g. 3 sec)", text: scene.duration)
-                .font(MCOType.bodySmall)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .font(PocketSheetType.rowSubtitle)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 .textFieldStyle(.plain)
                 .accessibilityIdentifier("shootFolio.scene.\(scene.wrappedValue.number).duration")
         }
@@ -358,30 +361,30 @@ struct SceneListView: View {
 
     private func readOnlySceneRow(scene: ShotScene, index: Int) -> some View {
         let row = storyboardRows[safe: index]
-        return HStack(alignment: .top, spacing: MCOSpace.s) {
+        return HStack(alignment: .top, spacing: PocketSheetSpace.s) {
             GeneratedStoryboardThumbnail(
                 url: row?.thumbnailURL,
                 fallbackSystemImage: scene.symbol
             )
                 .frame(width: 88, height: 66)
 
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
-                HStack(alignment: .top, spacing: MCOSpace.s) {
-                    VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                HStack(alignment: .top, spacing: PocketSheetSpace.s) {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                         Text("SCENE \(String(format: "%02d", scene.number))")
-                            .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.oxblood)
+                            .font(PocketSheetType.sectionLabel)
+                            .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                         Text(scene.title)
-                            .font(MCOType.headline)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .font(PocketSheetType.rowTitle)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
                         Text(row?.timecode ?? timecode(for: index, scene: scene))
-                            .font(MCOType.captionEmphasis)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                            .font(PocketSheetType.status)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     }
-                    Spacer(minLength: MCOSpace.s)
-                    StatusChip(
+                    Spacer(minLength: PocketSheetSpace.s)
+                    PocketSheetStatus(
                         text: services.isSceneShot(scene) ? "Shot" : scene.duration,
-                        tone: services.isSceneShot(scene) ? .ready : .info
+                        kind: services.isSceneShot(scene) ? .ready : .pending
                     )
                 }
 
@@ -425,20 +428,20 @@ struct SceneDetailView: View {
     let scene: ShotScene
 
     var body: some View {
-        EditorialScreen {
-            VStack(alignment: .leading, spacing: MCOSpace.l) {
-                VStack(alignment: .leading, spacing: MCOSpace.xs) {
+        PocketSheetScreen {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                     Text("SCENE \(String(format: "%02d", scene.number))")
-                        .font(MCOType.tinyLabel)
-                        .foregroundStyle(MCOTheme.Color.oxblood)
+                        .font(PocketSheetType.sectionLabel)
+                        .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                     Text(scene.title)
-                        .font(MCOType.screenTitle)
-                        .foregroundStyle(MCOTheme.Color.ink)
-                    HStack(spacing: MCOSpace.s) {
-                        StatusChip(text: scene.duration)
-                        StatusChip(
+                        .font(PocketSheetType.screenTitle)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                    HStack(spacing: PocketSheetSpace.s) {
+                        PocketSheetStatus(text: scene.duration)
+                        PocketSheetStatus(
                             text: services.isSceneShot(scene) ? "Shot" : "Not shot",
-                            tone: services.isSceneShot(scene) ? .ready : .warning
+                            kind: services.isSceneShot(scene) ? .ready : .pending
                         )
                     }
                 }
@@ -457,8 +460,8 @@ struct SceneDetailView: View {
                 }
             }
         } bottomBar: {
-            GlassCommandBar {
-                PrimaryActionButton(
+            PocketSheetCommandBar {
+                PocketSheetPrimaryAction(
                     title: services.isSceneShot(scene) ? "Scene shot" : "Mark shot",
                     systemImage: services.isSceneShot(scene) ? "checkmark.circle.fill" : "checkmark.seal"
                 ) {
@@ -472,14 +475,14 @@ struct SceneDetailView: View {
     }
 
     private func detailBlock(title: String, text: String) -> some View {
-        JournalBlock {
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
+        PocketSheetCard {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 Text(title.uppercased())
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .font(PocketSheetType.sectionLabel)
+                    .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                 Text(text)
-                    .font(MCOType.body)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                     .lineSpacing(4)
             }
         }
@@ -497,11 +500,11 @@ private struct FolioDetailLine: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title.uppercased())
-                .font(MCOType.tinyLabel)
-                .foregroundStyle(MCOTheme.Color.oxblood)
+                .font(PocketSheetType.sectionLabel)
+                .foregroundStyle(PocketSheetTheme.Color.inverseInk)
             Text(text)
-                .font(MCOType.bodySmall)
-                .foregroundStyle(MCOTheme.Color.ink)
+                .font(PocketSheetType.rowSubtitle)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
                 .lineSpacing(3)
         }
     }
@@ -548,16 +551,16 @@ struct CopyBlock: View {
     @State private var didCopy = false
 
     var body: some View {
-        JournalBlock {
-            VStack(alignment: .leading, spacing: MCOSpace.m) {
+        PocketSheetCard {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
                 Text(title)
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .font(PocketSheetType.sectionLabel)
+                    .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                 Text(bodyText)
-                    .font(MCOType.body)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                     .lineSpacing(5)
-                SecondaryActionButton(title: didCopy ? "Copied" : "Copy") {
+                PocketSheetSecondaryAction(title: didCopy ? "Copied" : "Copy") {
                     copyBodyText()
                 }
             }
@@ -592,19 +595,19 @@ struct ScriptTimelineCopyBlock: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.m) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
             if isEditing {
-                JournalBlock {
-                    VStack(alignment: .leading, spacing: MCOSpace.s) {
+                PocketSheetCard {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                         Text("Script")
-                            .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.oxblood)
+                            .font(PocketSheetType.sectionLabel)
+                            .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                         Text("One line per beat. Timestamps stay tied to scene order.")
-                            .font(MCOType.caption)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         TextEditor(text: $draftScript)
-                            .font(MCOType.body)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
                             .scrollContentBackground(.hidden)
                             .frame(minHeight: 180)
                             .accessibilityIdentifier("shootFolio.script.editor")
@@ -613,43 +616,43 @@ struct ScriptTimelineCopyBlock: View {
             } else if rows.isEmpty {
                 CopyBlock(title: "Script", bodyText: "No script recorded for today.")
             } else {
-                JournalBlock {
-                    VStack(alignment: .leading, spacing: MCOSpace.s) {
-                        HStack(spacing: MCOSpace.s) {
+                PocketSheetCard {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                        HStack(spacing: PocketSheetSpace.s) {
                             Text("Script")
-                                .font(MCOType.tinyLabel)
-                                .foregroundStyle(MCOTheme.Color.oxblood)
-                            Spacer(minLength: MCOSpace.s)
+                                .font(PocketSheetType.sectionLabel)
+                                .foregroundStyle(PocketSheetTheme.Color.inverseInk)
+                            Spacer(minLength: PocketSheetSpace.s)
                             Text("\(rows.count) lines")
-                                .font(MCOType.caption)
-                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                                .font(PocketSheetType.rowSubtitle)
+                                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         }
 
                         ForEach(rows) { row in
-                            HStack(alignment: .top, spacing: MCOSpace.s) {
+                            HStack(alignment: .top, spacing: PocketSheetSpace.s) {
                                 GeneratedStoryboardThumbnail(
                                     url: row.thumbnailURL,
                                     fallbackSystemImage: card.scenes[safe: row.sceneNumber - 1]?.symbol
                                 )
                                     .frame(width: 72, height: 54)
-                                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                                     Text(row.timecode)
-                                        .font(MCOType.captionEmphasis)
-                                        .foregroundStyle(MCOTheme.Color.oxblood)
+                                        .font(PocketSheetType.status)
+                                        .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                                     Text(row.audioDialogue)
-                                        .font(MCOType.bodySmall)
-                                        .foregroundStyle(MCOTheme.Color.ink)
+                                        .font(PocketSheetType.rowSubtitle)
+                                        .foregroundStyle(PocketSheetTheme.Color.ink)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                                 Spacer(minLength: 0)
                             }
-                            .padding(MCOSpace.s)
-                            .background(MCOTheme.Color.paperRaised.opacity(0.58))
+                            .padding(PocketSheetSpace.s)
+                            .background(PocketSheetTheme.Color.paperRaised.opacity(0.58))
                             .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
                             .accessibilityIdentifier("shoot.script.line.\(row.sceneNumber)")
                         }
 
-                        SecondaryActionButton(title: didCopy ? "Copied" : "Copy full script") {
+                        PocketSheetSecondaryAction(title: didCopy ? "Copied" : "Copy full script") {
                             #if canImport(UIKit)
                             UIPasteboard.general.string = copyableScript
                             #endif

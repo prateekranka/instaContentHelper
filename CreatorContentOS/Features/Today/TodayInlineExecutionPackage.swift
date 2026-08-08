@@ -6,10 +6,10 @@ struct TodayInlineExecutionPackage: View {
     let card: GeneratedDailyCardDraft
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.l) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
             Text(card.title)
-                .font(MCOType.headline)
-                .foregroundStyle(MCOTheme.Color.ink)
+                .font(PocketSheetType.rowTitle)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("today.package.title")
@@ -29,26 +29,26 @@ struct TodayInlineExecutionPackage: View {
     @ViewBuilder
     private var sceneProgressBlock: some View {
         if !services.todayCard.scenes.isEmpty {
-            JournalBlock {
-                HStack(alignment: .center, spacing: MCOSpace.m) {
+            PocketSheetCard {
+                HStack(alignment: .center, spacing: PocketSheetSpace.m) {
                     Image(systemName: services.areAllScenesShot ? "checkmark.seal.fill" : "target")
-                        .font(MCOType.cardTitle)
-                        .foregroundStyle(services.areAllScenesShot ? MCOTheme.Color.success : MCOTheme.Color.liveBlue)
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
                         .frame(width: 34)
 
-                    VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                         Text(services.areAllScenesShot ? "All scenes shot" : "\(services.shotSceneCount) of \(services.todayCard.scenes.count) scenes shot")
-                            .font(MCOType.headline)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .font(PocketSheetType.rowTitle)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
                         Text(services.areAllScenesShot ? "Ready to mark posted." : "\(services.unshotSceneCount) remaining before you can post.")
-                            .font(MCOType.caption)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     }
 
-                    Spacer(minLength: MCOSpace.s)
-                    StatusChip(
+                    Spacer(minLength: PocketSheetSpace.s)
+                    PocketSheetStatus(
                         text: services.areAllScenesShot ? "Complete" : "\(services.unshotSceneCount) left",
-                        tone: services.areAllScenesShot ? .ready : .info
+                        kind: services.areAllScenesShot ? .ready : .pending
                     )
                 }
             }

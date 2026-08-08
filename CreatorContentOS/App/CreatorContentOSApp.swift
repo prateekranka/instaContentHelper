@@ -41,6 +41,7 @@ struct CreatorContentOSAppView: View {
             if appState.authenticationPhase == .live,
                let forcedScreen = DebugForcedScreen.current {
                 forcedScreen.view
+                    .tint(PocketSheetTheme.Color.ink)
             } else if shouldShowDebugAdminShell {
                 // DEBUG-only: Admin/Manager TabView (Daily / Weekly / References).
                 // Not reachable from the live Creator product path.
@@ -52,7 +53,6 @@ struct CreatorContentOSAppView: View {
             appView
 #endif
         }
-        .tint(MCOTheme.Color.oxblood)
     }
 
     /// Live product always uses the Creator shell. `AppMode.admin` is ignored here.
@@ -69,8 +69,11 @@ struct CreatorContentOSAppView: View {
                         onSoftSkip: {},
                         onComplete: handleOnboardingComplete
                     )
+                    .tint(PocketSheetTheme.Color.ink)
+                    .pocketSheetChromePalette()
                 } else {
                     CreatorShellView()
+                        .tint(PocketSheetTheme.Color.ink)
                 }
             case .signedOut, .signingIn, .failed:
                 SignInView()
@@ -159,20 +162,21 @@ private struct DebugStoryboardCardScreen: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MCOTheme.Color.paper.ignoresSafeArea()
+                PocketSheetTheme.Color.paper.ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: MCOSpace.l) {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
                         Text("Storyboard card preview")
-                            .font(MCOType.screenTitle)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .font(PocketSheetType.screenTitle)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
                         GeneratedDayPlannedContent(card: .storyboardBreakdownFixture)
                     }
-                    .padding(.horizontal, MCOSpace.l)
-                    .padding(.top, MCOSpace.l)
-                    .padding(.bottom, MCOSpace.xl)
+                    .padding(.horizontal, PocketSheetSpace.l)
+                    .padding(.top, PocketSheetSpace.l)
+                    .padding(.bottom, PocketSheetSpace.xl)
                 }
             }
         }
+        .pocketSheetChromePalette()
     }
 }
 #endif
@@ -180,11 +184,11 @@ private struct DebugStoryboardCardScreen: View {
 private struct AuthenticationRestoringView: View {
     var body: some View {
         ZStack {
-            MCOTheme.Color.paper.ignoresSafeArea()
+            PocketSheetTheme.Color.paper.ignoresSafeArea()
             ProgressView("Checking your session")
-                .font(MCOType.body)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-                .tint(MCOTheme.Color.oxblood)
+                .font(PocketSheetType.rowSubtitle)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                .tint(PocketSheetTheme.Color.ink)
         }
         .accessibilityIdentifier("authentication-restoring")
     }

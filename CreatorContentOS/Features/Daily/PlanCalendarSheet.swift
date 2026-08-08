@@ -11,15 +11,15 @@ struct PlanCalendarSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: MCOSpace.m) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
                     calendarLegend
                     monthHeader
                     weekdayHeader
                     monthGrid
                 }
-                .padding(MCOSpace.l)
+                .padding(PocketSheetSpace.l)
             }
-            .background(MCOTheme.Color.paper.ignoresSafeArea())
+            .background(PocketSheetTheme.Color.paper.ignoresSafeArea())
             .navigationTitle("Choose a day")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -29,35 +29,36 @@ struct PlanCalendarSheet: View {
                 }
             }
         }
+        .tint(PocketSheetTheme.Color.ink)
         .accessibilityIdentifier("plan.calendar.sheet")
     }
 
     private var calendarLegend: some View {
-        HStack(spacing: MCOSpace.m) {
-            legendItem(color: MCOTheme.Color.success, label: "Ready")
-            legendItem(color: MCOTheme.Color.warning, label: "Draft")
-            HStack(spacing: MCOSpace.xs) {
+        HStack(spacing: PocketSheetSpace.m) {
+            legendItem(color: PocketSheetTheme.Color.statusReady, label: "Ready")
+            legendItem(color: PocketSheetTheme.Color.statusDraft, label: "Draft")
+            HStack(spacing: PocketSheetSpace.xs) {
                 Circle()
-                    .stroke(MCOTheme.Color.hairlineStrong, lineWidth: 1)
+                    .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
                     .frame(width: 8, height: 8)
                 Text("Empty")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Legend: green ready, yellow draft, none empty")
+        .accessibilityLabel("Legend: filled ready, muted draft, none empty")
         .accessibilityIdentifier("plan.calendar.legend")
     }
 
     private func legendItem(color: Color, label: String) -> some View {
-        HStack(spacing: MCOSpace.xs) {
+        HStack(spacing: PocketSheetSpace.xs) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
             Text(label)
-                .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .font(PocketSheetType.rowSubtitle)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
         }
     }
 
@@ -67,26 +68,26 @@ struct PlanCalendarSheet: View {
                 shiftMonth(by: -1)
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(MCOType.iconCompact)
+                    .font(.system(size: 14, weight: .semibold))
                     .frame(width: 36, height: 36)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Previous month")
 
             Spacer()
             Text(monthTitle(for: visibleMonth))
-                .font(MCOType.headline)
-                .foregroundStyle(MCOTheme.Color.ink)
+                .font(PocketSheetType.rowTitle)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
             Spacer()
 
             Button {
                 shiftMonth(by: 1)
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(MCOType.iconCompact)
+                    .font(.system(size: 14, weight: .semibold))
                     .frame(width: 36, height: 36)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Next month")
@@ -98,8 +99,8 @@ struct PlanCalendarSheet: View {
         return HStack(spacing: 0) {
             ForEach(Array(symbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.sectionLabel)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -109,7 +110,7 @@ struct PlanCalendarSheet: View {
         let days = daysInVisibleMonth()
         return LazyVGrid(
             columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7),
-            spacing: MCOSpace.xs
+            spacing: PocketSheetSpace.xs
         ) {
             ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                 if let day {
@@ -135,21 +136,21 @@ struct PlanCalendarSheet: View {
         } label: {
             VStack(spacing: 4) {
                 Text("\(dayNumber)")
-                    .font(MCOType.bodySmall)
+                    .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(
                         isSelected
-                            ? MCOTheme.Color.oxblood
-                            : (isSelectable ? MCOTheme.Color.ink : MCOTheme.Color.inkMuted.opacity(0.45))
+                            ? PocketSheetTheme.Color.inverseInk
+                            : (isSelectable ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.inkMuted.opacity(0.45))
                     )
                 Group {
                     switch state {
                     case .ready:
                         Circle()
-                            .fill(MCOTheme.Color.success)
+                            .fill(PocketSheetTheme.Color.statusReady)
                             .frame(width: 6, height: 6)
                     case .draft:
                         Circle()
-                            .fill(MCOTheme.Color.warning)
+                            .fill(PocketSheetTheme.Color.statusDraft)
                             .frame(width: 6, height: 6)
                     case .empty:
                         Circle()
@@ -163,14 +164,14 @@ struct PlanCalendarSheet: View {
             .frame(height: 44)
             .background(
                 isSelected
-                    ? MCOTheme.Color.oxblood.opacity(0.12)
+                    ? PocketSheetTheme.Color.fillMuted
                     : Color.clear
             )
-            .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
             .overlay {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                        .stroke(MCOTheme.Color.oxblood.opacity(0.62), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                        .stroke(PocketSheetTheme.Color.ink, lineWidth: 1)
                 }
             }
         }

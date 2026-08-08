@@ -22,14 +22,14 @@ struct PlanHubView: View {
     var initialSelectedDate: String? = nil
 
     var body: some View {
-        EditorialScreen(bottomContentPadding: 120, showsBottomBar: false) {
-            VStack(alignment: .leading, spacing: MCOSpace.l) {
+        PocketSheetScreen(bottomContentPadding: 120, showsBottomBar: false) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
                 header
                 selectedDateHeader
                 if let otherLabel = otherDayGeneratingLabel {
                     Text("Still drafting \(otherLabel) in the background — you can keep planning other days.")
-                        .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .accessibilityIdentifier("plan.generation.backgroundHint")
                 }
                 if isSelectedDayEligible {
@@ -257,25 +257,25 @@ struct PlanHubView: View {
     // MARK: - Sections
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
-            HStack(alignment: .center, spacing: MCOSpace.s) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+            HStack(alignment: .center, spacing: PocketSheetSpace.s) {
                 Button {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(MCOType.iconCompact)
+                        .font(.system(size: 14, weight: .semibold))
                         .frame(width: 38, height: 38)
-                        .foregroundStyle(MCOTheme.Color.ink)
-                        .background(MCOTheme.Color.paperRaised.opacity(0.72), in: Circle())
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                        .background(PocketSheetTheme.Color.paperRaised.opacity(0.72), in: Circle())
                         .overlay {
-                            Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                            Circle().stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
                         }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Back")
                 .accessibilityIdentifier("plan.back")
 
-                Spacer(minLength: MCOSpace.s)
+                Spacer(minLength: PocketSheetSpace.s)
 
                 if showsModeSwitch {
                     FloatingIconButton(systemImage: "ellipsis", label: "Back to Creator Mode") {
@@ -284,16 +284,16 @@ struct PlanHubView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: MCOSpace.xs) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                 Text("Plan")
-                    .font(MCOType.display)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.screenTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                     .accessibilityIdentifier("plan.title")
                 Text("Pick a day, choose an idea, then approve the draft for Today.")
-                    .font(MCOType.body)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -304,33 +304,33 @@ struct PlanHubView: View {
             visibleMonth = selectedDate
             showCalendarSheet = true
         } label: {
-            HStack(alignment: .center, spacing: MCOSpace.s) {
-                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+            HStack(alignment: .center, spacing: PocketSheetSpace.s) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                     if let formatted = PlanDayDateFormatting.formattedDate(for: scheduledDateString) {
                         Text(formatted.weekday)
-                            .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                            .font(PocketSheetType.sectionLabel)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                             .textCase(.uppercase)
                         Text(formatted.label)
-                            .font(MCOType.headline)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .font(PocketSheetType.rowTitle)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
                     } else {
                         Text(scheduledDateString)
-                            .font(MCOType.headline)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .font(PocketSheetType.rowTitle)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
                     }
                 }
-                Spacer(minLength: MCOSpace.s)
+                Spacer(minLength: PocketSheetSpace.s)
                 Image(systemName: "chevron.right")
-                    .font(MCOType.iconCompact)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
-            .padding(MCOSpace.m)
-            .background(MCOTheme.Color.paperRaised.opacity(0.86))
-            .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+            .padding(PocketSheetSpace.m)
+            .background(PocketSheetTheme.Color.paperRaised.opacity(0.86))
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                    .stroke(MCOTheme.Color.hairlineStrong, lineWidth: 1)
+                RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                    .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -339,24 +339,24 @@ struct PlanHubView: View {
     }
 
     private var generationProgressBlock: some View {
-        JournalBlock {
-            HStack(spacing: MCOSpace.s) {
+        PocketSheetCard {
+            HStack(spacing: PocketSheetSpace.s) {
                 ProgressView()
                     .controlSize(.small)
-                VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                     Text("Drafting \(shortLabel(for: scheduledDateString))")
-                        .font(MCOType.headline)
-                        .foregroundStyle(MCOTheme.Color.ink)
+                        .font(PocketSheetType.rowTitle)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
                     Text("Deep reasoning takes a couple of minutes. Validation may retry once or twice.")
-                        .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 }
                 Spacer()
                 if let startTime = generationStartTime {
                     TimelineView(.periodic(from: startTime, by: 1)) { context in
                         Text(Self.elapsedText(context.date.timeIntervalSince(startTime)))
-                            .font(MCOType.caption)
-                            .foregroundStyle(MCOTheme.Color.brass)
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                             .monospacedDigit()
                     }
                 }
@@ -368,8 +368,8 @@ struct PlanHubView: View {
     @ViewBuilder
     private var resultBlock: some View {
         if let card = displayedCard {
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
-                WeeklySectionTitle(
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                PocketSheetSectionTitle(
                     title: "Storyboard & caption",
                     subtitle: readyPackageSubtitle(for: card)
                 )
@@ -386,21 +386,21 @@ struct PlanHubView: View {
     }
 
     private var lightEditBlock: some View {
-        JournalBlock {
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
+        PocketSheetCard {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 Text("Light edit")
-                    .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .font(PocketSheetType.sectionLabel)
+                    .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                 Text("Edits keep this day ready — no Unpublish required.")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 TextEditor(text: $lightEditCaption)
-                    .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 72)
                     .accessibilityIdentifier("daily.ready.edit.caption")
-                SecondaryActionButton(
+                PocketSheetSecondaryAction(
                     title: services.isUpdatingReadyDayPackage ? "Saving…" : "Save caption"
                 ) {
                     saveLightEdit()
@@ -420,8 +420,8 @@ struct PlanHubView: View {
     @ViewBuilder
     private var approveActionBlock: some View {
         if canMakeAvailable {
-            VStack(alignment: .leading, spacing: MCOSpace.xs) {
-                PrimaryActionButton(
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
+                PocketSheetPrimaryAction(
                     title: services.isMakingDayAvailable ? "Approving…" : "Approve",
                     systemImage: "checkmark.circle"
                 ) {
@@ -432,8 +432,8 @@ struct PlanHubView: View {
                 .accessibilityIdentifier("daily.availableOnToday")
 
                 Text("Clicking this will add the card to the Today page.")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
@@ -445,7 +445,7 @@ struct PlanHubView: View {
     @ViewBuilder
     private var unpublishActionBlock: some View {
         if canUnpublish {
-            SecondaryActionButton(
+            PocketSheetSecondaryAction(
                 title: services.isUnpublishingDay ? "Unpublishing…" : "Unpublish"
             ) {
                 showUnpublishConfirmation = true

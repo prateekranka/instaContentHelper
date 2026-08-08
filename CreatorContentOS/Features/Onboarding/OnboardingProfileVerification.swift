@@ -57,15 +57,6 @@ struct ImportPreviewOnboardingProfileVerifier: OnboardingProfileVerifying {
             )
         }
 
-        if preview.counts.invalid > 0, preview.counts.cleanAccounts == 0, preview.counts.importable == 0 {
-            return OnboardingProfileVerificationResult(
-                status: .notFound,
-                handle: handle,
-                url: url,
-                diagnosticReason: "import_preview_invalid_only"
-            )
-        }
-
         return OnboardingProfileVerificationResult(
             status: .temporarilyUnavailable,
             handle: handle,

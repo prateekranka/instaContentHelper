@@ -15,11 +15,12 @@ struct PlanDayIdeaLauncher: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
             Text("Choose an idea for this day")
-                .font(MCOType.tinyLabel)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .font(PocketSheetType.sectionLabel)
+                .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                 .textCase(.uppercase)
+                .tracking(0.44)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("plan.daygen.title")
 
@@ -34,12 +35,13 @@ struct PlanDayIdeaLauncher: View {
             }
 
             if isBusy {
-                HStack(spacing: MCOSpace.xs) {
+                HStack(spacing: PocketSheetSpace.xs) {
                     ProgressView()
                         .controlSize(.small)
+                        .tint(PocketSheetTheme.Color.ink)
                     Text("Generating this day…")
-                        .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 }
                 .accessibilityIdentifier("plan.daygen.busy")
             }
@@ -52,22 +54,22 @@ struct PlanDayIdeaLauncher: View {
         Button {
             onSelectIdea(idea)
         } label: {
-            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                 Text(idea.title)
-                    .font(MCOType.bodyEmphasis)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text(idea.summary)
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(MCOSpace.s)
-            .background(MCOTheme.Color.paperRaised.opacity(0.92))
-            .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+            .padding(PocketSheetSpace.s)
+            .background(PocketSheetTheme.Color.paperRaised)
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                    .stroke(MCOTheme.Color.hairlineStrong, lineWidth: 1)
+                RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                    .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -84,22 +86,22 @@ struct PlanDayIdeaLauncher: View {
                 otherText = ""
             }
         } label: {
-            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                 Text("Other")
-                    .font(MCOType.bodyEmphasis)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text("Write your own direction for this day.")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(MCOSpace.s)
-            .background(MCOTheme.Color.paperRaised.opacity(0.72))
-            .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+            .padding(PocketSheetSpace.s)
+            .background(PocketSheetTheme.Color.paperRaised)
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
                     .stroke(
-                        isOtherOpen ? MCOTheme.Color.ink : MCOTheme.Color.hairlineStrong,
+                        isOtherOpen ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.hairline,
                         style: StrokeStyle(lineWidth: 1, dash: isOtherOpen ? [] : [4, 3])
                     )
             }
@@ -112,41 +114,41 @@ struct PlanDayIdeaLauncher: View {
     }
 
     private var otherEditor: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.s) {
-            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                 Text("Your direction")
-                    .font(MCOType.bodyEmphasis)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text("Use a specific idea, moment, or format. This creates one day only.")
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
 
             ZStack(alignment: .topLeading) {
                 if otherText.isEmpty {
                     Text("e.g. A quiet pre-race check-in before the first mile…")
-                        .font(MCOType.bodySmall)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
                 TextEditor(text: $otherText)
-                    .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                     .scrollContentBackground(.hidden)
                     .disabled(controlsDisabled)
                     .accessibilityIdentifier("plan.daygen.other.text")
             }
-            .padding(MCOSpace.s)
+            .padding(PocketSheetSpace.s)
             .frame(minHeight: 96, alignment: .topLeading)
-            .background(MCOTheme.Color.paperRaised.opacity(0.86))
-            .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+            .background(PocketSheetTheme.Color.paperRaised)
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                    .stroke(MCOTheme.Color.hairlineStrong.opacity(0.8), lineWidth: 1)
+                RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                    .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
             }
 
-            PrimaryActionButton(
+            PocketSheetPrimaryAction(
                 title: "Generate for this day",
                 systemImage: "sparkles"
             ) {

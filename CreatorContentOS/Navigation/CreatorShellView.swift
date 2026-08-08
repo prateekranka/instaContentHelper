@@ -38,6 +38,8 @@ struct CreatorShellView: View {
             .tag(CreatorTab.you)
             .accessibilityIdentifier("shell.tab.you")
         }
+        .pocketSheetTabBarChrome()
+        .pocketSheetChromePalette()
         .background(PocketSheetTheme.Color.paper)
         .onAppear {
             applyPendingCreatorTabIfNeeded()

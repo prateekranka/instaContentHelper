@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ReferenceReviewEditSheet: View {
+    @Environment(\.chromePalette) private var chrome
     @Environment(\.dismiss) private var dismiss
 
     let item: IntelligenceItem
@@ -31,26 +32,26 @@ struct ReferenceReviewEditSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MCOTheme.Color.paper.ignoresSafeArea()
+                ChromePalette.editorial.paper.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: MCOSpace.l) {
                         VStack(alignment: .leading, spacing: MCOSpace.xs) {
                             Text("NEEDS YOUR CALL")
                                 .font(MCOType.tinyLabel)
-                                .foregroundStyle(MCOTheme.Color.oxblood)
+                                .foregroundStyle(chrome.accent)
                             Text("Resolve reference")
                                 .font(MCOType.screenTitle)
-                                .foregroundStyle(MCOTheme.Color.ink)
+                                .foregroundStyle(chrome.ink)
                             Text(item.title)
                                 .font(.system(size: 16, weight: .regular, design: .serif))
-                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                                .foregroundStyle(chrome.inkMuted)
                         }
 
                         JournalBlock {
                             VStack(alignment: .leading, spacing: MCOSpace.m) {
                                 Text("TYPE")
                                     .font(MCOType.tinyLabel)
-                                    .foregroundStyle(MCOTheme.Color.oxblood)
+                                    .foregroundStyle(chrome.accent)
 
                                 Picker("Reference type", selection: $targetType) {
                                     Text("Account").tag(ReferenceReviewEditTarget.account)
@@ -77,18 +78,18 @@ struct ReferenceReviewEditSheet: View {
                                 VStack(alignment: .leading, spacing: MCOSpace.xs) {
                                     Text("Notes")
                                         .font(MCOType.caption)
-                                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                                        .foregroundStyle(chrome.inkMuted)
                                     TextEditor(text: $notes)
                                         .font(MCOType.bodySmall)
-                                        .foregroundStyle(MCOTheme.Color.ink)
+                                        .foregroundStyle(chrome.ink)
                                         .scrollContentBackground(.hidden)
                                         .frame(minHeight: 96)
                                         .padding(MCOSpace.xs)
-                                        .background(MCOTheme.Color.paper.opacity(0.76))
+                                        .background(chrome.paper.opacity(0.76))
                                         .clipShape(RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous))
                                         .overlay {
                                             RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
-                                                .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                                                .stroke(chrome.hairline, lineWidth: 1)
                                         }
                                 }
                             }
@@ -143,6 +144,7 @@ struct ReferenceReviewEditSheet: View {
 }
 
 private struct LabeledContentField: View {
+    @Environment(\.chromePalette) private var chrome
     let title: String
     let placeholder: String
     @Binding var text: String
@@ -151,18 +153,18 @@ private struct LabeledContentField: View {
         VStack(alignment: .leading, spacing: MCOSpace.xs) {
             Text(title)
                 .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .foregroundStyle(chrome.inkMuted)
             TextField(placeholder, text: $text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(MCOType.bodySmall)
-                .foregroundStyle(MCOTheme.Color.ink)
+                .foregroundStyle(chrome.ink)
                 .padding(MCOSpace.s)
-                .background(MCOTheme.Color.paper.opacity(0.76))
+                .background(chrome.paper.opacity(0.76))
                 .clipShape(RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
-                        .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                        .stroke(chrome.hairline, lineWidth: 1)
                 }
         }
     }

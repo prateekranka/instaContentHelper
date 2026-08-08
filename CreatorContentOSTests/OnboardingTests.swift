@@ -226,6 +226,18 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(result.handle, "creator_name")
     }
 
+    func testParsesProfileURL() throws {
+        let result = try OnboardingReferenceParser.parse(
+            "https://instagram.com/somehandle",
+            expected: .profile
+        ).get()
+
+        XCTAssertTrue(result.reference.isProfile)
+        XCTAssertTrue(result.needsProfileVerification)
+        XCTAssertEqual(result.handle, "somehandle")
+        XCTAssertEqual(result.reference.key, "handle:somehandle")
+    }
+
     func testRejectsHandleWhenExpectingReel() {
         let failure = OnboardingReferenceParser.parse("@creator", expected: .reel)
         guard case .failure(let error) = failure else {
@@ -338,9 +350,9 @@ final class OnboardingTests: XCTestCase {
             profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .verified)
         )
         model.referenceInputKind = .profile
-        model.referenceDraftText = "@creator"
+        model.profileDraftText = "@creator"
 
-        await model.addReference()
+        await model.addReference(kind: .profile)
 
         XCTAssertEqual(model.references.count, 1)
         XCTAssertEqual(model.toastMessage, "Profile added")
@@ -352,9 +364,9 @@ final class OnboardingTests: XCTestCase {
             profileVerifier: FixtureOnboardingProfileVerifier(notFoundHandles: ["ghost"])
         )
         model.referenceInputKind = .profile
-        model.referenceDraftText = "@ghost"
+        model.profileDraftText = "@ghost"
 
-        await model.addReference()
+        await model.addReference(kind: .profile)
 
         XCTAssertTrue(model.references.isEmpty)
         XCTAssertEqual(model.toastMessage, "@ghost wasn't found on Instagram")
@@ -366,12 +378,86 @@ final class OnboardingTests: XCTestCase {
             profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .temporarilyUnavailable)
         )
         model.referenceInputKind = .profile
-        model.referenceDraftText = "@creator"
+        model.profileDraftText = "@creator"
 
-        await model.addReference()
+        await model.addReference(kind: .profile)
 
         XCTAssertEqual(model.references.count, 1)
         XCTAssertEqual(model.toastMessage, "Profile added. We couldn't check Instagram right now.")
+    }
+
+    func testAddReelAndProfileFromDraftTextThenContinue() async {
+        let model = OnboardingViewModel(
+            store: UserDefaultsOnboardingStore(defaults: defaults),
+            profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .verified)
+        )
+        model.step = .references
+        model.reelDraftText = "https://www.instagram.com/reel/ABC123/"
+
+        await model.addReference(from: "https://www.instagram.com/reel/ABC123/", kind: .reel)
+
+        XCTAssertEqual(model.references.count, 1)
+        XCTAssertTrue(model.references[0].isReel)
+        XCTAssertEqual(model.reelDraftText, "")
+
+        model.profileDraftText = "@somehandle"
+        await model.addReference(from: "@somehandle", kind: .profile)
+
+        XCTAssertEqual(model.references.count, 2)
+        XCTAssertTrue(model.references.contains(where: \.isProfile))
+        XCTAssertEqual(model.referenceValidation, .none)
+
+        model.continueFromReferences(reduceMotion: false)
+
+        XCTAssertEqual(model.step, .confirm)
+    }
+
+    func testAddReferenceClearsValidationWhenMixBecomesComplete() async {
+        let model = OnboardingViewModel(
+            store: UserDefaultsOnboardingStore(defaults: defaults),
+            profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .verified)
+        )
+        model.step = .references
+        model.references = [reel]
+        model.continueFromReferences(reduceMotion: false)
+
+        XCTAssertTrue(model.referenceValidation.profile)
+
+        model.referenceInputKind = .profile
+        await model.addReference(from: "@creator", kind: .profile)
+
+        XCTAssertEqual(model.referenceValidation, .none)
+    }
+
+    func testProfileVerificationInconclusivePreviewAllowsAdd() async {
+        let preview = ReferenceImportPreview(
+            parserVersion: "v1",
+            previewChecksum: "checksum",
+            destination: ReferenceImportDestination(watchlistID: nil, watchlistName: "Inspiration"),
+            counts: ReferenceImportCounts(
+                totalRows: 1,
+                cleanAccounts: 0,
+                cleanReels: 0,
+                cleanAudio: 0,
+                needsReview: 0,
+                duplicates: 0,
+                invalid: 1,
+                importable: 0
+            ),
+            rows: []
+        )
+        let verifier = ImportPreviewOnboardingProfileVerifier(
+            repository: PreviewPassthroughOnboardingTestRepository(preview: preview),
+            context: WorkspaceContext(
+                workspaceID: UUID(),
+                creatorID: UUID(),
+                memberID: UUID()
+            )
+        )
+
+        let result = await verifier.verify(handle: "creator")
+
+        XCTAssertEqual(result.status, .temporarilyUnavailable)
     }
 
     func testFinishMarksStoreComplete() {
@@ -504,6 +590,36 @@ final class OnboardingTests: XCTestCase {
         let confirmCount = await recorder.confirmCalls().count
         XCTAssertEqual(outcome, OnboardingReferenceImportOutcome(confirmed: 0, skipped: 1, failed: 0))
         XCTAssertEqual(confirmCount, 0)
+    }
+}
+
+private struct PreviewPassthroughOnboardingTestRepository: ReferenceImportRepository {
+    let preview: ReferenceImportPreview
+
+    func previewImport(
+        rawText: String,
+        inputType: ReferenceImportInputType,
+        filename: String?,
+        context: WorkspaceContext
+    ) async throws -> ReferenceImportPreview {
+        preview
+    }
+
+    func confirmImport(
+        rawText: String,
+        inputType: ReferenceImportInputType,
+        filename: String?,
+        previewChecksum: String,
+        context: WorkspaceContext
+    ) async throws -> ReferenceImportConfirmResult {
+        throw RepositoryError.notConfigured("Preview passthrough only.")
+    }
+
+    func reviewItem(
+        _ request: ReferenceReviewRequest,
+        context: WorkspaceContext
+    ) async throws -> ReferenceReviewResult {
+        throw RepositoryError.notConfigured("Preview passthrough only.")
     }
 }
 

@@ -3,10 +3,10 @@ import SwiftUI
 struct ArchiveView: View {
     var body: some View {
         ZStack {
-            MCOTheme.Color.paper.ignoresSafeArea()
+            PocketSheetTheme.Color.paper.ignoresSafeArea()
             ScrollView {
                 ArchiveSection()
-                    .padding(MCOSpace.l)
+                    .padding(PocketSheetSpace.l)
             }
         }
         .navigationBarHidden(true)
@@ -19,14 +19,14 @@ struct ArchiveSection: View {
     @State private var selectedEntry: ArchiveEntry?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MCOSpace.l) {
-            VStack(alignment: .leading, spacing: MCOSpace.xs) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                 Text("Archive")
-                    .font(MCOType.display)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.screenTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text("Past decisions and outputs.")
-                    .font(MCOType.dateLine)
-                    .foregroundStyle(MCOTheme.Color.brass)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
 
             ArchiveFilterBar(selectedFilter: $selectedFilter)
@@ -40,7 +40,7 @@ struct ArchiveSection: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    Hairline()
+                    PocketSheetDivider()
                 }
             }
         }
@@ -83,20 +83,28 @@ private struct ArchiveFilterBar: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: MCOSpace.s) {
+            HStack(spacing: PocketSheetSpace.s) {
                 ForEach(ArchiveFilter.allCases) { filter in
                     Button {
                         selectedFilter = filter
                     } label: {
                         Text(filter.rawValue)
-                            .font(MCOType.caption)
-                            .foregroundStyle(selectedFilter == filter ? MCOTheme.Color.paperRaised : MCOTheme.Color.ink)
-                            .padding(.horizontal, MCOSpace.s)
+                            .font(PocketSheetType.chip)
+                            .foregroundStyle(
+                                selectedFilter == filter
+                                    ? PocketSheetTheme.Color.inversePaper
+                                    : PocketSheetTheme.Color.ink
+                            )
+                            .padding(.horizontal, PocketSheetSpace.s)
                             .frame(height: 32)
-                            .background(selectedFilter == filter ? MCOTheme.Color.oxblood : MCOTheme.Color.paperRaised.opacity(0.62))
+                            .background(
+                                selectedFilter == filter
+                                    ? PocketSheetTheme.Color.inverseInk
+                                    : PocketSheetTheme.Color.fillMuted
+                            )
                             .clipShape(Capsule())
                             .overlay {
-                                Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                                Capsule().stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
                             }
                     }
                     .buttonStyle(.plain)
@@ -110,47 +118,47 @@ struct ArchiveTimelineRow: View {
     let entry: ArchiveEntry
 
     var body: some View {
-        HStack(alignment: .top, spacing: MCOSpace.m) {
-            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+        HStack(alignment: .top, spacing: PocketSheetSpace.m) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                 Text(entry.day)
-                    .font(MCOType.editorialHeadline)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text(entry.date)
-                    .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
             .frame(width: 56, alignment: .leading)
 
             Rectangle()
-                .fill(MCOTheme.Color.hairline)
+                .fill(PocketSheetTheme.Color.hairline)
                 .frame(width: 1)
                 .padding(.vertical, 2)
 
-            VStack(alignment: .leading, spacing: MCOSpace.xs) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                 Text(entry.cardTitle)
-                    .font(MCOType.editorialHeadline)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text(entry.outputLine)
-                    .font(MCOType.bodySmall)
-                    .foregroundStyle(entry.decision.isPositiveCompletion ? MCOTheme.Color.sageDeep : MCOTheme.Color.brass)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
 
             Spacer()
 
             if entry.hasPostThumbnail {
                 Image(systemName: "figure.run")
-                    .font(MCOType.iconRow)
-                    .foregroundStyle(MCOTheme.Color.paperRaised)
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(PocketSheetTheme.Color.inversePaper)
                     .frame(width: 54, height: 54)
-                    .background(MCOTheme.Color.brass)
+                    .background(PocketSheetTheme.Color.inverseInk)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else {
                 Image(systemName: "chevron.right")
-                    .font(MCOType.captionMedium)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
             }
         }
-        .padding(.vertical, MCOSpace.m)
+        .padding(.vertical, PocketSheetSpace.m)
     }
 }
 
@@ -161,41 +169,44 @@ private struct ArchiveEntryDetailView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MCOTheme.Color.paper.ignoresSafeArea()
-                VStack(alignment: .leading, spacing: MCOSpace.l) {
-                    VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                PocketSheetTheme.Color.paper.ignoresSafeArea()
+                VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                         Text("\(entry.day), \(entry.date)")
-                            .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.oxblood)
+                            .font(PocketSheetType.sectionLabel)
+                            .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                         Text(entry.cardTitle)
-                            .font(MCOType.screenTitle)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .font(PocketSheetType.screenTitle)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    JournalBlock {
-                        VStack(alignment: .leading, spacing: MCOSpace.s) {
-                            StatusChip(text: entry.decision.archiveLabel, tone: entry.decision.isPositiveCompletion ? .ready : .warning)
+                    PocketSheetCard {
+                        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                            PocketSheetStatus(
+                                text: entry.decision.archiveLabel,
+                                kind: entry.decision.isPositiveCompletion ? .ready : .pending
+                            )
                             Text(entry.outputLine)
-                                .font(MCOType.body)
-                                .foregroundStyle(MCOTheme.Color.ink)
+                                .font(PocketSheetType.rowSubtitle)
+                                .foregroundStyle(PocketSheetTheme.Color.ink)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(entry.hasPostThumbnail ? "Post output was recorded." : "No post thumbnail was attached.")
-                                .font(MCOType.caption)
-                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                                .font(PocketSheetType.rowSubtitle)
+                                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         }
                     }
 
                     Spacer()
                 }
-                .padding(MCOSpace.l)
+                .padding(PocketSheetSpace.l)
             }
+            .tint(PocketSheetTheme.Color.ink)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
-                    .foregroundStyle(MCOTheme.Color.oxblood)
                 }
             }
         }

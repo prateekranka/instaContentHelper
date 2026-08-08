@@ -6,12 +6,15 @@ struct TodayView: View {
     @State private var sheet: TodaySheet?
 
     var body: some View {
-        EditorialScreen(bottomContentPadding: 120) {
-            VStack(alignment: .leading, spacing: MCOSpace.l) {
+        PocketSheetScreen(bottomContentPadding: 120) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
                 header
-                ActionFeedbackBanner(message: services.lastActionMessage, tone: .ready)
+                PocketSheetFeedbackBanner(message: services.lastActionMessage, kind: .ready)
                 if let decisionError = services.lastTodayDecisionSyncError?.nilIfBlank {
-                    ActionFeedbackBanner(message: "Couldn't save your decision — \(decisionError)", tone: .danger)
+                    PocketSheetFeedbackBanner(
+                        message: "Couldn't save your decision — \(decisionError)",
+                        kind: .issue
+                    )
                 }
                 switch services.todayContentState {
                 case .ready:
@@ -30,9 +33,9 @@ struct TodayView: View {
             }
         } bottomBar: {
             if case .ready = services.todayContentState {
-                GlassCommandBar {
+                PocketSheetCommandBar {
                     if services.canMarkPosted {
-                        PrimaryActionButton(
+                        PocketSheetPrimaryAction(
                             title: "Mark posted",
                             systemImage: "paperplane.fill"
                         ) {
@@ -40,7 +43,7 @@ struct TodayView: View {
                         }
                         .accessibilityIdentifier("today.markPosted")
                     } else if !services.todayCard.scenes.isEmpty {
-                        PrimaryActionButton(
+                        PocketSheetPrimaryAction(
                             title: services.areAllScenesShot ? "All scenes shot" : "Mark all as shot",
                             systemImage: services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal"
                         ) {
@@ -50,7 +53,7 @@ struct TodayView: View {
                         .accessibilityIdentifier("today.markAllScenesShot")
                     }
 
-                    SecondaryActionButton(title: "Give me other ideas") {
+                    PocketSheetSecondaryAction(title: "Give me other ideas") {
                         sheet = .notToday
                     }
                     .accessibilityIdentifier("today.notEasier")
@@ -70,18 +73,18 @@ struct TodayView: View {
 
     private var header: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: MCOSpace.xxs) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                 Text("Today")
-                    .font(MCOType.display)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.screenTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("today.title")
                 Text(todayDateLine)
-                    .font(MCOType.dateLine)
-                    .foregroundStyle(MCOTheme.Color.brass)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .accessibilityIdentifier("today.dateLine")
             }
-            Spacer(minLength: MCOSpace.s)
+            Spacer(minLength: PocketSheetSpace.s)
             if case .ready = services.todayContentState {
                 readyPlanEntries
             }
@@ -97,10 +100,13 @@ struct TodayView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(MCOType.iconInline)
+                .font(.system(size: 16, weight: .medium))
                 .frame(width: 42, height: 42)
-                .foregroundStyle(MCOTheme.Color.ink)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+                .background(PocketSheetTheme.Color.paperRaised, in: Circle())
+                .overlay {
+                    Circle().stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
+                }
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -180,15 +186,16 @@ struct TodayView: View {
 
 private struct TodayLoadingCard: View {
     var body: some View {
-        JournalBlock {
-            VStack(alignment: .leading, spacing: MCOSpace.s) {
+        PocketSheetCard {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 ProgressView()
+                    .tint(PocketSheetTheme.Color.ink)
                 Text("Checking today's plan")
-                    .font(MCOType.headline)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .font(PocketSheetType.rowTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text("The app is loading the latest published card.")
-                    .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -201,32 +208,35 @@ private struct MissingTodayCardView: View {
     let onPlan: () -> Void
 
     var body: some View {
-        JournalBlock {
-            VStack(alignment: .leading, spacing: MCOSpace.m) {
+        PocketSheetCard {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
                 Image(systemName: "circle.dashed")
-                    .font(MCOType.iconEmpty)
-                    .foregroundStyle(MCOTheme.Color.brass)
+                    .font(.system(size: 28, weight: .regular))
+                    .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                     Text("Nothing ready for today")
-                        .font(MCOType.headline)
-                        .foregroundStyle(MCOTheme.Color.ink)
+                        .font(PocketSheetType.rowTitle)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
                     Text("There’s no ready package for this date yet. Open Plan to generate one and make it available on Today.")
-                        .font(MCOType.bodySmall)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .lineSpacing(4)
                 }
 
                 NavigationLink(value: CreatorRoute.plan(selectedDate: date)) {
-                    HStack(spacing: MCOSpace.s) {
+                    HStack(spacing: PocketSheetSpace.s) {
                         Image(systemName: "calendar.badge.plus")
                         Text("Plan today’s content")
                     }
-                    .font(MCOType.headline)
-                    .foregroundStyle(MCOTheme.Color.paperRaised)
+                    .font(PocketSheetType.actionPrimary)
+                    .foregroundStyle(PocketSheetTheme.Color.inversePaper)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 52)
-                    .background(MCOTheme.Color.oxblood, in: RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
+                    .background(
+                        PocketSheetTheme.Color.inverseInk,
+                        in: RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                    )
                 }
                 .buttonStyle(.plain)
                 .simultaneousGesture(TapGesture().onEnded(onPlan))
