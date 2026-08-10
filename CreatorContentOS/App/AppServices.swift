@@ -62,6 +62,9 @@ final class AppServices {
     var generatingDayBriefDates: Set<String> = []
     var dayBriefGenerationErrors: [String: String] = [:]
     var dayBriefGeneratedCards: [String: GeneratedDailyCardDraft] = [:]
+    /// Cached Plan empty-day idea one-liners keyed by `yyyy-MM-dd` (fingerprint inside entry).
+    var planDayIdeasByDate: [String: PlanDayIdeasCacheEntry] = [:]
+    var loadingPlanDayIdeaDates: Set<String> = []
     var generatingStoryboardThumbnailCardIDs: Set<UUID> = []
     var storyboardThumbnailErrors: [UUID: String] = [:]
     var generationError: String?
@@ -761,6 +764,101 @@ final class AppServices {
             generationError = message
             logGeneration("regenerate_day failed scheduled_date=\(scheduledDate) error=\(message)")
             throw RepositoryError.edgeFunction(message)
+        }
+    }
+
+    /// Resolves Plan idea one-liners for a date. Returns cached DeepSeek/live ideas when
+    /// present for the same setup fingerprint; otherwise the deterministic on-device builder
+    /// so Plan is never blank.
+    func planDayIdeas(
+        for scheduledDate: String,
+        setup: PlanDaySetupSummary
+    ) -> [PlanDayIdeaCandidate] {
+        if let cached = planDayIdeasByDate[scheduledDate],
+           cached.setupFingerprint == setup.cacheFingerprint,
+           !cached.ideas.isEmpty {
+            return cached.ideas
+        }
+        return PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+    }
+
+    /// Loads Plan ideas for an empty day. Fixture / non-live runtimes use the on-device
+    /// builder. Live runtimes call `generate-plan-ideas` (DeepSeek primary) and fall back
+    /// to the builder on any failure / client timeout so the launcher never hangs past ~60s.
+    func refreshPlanDayIdeas(
+        scheduledDate: String,
+        setup: PlanDaySetupSummary
+    ) async {
+        if let cached = planDayIdeasByDate[scheduledDate],
+           cached.setupFingerprint == setup.cacheFingerprint,
+           !cached.ideas.isEmpty {
+            return
+        }
+
+        guard !loadingPlanDayIdeaDates.contains(scheduledDate) else { return }
+
+        if !isLiveSupabaseRuntime {
+            planDayIdeasByDate[scheduledDate] = PlanDayIdeasCacheEntry(
+                setupFingerprint: setup.cacheFingerprint,
+                ideas: PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+            )
+            return
+        }
+
+        loadingPlanDayIdeaDates.insert(scheduledDate)
+        defer { loadingPlanDayIdeaDates.remove(scheduledDate) }
+
+        do {
+            let ideas = try await fetchPlanDayIdeasWithTimeout(
+                scheduledDate: scheduledDate,
+                setup: setup
+            )
+            if ideas.count == PlanDayIdeaBuilder.ideaCount {
+                planDayIdeasByDate[scheduledDate] = PlanDayIdeasCacheEntry(
+                    setupFingerprint: setup.cacheFingerprint,
+                    ideas: ideas
+                )
+                return
+            }
+        } catch {
+            logGeneration(
+                "plan_ideas failed scheduled_date=\(scheduledDate) error=\(error.localizedDescription)"
+            )
+        }
+
+        if planDayIdeasByDate[scheduledDate]?.setupFingerprint != setup.cacheFingerprint {
+            planDayIdeasByDate[scheduledDate] = PlanDayIdeasCacheEntry(
+                setupFingerprint: setup.cacheFingerprint,
+                ideas: PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+            )
+        }
+    }
+
+    private func fetchPlanDayIdeasWithTimeout(
+        scheduledDate: String,
+        setup: PlanDaySetupSummary
+    ) async throws -> [PlanDayIdeaCandidate] {
+        let timeoutNanoseconds = UInt64(
+            PlanDayIdeaPayloadLimits.clientTimeoutSeconds * 1_000_000_000
+        )
+        return try await withThrowingTaskGroup(of: [PlanDayIdeaCandidate].self) { group in
+            group.addTask {
+                try await self.repositories.planDayIdeas.generatePlanDayIdeas(
+                    creatorID: self.context.creatorID,
+                    scheduledDate: scheduledDate,
+                    setup: setup,
+                    context: self.context
+                )
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+                throw RepositoryError.edgeFunction("plan_ideas_timeout")
+            }
+            guard let result = try await group.next() else {
+                throw RepositoryError.edgeFunction("plan_ideas_timeout")
+            }
+            group.cancelAll()
+            return result
         }
     }
 

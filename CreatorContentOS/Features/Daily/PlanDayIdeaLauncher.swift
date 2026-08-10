@@ -54,23 +54,18 @@ struct PlanDayIdeaLauncher: View {
         Button {
             onSelectIdea(idea)
         } label: {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                Text(idea.title)
-                    .font(PocketSheetType.rowTitle)
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
-                Text(idea.summary)
-                    .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(PocketSheetSpace.s)
-            .background(PocketSheetTheme.Color.paperRaised)
-            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
-                    .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
-            }
+            Text(idea.title)
+                .font(PocketSheetType.rowTitle)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(PocketSheetSpace.s)
+                .background(PocketSheetTheme.Color.paperRaised)
+                .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                        .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
+                }
         }
         .buttonStyle(.plain)
         .disabled(controlsDisabled)

@@ -102,6 +102,7 @@ struct PlanHubView: View {
                 onSelectDate: { date in
                     resetIdeaLauncherState()
                     visibleMonth = date
+                    refreshDayIdeasIfNeeded(scheduledDate: Self.dateString(from: date))
                 }
             )
         }
@@ -134,6 +135,7 @@ struct PlanHubView: View {
             resetIdeaLauncherState()
             lightEditCaption = displayedCard?.caption ?? ""
             syncPersistedPlanDate()
+            refreshDayIdeasIfNeeded()
         }
         .onChange(of: isGeneratingSelectedDay) { wasGenerating, isGenerating in
             if isGenerating && !wasGenerating {
@@ -151,6 +153,7 @@ struct PlanHubView: View {
                 hasDispatchedGeneration = true
             }
             applyFirstDayHandoffIfNeeded()
+            refreshDayIdeasIfNeeded()
         }
         .onChange(of: appState.planSelectedDate) { _, _ in
             applyPendingPlanDateSelection()
@@ -217,10 +220,21 @@ struct PlanHubView: View {
     }
 
     private var dayIdeas: [PlanDayIdeaCandidate] {
-        PlanDayIdeaBuilder.buildIdeas(
-            scheduledDate: scheduledDateString,
-            setup: setupSummary
-        )
+        services.planDayIdeas(for: scheduledDateString, setup: setupSummary)
+    }
+
+    private func refreshDayIdeasIfNeeded(scheduledDate: String? = nil) {
+        let dateString = scheduledDate ?? scheduledDateString
+        if dateString == scheduledDateString {
+            guard shouldShowIdeaLauncher else { return }
+        } else {
+            guard let date = Self.parseLocalDate(dateString), date >= Self.startOfToday() else { return }
+            guard services.dayPackage(for: dateString) == nil else { return }
+        }
+        let setup = setupSummary
+        Task { @MainActor in
+            await services.refreshPlanDayIdeas(scheduledDate: dateString, setup: setup)
+        }
     }
 
     private var canGenerate: Bool {

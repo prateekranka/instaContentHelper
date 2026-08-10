@@ -944,6 +944,102 @@ private struct SupabaseFunctionErrorPayload: Decodable {
     let error: String
 }
 
+struct SupabasePlanDayIdeaRepository: PlanDayIdeaRepository {
+    let client: SupabaseClient
+
+    func generatePlanDayIdeas(
+        creatorID: UUID,
+        scheduledDate: String,
+        setup: PlanDaySetupSummary,
+        context: WorkspaceContext
+    ) async throws -> [PlanDayIdeaCandidate] {
+        _ = context
+        do {
+            let response: PlanDayIdeasResponse = try await client.functions.invoke(
+                "generate-plan-ideas",
+                options: FunctionInvokeOptions(
+                    body: SupabasePlanDayIdeasRequest(
+                        creatorID: creatorID,
+                        scheduledDate: scheduledDate,
+                        contentPillars: setup.contentPillars,
+                        voiceConfigured: setup.voiceIsConfigured,
+                        referenceCount: setup.confirmedReferenceCount,
+                        positioning: setup.positioning,
+                        voiceRules: setup.voiceRulesText,
+                        captionStyle: setup.captionStyle,
+                        noGoTopics: setup.noGoTopicsText,
+                        referenceLabels: setup.confirmedReferenceLabels
+                    )
+                )
+            )
+            let mapped = PlanDayIdeaMapping.candidates(
+                from: response.ideas,
+                scheduledDate: scheduledDate,
+                setup: setup
+            )
+            guard mapped.count == PlanDayIdeaBuilder.ideaCount else {
+                throw RepositoryError.edgeFunction("invalid_plan_ideas_payload")
+            }
+            return mapped
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+}
+
+private struct SupabasePlanDayIdeasRequest: Encodable, Sendable {
+    var creatorID: UUID
+    var scheduledDate: String
+    var contentPillars: [String]
+    var voiceConfigured: Bool
+    var referenceCount: Int
+    var positioning: String
+    var voiceRules: String
+    var captionStyle: String
+    var noGoTopics: String
+    var referenceLabels: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case scheduledDate = "scheduled_date"
+        case contentPillars = "content_pillars"
+        case voiceConfigured = "voice_configured"
+        case referenceCount = "reference_count"
+        case positioning
+        case voiceRules = "voice_rules"
+        case captionStyle = "caption_style"
+        case noGoTopics = "no_go_topics"
+        case referenceLabels = "reference_labels"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(creatorID, forKey: .creatorID)
+        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encode(contentPillars, forKey: .contentPillars)
+        try container.encode(voiceConfigured, forKey: .voiceConfigured)
+        try container.encode(referenceCount, forKey: .referenceCount)
+        if !positioning.isEmpty {
+            try container.encode(positioning, forKey: .positioning)
+        }
+        if !voiceRules.isEmpty {
+            try container.encode(voiceRules, forKey: .voiceRules)
+        }
+        if !captionStyle.isEmpty {
+            try container.encode(captionStyle, forKey: .captionStyle)
+        }
+        if !noGoTopics.isEmpty {
+            try container.encode(noGoTopics, forKey: .noGoTopics)
+        }
+        if !referenceLabels.isEmpty {
+            try container.encode(referenceLabels, forKey: .referenceLabels)
+        }
+    }
+}
+
 struct SupabaseReferenceRepository: ReferenceRepository {
     let client: SupabaseClient
 

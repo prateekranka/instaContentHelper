@@ -423,6 +423,20 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
     }
 }
 
+/// Deterministic Plan idea one-liners for `MCO_FORCE_FIXTURE_UI` / preview / tests.
+struct FixturePlanDayIdeaRepository: PlanDayIdeaRepository {
+    func generatePlanDayIdeas(
+        creatorID: UUID,
+        scheduledDate: String,
+        setup: PlanDaySetupSummary,
+        context: WorkspaceContext
+    ) async throws -> [PlanDayIdeaCandidate] {
+        _ = creatorID
+        _ = context
+        return PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+    }
+}
+
 /// Explicit unavailable stub for tests that assert missing day-generation wiring.
 struct AppFixtureDayGenerationUnavailableRepository: DayGenerationRepository {}
 

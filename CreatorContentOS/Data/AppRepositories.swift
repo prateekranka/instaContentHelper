@@ -19,6 +19,7 @@ struct AppRepositories: Sendable {
     let references: any ReferenceRepository
     let referenceImport: any ReferenceImportRepository
     let dailyGeneration: any DayGenerationRepository
+    let planDayIdeas: any PlanDayIdeaRepository
     let storyboardThumbnails: any StoryboardThumbnailRepository
     let intelligence: any IntelligenceRepository
     let creatorProfile: any CreatorProfileRepository
@@ -33,6 +34,7 @@ struct AppRepositories: Sendable {
         references: any ReferenceRepository,
         referenceImport: any ReferenceImportRepository = FixtureReferenceImportRepository(),
         dailyGeneration: any DayGenerationRepository = FixtureDayGenerationRepository(),
+        planDayIdeas: any PlanDayIdeaRepository = FixturePlanDayIdeaRepository(),
         storyboardThumbnails: any StoryboardThumbnailRepository = AppFixtureStoryboardThumbnailUnavailableRepository(),
         intelligence: any IntelligenceRepository,
         creatorProfile: any CreatorProfileRepository,
@@ -46,6 +48,7 @@ struct AppRepositories: Sendable {
         self.references = references
         self.referenceImport = referenceImport
         self.dailyGeneration = dailyGeneration
+        self.planDayIdeas = planDayIdeas
         self.storyboardThumbnails = storyboardThumbnails
         self.intelligence = intelligence
         self.creatorProfile = creatorProfile
@@ -63,6 +66,7 @@ struct AppRepositories: Sendable {
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
             dailyGeneration: FixtureDayGenerationRepository(),
+            planDayIdeas: FixturePlanDayIdeaRepository(),
             intelligence: FixtureIntelligenceRepository(),
             creatorProfile: FixtureCreatorProfileRepository(),
             archive: FixtureArchiveRepository(),
@@ -301,6 +305,29 @@ protocol DayGenerationRepository: Sendable {
         creatorID: UUID,
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult
+}
+
+/// Fetches the five Plan empty-day idea one-liners (DeepSeek via edge function in live mode).
+protocol PlanDayIdeaRepository: Sendable {
+    func generatePlanDayIdeas(
+        creatorID: UUID,
+        scheduledDate: String,
+        setup: PlanDaySetupSummary,
+        context: WorkspaceContext
+    ) async throws -> [PlanDayIdeaCandidate]
+}
+
+extension PlanDayIdeaRepository {
+    func generatePlanDayIdeas(
+        creatorID: UUID,
+        scheduledDate: String,
+        setup: PlanDaySetupSummary,
+        context: WorkspaceContext
+    ) async throws -> [PlanDayIdeaCandidate] {
+        _ = creatorID
+        _ = context
+        return PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+    }
 }
 
 extension DayGenerationRepository {

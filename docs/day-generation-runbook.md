@@ -130,6 +130,9 @@ Set these only in Supabase Edge Function secrets or local function env files:
 - `MCO_AI_DAY_REQUEST_TIMEOUT_MS`: optional day-generation request timeout.
   When unset, falls back to `MCO_AI_REQUEST_TIMEOUT_MS` (same default, min-valid,
   and cap).
+- `MCO_AI_PLAN_IDEAS_TIMEOUT_MS`: optional Plan idea provider timeout. Default:
+  `40000`; values below `5000` are ignored and values above `55000` are capped
+  so idea generation stays inside the <60s p95 UX budget.
 - `MCO_GENERATION_DAY_STALE_MS`: optional async per-day stale retry window.
   Default: `135000`; values below `30000` are ignored and values above `600000`
   are capped.
@@ -149,6 +152,80 @@ supabase secrets set --project-ref <project-ref> --env-file <provider-secrets.en
 
 `DEEPSEEK_API_KEY` is enough for real generation. Add `OPENAI_API_KEY` when you
 want OpenAI to be available as the fallback provider.
+
+## Plan day ideas (`generate-plan-ideas`)
+
+Plan empty-day idea one-liners use the same DeepSeek-first provider secrets as
+day card generation. The iOS client calls Edge Function `generate-plan-ideas`
+when an eligible empty day is selected; on fixture UI
+(`MCO_FORCE_FIXTURE_UI=1`) or any network/provider failure it keeps the
+deterministic on-device `PlanDayIdeaBuilder` templates so the launcher never
+goes blank.
+
+### Latency budget (p95 < 60s)
+
+Target end-to-end (tap empty day → five idea one-liners) **p95 under 60 seconds**.
+
+| Control | Default | Notes |
+| --- | --- | --- |
+| Model | `deepseek-v4-flash` via `MCO_DEEPSEEK_MODEL` | Flash-first; avoid Pro for ideas |
+| Provider timeout | `MCO_AI_PLAN_IDEAS_TIMEOUT_MS` = **40000** (cap 55000) | Single LLM call only |
+| `max_tokens` | **500** | Five short title + day_brief rows |
+| Input caps | positioning/voice ≤400 chars; caption/no-go ≤200; ≤10 labels × 80 chars | Truncated client + server |
+| Client timeout | **50s** then `PlanDayIdeaBuilder` fallback | UX never hangs past ~60s |
+| Cache | per `scheduled_date` + setup fingerprint | Voice/ref edits refresh ideas |
+
+Cold starts and slow DeepSeek days may still miss the budget; the client fallback
+keeps Plan usable. Prefer one provider hop (DeepSeek) — OpenAI is fallback only
+when DeepSeek is missing or fails inside the provider timeout window.
+
+Request body (device-authenticated):
+
+```json
+{
+  "creator_id": "<uuid>",
+  "scheduled_date": "2026-08-12",
+  "content_pillars": ["gym", "recovery"],
+  "voice_configured": true,
+  "reference_count": 2,
+  "positioning": "Warm fitness creator…",
+  "voice_rules": "Conversational; Warm; Self-aware",
+  "caption_style": "Short sharp lines",
+  "no_go_topics": "Politics; Weight talk",
+  "reference_labels": ["Calm Drive", "Gym mirror format"]
+}
+```
+
+`positioning`, `voice_rules`, `caption_style`, `no_go_topics`, and
+`reference_labels` are optional but recommended. The edge function truncates
+them to the input caps above before prompting.
+
+Response:
+
+```json
+{
+  "scheduled_date": "2026-08-12",
+  "source": "llm",
+  "model": "deepseek:deepseek-v4-flash",
+  "ideas": [
+    { "title": "POV: …", "day_brief": "POV: …. POV Reel" }
+  ]
+}
+```
+
+Configure the key the same way as day generation — Supabase Edge secrets only,
+never in the iOS app:
+
+```sh
+supabase secrets set --project-ref <project-ref> --env-file <provider-secrets.env>
+supabase functions deploy generate-plan-ideas --project-ref <project-ref>
+```
+
+Local mock:
+
+```sh
+MCO_AI_MOCK=1 supabase functions serve generate-plan-ideas --env-file <local-env>
+```
 
 ## Storyboard visuals (async after script-ready)
 
