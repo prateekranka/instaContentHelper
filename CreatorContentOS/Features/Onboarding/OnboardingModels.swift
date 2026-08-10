@@ -60,6 +60,11 @@ struct OnboardingReference: Identifiable, Codable, Hashable, Sendable {
 
     var isReel: Bool { kind == .reel }
     var isProfile: Bool { kind == .profile }
+
+    /// Row text for references and confirm summary lists.
+    var listDisplayLabel: String {
+        isProfile ? label : "▶ \(label)"
+    }
 }
 
 enum OnboardingReferenceInputKind: String, Hashable, Sendable {

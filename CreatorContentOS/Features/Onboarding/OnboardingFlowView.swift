@@ -208,7 +208,7 @@ struct OnboardingFlowView: View {
                 VStack(spacing: 0) {
                     ForEach(model.references) { ref in
                         HStack {
-                            Text("\(ref.isProfile ? "@" : "▶") \(ref.label)")
+                            Text(ref.listDisplayLabel)
                                 .font(.system(size: 14))
                                 .foregroundStyle(PocketSheetTheme.Color.ink)
                             Spacer(minLength: PocketSheetSpace.s)
@@ -346,7 +346,7 @@ struct OnboardingFlowView: View {
             summaryBlock(title: "References (\(model.references.count))", editStep: .references) {
                 VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                     ForEach(model.references) { ref in
-                        Text("\(ref.isProfile ? "@" : "▶") \(ref.label)")
+                        Text(ref.listDisplayLabel)
                             .font(.system(size: 14))
                             .foregroundStyle(PocketSheetTheme.Color.ink)
                     }

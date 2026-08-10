@@ -202,6 +202,11 @@ final class OnboardingTests: XCTestCase {
         )
     }
 
+    func testReferenceListDisplayLabelDoesNotDoubleProfileAtSign() {
+        XCTAssertEqual(profile.listDisplayLabel, "@creator · profile")
+        XCTAssertEqual(reel.listDisplayLabel, "▶ instagram.com/reel/abc")
+    }
+
     // MARK: - Reference parsing
 
     func testParsesReelURL() throws {
