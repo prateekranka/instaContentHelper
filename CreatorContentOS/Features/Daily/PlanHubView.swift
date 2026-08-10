@@ -16,13 +16,21 @@ struct PlanHubView: View {
     @State private var isOtherIdeaOpen = false
     @State private var otherIdeaText = ""
     @State private var lightEditCaption = ""
+    /// Reveals the idea launcher when a package already exists (overwrite / replace).
+    @State private var showReplaceIdeaLauncher = false
     /// When true (DEBUG Admin Daily), show Admin “Creator mode” chrome. Creator Plan passes false.
     var showsModeSwitch: Bool = false
+    /// Back chevron when Plan is pushed (e.g. from Today). Omit on the Plan tab root.
+    var showsBackButton: Bool = true
     /// Optional `yyyy-MM-dd` preselection from Today Edit / ⋯ / empty CTA.
     var initialSelectedDate: String? = nil
 
     var body: some View {
-        PocketSheetScreen(bottomContentPadding: 120, showsBottomBar: false) {
+        PocketSheetScreen(
+            topContentPadding: PocketSheetSpace.xxs,
+            bottomContentPadding: 120,
+            showsBottomBar: false
+        ) {
             VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
                 header
                 selectedDateHeader
@@ -32,7 +40,7 @@ struct PlanHubView: View {
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .accessibilityIdentifier("plan.generation.backgroundHint")
                 }
-                if isSelectedDayEligible {
+                if shouldShowIdeaLauncher {
                     PlanDayIdeaLauncher(
                         ideas: dayIdeas,
                         isBusy: isGeneratingSelectedDay || hasDispatchedGeneration,
@@ -43,7 +51,7 @@ struct PlanHubView: View {
                         onSubmitOther: submitOtherIdea
                     )
                 }
-                if isGeneratingSelectedDay {
+                if isGeneratingSelectedDay || (hasDispatchedGeneration && displayedCard == nil) {
                     generationProgressBlock
                 }
                 if let error = surfacedGenerationError {
@@ -184,6 +192,19 @@ struct PlanHubView: View {
         isOtherIdeaOpen = false
         otherIdeaText = ""
         pendingGenerationBrief = nil
+        showReplaceIdeaLauncher = false
+    }
+
+    /// Empty eligible day: idea launcher. After idea select / while generating / with a package: hide it.
+    private var shouldShowIdeaLauncher: Bool {
+        guard isSelectedDayEligible else { return false }
+        if isGeneratingSelectedDay || hasDispatchedGeneration {
+            return false
+        }
+        if displayedCard != nil {
+            return showReplaceIdeaLauncher
+        }
+        return true
     }
 
     // MARK: - State helpers
@@ -257,8 +278,8 @@ struct PlanHubView: View {
     // MARK: - Sections
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-            HStack(alignment: .center, spacing: PocketSheetSpace.s) {
+        HStack(alignment: .top, spacing: PocketSheetSpace.s) {
+            if showsBackButton {
                 Button {
                     dismiss()
                 } label: {
@@ -274,14 +295,6 @@ struct PlanHubView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Back")
                 .accessibilityIdentifier("plan.back")
-
-                Spacer(minLength: PocketSheetSpace.s)
-
-                if showsModeSwitch {
-                    FloatingIconButton(systemImage: "ellipsis", label: "Back to Creator Mode") {
-                        appState.activeMode = .creator
-                    }
-                }
             }
 
             VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
@@ -296,6 +309,14 @@ struct PlanHubView: View {
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Spacer(minLength: PocketSheetSpace.s)
+
+            if showsModeSwitch {
+                FloatingIconButton(systemImage: "ellipsis", label: "Back to Creator Mode") {
+                    appState.activeMode = .creator
+                }
+            }
         }
     }
 
@@ -305,7 +326,7 @@ struct PlanHubView: View {
             showCalendarSheet = true
         } label: {
             HStack(alignment: .center, spacing: PocketSheetSpace.s) {
-                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
+                HStack(alignment: .firstTextBaseline, spacing: PocketSheetSpace.xs) {
                     if let formatted = PlanDayDateFormatting.formattedDate(for: scheduledDateString) {
                         Text(formatted.weekday)
                             .font(PocketSheetType.sectionLabel)
@@ -367,20 +388,30 @@ struct PlanHubView: View {
 
     @ViewBuilder
     private var resultBlock: some View {
-        if let card = displayedCard {
+        if let card = displayedCard, !isGeneratingSelectedDay {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-                PocketSheetSectionTitle(
-                    title: "Storyboard & caption",
-                    subtitle: readyPackageSubtitle(for: card)
-                )
                 GeneratedDayPlannedContent(card: card) { assets in
                     services.applyStoryboardThumbnailAssets(assets, toDailyCardID: card.id)
                 }
+
                 if canLightEditReadyPackage {
                     lightEditBlock
                 }
                 approveActionBlock
                 unpublishActionBlock
+
+                if isSelectedDayEligible, !showReplaceIdeaLauncher {
+                    Button {
+                        showReplaceIdeaLauncher = true
+                    } label: {
+                        Text("Choose another idea")
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("plan.package.replaceIdea")
+                }
             }
         }
     }
@@ -390,7 +421,7 @@ struct PlanHubView: View {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 Text("Light edit")
                     .font(PocketSheetType.sectionLabel)
-                    .foregroundStyle(PocketSheetTheme.Color.inverseInk)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text("Edits keep this day ready — no Unpublish required.")
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
@@ -456,13 +487,6 @@ struct PlanHubView: View {
         }
     }
 
-    private func readyPackageSubtitle(for card: GeneratedDailyCardDraft) -> String {
-        if DayPackageLifecycleStatus.requiresOverwriteConfirmation(card.status) {
-            return "\(shortLabel(for: card.scheduledDate)) — ready package. Light edit keeps it ready; choose another idea to overwrite."
-        }
-        return "\(shortLabel(for: card.scheduledDate)) — review the storyboard and caption, then approve."
-    }
-
     // MARK: - Actions
 
     private func submitOtherIdea() {
@@ -489,6 +513,7 @@ struct PlanHubView: View {
         let dateString = scheduledDateString
         hasDispatchedGeneration = true
         generationStartTime = Date()
+        showReplaceIdeaLauncher = false
         Task { @MainActor in
             defer { generationStartTime = nil }
             do {

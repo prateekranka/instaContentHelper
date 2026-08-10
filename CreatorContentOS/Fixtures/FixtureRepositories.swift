@@ -307,6 +307,123 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
     }
 }
 
+/// Fixture-mode day generation used by `MCO_FORCE_FIXTURE_UI` / `AppRepositories.fixture`.
+/// Returns a reviewable draft immediately so Plan can exercise onboarding → generate → draft
+/// without a live edge function.
+struct FixtureDayGenerationRepository: DayGenerationRepository {
+    /// Brief artificial delay so Plan can show in-progress chrome before the draft lands.
+    var artificialDelayNanoseconds: UInt64 = 450_000_000
+
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        _ = creatorID
+        _ = context
+        try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
+        return makeResult(scheduledDate: scheduledDate, dayBrief: dayBrief)
+    }
+
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        dayGuidance: String?,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        _ = creatorID
+        _ = weeklyPlanID
+        _ = preserveManualEdits
+        _ = context
+        try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
+        let guidance = dayGuidance?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let brief = guidance.isEmpty
+            ? "Regenerated fixture day for \(scheduledDate)."
+            : guidance
+        return makeResult(scheduledDate: scheduledDate, dayBrief: brief)
+    }
+
+    func resumeAcceptedDayGeneration(
+        generationID: UUID,
+        creatorID: UUID,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        _ = creatorID
+        _ = context
+        try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
+        return makeResult(
+            scheduledDate: SupabaseDateFormatting.todayDateString(),
+            dayBrief: "Resumed fixture generation \(generationID.uuidString.prefix(8))."
+        )
+    }
+
+    private func makeResult(scheduledDate: String, dayBrief: String) -> DailyGenerationResult {
+        let trimmedBrief = dayBrief.trimmingCharacters(in: .whitespacesAndNewlines)
+        let titleSeed = trimmedBrief.split(separator: ".").first.map(String.init) ?? trimmedBrief
+        let title = String(titleSeed.prefix(72))
+        return DailyGenerationResult(
+            generationID: UUID(),
+            weeklyPlanID: WeeklyPlan.raceWeek.id,
+            status: "draft",
+            targetScheduledDate: scheduledDate,
+            dailyCard: GeneratedDailyCardDraft(
+                id: UUID(),
+                scheduledDate: scheduledDate,
+                status: "draft",
+                title: title.isEmpty ? "Fixture day draft" : title,
+                whyToday: trimmedBrief.isEmpty
+                    ? "Fixture day generation for \(scheduledDate)."
+                    : trimmedBrief,
+                growthJob: "Consistency.",
+                contentPillar: "lifestyle",
+                shootability: "easy",
+                estimatedShootMinutes: 12,
+                energyRequired: "low",
+                languageMode: "English",
+                format: "Reel",
+                primarySurface: "instagram_reels",
+                durationSeconds: 30,
+                hook: title.isEmpty ? "One honest beat for today." : title,
+                saveShareReason: "Save this as a reminder to shoot the day as planned.",
+                sceneList: [
+                    ShotScene(number: 1, title: "Talking-head hook", duration: "3 sec", symbol: "person.crop.rectangle"),
+                    ShotScene(number: 2, title: "Process b-roll", duration: "4 sec", symbol: "film.stack"),
+                    ShotScene(number: 3, title: "Proof moment", duration: "3 sec", symbol: "checkmark.circle"),
+                    ShotScene(number: 4, title: "Soft CTA", duration: "2 sec", symbol: "heart")
+                ],
+                script: trimmedBrief.isEmpty
+                    ? "Open with the day's angle. Show one real beat. Close with a simple ask."
+                    : trimmedBrief,
+                noVoiceoverVersion: "Use bold captions over the same shots.",
+                onScreenText: ["Today", "Keep it real", "Save this"],
+                caption: trimmedBrief.isEmpty
+                    ? "A fixture draft for \(scheduledDate)."
+                    : trimmedBrief,
+                cta: "Save this for later.",
+                hashtags: ["fixture", "dayplan"],
+                coverText: title.isEmpty ? "Today's draft" : String(title.prefix(40)),
+                postInstructions: "Keep it real, natural, and personal.",
+                brandEventNotes: "",
+                backupStory: "Post one phone clip with the same hook.",
+                backupCaptionOnly: "Same angle, shorter cut.",
+                audioOptionNotes: "",
+                creatorFitScore: 90,
+                riskNotes: [],
+                assumptions: ["Fixture UI generation — no live model call."],
+                sourceNote: "FixtureDayGenerationRepository"
+            ),
+            warnings: [],
+            assumptions: ["Fixture UI generation — no live model call."],
+            sourceSummary: "Fixture day brief only.",
+            generatedAt: ISO8601DateFormatter().string(from: Date())
+        )
+    }
+}
+
+/// Explicit unavailable stub for tests that assert missing day-generation wiring.
 struct AppFixtureDayGenerationUnavailableRepository: DayGenerationRepository {}
 
 struct AppFixtureStoryboardThumbnailUnavailableRepository: StoryboardThumbnailRepository {}

@@ -79,16 +79,43 @@ extension String {
 struct GeneratedDayPlannedContent: View {
     let card: GeneratedDailyCardDraft
     var onStoryboardAssetsChanged: (([StoryboardThumbnailAsset]) -> Void)?
+    /// When true, Storyboard / Script / Caption use folder tabs (Plan + Today).
+    var usesFolderTabs: Bool = true
+    @State private var selectedFolderTab: PackageFolderTab = .storyboard
 
     var body: some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
             InstagramExecutionSummary(card: card)
-            GeneratedStoryboardBreakdownBlock(
+            if usesFolderTabs {
+                PackageFolderTabs(selection: $selectedFolderTab) { tab in
+                    folderPanel(for: tab)
+                }
+            } else {
+                GeneratedStoryboardBreakdownBlock(
+                    card: card,
+                    onStoryboardAssetsChanged: onStoryboardAssetsChanged
+                )
+                GeneratedScriptTimelineBlock(card: card)
+                InstagramCaptionPostBlock(card: card)
+            }
+        }
+        .onChange(of: card.id) { _, _ in
+            selectedFolderTab = .storyboard
+        }
+    }
+
+    @ViewBuilder
+    private func folderPanel(for tab: PackageFolderTab) -> some View {
+        switch tab {
+        case .storyboard:
+            GeneratedStoryboardBreakdownContent(
                 card: card,
                 onStoryboardAssetsChanged: onStoryboardAssetsChanged
             )
-            GeneratedScriptTimelineBlock(card: card)
-            InstagramCaptionPostBlock(card: card)
+        case .script:
+            GeneratedScriptTimelineContent(card: card, showsSectionChrome: false)
+        case .caption:
+            InstagramCaptionPostContent(card: card)
         }
     }
 }
@@ -139,22 +166,31 @@ struct GeneratedStoryboardBreakdownContent: View {
                 guard missingThumbnailCount > 0 else { return }
                 await services.prepareStoryboardThumbnailsForVisibleCard(dailyCardID: card.id)
             }
+        } else {
+            Text("No storyboard scenes yet.")
+                .font(PocketSheetType.rowSubtitle)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
         }
     }
 
     private var storyboardHeader: some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
             HStack(spacing: PocketSheetSpace.s) {
-                Image(systemName: "rectangle.stack.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("Storyboard")
-                    .font(PocketSheetType.sectionLabel)
-                Spacer(minLength: PocketSheetSpace.s)
-                Text(durationLabel)
-                    .font(PocketSheetType.rowSubtitle)
+                HStack(spacing: PocketSheetSpace.s) {
+                    Image(systemName: "rectangle.stack.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(PocketSheetTheme.Color.inversePaper)
+                    Text("Storyboard")
+                        .font(PocketSheetType.sectionLabel)
+                        .foregroundStyle(PocketSheetTheme.Color.inversePaper)
+                    Spacer(minLength: PocketSheetSpace.s)
+                    Text(durationLabel)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inversePaper)
+                }
+
                 visualsButton
             }
-            .foregroundStyle(PocketSheetTheme.Color.inversePaper)
             .padding(.horizontal, PocketSheetSpace.s)
             .frame(minHeight: 38)
             .background(PocketSheetTheme.Color.ink, in: RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
@@ -200,7 +236,7 @@ struct GeneratedStoryboardBreakdownContent: View {
                 if isGeneratingThumbnails {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(PocketSheetTheme.Color.inversePaper)
+                        .tint(PocketSheetTheme.Color.ink)
                 } else {
                     Image(systemName: missingThumbnailCount > 0 ? "photo.badge.plus" : "photo.stack")
                         .font(.system(size: 12, weight: .semibold))
@@ -210,9 +246,11 @@ struct GeneratedStoryboardBreakdownContent: View {
             }
             .padding(.horizontal, PocketSheetSpace.xs)
             .frame(minHeight: 28)
-            .background(PocketSheetTheme.Color.fillMuted, in: Capsule())
+            .background(PocketSheetTheme.Color.paperRaised, in: Capsule())
         }
         .buttonStyle(.plain)
+        // Keep label ink-on-paper; do not inherit inversePaper from the ink storyboard chrome.
+        .foregroundStyle(PocketSheetTheme.Color.ink)
         .disabled(isGeneratingThumbnails)
         .opacity(isGeneratingThumbnails ? 0.72 : 1)
         .accessibilityIdentifier("weekly.storyboard.generateVisuals")
@@ -670,13 +708,21 @@ struct InstagramCaptionPostBlock: View {
 
     var body: some View {
         PocketSheetCard {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-                GeneratedReadOnlyField(title: "Caption", value: card.caption)
-                GeneratedReadOnlyField(title: "CTA", value: card.cta)
-                GeneratedReadOnlyField(title: "Cover text", value: card.coverText)
-                GeneratedReadOnlyField(title: "Post instructions", value: card.postInstructions)
-                GeneratedReadOnlyField(title: "Hashtags", value: hashtagSummary)
-            }
+            InstagramCaptionPostContent(card: card)
+        }
+    }
+}
+
+struct InstagramCaptionPostContent: View {
+    let card: GeneratedDailyCardDraft
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+            GeneratedReadOnlyField(title: "Caption", value: card.caption)
+            GeneratedReadOnlyField(title: "CTA", value: card.cta)
+            GeneratedReadOnlyField(title: "Cover text", value: card.coverText)
+            GeneratedReadOnlyField(title: "Post instructions", value: card.postInstructions)
+            GeneratedReadOnlyField(title: "Hashtags", value: hashtagSummary)
         }
     }
 
@@ -693,47 +739,76 @@ struct GeneratedScriptTimelineBlock: View {
         let rows = GeneratedStoryboardBreakdown.rows(for: card)
         if !rows.isEmpty {
             PocketSheetCard {
-                VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                GeneratedScriptTimelineContent(card: card, showsSectionChrome: true)
+            }
+            .accessibilityIdentifier("plan.script.timeline")
+        }
+    }
+}
+
+struct GeneratedScriptTimelineContent: View {
+    let card: GeneratedDailyCardDraft
+    var showsSectionChrome: Bool = true
+
+    private var rows: [GeneratedStoryboardBreakdownRow] {
+        GeneratedStoryboardBreakdown.rows(for: card)
+    }
+
+    var body: some View {
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                if showsSectionChrome {
                     HStack(spacing: PocketSheetSpace.s) {
                         Image(systemName: "text.alignleft")
                             .font(PocketSheetType.status)
                         Text("Script")
                             .font(PocketSheetType.sectionLabel)
+                            .foregroundStyle(PocketSheetTheme.Color.inversePaper)
                         Spacer(minLength: PocketSheetSpace.s)
                         Text("\(rows.count) lines")
                             .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inversePaper)
                     }
                     .foregroundStyle(PocketSheetTheme.Color.inversePaper)
                     .padding(.horizontal, PocketSheetSpace.s)
                     .frame(minHeight: 38)
                     .background(PocketSheetTheme.Color.ink, in: RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+                } else {
+                    Text("\(rows.count) lines")
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        .accessibilityIdentifier("plan.script.lineCount")
+                }
 
-                    ForEach(rows) { row in
-                        HStack(alignment: .top, spacing: PocketSheetSpace.s) {
-                            GeneratedStoryboardThumbnail(
-                                url: row.thumbnailURL,
-                                fallbackSystemImage: card.sceneList[safe: row.sceneNumber - 1]?.symbol
-                            )
-                                .frame(width: 72, height: 54)
-                            VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                                Text(row.timecode)
-                                    .font(PocketSheetType.status)
-                                    .foregroundStyle(PocketSheetTheme.Color.inverseInk)
-                                Text(row.audioDialogue)
-                                    .font(PocketSheetType.rowSubtitle)
-                                    .foregroundStyle(PocketSheetTheme.Color.ink)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            Spacer(minLength: 0)
+                ForEach(rows) { row in
+                    HStack(alignment: .top, spacing: PocketSheetSpace.s) {
+                        GeneratedStoryboardThumbnail(
+                            url: row.thumbnailURL,
+                            fallbackSystemImage: card.sceneList[safe: row.sceneNumber - 1]?.symbol
+                        )
+                        .frame(width: 72, height: 54)
+                        VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
+                            Text(row.timecode)
+                                .font(PocketSheetType.status)
+                                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            Text(row.audioDialogue)
+                                .font(PocketSheetType.rowSubtitle)
+                                .foregroundStyle(PocketSheetTheme.Color.ink)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(PocketSheetSpace.s)
-                        .background(PocketSheetTheme.Color.paperRaised.opacity(0.58))
-                        .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
-                        .accessibilityIdentifier("plan.script.line.\(row.sceneNumber)")
+                        Spacer(minLength: 0)
                     }
+                    .padding(PocketSheetSpace.s)
+                    .background(PocketSheetTheme.Color.fillMuted)
+                    .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+                    .accessibilityIdentifier("plan.script.line.\(row.sceneNumber)")
                 }
             }
             .accessibilityIdentifier("plan.script.timeline")
+        } else {
+            Text("No script lines yet.")
+                .font(PocketSheetType.rowSubtitle)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
         }
     }
 }

@@ -25,7 +25,7 @@ struct CreatorShellView: View {
             .accessibilityIdentifier("shell.tab.today")
 
             NavigationStack {
-                PlanHubView(showsModeSwitch: false)
+                PlanHubView(showsModeSwitch: false, showsBackButton: false)
             }
             .tabItem { Label(CreatorTab.plan.rawValue, systemImage: CreatorTab.plan.systemImage) }
             .tag(CreatorTab.plan)

@@ -3,7 +3,8 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SESSION_NAME="${MCO_SERVE_SIM_SESSION:-mco-serve-sim}"
-SERVE_SIM_URL="${MCO_SERVE_SIM_URL:-http://localhost:3200}"
+SERVE_SIM_PORT="${MCO_SERVE_SIM_PORT:-3200}"
+SERVE_SIM_URL="${MCO_SERVE_SIM_URL:-http://localhost:${SERVE_SIM_PORT}}"
 LOG_DIR="${MCO_BUILD_LOG_DIR:-$ROOT_DIR/build-logs}"
 SIMULATOR_UDID="${MCO_SIMULATOR_UDID:-${1:-}}"
 SERVE_SIM_JS="${MCO_SERVE_SIM_JS:-}"
@@ -80,12 +81,13 @@ ROOT_DIR="$ROOT_DIR" \
 SIMULATOR_UDID="$SIMULATOR_UDID" \
 LOG_FILE="$LOG_FILE" \
 SERVE_SIM_JS="$SERVE_SIM_JS" \
+SERVE_SIM_PORT="$SERVE_SIM_PORT" \
   screen -dmS "$SESSION_NAME" /bin/sh -lc '
     cd "$ROOT_DIR"
     if [ -n "$SERVE_SIM_JS" ] && [ -f "$SERVE_SIM_JS" ]; then
-      node "$SERVE_SIM_JS" "$SIMULATOR_UDID" > "$LOG_FILE" 2>&1
+      node "$SERVE_SIM_JS" --port "$SERVE_SIM_PORT" "$SIMULATOR_UDID" > "$LOG_FILE" 2>&1
     else
-      npx --yes serve-sim@latest "$SIMULATOR_UDID" > "$LOG_FILE" 2>&1
+      npx --yes serve-sim@latest --port "$SERVE_SIM_PORT" "$SIMULATOR_UDID" > "$LOG_FILE" 2>&1
     fi
   '
 

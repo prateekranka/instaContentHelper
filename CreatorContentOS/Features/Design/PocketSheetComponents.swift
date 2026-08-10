@@ -5,17 +5,20 @@ import SwiftUI
 /// Scroll shell that follows the active `chromePalette` (Creator Pocket Sheet vs Admin editorial).
 struct ChromeScreen<Content: View, BottomBar: View>: View {
     @Environment(\.chromePalette) private var chrome
+    let topContentPadding: CGFloat
     let bottomContentPadding: CGFloat
     let showsBottomBar: Bool
     @ViewBuilder let content: Content
     @ViewBuilder let bottomBar: BottomBar
 
     init(
+        topContentPadding: CGFloat = PocketSheetSpace.l,
         bottomContentPadding: CGFloat = 120,
         showsBottomBar: Bool = true,
         @ViewBuilder content: () -> Content,
         @ViewBuilder bottomBar: () -> BottomBar = { EmptyView() }
     ) {
+        self.topContentPadding = topContentPadding
         self.bottomContentPadding = bottomContentPadding
         self.showsBottomBar = showsBottomBar
         self.content = content()
@@ -25,6 +28,7 @@ struct ChromeScreen<Content: View, BottomBar: View>: View {
     var body: some View {
         if chrome == .pocketSheet {
             PocketSheetScreen(
+                topContentPadding: topContentPadding,
                 bottomContentPadding: bottomContentPadding,
                 showsBottomBar: showsBottomBar,
                 content: { content },
@@ -44,17 +48,20 @@ struct ChromeScreen<Content: View, BottomBar: View>: View {
 // MARK: - Screen
 
 struct PocketSheetScreen<Content: View, BottomBar: View>: View {
+    let topContentPadding: CGFloat
     let bottomContentPadding: CGFloat
     let showsBottomBar: Bool
     @ViewBuilder let content: Content
     @ViewBuilder let bottomBar: BottomBar
 
     init(
+        topContentPadding: CGFloat = PocketSheetSpace.l,
         bottomContentPadding: CGFloat = 120,
         showsBottomBar: Bool = true,
         @ViewBuilder content: () -> Content,
         @ViewBuilder bottomBar: () -> BottomBar = { EmptyView() }
     ) {
+        self.topContentPadding = topContentPadding
         self.bottomContentPadding = bottomContentPadding
         self.showsBottomBar = showsBottomBar
         self.content = content()
@@ -67,7 +74,7 @@ struct PocketSheetScreen<Content: View, BottomBar: View>: View {
             ScrollView {
                 content
                     .padding(.horizontal, PocketSheetSpace.l)
-                    .padding(.top, PocketSheetSpace.l)
+                    .padding(.top, topContentPadding)
                     .padding(.bottom, bottomContentPadding)
             }
         }

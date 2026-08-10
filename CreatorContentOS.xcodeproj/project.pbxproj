@@ -11,6 +11,7 @@
 		066BE6E745C55E2B1EA202DA /* PlanHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23395AB2FF74CF4F50E144C /* PlanHubView.swift */; };
 		A1B2C3D4E5F6012345678AB /* PlanDayIdeaBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A6012345678AB /* PlanDayIdeaBuilder.swift */; };
 		A2B3C4D5E6F7012345678AC /* PlanDayIdeaLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7012345678AC /* PlanDayIdeaLauncher.swift */; };
+		A2C3D4E5F6A7012345678AD /* PackageFolderTabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2D3E4F5A6B7012345678AD /* PackageFolderTabs.swift */; };
 		A3B4C5D6E7F8012345678AD /* PlanCalendarSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C4D5E6F7A8012345678AD /* PlanCalendarSheet.swift */; };
 		A4B5C6D7E8F9012345678AE /* PlanGenerationInputsSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C5D6E7F8A9012345678AE /* PlanGenerationInputsSummary.swift */; };
 		A5B6C7D8E9FA012345678AF /* PlanDayIdeaBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5C6D7E8F9AA012345678AF /* PlanDayIdeaBuilderTests.swift */; };
@@ -182,6 +183,7 @@
 		C23395AB2FF74CF4F50E144C /* PlanHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanHubView.swift; sourceTree = "<group>"; };
 		B1C2D3E4F5A6012345678AB /* PlanDayIdeaBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDayIdeaBuilder.swift; sourceTree = "<group>"; };
 		B2C3D4E5F6A7012345678AC /* PlanDayIdeaLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDayIdeaLauncher.swift; sourceTree = "<group>"; };
+		B2D3E4F5A6B7012345678AD /* PackageFolderTabs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PackageFolderTabs.swift; sourceTree = "<group>"; };
 		B3C4D5E6F7A8012345678AD /* PlanCalendarSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCalendarSheet.swift; sourceTree = "<group>"; };
 		B4C5D6E7F8A9012345678AE /* PlanGenerationInputsSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanGenerationInputsSummary.swift; sourceTree = "<group>"; };
 		B5C6D7E8F9AA012345678AF /* PlanDayIdeaBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDayIdeaBuilderTests.swift; sourceTree = "<group>"; };
@@ -341,6 +343,7 @@
 				44554BE3268355F5F4330553 /* GeneratedDayPlannedContent.swift */,
 				B1C2D3E4F5A6012345678AB /* PlanDayIdeaBuilder.swift */,
 				B2C3D4E5F6A7012345678AC /* PlanDayIdeaLauncher.swift */,
+				B2D3E4F5A6B7012345678AD /* PackageFolderTabs.swift */,
 				B4C5D6E7F8A9012345678AE /* PlanGenerationInputsSummary.swift */,
 				B7C8D9EAEBBC012345678B1 /* PlanSelectedDateStore.swift */,
 				C23395AB2FF74CF4F50E144C /* PlanHubView.swift */,
@@ -674,6 +677,7 @@
 				A3B4C5D6E7F8012345678AD /* PlanCalendarSheet.swift in Sources */,
 				A1B2C3D4E5F6012345678AB /* PlanDayIdeaBuilder.swift in Sources */,
 				A2B3C4D5E6F7012345678AC /* PlanDayIdeaLauncher.swift in Sources */,
+				A2C3D4E5F6A7012345678AD /* PackageFolderTabs.swift in Sources */,
 				A4B5C6D7E8F9012345678AE /* PlanGenerationInputsSummary.swift in Sources */,
 				A7B8C9DAEBFC012345678B1 /* PlanSelectedDateStore.swift in Sources */,
 				A8B9CADBECFD012345678B2 /* AcceptedDayGenerationStore.swift in Sources */,

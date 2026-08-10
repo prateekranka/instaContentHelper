@@ -118,6 +118,56 @@ final class PlanDayGenerationDispatchTests: XCTestCase {
         XCTAssertEqual(generation.lastBrief, brief)
     }
 
+    func testDefaultFixtureRepositoriesGenerateDayDraft() async throws {
+        let today = "2026-08-09"
+        let brief = "Behind the routine. Fixture path must not throw generate_day_not_configured."
+        let generation = FixtureDayGenerationRepository(artificialDelayNanoseconds: 0)
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                dailyGeneration: generation,
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            memberRole: "creator",
+            todayDate: { today }
+        )
+
+        let card = try await services.generateDayCard(
+            scheduledDate: today,
+            dayBrief: brief
+        )
+
+        XCTAssertEqual(card.scheduledDate, today)
+        XCTAssertEqual(card.status, "draft")
+        XCTAssertEqual(card.whyToday, brief)
+        XCTAssertNil(services.dayBriefGenerationErrors[today])
+        XCTAssertEqual(services.dayBriefGeneratedCards[today]?.id, card.id)
+    }
+
+    func testFixtureBundleDayGenerationIsConfigured() async throws {
+        let repositories = AppRepositories.fixture
+        XCTAssertTrue(
+            repositories.dailyGeneration is FixtureDayGenerationRepository,
+            "AppRepositories.fixture must wire FixtureDayGenerationRepository, not the unavailable stub"
+        )
+
+        let result = try await FixtureDayGenerationRepository(artificialDelayNanoseconds: 0).generateDay(
+            creatorID: repositories.context.creatorID,
+            scheduledDate: "2026-08-09",
+            dayBrief: "Bundle wiring smoke brief.",
+            context: repositories.context
+        )
+
+        XCTAssertEqual(result.targetScheduledDate, "2026-08-09")
+        XCTAssertEqual(result.dailyCard.status, "draft")
+        XCTAssertEqual(result.dailyCard.sourceNote, "FixtureDayGenerationRepository")
+    }
+
     private func makeServices(
         today: String,
         generation: CountingPlanDayGenerationRepository
