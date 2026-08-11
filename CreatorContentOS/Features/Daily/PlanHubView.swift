@@ -90,8 +90,14 @@ struct PlanHubView: View {
                 resultBlock
                 PlanGenerationInputsSummary(setup: setupSummary, selectedDate: scheduledDateString)
             }
+            .animation(.easeInOut(duration: 0.28), value: isGeneratingSelectedDay)
         } bottomBar: {
             EmptyView()
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if canMakeAvailable {
+                approveDock
+            }
         }
         .navigationBarHidden(true)
         .sheet(isPresented: $showCalendarSheet) {
@@ -187,7 +193,12 @@ struct PlanHubView: View {
         else {
             return
         }
-        requestGeneration(brief: handoff.dayBrief)
+        guard let brief = handoff.dayBrief?.nilIfBlank else {
+            // Onboarding hands off to the five idea options; no auto-generation.
+            resetIdeaLauncherState()
+            return
+        }
+        requestGeneration(brief: brief)
     }
 
     private func resetIdeaLauncherState() {
@@ -398,6 +409,7 @@ struct PlanHubView: View {
             }
         }
         .accessibilityIdentifier("plan.generation.progress")
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     @ViewBuilder
@@ -411,7 +423,6 @@ struct PlanHubView: View {
                 if canLightEditReadyPackage {
                     lightEditBlock
                 }
-                approveActionBlock
                 unpublishActionBlock
 
                 if isSelectedDayEligible, !showReplaceIdeaLauncher {
@@ -427,6 +438,7 @@ struct PlanHubView: View {
                     .accessibilityIdentifier("plan.package.replaceIdea")
                 }
             }
+            .transition(.opacity)
         }
     }
 
@@ -462,28 +474,35 @@ struct PlanHubView: View {
             && lightEditCaption != (displayedCard?.caption ?? "")
     }
 
-    @ViewBuilder
-    private var approveActionBlock: some View {
-        if canMakeAvailable {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
-                PocketSheetPrimaryAction(
-                    title: services.isMakingDayAvailable ? "Approving…" : "Approve",
-                    systemImage: "checkmark.circle"
-                ) {
-                    makeAvailableOnToday()
-                }
-                .disabled(!canMakeAvailable)
-                .opacity(canMakeAvailable ? 1 : 0.48)
-                .accessibilityIdentifier("daily.availableOnToday")
-
-                Text("Clicking this will add the card to the Today page.")
-                    .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("daily.approve.hint")
+    private var approveDock: some View {
+        VStack(alignment: .center, spacing: PocketSheetSpace.xs) {
+            PocketSheetPrimaryAction(
+                title: services.isMakingDayAvailable ? "Approving…" : "Approve",
+                systemImage: "checkmark.circle"
+            ) {
+                makeAvailableOnToday()
             }
+            .disabled(!canMakeAvailable)
+            .opacity(canMakeAvailable ? 1 : 0.48)
+            .accessibilityIdentifier("daily.availableOnToday")
+
+            Text("Clicking this will add the card to the Today page.")
+                .font(PocketSheetType.rowSubtitle)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("daily.approve.hint")
+        }
+        .padding(.horizontal, PocketSheetSpace.l)
+        .padding(.top, PocketSheetSpace.s)
+        .padding(.bottom, PocketSheetSpace.xs)
+        .frame(maxWidth: .infinity)
+        .background(PocketSheetTheme.Color.paper)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(PocketSheetTheme.Color.hairline)
+                .frame(height: 1)
         }
     }
 

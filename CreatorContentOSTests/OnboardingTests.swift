@@ -492,7 +492,7 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(handoff.scheduledDate, "2026-08-07")
         XCTAssertTrue(store.isComplete())
         XCTAssertFalse(model.shouldPresentOnboarding)
-        XCTAssertTrue(handoff.dayBrief.contains("Food"))
+        XCTAssertNil(handoff.dayBrief)
     }
 
     // MARK: - Reference import

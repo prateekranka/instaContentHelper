@@ -288,6 +288,7 @@ struct OnboardingFlowView: View {
             TextField(placeholder, text: draft, axis: .vertical)
                 .lineLimit(2...4)
                 .font(.system(size: 15))
+                .foregroundStyle(PocketSheetTheme.Color.ink)
                 .frame(minHeight: 52)
                 .padding(PocketSheetSpace.xs)
                 .scrollContentBackground(.hidden)
@@ -402,11 +403,11 @@ struct OnboardingFlowView: View {
                 .accessibilityIdentifier("onboarding.continue.references")
 
             case .confirm:
-                Text("We'll draft scenes, caption, and audio in Plan — then Today is ready to shoot.")
+                Text("We'll show you five content ideas in Plan — pick one and we'll draft it.")
                     .font(.system(size: 13))
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .multilineTextAlignment(.center)
-                PocketSheetPrimaryAction(title: "Generate my first day") {
+                PocketSheetPrimaryAction(title: "Show my ideas") {
                     completeOnboarding()
                 }
                 .accessibilityIdentifier("onboarding.generateFirstDay")

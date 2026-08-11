@@ -274,9 +274,11 @@ final class OnboardingViewModel {
         store.markComplete(with: data)
         sessionDismissed = false
         onboardingCompletedThisSession = true
+        // No day brief: onboarding hands off to the five Plan idea options
+        // so the creator picks the direction before anything is generated.
         return OnboardingFirstDayHandoff(
             scheduledDate: todayDate,
-            dayBrief: data.firstDayBrief(),
+            dayBrief: nil,
             completedData: data
         )
     }
@@ -284,6 +286,7 @@ final class OnboardingViewModel {
 
 struct OnboardingFirstDayHandoff: Hashable, Sendable {
     var scheduledDate: String
-    var dayBrief: String
+    /// Optional day brief. When nil, Plan lands on the five idea options instead of auto-starting a generation.
+    var dayBrief: String?
     var completedData: OnboardingCompletedData
 }

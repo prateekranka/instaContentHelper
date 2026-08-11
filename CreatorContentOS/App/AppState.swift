@@ -10,7 +10,7 @@ final class AppState {
     var authenticationError: String?
     /// Consumed by `CreatorShellView` to switch tabs (e.g. Available on Today → Today).
     var pendingCreatorTab: CreatorTab?
-    /// Consumed by `PlanHubView` to auto-start one day-only generation after onboarding.
+    /// Consumed by `PlanHubView` to preselect the Plan date after onboarding; the five idea options are shown instead of auto-generating.
     var pendingFirstDayHandoff: OnboardingFirstDayHandoff?
     /// Preselects a Plan calendar date (`yyyy-MM-dd`) before opening Plan.
     var planSelectedDate: String?

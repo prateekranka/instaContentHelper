@@ -65,7 +65,6 @@ struct YouCreatorVoiceView: View {
                     VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
                         voiceField(
                             title: "Positioning",
-                            requirement: voiceIsDeferred ? "Optional" : "Required",
                             hint: voiceIsDeferred
                                 ? "Who you are on camera — add when you're ready"
                                 : "Who you are on camera — tone and audience",
@@ -74,7 +73,6 @@ struct YouCreatorVoiceView: View {
                         )
                         voiceField(
                             title: "Voice rules",
-                            requirement: voiceIsDeferred ? "Optional" : "Required",
                             hint: voiceIsDeferred
                                 ? "Pacing, words to avoid, habits — skip for now if you prefer"
                                 : "Hard rules — pacing, words to avoid, habits",
@@ -83,21 +81,18 @@ struct YouCreatorVoiceView: View {
                         )
                         voiceField(
                             title: "Pillars",
-                            requirement: "Optional",
                             hint: "Themes you rotate",
                             text: $recurringFormatsText,
                             identifier: "you.voice.pillars"
                         )
                         voiceField(
                             title: "Caption style",
-                            requirement: "Optional",
                             hint: "How captions should sound",
                             text: $captionStyle,
                             identifier: "you.voice.captionStyle"
                         )
                         voiceField(
                             title: "Never sounds like",
-                            requirement: "Optional",
                             hint: "Topics and tones to avoid",
                             text: $noGoTopicsText,
                             identifier: "you.voice.noGo"
@@ -135,10 +130,7 @@ struct YouCreatorVoiceView: View {
     }
 
     private var voiceSubtitle: String {
-        if voiceIsDeferred {
-            return "Optional for now — drafts still work, but voice helps them sound like you."
-        }
-        return "Set the tone, rules, and point of view your drafts should follow."
+        "Set the tone, rules, and point of view your drafts should follow."
     }
 
     private var canSave: Bool {
@@ -175,20 +167,14 @@ struct YouCreatorVoiceView: View {
     @ViewBuilder
     private func voiceField(
         title: String,
-        requirement: String,
         hint: String,
         text: Binding<String>,
         identifier: String
     ) -> some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-            HStack(spacing: PocketSheetSpace.xs) {
-                Text(title)
-                    .font(PocketSheetType.rowTitle)
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
-                Text(requirement)
-                    .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-            }
+            Text(title)
+                .font(PocketSheetType.rowTitle)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
             Text(hint)
                 .font(PocketSheetType.rowSubtitle)
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)

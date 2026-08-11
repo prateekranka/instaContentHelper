@@ -89,6 +89,8 @@ struct GeneratedDayPlannedContent: View {
             if usesFolderTabs {
                 PackageFolderTabs(selection: $selectedFolderTab) { tab in
                     folderPanel(for: tab)
+                        .id(tab)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             } else {
                 GeneratedStoryboardBreakdownBlock(
@@ -99,6 +101,7 @@ struct GeneratedDayPlannedContent: View {
                 InstagramCaptionPostBlock(card: card)
             }
         }
+        .animation(.snappy(duration: 0.22), value: selectedFolderTab)
         .onChange(of: card.id) { _, _ in
             selectedFolderTab = .storyboard
         }
@@ -145,7 +148,6 @@ struct GeneratedStoryboardBreakdownContent: View {
     let card: GeneratedDailyCardDraft
     var onStoryboardAssetsChanged: (([StoryboardThumbnailAsset]) -> Void)?
     @State private var thumbnailError: String?
-    @State private var refreshInstructions = ""
 
     var body: some View {
         if !rows.isEmpty {
@@ -174,58 +176,9 @@ struct GeneratedStoryboardBreakdownContent: View {
     }
 
     private var storyboardHeader: some View {
-        VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
-            HStack(spacing: PocketSheetSpace.s) {
-                HStack(spacing: PocketSheetSpace.s) {
-                    Image(systemName: "rectangle.stack.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(PocketSheetTheme.Color.inversePaper)
-                    Text("Storyboard")
-                        .font(PocketSheetType.sectionLabel)
-                        .foregroundStyle(PocketSheetTheme.Color.inversePaper)
-                    Spacer(minLength: PocketSheetSpace.s)
-                    Text(durationLabel)
-                        .font(PocketSheetType.rowSubtitle)
-                        .foregroundStyle(PocketSheetTheme.Color.inversePaper)
-                }
-
-                visualsButton
-            }
-            .padding(.horizontal, PocketSheetSpace.s)
-            .frame(minHeight: 38)
-            .background(PocketSheetTheme.Color.ink, in: RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
-
-            Text(effectiveCard.hook?.nilIfBlank ?? effectiveCard.title)
-                .font(PocketSheetType.rowTitle)
-                .foregroundStyle(PocketSheetTheme.Color.ink)
-                .fixedSize(horizontal: false, vertical: true)
-
-            refreshDirectionField
-        }
-    }
-
-    private var refreshDirectionField: some View {
-        HStack(alignment: .top, spacing: PocketSheetSpace.xs) {
-            Image(systemName: "slider.horizontal.3")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                .padding(.top, 8)
-            TextField("What should change in the visuals?", text: $refreshInstructions, axis: .vertical)
-                .font(PocketSheetType.rowSubtitle)
-                .foregroundStyle(PocketSheetTheme.Color.ink)
-                .lineLimit(1...3)
-                .textFieldStyle(.plain)
-                .submitLabel(.done)
-        }
-        .padding(.horizontal, PocketSheetSpace.s)
-        .padding(.vertical, PocketSheetSpace.xs)
-        .background(
-            PocketSheetTheme.Color.paperRaised.opacity(0.78),
-            in: RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
-                .stroke(PocketSheetTheme.Color.hairline.opacity(0.48), lineWidth: 1)
+        HStack {
+            Spacer(minLength: 0)
+            visualsButton
         }
     }
 
@@ -276,11 +229,6 @@ struct GeneratedStoryboardBreakdownContent: View {
         "\(card.id.uuidString)-\(missingThumbnailCount)"
     }
 
-    private var revisionInstruction: String? {
-        let trimmed = refreshInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
     private var visualsButtonLabel: String {
         if isGeneratingThumbnails {
             return missingThumbnailCount > 0 ? "Preparing" : "Refreshing"
@@ -288,24 +236,9 @@ struct GeneratedStoryboardBreakdownContent: View {
         return missingThumbnailCount > 0 ? "Prepare visuals" : "Refresh"
     }
 
-    private var durationLabel: String {
-        if let durationSeconds = effectiveCard.durationSeconds, durationSeconds > 0 {
-            return "\(durationSeconds)s"
-        }
-        if let seconds = SceneTiming.totalSeconds(for: effectiveCard.sceneList), seconds > 0 {
-            return "\(seconds)s"
-        }
-        return "\(rows.count) scenes"
-    }
-
     private func generateThumbnails() {
         guard !isGeneratingThumbnails else { return }
         let shouldForceRefresh = missingThumbnailCount == 0
-        let instructions = revisionInstruction
-        if shouldForceRefresh, instructions == nil {
-            thumbnailError = "Add a direction before refreshing visuals."
-            return
-        }
 
         thumbnailError = nil
         Task {
@@ -313,11 +246,8 @@ struct GeneratedStoryboardBreakdownContent: View {
                 let assets = try await services.generateStoryboardThumbnails(
                     for: effectiveCard,
                     force: shouldForceRefresh,
-                    revisionInstructions: instructions
+                    revisionInstructions: nil
                 )
-                if shouldForceRefresh {
-                    refreshInstructions = ""
-                }
                 onStoryboardAssetsChanged?(assets)
             } catch {
                 thumbnailError = error.localizedDescription
@@ -330,7 +260,10 @@ struct GeneratedStoryboardTable: View {
     let rows: [GeneratedStoryboardBreakdownRow]
     private let headerHeight: CGFloat = 38
     private let rowHeight: CGFloat = 168
-    private let sceneColumnWidth: CGFloat = 220
+    @State private var sceneColumnWidth: CGFloat = 220
+    @State private var sceneColumnWidthAtDragStart: CGFloat = 220
+    private let sceneColumnMinWidth: CGFloat = 140
+    private let sceneColumnMaxWidth: CGFloat = 360
     private let whatColumnWidth: CGFloat = 182
     private let audioColumnWidth: CGFloat = 194
     private let textColumnWidth: CGFloat = 184
@@ -351,6 +284,8 @@ struct GeneratedStoryboardTable: View {
                     )
                 }
             }
+
+            sceneResizeHandle
 
             ScrollView(.horizontal, showsIndicators: true) {
                 VStack(spacing: 0) {
@@ -398,6 +333,41 @@ struct GeneratedStoryboardTable: View {
             RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
                 .stroke(PocketSheetTheme.Color.hairline.opacity(0.78), lineWidth: 1)
         }
+    }
+
+    private var sceneResizeHandle: some View {
+        Rectangle()
+            .fill(PocketSheetTheme.Color.hairline.opacity(0.9))
+            .frame(width: 12)
+            .overlay {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(PocketSheetTheme.Color.inkQuiet.opacity(0.8))
+                    .frame(width: 3, height: 34)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        sceneColumnWidth = min(
+                            max(sceneColumnMinWidth, sceneColumnWidthAtDragStart + value.translation.width),
+                            sceneColumnMaxWidth
+                        )
+                    }
+                    .onEnded { _ in
+                        sceneColumnWidthAtDragStart = sceneColumnWidth
+                    }
+            )
+            .accessibilityLabel("Resize scene column")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment:
+                    sceneColumnWidth = min(sceneColumnMaxWidth, sceneColumnWidth + 16)
+                case .decrement:
+                    sceneColumnWidth = max(sceneColumnMinWidth, sceneColumnWidth - 16)
+                @unknown default:
+                    break
+                }
+            }
     }
 }
 
@@ -626,18 +596,40 @@ struct GeneratedStoryboardTip: View {
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                Text("Tip for filming")
+                Text("Tips for Filming")
                     .font(PocketSheetType.sectionLabel)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
-                Text(text)
-                    .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(bullets, id: \.self) { bullet in
+                    HStack(alignment: .top, spacing: PocketSheetSpace.xs) {
+                        Text("•")
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        Text(bullet)
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
         }
         .padding(PocketSheetSpace.s)
         .background(PocketSheetTheme.Color.fillMuted)
         .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+    }
+
+    private var bullets: [String] {
+        var lines = text
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if lines.count == 1, let single = lines.first {
+            lines = single
+                .components(separatedBy: ". ")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map { $0.hasSuffix(".") ? $0 : $0 + "." }
+        }
+        return lines
     }
 }
 
@@ -658,13 +650,6 @@ struct InstagramExecutionSummary: View {
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 Spacer(minLength: PocketSheetSpace.s)
             }
-
-            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-                ExecutionSummaryLine(title: "Hook", value: hook)
-                if let postInstructions = card.postInstructions.nilIfBlank {
-                    ExecutionSummaryLine(title: "Post instruction", value: postInstructions)
-                }
-            }
         }
     }
 
@@ -682,27 +667,8 @@ struct InstagramExecutionSummary: View {
         return "\(card.estimatedShootMinutes) min shoot"
     }
 
-    private var hook: String {
-        card.hook?.nilIfBlank ?? card.title
-    }
 }
 
-struct ExecutionSummaryLine: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-            Text(title)
-                .font(PocketSheetType.rowSubtitle)
-                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-            Text(value)
-                .font(PocketSheetType.rowSubtitle)
-                .foregroundStyle(PocketSheetTheme.Color.ink)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
 struct InstagramCaptionPostBlock: View {
     let card: GeneratedDailyCardDraft
 
