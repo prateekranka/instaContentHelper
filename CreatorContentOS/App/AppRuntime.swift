@@ -27,12 +27,14 @@ struct AppRuntime {
             todayCache: todayCache,
             notifications: notifications
         )
+#if DEBUG
         // Seed a reviewable draft so Plan can show Approve in fixture UI proofs.
         // (Kept out of `fixtureBacked` so unit tests start with an empty day store.)
         var draft = GeneratedDailyCardDraft.storyboardBreakdownFixture
         draft.scheduledDate = services.currentTodayDateString
         draft.status = "draft"
         services.dayBriefGeneratedCards[services.currentTodayDateString] = draft
+#endif
         return AppRuntime(
             mode: .fixtures,
             services: services
