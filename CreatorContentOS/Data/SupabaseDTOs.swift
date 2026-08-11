@@ -1334,6 +1334,19 @@ enum SupabaseDateFormatting {
         return formatter.string(from: Date())
     }
 
+    /// `days` after today, formatted `yyyy-MM-dd` (dev benchmark uses a far-future
+    /// date so runs never touch real content).
+    static func dateString(daysAfterToday days: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = Calendar.current.date(byAdding: .day, value: days, to: Date()) else {
+            return todayDateString()
+        }
+        return formatter.string(from: date)
+    }
+
     /// Compares normalized yyyy-MM-dd prefixes lexically — valid because ISO-8601 date strings sort correctly.
     static func isDatePast(_ dateString: String, todayString: String) -> Bool {
         let normalized = String(dateString.prefix(10))

@@ -6,6 +6,9 @@ struct YouView: View {
     @Environment(AppServices.self) private var services
     @State private var navigationPath = NavigationPath()
     @State private var isSigningOut = false
+#if DEBUG
+    @State private var showBenchmark = false
+#endif
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -21,6 +24,9 @@ struct YouView: View {
                     accountBlock
                     generationInputsBlock
                     archiveBlock
+#if DEBUG
+                    devBlock
+#endif
                     signOutBlock
                 }
                 .padding(.top, PocketSheetSpace.xs)
@@ -35,7 +41,30 @@ struct YouView: View {
         .onChange(of: appState.pendingYouNavigation?.destination) { _, _ in
             consumePendingNavigation()
         }
+#if DEBUG
+        .sheet(isPresented: $showBenchmark) {
+            DayGenerationBenchmarkView()
+        }
+#endif
     }
+
+#if DEBUG
+    private var devBlock: some View {
+        PocketSheetBlock(header: "Dev") {
+            Button {
+                showBenchmark = true
+            } label: {
+                PocketSheetRow(
+                    title: "Run generation benchmark",
+                    subtitle: "N real generations through the live runtime — p95 gate"
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("you.dev.benchmark")
+        }
+        .padding(.horizontal, PocketSheetSpace.l)
+    }
+#endif
 
     private var accountBlock: some View {
         PocketSheetBlock(header: "Account") {
