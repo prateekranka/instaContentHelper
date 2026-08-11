@@ -20,6 +20,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.prateekranka.creatorcontenthelper.benchmark</string>
+	</array>
 	<key>MCO_SUPABASE_PUBLISHABLE_KEY</key>
 	<string>$(MCO_SUPABASE_PUBLISHABLE_KEY)</string>
 	<key>MCO_SUPABASE_URL</key>

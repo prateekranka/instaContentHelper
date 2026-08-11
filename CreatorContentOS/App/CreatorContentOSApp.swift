@@ -1,9 +1,16 @@
 import SwiftUI
+import BackgroundTasks
 
 @main
 @MainActor
 struct CreatorContentOSApp: App {
     @State private var appState = AppState.makeLaunchState()
+
+    init() {
+        // Register before the app finishes launching so background benchmark
+        // launches can continue the run loop.
+        BenchmarkBackgroundTask.register()
+    }
 
     var body: some Scene {
         WindowGroup {
