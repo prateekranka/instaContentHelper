@@ -62,19 +62,34 @@ struct SupabaseReferenceImportRepository: ReferenceImportRepository {
         filename: String?,
         context: WorkspaceContext
     ) async throws -> ReferenceImportPreview {
-        let response: SupabaseReferenceImportPreviewResponse = try await client.functions.invoke(
-            "import-references",
-            options: FunctionInvokeOptions(
-                body: SupabaseReferenceImportRequest(
-                    mode: "preview",
-                    creatorID: context.creatorID,
-                    inputType: inputType,
-                    rawText: rawText,
-                    filename: filename,
-                    previewChecksum: nil
+        // Bound the live Instagram probe: an unreachable/slow Instagram must
+        // never hang the import flow (onboarding and References alike).
+        let response: SupabaseReferenceImportPreviewResponse = try await withThrowingTaskGroup(
+            of: SupabaseReferenceImportPreviewResponse.self
+        ) { group in
+            group.addTask {
+                try await self.client.functions.invoke(
+                    "import-references",
+                    options: FunctionInvokeOptions(
+                        body: SupabaseReferenceImportRequest(
+                            mode: "preview",
+                            creatorID: context.creatorID,
+                            inputType: inputType,
+                            rawText: rawText,
+                            filename: filename,
+                            previewChecksum: nil
+                        )
+                    )
                 )
-            )
-        )
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(10))
+                throw PreviewImportTimeoutError()
+            }
+            let first = try await group.next()!
+            group.cancelAll()
+            return first
+        }
 
         return response.domainPreview()
     }
@@ -86,19 +101,34 @@ struct SupabaseReferenceImportRepository: ReferenceImportRepository {
         previewChecksum: String,
         context: WorkspaceContext
     ) async throws -> ReferenceImportConfirmResult {
-        let response: SupabaseReferenceImportConfirmResponse = try await client.functions.invoke(
-            "import-references",
-            options: FunctionInvokeOptions(
-                body: SupabaseReferenceImportRequest(
-                    mode: "confirm",
-                    creatorID: context.creatorID,
-                    inputType: inputType,
-                    rawText: rawText,
-                    filename: filename,
-                    previewChecksum: previewChecksum
+        // Same bound as previewImport: an unreachable backend must never
+        // leave the save flow hanging.
+        let response: SupabaseReferenceImportConfirmResponse = try await withThrowingTaskGroup(
+            of: SupabaseReferenceImportConfirmResponse.self
+        ) { group in
+            group.addTask {
+                try await self.client.functions.invoke(
+                    "import-references",
+                    options: FunctionInvokeOptions(
+                        body: SupabaseReferenceImportRequest(
+                            mode: "confirm",
+                            creatorID: context.creatorID,
+                            inputType: inputType,
+                            rawText: rawText,
+                            filename: filename,
+                            previewChecksum: previewChecksum
+                        )
+                    )
                 )
-            )
-        )
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(10))
+                throw PreviewImportTimeoutError()
+            }
+            let first = try await group.next()!
+            group.cancelAll()
+            return first
+        }
 
         return response.domainResult()
     }

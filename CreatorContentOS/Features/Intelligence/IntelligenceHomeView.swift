@@ -130,9 +130,13 @@ struct IntelligenceHomeView: View {
                     inputType: inputType,
                     filename: filename
                 ) else {
-                    throw RepositoryError.notConfigured(
-                        services.lastReferenceImportError ?? "Reference import preview failed."
-                    )
+                    let message = services.lastReferenceImportError ?? "Reference import preview failed."
+                    if message == ReferenceImportVerificationCopy.couldNotVerifyAddAnyway {
+                        // Live check failed or timed out: non-blocking. The
+                        // preview view shows the "add it anyway" fallback.
+                        throw ReferenceImportCheckUnavailableError.serverUnavailable
+                    }
+                    throw RepositoryError.notConfigured(message)
                 }
                 return preview
             },

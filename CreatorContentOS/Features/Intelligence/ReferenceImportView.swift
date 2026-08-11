@@ -14,6 +14,38 @@ typealias ReferenceImportConfirmAction = @MainActor (
     _ previewChecksum: String
 ) async throws -> ReferenceImportConfirmResult
 
+/// Canonical copy for the non-blocking verification fallback. AppServices sets
+/// this exact message when the live check times out, so the view can detect
+/// "couldn't verify" without depending on the error type.
+enum ReferenceImportVerificationCopy {
+    static let couldNotVerifyAddAnyway = "Couldn't verify — add it anyway."
+}
+
+/// Raised when the live Instagram check could not complete: the bounded
+/// timeout fired, or the server reported the check unavailable. The import
+/// must never hang or hard-fail on this — the user can still add the
+/// reference as-is.
+enum ReferenceImportCheckUnavailableError: Error, LocalizedError {
+    case timedOut
+    case serverUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .timedOut:
+            "The check timed out. Instagram couldn't be reached."
+        case .serverUnavailable:
+            ReferenceImportVerificationCopy.couldNotVerifyAddAnyway
+        }
+    }
+
+    static func matches(_ error: Error) -> Bool {
+        if error is ReferenceImportCheckUnavailableError {
+            return true
+        }
+        return error.localizedDescription == ReferenceImportVerificationCopy.couldNotVerifyAddAnyway
+    }
+}
+
 struct ReferenceImportView: View {
     @Environment(\.chromePalette) private var chrome
     @Environment(\.dismiss) private var dismiss
@@ -33,6 +65,7 @@ struct ReferenceImportView: View {
     @State private var isConfirming = false
     @State private var isFileImporterPresented = false
     @State private var message: ReferenceImportMessage?
+    @State private var showsUnverifiedFallback = false
 
     init(
         isLiveRuntime: Bool,
@@ -69,7 +102,9 @@ struct ReferenceImportView: View {
                     ReferenceImportMessageBanner(message: message)
                 }
 
-                if let preview {
+                if showsUnverifiedFallback {
+                    ReferenceImportUnverifiedFallbackView()
+                } else if let preview {
                     ReferenceImportPreviewView(preview: preview)
                 } else {
                     ReferenceImportEmptyGuidance()
@@ -81,23 +116,24 @@ struct ReferenceImportView: View {
             }
         } bottomBar: {
             GlassCommandBar {
-                SecondaryActionButton(title: preview == nil ? "Close" : "Edit paste") {
-                    if preview == nil {
-                        dismiss()
-                    } else {
+                SecondaryActionButton(title: hasPreviewContent ? "Edit paste" : "Close") {
+                    if hasPreviewContent {
                         preview = nil
                         result = nil
+                        showsUnverifiedFallback = false
                         isInputFocused = true
+                    } else {
+                        dismiss()
                     }
                 }
                 .frame(maxWidth: 132)
 
                 PrimaryActionButton(
                     title: primaryButtonTitle,
-                    systemImage: preview == nil ? "text.badge.plus" : "checkmark.circle"
+                    systemImage: hasPreviewContent ? "checkmark.circle" : "text.badge.plus"
                 ) {
                     Task {
-                        if preview == nil {
+                        if preview == nil && !showsUnverifiedFallback {
                             await previewImport()
                         } else {
                             await confirmImport()
@@ -171,16 +207,27 @@ struct ReferenceImportView: View {
             return "Saving"
         }
 
+        if showsUnverifiedFallback {
+            return "Add anyway"
+        }
+
         return preview == nil ? "Preview import" : "Import clean rows"
     }
 
     private var canRunPrimaryAction: Bool {
         guard isLiveRuntime, !isBusy else { return false }
+        if showsUnverifiedFallback {
+            return result == nil
+        }
         if preview == nil {
             return !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
         return result == nil
+    }
+
+    private var hasPreviewContent: Bool {
+        preview != nil || showsUnverifiedFallback
     }
 
     private var isBusy: Bool {
@@ -194,6 +241,7 @@ struct ReferenceImportView: View {
         preview = nil
         result = nil
         message = nil
+        showsUnverifiedFallback = false
     }
 
     private func previewImport() async {
@@ -205,25 +253,46 @@ struct ReferenceImportView: View {
         defer { isPreviewing = false }
 
         do {
+            // The live check is bounded by the repository layer (10s); a
+            // timeout surfaces as a nil preview + the canonical fallback copy.
             preview = try await previewReferenceImport(rawText, inputType, filename)
+            showsUnverifiedFallback = false
         } catch {
             preview = nil
-            message = .error(error.localizedDescription)
+            if ReferenceImportCheckUnavailableError.matches(error) {
+                showsUnverifiedFallback = true
+                message = nil
+            } else {
+                showsUnverifiedFallback = false
+                message = .error(error.localizedDescription)
+            }
         }
     }
 
     private func confirmImport() async {
-        guard let preview, canRunPrimaryAction else { return }
+        guard canRunPrimaryAction else { return }
         isConfirming = true
         message = nil
         defer { isConfirming = false }
+
+        let checksum: String
+        if let preview {
+            checksum = preview.previewChecksum
+        } else if showsUnverifiedFallback {
+            // No preview was produced by the live check; the server re-parses
+            // and re-checks the raw text when saving, so an empty checksum is
+            // safe ("add it anyway").
+            checksum = ""
+        } else {
+            return
+        }
 
         do {
             let confirmResult = try await confirmReferenceImport(
                 rawText,
                 inputType,
                 filename,
-                preview.previewChecksum
+                checksum
             )
             result = confirmResult
             message = .success(confirmResult.toast)
@@ -248,6 +317,7 @@ struct ReferenceImportView: View {
                 inputType = .csv
                 preview = nil
                 self.result = nil
+                showsUnverifiedFallback = false
                 message = .success("Loaded \(url.lastPathComponent). Preview before importing.")
             } catch {
                 message = .error(error.localizedDescription)

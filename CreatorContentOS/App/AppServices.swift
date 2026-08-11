@@ -1764,6 +1764,8 @@ final class AppServices {
         defer { isPreviewingReferenceImport = false }
 
         do {
+            // Timeout bound lives inside SupabaseReferenceImportRepository so an
+            // unreachable/slow Instagram probe never hangs either flow.
             let preview = try await repositories.referenceImport.previewImport(
                 rawText: rawText,
                 inputType: inputType,
@@ -1775,6 +1777,10 @@ final class AppServices {
             referenceImportToast = nil
             lastReferenceImportError = nil
             return preview
+        } catch is PreviewImportTimeoutError {
+            lastReferenceImportError = "Couldn't verify — add it anyway."
+            referenceImportToast = nil
+            return nil
         } catch {
             lastReferenceImportError = ReferenceImportErrorDisplay.message(for: error)
             referenceImportToast = nil
@@ -2333,6 +2339,13 @@ private enum DayLifecycleErrorDisplay {
             return userFacingMessages[code] ?? description
         }
         return description
+    }
+}
+
+/// Thrown when a reference-import call (live Instagram probe) exceeds its bound.
+struct PreviewImportTimeoutError: Error, LocalizedError {
+    var errorDescription: String? {
+        "Couldn't reach Instagram — try again."
     }
 }
 

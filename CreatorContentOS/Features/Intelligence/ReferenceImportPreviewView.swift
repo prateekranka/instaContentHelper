@@ -60,6 +60,54 @@ struct ReferenceImportPreviewView: View {
     }
 }
 
+/// Non-blocking fallback shown in the preview slot when the live Instagram
+/// check could not complete (timeout, unreachable, or temporarily
+/// unavailable). The import is NOT blocked: the user can still confirm and
+/// add the reference as-is.
+struct ReferenceImportUnverifiedFallbackView: View {
+    @Environment(\.chromePalette) private var chrome
+
+    var body: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.m) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                        Text("INSPIRATION")
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(chrome.accent)
+                        Text("Preview")
+                            .font(MCOType.cardTitle)
+                            .foregroundStyle(chrome.ink)
+                    }
+
+                    Spacer(minLength: MCOSpace.s)
+
+                    StatusChip(text: "Unverified", tone: .warning)
+                }
+
+                HStack(alignment: .top, spacing: MCOSpace.s) {
+                    Image(systemName: "exclamationmark.icloud")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(chrome.validationAttention)
+                        .frame(width: 26)
+
+                    VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                        Text(ReferenceImportVerificationCopy.couldNotVerifyAddAnyway)
+                            .font(.system(size: 17, weight: .regular, design: .serif))
+                            .foregroundStyle(chrome.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Instagram couldn't be reached, so these references were not verified live. You can still add them — the server re-checks everything when saving.")
+                            .font(MCOType.caption)
+                            .foregroundStyle(chrome.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier("reference.import.unverified.fallback")
+    }
+}
+
 struct ReferenceImportSummaryBlock: View {
     @Environment(\.chromePalette) private var chrome
     let preview: ReferenceImportPreview

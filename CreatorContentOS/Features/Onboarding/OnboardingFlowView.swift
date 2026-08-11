@@ -7,6 +7,7 @@ struct OnboardingFlowView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var reelDraft = ""
     @State private var profileDraft = ""
+    @FocusState private var focusedReferenceField: OnboardingReferenceInputKind?
 
     var onSoftSkip: () -> Void
     var onComplete: (OnboardingFirstDayHandoff) -> Void
@@ -107,7 +108,7 @@ struct OnboardingFlowView: View {
         case .references:
             "Reels and profiles teach us your aesthetic."
         case .confirm:
-            "Categories and references only — aesthetic tags come later from analysis."
+            "Done."
         }
     }
 
@@ -285,34 +286,48 @@ struct OnboardingFlowView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
 
-            TextField(placeholder, text: draft, axis: .vertical)
-                .lineLimit(2...4)
-                .font(.system(size: 15))
-                .foregroundStyle(PocketSheetTheme.Color.ink)
-                .frame(minHeight: 52)
-                .padding(PocketSheetSpace.xs)
-                .scrollContentBackground(.hidden)
-                .background(PocketSheetTheme.Color.paperRaised)
-                .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
-                        .stroke(
-                            showAttention ? PocketSheetTheme.Color.validationAttention : PocketSheetTheme.Color.hairline,
-                            lineWidth: showAttention ? 2 : 1
-                        )
+            ZStack(alignment: .topLeading) {
+                TextField("", text: draft, axis: .vertical)
+                    .lineLimit(2...4)
+                    .font(.system(size: 15))
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .focused($focusedReferenceField, equals: kind)
+                    .scrollContentBackground(.hidden)
+                    .accessibilityIdentifier("onboarding.refInput.\(kind.rawValue)")
+                    .accessibilityLabel(placeholder)
+
+                if draft.wrappedValue.isEmpty {
+                    Text(placeholder)
+                        .font(.system(size: 15))
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                        .padding(PocketSheetSpace.xs)
                 }
-                .onboardingAttentionShake(
-                    active: showAttention && model.referenceValidation.motion,
-                    reduceMotion: reduceMotion
-                ) {
-                    model.consumeReferenceAttentionMotionIfNeeded()
-                }
-                .accessibilityIdentifier("onboarding.refInput.\(kind.rawValue)")
+            }
+            .frame(minHeight: 52)
+            .padding(PocketSheetSpace.xs)
+            .background(PocketSheetTheme.Color.paperRaised)
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                    .stroke(
+                        showAttention ? PocketSheetTheme.Color.validationAttention : PocketSheetTheme.Color.hairline,
+                        lineWidth: showAttention ? 2 : 1
+                    )
+            }
+            .onboardingAttentionShake(
+                active: showAttention && model.referenceValidation.motion,
+                reduceMotion: reduceMotion
+            ) {
+                model.consumeReferenceAttentionMotionIfNeeded()
+            }
 
             Button {
                 switch kind {
                 case .reel:
                     model.reelDraftText = draft.wrappedValue
+                    focusedReferenceField = .profile
                 case .profile:
                     model.profileDraftText = draft.wrappedValue
                 }
@@ -403,11 +418,7 @@ struct OnboardingFlowView: View {
                 .accessibilityIdentifier("onboarding.continue.references")
 
             case .confirm:
-                Text("We'll show you five content ideas in Plan — pick one and we'll draft it.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                    .multilineTextAlignment(.center)
-                Text("We'll also prefill a basic Creator Voice from your references and categories — edit it anytime in You.")
+                Text("Five ideas are ready in Plan. Voice is prefilled from your references.")
                     .font(.system(size: 13))
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .multilineTextAlignment(.center)
