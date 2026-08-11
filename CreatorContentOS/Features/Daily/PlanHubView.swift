@@ -51,7 +51,7 @@ struct PlanHubView: View {
                         onSubmitOther: submitOtherIdea
                     )
                     if services.voiceGateOpen {
-                        Text("Set up your creator voice to generate — or defer voice in You.")
+                        Text("Personalize your Creator Voice or use the one we have prefilled based on your references and domain")
                             .font(PocketSheetType.rowSubtitle)
                             .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                             .fixedSize(horizontal: false, vertical: true)

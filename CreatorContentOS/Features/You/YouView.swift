@@ -240,20 +240,22 @@ struct YouArchivePreview: View {
                 }
             }
 
-            Button(action: onSeeMore) {
-                Text("See more")
-                    .font(PocketSheetType.rowTitle)
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.horizontal, PocketSheetSpace.m)
+            if services.archiveEntries.count > 5 {
+                Button(action: onSeeMore) {
+                    Text("See more")
+                        .font(PocketSheetType.rowTitle)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .padding(.horizontal, PocketSheetSpace.m)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("you.archive.seeMore")
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("you.archive.seeMore")
         }
     }
 
     private var previewEntries: [ArchiveEntry] {
-        Array(services.archiveEntries.prefix(3))
+        Array(services.archiveEntries.prefix(5))
     }
 }
 

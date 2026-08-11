@@ -407,6 +407,10 @@ struct OnboardingFlowView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .multilineTextAlignment(.center)
+                Text("We'll also prefill a basic Creator Voice from your references and categories — edit it anytime in You.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                    .multilineTextAlignment(.center)
                 PocketSheetPrimaryAction(title: "Show my ideas") {
                     completeOnboarding()
                 }

@@ -239,6 +239,12 @@ final class AppServices {
         UserDefaultsOnboardingStore().loadCompletedData()?.voiceDeferred == true
     }
 
+    /// True while the post-onboarding Creator Voice prefill draft is active.
+    /// UI-only — cleared on the creator's first voice save.
+    var voicePrefilled: Bool {
+        UserDefaultsOnboardingStore().loadCompletedData()?.voicePrefilled == true
+    }
+
     /// Voice gate: generation is blocked only when voice is neither configured nor deferred.
     var voiceGateOpen: Bool {
         !voiceIsConfigured && !voiceDeferred

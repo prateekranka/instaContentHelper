@@ -265,7 +265,8 @@ final class OnboardingViewModel {
             selectedCategoryIDs: selectedCategoryIDs,
             categoryOtherText: categoryOtherText,
             references: references,
-            voiceDeferred: true
+            voiceDeferred: true,
+            voicePrefilled: true
         )
     }
 

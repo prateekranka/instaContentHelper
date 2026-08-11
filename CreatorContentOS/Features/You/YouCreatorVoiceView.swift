@@ -51,19 +51,33 @@ struct YouCreatorVoiceView: View {
 
                 PocketSheetBlock(header: "Saved voice") {
                     VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
+                        if voicePrefilled {
+                            HStack(spacing: PocketSheetSpace.xs) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 12))
+                                Text("Prefilled from your references and categories — your ideas still start from your references alone until you save your own voice.")
+                                    .font(PocketSheetType.rowSubtitle)
+                            }
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .accessibilityIdentifier("you.voice.prefilledNote")
+                        }
                         voiceField(
                             title: "Positioning",
-                            hint: voiceIsDeferred
-                                ? "Who you are on camera — add when you're ready"
-                                : "Who you are on camera — tone and audience",
+                            hint: voicePrefilled
+                                ? "We prefilled this from your references and categories — edit it anytime."
+                                : (voiceIsDeferred
+                                    ? "Who you are on camera — add when you're ready"
+                                    : "Who you are on camera — tone and audience"),
                             text: $positioning,
                             identifier: "you.voice.positioning"
                         )
                         voiceField(
                             title: "Voice rules",
-                            hint: voiceIsDeferred
-                                ? "Pacing, words to avoid, habits — skip for now if you prefer"
-                                : "Hard rules — pacing, words to avoid, habits",
+                            hint: voicePrefilled
+                                ? "We prefilled this from your references and categories — edit it anytime."
+                                : (voiceIsDeferred
+                                    ? "Pacing, words to avoid, habits — skip for now if you prefer"
+                                    : "Hard rules — pacing, words to avoid, habits"),
                             text: $voiceRulesText,
                             identifier: "you.voice.rules"
                         )
@@ -115,6 +129,10 @@ struct YouCreatorVoiceView: View {
 
     private var voiceIsDeferred: Bool {
         services.voiceDeferred
+    }
+
+    private var voicePrefilled: Bool {
+        services.voicePrefilled
     }
 
     private var voiceSubtitle: String {
@@ -182,17 +200,40 @@ struct YouCreatorVoiceView: View {
     }
 
     private func loadDraft(from profile: CreatorProfileSummary) {
-        positioning = profile.positioning
-        voiceRulesText = profile.voiceRules.isEmpty ? profile.voiceLine : profile.voiceRules.joined(separator: "\n")
-        recurringFormatsText = profile.recurringFormats.joined(separator: "\n")
-        captionStyle = profile.captionStyle ?? ""
+        if voicePrefilled,
+           profile.positioning.trimmedForYouProfile.isEmpty,
+           let completed = UserDefaultsOnboardingStore().loadCompletedData() {
+            let pillars = VoicePrefill.pillarLabels(from: completed)
+            positioning = VoicePrefill.positioning(pillars: pillars)
+            voiceRulesText = VoicePrefill.voiceRules.joined(separator: "\n")
+            recurringFormatsText = VoicePrefill.recurringFormats(pillars: pillars).joined(separator: "\n")
+            captionStyle = VoicePrefill.captionStyle
+        } else {
+            positioning = profile.positioning
+            voiceRulesText = profile.voiceRules.isEmpty ? profile.voiceLine : profile.voiceRules.joined(separator: "\n")
+            recurringFormatsText = profile.recurringFormats.joined(separator: "\n")
+            captionStyle = profile.captionStyle ?? ""
+        }
         noGoTopicsText = profile.noGoTopics.joined(separator: "\n")
     }
 
     @MainActor
     private func saveVoice() async {
-        _ = await services.updateCreatorProfileImmediately(normalizedUpdate)
+        let didSave = await services.updateCreatorProfileImmediately(normalizedUpdate)
+        if didSave {
+            clearVoicePrefillFlags()
+        }
         loadDraft(from: services.creatorProfileSummary)
+    }
+
+    /// First save retires the post-onboarding prefill: the prefilled mention
+    /// disappears and the voice gate treats the saved voice as configured.
+    private func clearVoicePrefillFlags() {
+        guard let completed = UserDefaultsOnboardingStore().loadCompletedData() else { return }
+        var updated = completed
+        updated.voicePrefilled = false
+        updated.voiceDeferred = false
+        UserDefaultsOnboardingStore().saveCompletedData(updated)
     }
 
     private func lineValues(from text: String) -> [String] {

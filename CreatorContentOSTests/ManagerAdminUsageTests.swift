@@ -42,13 +42,16 @@ final class ManagerAdminUsageTests: XCTestCase {
     func testRegenerateDailyCardAcceptsToday() async throws {
         let services = makeServices()
 
-        do {
-            _ = try await services.regeneratedDailyCard(scheduledDate: "2026-06-01", preserveManualEdits: false)
-            XCTFail("Expected repository error (regeneration not configured), not past-date guard")
-        } catch {
-            XCTAssertFalse(error.localizedDescription.contains("past_generation_date_not_allowed"),
-                           "Should pass the past-date guard and reach repository")
-        }
+        let card = try await services.regeneratedDailyCard(
+            scheduledDate: "2026-06-01",
+            preserveManualEdits: false
+        )
+
+        XCTAssertNotNil(card)
+        XCTAssertEqual(card.scheduledDate, "2026-06-01")
+        XCTAssertEqual(card.status, "draft")
+        XCTAssertNil(services.regenerationDayErrors["2026-06-01"])
+        XCTAssertNil(services.lastRepositoryError)
     }
 
     func testManagerUpdatesCreatorProfileOutsideWeeklySetup() async throws {

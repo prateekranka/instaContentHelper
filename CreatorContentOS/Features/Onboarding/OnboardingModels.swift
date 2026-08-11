@@ -118,6 +118,10 @@ struct OnboardingCompletedData: Codable, Hashable, Sendable {
     var categoryOtherText: String
     var references: [OnboardingReference]
     var voiceDeferred: Bool
+    /// UI-only: a template Creator Voice draft was prefilled after onboarding.
+    /// Never used by generation; cleared on the creator's first voice save.
+    /// Optional so older persisted JSON without the key still decodes.
+    var voicePrefilled: Bool? = nil
 
     var categoryLabels: [String] {
         OnboardingCategories.displayLabels(
@@ -135,6 +139,37 @@ struct OnboardingCompletedData: Codable, Hashable, Sendable {
             return "Content about \(labels[0])"
         }
         return "Content about \(labels.joined(separator: ", "))"
+    }
+}
+
+// MARK: - Voice prefill (post-onboarding UI draft only)
+
+/// Template Creator Voice shown as a UI draft after onboarding. Never written
+/// to the saved creator profile — generation keeps using references alone until
+/// the creator saves their own voice (which clears `OnboardingCompletedData.voicePrefilled`).
+enum VoicePrefill {
+    static func positioning(pillars: [String]) -> String {
+        let pillarsText = pillars.isEmpty ? "everyday life" : pillars.joined(separator: ", ")
+        return "A creator sharing real \(pillarsText) — honest, warm, and down to earth, paced like your saved references."
+    }
+
+    static let voiceRules: [String] = [
+        "No hype words.",
+        "Short, honest sentences.",
+        "Show the moment before the lesson."
+    ]
+
+    static let captionStyle: String = "One honest line. Rare emoji. One clear ask at the end."
+
+    static func recurringFormats(pillars: [String]) -> [String] {
+        pillars.isEmpty ? ["Everyday moments", "Quick tips", "Honest behind-the-scenes"] : pillars
+    }
+
+    static func pillarLabels(from completedData: OnboardingCompletedData) -> [String] {
+        OnboardingCategories.displayLabels(
+            selectedIDs: completedData.selectedCategoryIDs,
+            otherText: completedData.categoryOtherText
+        )
     }
 }
 
