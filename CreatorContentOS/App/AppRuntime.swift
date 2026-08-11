@@ -23,12 +23,19 @@ struct AppRuntime {
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
         notifications: any TodayNotificationScheduling = LocalTodayNotificationScheduler()
     ) -> AppRuntime {
-        AppRuntime(
+        let services = AppServices.fixtureBacked(
+            todayCache: todayCache,
+            notifications: notifications
+        )
+        // Seed a reviewable draft so Plan can show Approve in fixture UI proofs.
+        // (Kept out of `fixtureBacked` so unit tests start with an empty day store.)
+        var draft = GeneratedDailyCardDraft.storyboardBreakdownFixture
+        draft.scheduledDate = services.currentTodayDateString
+        draft.status = "draft"
+        services.dayBriefGeneratedCards[services.currentTodayDateString] = draft
+        return AppRuntime(
             mode: .fixtures,
-            services: AppServices.fixtureBacked(
-                todayCache: todayCache,
-                notifications: notifications
-            )
+            services: services
         )
     }
 

@@ -101,7 +101,7 @@ final class PlanDayGenerationDispatchTests: XCTestCase {
         XCTAssertEqual(generation.lastBrief, idea.dayBrief)
     }
 
-    func testDraftPackageRegeneratesWithoutOverwriteConfirmation() async throws {
+    func testDraftPackageRequiresOverwriteConfirmation() async throws {
         let today = "2026-07-21"
         let draft = makeDispatchPlanCard(scheduledDate: today, title: "Draft", status: "draft")
         let generation = CountingPlanDayGenerationRepository()
@@ -109,13 +109,29 @@ final class PlanDayGenerationDispatchTests: XCTestCase {
         services.dayBriefGeneratedCards[today] = draft
         let brief = "Behind the routine. Fresh angle for today."
 
+        // A draft must not be silently replaced — confirm first.
+        do {
+            _ = try await services.generateDayCard(
+                scheduledDate: today,
+                dayBrief: brief
+            )
+            XCTFail("Expected overwrite confirmation requirement for an existing draft")
+        } catch {
+            XCTAssertEqual(generation.callCount, 0)
+            XCTAssertEqual(services.pendingOverwriteGenerateDate, today)
+            XCTAssertEqual(services.dayBriefGeneratedCards[today]?.title, "Draft",
+                           "The draft must not be replaced without confirmation")
+        }
+
         _ = try await services.generateDayCard(
             scheduledDate: today,
-            dayBrief: brief
+            dayBrief: brief,
+            confirmOverwrite: true
         )
 
         XCTAssertEqual(generation.callCount, 1)
         XCTAssertEqual(generation.lastBrief, brief)
+        XCTAssertNil(services.pendingOverwriteGenerateDate)
     }
 
     func testDefaultFixtureRepositoriesGenerateDayDraft() async throws {

@@ -90,7 +90,7 @@ final class DayLifecycleTests: XCTestCase {
         XCTAssertEqual(retained.first?.decision, .posted)
     }
 
-    func testDraftRegenerateDoesNotRequireOverwriteConfirmation() async throws {
+    func testDraftRegenerateRequiresConfirmationButSkipsUnpublish() async throws {
         let today = "2026-07-21"
         let draft = makeLifecycleCard(scheduledDate: today, title: "Draft only", status: "draft")
         let generation = DayLifecycleDayGenerationRepository(
@@ -119,16 +119,29 @@ final class DayLifecycleTests: XCTestCase {
         )
         services.dayBriefGeneratedCards[today] = draft
 
+        // An existing draft must not be replaced without explicit confirmation.
+        do {
+            _ = try await services.generateDayCard(
+                scheduledDate: today,
+                dayBrief: "Fresh draft brief",
+                confirmOverwrite: false
+            )
+            XCTFail("Expected overwrite confirmation requirement for an existing draft")
+        } catch {
+            let unpublishCount = await weekly.unpublishCallCount()
+            XCTAssertEqual(unpublishCount, 0)
+        }
+
         let card = try await services.generateDayCard(
             scheduledDate: today,
             dayBrief: "Fresh draft brief",
-            confirmOverwrite: false
+            confirmOverwrite: true
         )
 
         XCTAssertEqual(card.status, "draft")
         XCTAssertEqual(card.title, "Regenerated Fresh draft brief")
         let unpublishCount = await weekly.unpublishCallCount()
-        XCTAssertEqual(unpublishCount, 0)
+        XCTAssertEqual(unpublishCount, 0, "A draft has nothing live to unpublish")
     }
 
     func testOverwriteGenerateOnReadyRequiresConfirmationThenYieldsDraft() async throws {

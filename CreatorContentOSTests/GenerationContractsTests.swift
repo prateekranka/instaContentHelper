@@ -876,7 +876,8 @@ final class GenerationContractsTests: XCTestCase {
         do {
             _ = try await services.generateDayCard(
                 scheduledDate: targetDate,
-                dayBrief: "Second overlapping request."
+                dayBrief: "Second overlapping request.",
+                confirmOverwrite: true
             )
             XCTFail("Expected generation_already_running rejection instead of stale cached card.")
         } catch RepositoryError.edgeFunction(let message) {
@@ -2026,29 +2027,23 @@ final class GenerationContractsTests: XCTestCase {
         XCTAssertNil(services.latestGenerationSummary)
     }
 
-    func testGenerateDayCardRequiresOverwriteConfirmationForReadyDay() async throws {
+    func testGenerateDayCardRequiresOverwriteConfirmationForExistingDraft() async throws {
         let targetDate = "2026-06-03"
-        // A ready package for the target day: DayPackageLifecycleStatus treats published/
-        // decision statuses as ready packages that require explicit overwrite confirmation.
-        // ("ready" is a draft-like review status and would regenerate without confirmation.)
-        var readyCard = GeneratedDailyCardDraft.storyboardBreakdownFixture
-        readyCard.scheduledDate = targetDate
-        readyCard.status = "published"
+        // Any existing package — including a plain draft — requires explicit
+        // overwrite confirmation before it is replaced.
+        var draftCard = GeneratedDailyCardDraft.storyboardBreakdownFixture
+        draftCard.scheduledDate = targetDate
+        draftCard.status = "ready"
 
-        var freshCard = readyCard
+        var freshCard = draftCard
         freshCard.status = "draft"
         freshCard.title = "Day card: Brand unboxing at home, honest tone."
 
-        let publishedStore = FixturePublishedContentStore()
-        await publishedStore.savePublishedContent(
-            cards: [readyCard.dailyCard(completionState: nil)],
-            todayCard: nil
-        )
         let services = AppServices.fixtureBacked(
             repositories: AppRepositories(
                 context: .creatorFixture,
                 today: FixtureTodayCardRepository(),
-                weeklyPlans: FixtureWeeklyPlanRepository(publishedStore: publishedStore),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
                 references: FixtureReferenceRepository(),
                 referenceImport: FixtureReferenceImportRepository(),
                 dailyGeneration: DeterministicDayGenerationRepository(generatedCard: freshCard),
@@ -2059,7 +2054,7 @@ final class GenerationContractsTests: XCTestCase {
             todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-06-01" }
         )
-        services.dayBriefGeneratedCards[targetDate] = readyCard
+        services.dayBriefGeneratedCards[targetDate] = draftCard
 
         do {
             _ = try await services.generateDayCard(
@@ -2073,8 +2068,8 @@ final class GenerationContractsTests: XCTestCase {
                 "Expected ready_package_overwrite_required, got \(error.localizedDescription)"
             )
             XCTAssertEqual(services.pendingOverwriteGenerateDate, targetDate)
-            XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.status, "published",
-                           "The ready package must not be replaced without confirmation")
+            XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.status, "ready",
+                           "The existing draft must not be replaced without confirmation")
         }
 
         let overwrittenCard = try await services.generateDayCard(
@@ -2202,7 +2197,8 @@ final class GenerationContractsTests: XCTestCase {
             do {
                 _ = try await services.generateDayCard(
                     scheduledDate: requestedDate,
-                    dayBrief: "Brand unboxing at home, honest tone."
+                    dayBrief: "Brand unboxing at home, honest tone.",
+                    confirmOverwrite: true
                 )
                 XCTFail("Expected \(mismatch.label) mismatch rejection")
             } catch {
@@ -2269,7 +2265,8 @@ final class GenerationContractsTests: XCTestCase {
 
         let returnedCard = try await services.generateDayCard(
             scheduledDate: targetDate,
-            dayBrief: "Brand unboxing at home, honest tone."
+            dayBrief: "Brand unboxing at home, honest tone.",
+            confirmOverwrite: true
         )
 
         XCTAssertEqual(returnedCard.id, generatedCard.id)

@@ -273,7 +273,6 @@ final class AppServices {
         todayDate: @escaping TodayDateProvider = { SupabaseDateFormatting.todayDateString() },
         acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared
     ) -> AppServices {
-        let today = todayDate()
         let services = AppServices(
             repositories: repositories,
             isLiveSupabaseRuntime: isLiveSupabaseRuntime,
@@ -290,13 +289,6 @@ final class AppServices {
             weekCards: DailyCard.weekFixtures,
             acceptedGenerationStore: acceptedGenerationStore
         )
-        #if DEBUG
-        // Seed a reviewable draft so Plan can show Approve in fixture UI proofs.
-        var draft = GeneratedDailyCardDraft.storyboardBreakdownFixture
-        draft.scheduledDate = today
-        draft.status = "draft"
-        services.dayBriefGeneratedCards[today] = draft
-        #endif
         return services
     }
 
@@ -924,19 +916,24 @@ final class AppServices {
 
         let existingStatus = dayBriefGeneratedCards[scheduledDate]?.status
             ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })?.status
-        if DayPackageLifecycleStatus.requiresOverwriteConfirmation(existingStatus) {
+        // Any existing package — draft or live — must be explicitly confirmed before it is replaced.
+        if existingStatus != nil {
             guard confirmOverwrite else {
                 let error = "ready_package_overwrite_required"
                 dayBriefGenerationErrors[scheduledDate] = DayLifecycleErrorDisplay.message(forCode: error)
                 pendingOverwriteGenerateDate = scheduledDate
                 throw RepositoryError.edgeFunction(error)
             }
-            do {
-                _ = try await unpublishDay(scheduledDate: scheduledDate)
-            } catch {
-                let message = DayLifecycleErrorDisplay.message(for: error)
-                dayBriefGenerationErrors[scheduledDate] = message
-                throw RepositoryError.edgeFunction(message)
+            // Only live packages (published / decision) need unpublishing;
+            // a draft has nothing live to unpublish.
+            if DayPackageLifecycleStatus.requiresOverwriteConfirmation(existingStatus) {
+                do {
+                    _ = try await unpublishDay(scheduledDate: scheduledDate)
+                } catch {
+                    let message = DayLifecycleErrorDisplay.message(for: error)
+                    dayBriefGenerationErrors[scheduledDate] = message
+                    throw RepositoryError.edgeFunction(message)
+                }
             }
         }
         pendingOverwriteGenerateDate = nil
@@ -2316,7 +2313,7 @@ private enum DayLifecycleErrorDisplay {
         "update_ready_day_package_already_running": "Package save is already running. Wait a moment.",
         "update_ready_day_package_not_configured": "Package editing is not configured for this runtime.",
         "update_ready_day_package_conflict": "Could not save edits — the day changed. Refresh and try again.",
-        "ready_package_overwrite_required": "This day is a ready package. Confirm Overwrite to replace it with a new draft.",
+        "ready_package_overwrite_required": "This day already has a draft or package. Confirm Overwrite to replace it with a new draft.",
         "role_not_allowed": "This session cannot change that day package.",
         "creator_not_found": "This creator workspace is no longer available. Refresh and try again.",
         "missing_device_token": "This device session is missing. Sign in again.",

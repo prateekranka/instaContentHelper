@@ -127,7 +127,7 @@ struct PlanHubView: View {
         } message: {
             Text("Returns this ready package to draft. If there was a Decision, the live Decision clears and Archive history stays.")
         }
-        .alert("Overwrite ready package?", isPresented: $showOverwriteConfirmation) {
+        .alert("Overwrite current draft?", isPresented: $showOverwriteConfirmation) {
             Button("Cancel", role: .cancel) {
                 pendingGenerationBrief = nil
             }
@@ -138,7 +138,7 @@ struct PlanHubView: View {
                 pendingGenerationBrief = nil
             }
         } message: {
-            Text("This replaces the ready package with a new draft. Any live Decision clears; Archive history stays. You will need to approve again.")
+            Text("This replaces the current draft or package for this day with a new draft. Any live Decision clears; Archive history stays. You will need to approve again.")
         }
         .onChange(of: displayedCard?.id) { _, _ in
             lightEditCaption = displayedCard?.caption ?? ""
@@ -544,7 +544,8 @@ struct PlanHubView: View {
             return
         }
 
-        if DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status) {
+        // Any existing package — draft or live — needs explicit confirmation before replacement.
+        if displayedCard != nil {
             pendingGenerationBrief = trimmed
             showOverwriteConfirmation = true
             return
