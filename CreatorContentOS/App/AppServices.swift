@@ -226,10 +226,28 @@ final class AppServices {
         isLiveSupabaseRuntime && memberRole == "owner"
     }
 
-    /// Generation, Plan prep, and weekly publish are available to Creator sessions.
+    /// Creator voice is configured when positioning and voice rules are both set.
+    var voiceIsConfigured: Bool {
+        let positioning = creatorProfileSummary.positioning.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasRules = !creatorProfileSummary.voiceRules.isEmpty
+            || !creatorProfileSummary.voiceLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return !positioning.isEmpty && hasRules
+    }
+
+    /// True when the creator explicitly deferred voice setup (the onboarding default).
+    var voiceDeferred: Bool {
+        UserDefaultsOnboardingStore().loadCompletedData()?.voiceDeferred == true
+    }
+
+    /// Voice gate: generation is blocked only when voice is neither configured nor deferred.
+    var voiceGateOpen: Bool {
+        !voiceIsConfigured && !voiceDeferred
+    }
+
+    /// Generation is available once creator voice is set up or explicitly deferred.
+    /// The app is creator-only — no role check applies anymore.
     var canGenerateContent: Bool {
-        let role = memberRole.lowercased()
-        return role == "owner" || role == "editor" || role == "creator"
+        !voiceGateOpen
     }
 
     var currentTodayDateString: String {
@@ -717,9 +735,9 @@ final class AppServices {
         }
 
         guard canGenerateContent else {
-            let error = "role_not_allowed"
+            let error = "creator_voice_required"
             regenerationDayErrors[scheduledDate] = error
-            logGeneration("regenerate_day rejected role_not_allowed scheduled_date=\(scheduledDate) role=\(memberRole)")
+            logGeneration("regenerate_day rejected creator_voice_required scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
 
@@ -892,9 +910,9 @@ final class AppServices {
         }
 
         guard canGenerateContent else {
-            let error = "role_not_allowed"
+            let error = "creator_voice_required"
             dayBriefGenerationErrors[scheduledDate] = error
-            logGeneration("generate_day rejected role_not_allowed scheduled_date=\(scheduledDate) role=\(memberRole)")
+            logGeneration("generate_day rejected creator_voice_required scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
 
@@ -2330,6 +2348,7 @@ private enum DayGenerationErrorDisplay {
         "generation_timeout": "Generation timed out. Wait a moment, then try Generate again.",
         "generation_cancelled": "This day’s draft stopped before it finished. You can try Generate again.",
         "generation_already_running": "A generation is already in progress for this day. Wait for it to finish, then try again.",
+        "creator_voice_required": "Set up your creator voice first — or defer voice in You.",
         "accepted_run_not_found": "Generation status is still syncing. Refresh and try Generate again.",
         "cancelled": "This day’s draft stopped before it finished. You can try Generate again."
     ]
@@ -2352,6 +2371,7 @@ private enum DayGenerationErrorDisplay {
         "generation_timeout",
         "generation_cancelled",
         "generation_already_running",
+        "creator_voice_required",
         "accepted_run_not_found",
         "cancelled"
     ]

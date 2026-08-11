@@ -28,24 +28,12 @@ struct YouCreatorVoiceView: View {
     let backLabel: String
     let onBack: () -> Void
 
-    private let onboardingStore: any OnboardingStoring
-
     @State private var positioning = ""
     @State private var voiceRulesText = ""
     @State private var recurringFormatsText = ""
     @State private var captionStyle = ""
     @State private var noGoTopicsText = ""
     @State private var didLoadDraft = false
-
-    init(
-        backLabel: String,
-        onBack: @escaping () -> Void,
-        onboardingStore: any OnboardingStoring = UserDefaultsOnboardingStore()
-    ) {
-        self.backLabel = backLabel
-        self.onBack = onBack
-        self.onboardingStore = onboardingStore
-    }
 
     var body: some View {
         YouDestinationScaffold(
@@ -126,7 +114,7 @@ struct YouCreatorVoiceView: View {
     }
 
     private var voiceIsDeferred: Bool {
-        onboardingStore.loadCompletedData()?.voiceDeferred == true
+        services.voiceDeferred
     }
 
     private var voiceSubtitle: String {

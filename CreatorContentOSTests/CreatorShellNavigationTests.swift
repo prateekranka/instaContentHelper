@@ -59,11 +59,13 @@ final class CreatorShellNavigationTests: XCTestCase {
         XCTAssertNil(state.consumePlanSelectedDate())
     }
 
-    func testCreatorCanGenerateWithoutOwnerOrEditorRole() {
+    func testCanGenerateContentNoLongerDependsOnRole() {
+        // The app is creator-only: roles no longer gate generation.
+        // The fixture profile has voice configured, so every role can generate.
         XCTAssertTrue(AppServices.fixtureBacked(memberRole: "creator").canGenerateContent)
         XCTAssertTrue(AppServices.fixtureBacked(memberRole: "owner").canGenerateContent)
         XCTAssertTrue(AppServices.fixtureBacked(memberRole: "editor").canGenerateContent)
-        XCTAssertFalse(AppServices.fixtureBacked(memberRole: "scout").canGenerateContent)
+        XCTAssertTrue(AppServices.fixtureBacked(memberRole: "scout").canGenerateContent)
     }
 
     func testPreparePlanSelectedDateForEditAndOverflowEntries() {

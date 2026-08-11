@@ -50,6 +50,13 @@ struct PlanHubView: View {
                         onSelectIdea: { requestGeneration(brief: $0.dayBrief) },
                         onSubmitOther: submitOtherIdea
                     )
+                    if services.voiceGateOpen {
+                        Text("Set up your creator voice to generate — or defer voice in You.")
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("plan.voiceGate.hint")
+                    }
                 }
                 if isGeneratingSelectedDay || (hasDispatchedGeneration && displayedCard == nil) {
                     generationProgressBlock
@@ -532,6 +539,10 @@ struct PlanHubView: View {
         guard !hasDispatchedGeneration, !isGeneratingSelectedDay else { return }
         let trimmed = brief.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        guard services.canGenerateContent else {
+            // The inline voice-gate hint explains why generation is paused.
+            return
+        }
 
         if DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status) {
             pendingGenerationBrief = trimmed
