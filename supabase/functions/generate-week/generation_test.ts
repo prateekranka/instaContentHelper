@@ -2266,6 +2266,10 @@ Deno.test("generate_day prompt uses profile identity without HYROX default for b
     "generate_day should expose saved content pillars",
   );
   assert(
+    !system.includes("gym, lifestyle, eating, recovery"),
+    "generate_day must not expose legacy four pillars when profile uses onboarding slugs only",
+  );
+  assert(
     !system.includes("Indian mother, wife, and HYROX athlete"),
     "generate_day must not use seed HYROX identity copy",
   );

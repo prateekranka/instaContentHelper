@@ -1,8 +1,10 @@
 {
   "live_generate_attempted": true,
   "live_generate_completed": true,
+  "verification_run_at": "2026-09-05T18:45:00Z",
   "environment": "local-supabase",
-  "migration_applied": "supabase/migrations/20260905120000_adaptive_creator_onboarding.sql (local db push)",
+  "functions_serve_restarted": true,
+  "fix_applied": "parseGeneratedDayJSON now uses buildParseTimeDayContentPillars (legacy four + onboarding slugs) before single-day-runner profile-aware coercion",
   "endpoint": "http://127.0.0.1:54321/functions/v1/generate-week",
   "action": "generate_day",
   "response_mode": "sync",
@@ -13,21 +15,22 @@
     "positioning_snippet": "book and movie picks with warm, honest takes",
     "hyrox_in_positioning": false
   },
-  "provider_key_source": "/tmp/mco-functions-live-local.env (not committed; DeepSeek key added by user)",
+  "provider_key_source": "/tmp/mco-functions-live-local.env (not committed)",
   "provider_key_found": true,
   "local_functions_env": "/tmp/mco-functions-live-local.env",
-  "local_model_override": "MCO_DEEPSEEK_MODEL=deepseek-chat (set on deno smoke process; flash fails JSON locally)",
   "generate_http_status": 200,
   "generation_status": "draft",
-  "provider": "deepseek",
-  "model": "deepseek-chat",
-  "generation_duration_ms_approx": 55000,
-  "content_pillar": "lifestyle",
-  "title_snippet": "My Saturday evening wind-down order: book first, movie second",
+  "content_pillar": "movies-tv",
+  "title_snippet": "Saturday is for the story you already love",
   "card_mentions_books_or_movies": true,
   "books_movies_card_produced": true,
   "hyrox_in_response": false,
-  "terminal_error": null,
-  "notes": "Real generate_day via generate-week on local Supabase with functions serve using env file. Books/movies profile; card copy references books/movies; no HYROX. Sync mode returned 200 (prior run used async poll after Kong 504).",
-  "hermetic_prompt_test": "supabase/functions/generate-week/generation_test.ts — generate_day prompt uses profile identity without HYROX default for books profile"
+  "card_mentions_gym_pillar": false,
+  "deno_tests": {
+    "generation_validation_test": "37 passed (includes parseGeneratedDayJSON accepts books pillar)",
+    "generation_test_books_profile": "1 passed"
+  },
+  "notes": "After parse fix, live smoke returned HTTP 200 with movies-tv pillar and books/movies copy. No HYROX. Card persisted.",
+  "hermetic_prompt_test": "supabase/functions/generate-week/generation_test.ts — generate_day prompt uses profile identity without HYROX default for books profile",
+  "remaining_gap": null
 }

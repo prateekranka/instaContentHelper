@@ -388,6 +388,7 @@ export async function runDayGenerationPipeline(
           allowedContentPillars: buildAllowedDayContentPillars(
             prepared.inputSnapshot.creator_profile,
           ),
+          creatorProfile: prepared.inputSnapshot.creator_profile ?? null,
         },
       );
     } finally {
