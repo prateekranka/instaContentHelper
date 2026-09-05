@@ -88,6 +88,8 @@ struct PlanGenerationInputsSummary: View {
     private func accessibilitySuffix(for destination: YouRoute) -> String {
         switch destination {
         case .contentCategories: "categories"
+        case .productionPreferences: "production"
+        case .currentContext: "context"
         case .creatorVoice: "voice"
         case .references: "references"
         case .account: "account"

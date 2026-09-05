@@ -40,7 +40,10 @@ struct CreatorContentOSApp: App {
 
 struct CreatorContentOSAppView: View {
     @Environment(AppState.self) private var appState
-    @State private var onboardingModel = OnboardingViewModel()
+    @Environment(AppServices.self) private var services
+    @State private var onboardingModel = OnboardingViewModel(
+        store: UserDefaultsOnboardingStore()
+    )
 
     var body: some View {
         Group {
@@ -60,6 +63,28 @@ struct CreatorContentOSAppView: View {
             appView
 #endif
         }
+        .task(id: workspaceOnboardingScope) {
+            guard appState.authenticationPhase == .live else { return }
+            let scopedStore = WorkspaceScopedOnboardingStore(
+                workspaceID: services.context.workspaceID,
+                creatorID: services.context.creatorID
+            )
+            onboardingModel = OnboardingViewModel(store: scopedStore)
+        }
+    }
+
+    private var workspaceOnboardingScope: String {
+        "\(services.context.workspaceID.uuidString)-\(services.context.creatorID.uuidString)"
+    }
+
+    private var shouldShowLiveOnboarding: Bool {
+        guard appState.authenticationPhase == .live else { return false }
+        if onboardingModel.shouldKeepOnboardingFlowVisible { return true }
+        guard !onboardingModel.onboardingCompletedThisSession else { return false }
+        return OnboardingPresentationPolicy.shouldPresent(
+            presentation: services.creatorOnboardingPresentation,
+            sessionDismissed: onboardingModel.sessionDismissed
+        )
     }
 
     /// Live product always uses the Creator shell. `AppMode.admin` is ignored here.
@@ -70,11 +95,11 @@ struct CreatorContentOSAppView: View {
             case .restoring:
                 AuthenticationRestoringView()
             case .live:
-                if onboardingModel.shouldPresentOnboarding {
+                if shouldShowLiveOnboarding {
                     OnboardingFlowView(
                         model: onboardingModel,
                         onSoftSkip: {},
-                        onComplete: handleOnboardingComplete
+                        onHandoffComplete: handleOnboardingHandoff
                     )
                     .tint(PocketSheetTheme.Color.ink)
                     .pocketSheetChromePalette()
@@ -88,9 +113,17 @@ struct CreatorContentOSAppView: View {
         }
     }
 
-    private func handleOnboardingComplete(_ handoff: OnboardingFirstDayHandoff) {
-        appState.handoffFirstDayFromOnboarding(handoff)
+    private func handleOnboardingHandoff(
+        _ result: OnboardingFirstIdeaHandoffResult,
+        handoff: OnboardingFirstDayHandoff
+    ) {
         onboardingModel.sessionDismissed = false
+        switch result {
+        case .completed, .skippedExistingReady:
+            appState.handoffFirstDayFromOnboarding(handoff)
+        case .persistFailed, .generationFailed:
+            break
+        }
     }
 
 #if DEBUG
@@ -110,7 +143,7 @@ private extension AppState {
     ) -> AppState {
 #if DEBUG
         if environment["MCO_RESET_ONBOARDING"] == "1" {
-            UserDefaultsOnboardingStore().resetAll()
+            UserDefaultsOnboardingStore.resetLegacyGlobalKeys()
         }
 
         if environment["MCO_FORCE_SIGN_IN"] == "1" {

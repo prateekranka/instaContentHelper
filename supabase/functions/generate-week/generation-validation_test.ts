@@ -213,6 +213,30 @@ Deno.test("day JSON coerce recovers en-dash timestamps and drops incomplete idea
   assertEquals(validated.idea_bank.length, 0);
 });
 
+Deno.test("generate_day validator accepts saved books pillar outside legacy four", () => {
+  const card = {
+    ...makeMockGeneratedWeek(fixtureInput()).daily_cards[1],
+    scheduled_date: "2026-06-09",
+    content_pillar: "books",
+  };
+  const validated = validateGeneratedDayOutput(
+    { daily_card: card },
+    "2026-06-09",
+    1,
+    {
+      allowedContentPillars: [
+        "books",
+        "movies-tv",
+        "gym",
+        "lifestyle",
+        "eating",
+        "recovery",
+      ],
+    },
+  );
+  assertEquals(validated.daily_card.content_pillar, "books");
+});
+
 Deno.test("validator rejects malformed AI JSON", () => {
   assertThrowsGenerationCode(
     () => parseGeneratedWeekJSON("{", "2026-06-08"),

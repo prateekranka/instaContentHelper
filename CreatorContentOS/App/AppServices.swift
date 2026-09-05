@@ -27,6 +27,7 @@ final class AppServices {
     var weeklyIdeas: [WeeklyIdea]
     var intelligenceHome: IntelligenceHome
     var creatorProfileSummary: CreatorProfileSummary
+    var creatorOnboardingPresentation: CreatorOnboardingPresentation = .new
     var weekCards: [DailyCard]
     var lastRepositoryError: String?
     var lastTodayDecisionSyncError: String?
@@ -234,9 +235,9 @@ final class AppServices {
         return !positioning.isEmpty && hasRules
     }
 
-    /// True when the creator explicitly deferred voice setup (the onboarding default).
+    /// True when the creator explicitly deferred voice setup in legacy onboarding cache.
     var voiceDeferred: Bool {
-        UserDefaultsOnboardingStore().loadCompletedData()?.voiceDeferred == true
+        false
     }
 
     /// True while the post-onboarding Creator Voice prefill draft is active.
@@ -335,12 +336,7 @@ final class AppServices {
                 recentlyUsed: [],
                 librarySections: []
             ),
-            creatorProfileSummary: CreatorProfileSummary(
-                displayName: "Creator",
-                positioning: "Loading live profile",
-                voiceLine: "",
-                noGoTopics: []
-            ),
+            creatorProfileSummary: CreatorProfileSummary.emptyLiveFallback(displayName: "Loading"),
             weekCards: [],
             todayContentState: .loading
         )
@@ -1361,6 +1357,252 @@ final class AppServices {
         }
     }
 
+    func confirmOnboardingAndPrepareFirstIdea(
+        completedData: OnboardingCompletedData,
+        scheduledDate: String
+    ) async -> OnboardingFirstIdeaHandoffResult {
+        let record = OnboardingRecord(completedData: completedData)
+        let completedAt = SupabaseDateFormatting.isoTimestampString()
+        let existingPackage = firstIdeaPackage(for: scheduledDate)
+        let plan = OnboardingFirstIdeaHandoffPlanner.plan(
+            scheduledDate: scheduledDate,
+            record: record,
+            existingPackageStatus: existingPackage?.status,
+            hasUserEditedPackage: hasUserEditedFirstIdeaPackage(for: scheduledDate),
+            firstIdeaHandoffStatus: creatorProfileSummary.firstIdeaHandoff["status"],
+            existingDraftIsComplete: isFirstIdeaDraftComplete(existingPackage)
+        )
+
+        let preparingHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
+            scheduledDate: scheduledDate,
+            status: .preparing,
+            briefFingerprint: plan.briefFingerprint
+        )
+        var establishedUpdate = OnboardingProfileMapper.profileUpdate(
+            from: record,
+            onboardingState: .established,
+            onboardingStep: nil,
+            onboardingCompletedAt: completedAt,
+            firstIdeaHandoff: preparingHandoff
+        )
+
+        guard await updateCreatorProfileImmediately(establishedUpdate) else {
+            var partialUpdate = establishedUpdate
+            partialUpdate.onboardingState = .partial
+            partialUpdate.onboardingCompletedAt = nil
+            _ = await updateCreatorProfileImmediately(partialUpdate)
+            return .persistFailed
+        }
+
+        if !plan.shouldGenerate {
+            if plan.makeAvailableOnly {
+                do {
+                    let navigatedToday = try await makeDayAvailable(scheduledDate: scheduledDate)
+                    return await completeFirstIdeaHandoff(
+                        record: record,
+                        scheduledDate: scheduledDate,
+                        completedAt: completedAt,
+                        briefFingerprint: plan.briefFingerprint,
+                        navigatedToday: navigatedToday
+                    )
+                } catch {
+                    return await failFirstIdeaHandoff(
+                        record: record,
+                        scheduledDate: scheduledDate,
+                        completedAt: completedAt,
+                        briefFingerprint: plan.briefFingerprint,
+                        error: error
+                    )
+                }
+            }
+
+            return await skipFirstIdeaHandoffForExistingReady(
+                record: record,
+                scheduledDate: scheduledDate,
+                completedAt: completedAt,
+                briefFingerprint: plan.briefFingerprint,
+                skipReason: plan.skipReason
+            )
+        }
+
+        if hasUsableReadyTodayPackage(for: scheduledDate) {
+            return await skipFirstIdeaHandoffForExistingReady(
+                record: record,
+                scheduledDate: scheduledDate,
+                completedAt: completedAt,
+                briefFingerprint: plan.briefFingerprint,
+                skipReason: .skippedExistingReady
+            )
+        }
+
+        do {
+            _ = try await generateDayCard(
+                scheduledDate: scheduledDate,
+                dayBrief: plan.dayBrief,
+                confirmOverwrite: plan.confirmOverwrite
+            )
+            let navigatedToday = try await makeDayAvailable(scheduledDate: scheduledDate)
+            return await completeFirstIdeaHandoff(
+                record: record,
+                scheduledDate: scheduledDate,
+                completedAt: completedAt,
+                briefFingerprint: plan.briefFingerprint,
+                navigatedToday: navigatedToday
+            )
+        } catch {
+            if Self.isReadyPackageOverwriteRequired(error) {
+                return await skipFirstIdeaHandoffForExistingReady(
+                    record: record,
+                    scheduledDate: scheduledDate,
+                    completedAt: completedAt,
+                    briefFingerprint: plan.briefFingerprint,
+                    skipReason: .skippedExistingReady
+                )
+            }
+            return await failFirstIdeaHandoff(
+                record: record,
+                scheduledDate: scheduledDate,
+                completedAt: completedAt,
+                briefFingerprint: plan.briefFingerprint,
+                error: error
+            )
+        }
+    }
+
+    private func skipFirstIdeaHandoffForExistingReady(
+        record: OnboardingRecord,
+        scheduledDate: String,
+        completedAt: String,
+        briefFingerprint: String,
+        skipReason: OnboardingFirstIdeaHandoffStatus?
+    ) async -> OnboardingFirstIdeaHandoffResult {
+        let skippedHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
+            scheduledDate: scheduledDate,
+            status: skipReason ?? .skippedExistingReady,
+            briefFingerprint: briefFingerprint
+        )
+        var skippedUpdate = OnboardingProfileMapper.profileUpdate(
+            from: record,
+            onboardingState: .established,
+            onboardingCompletedAt: completedAt,
+            firstIdeaHandoff: skippedHandoff
+        )
+        _ = await updateCreatorProfileImmediately(skippedUpdate)
+        return .skippedExistingReady
+    }
+
+    private func completeFirstIdeaHandoff(
+        record: OnboardingRecord,
+        scheduledDate: String,
+        completedAt: String,
+        briefFingerprint: String,
+        navigatedToday: Bool
+    ) async -> OnboardingFirstIdeaHandoffResult {
+        let completedHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
+            scheduledDate: scheduledDate,
+            status: .completed,
+            briefFingerprint: briefFingerprint
+        )
+        var completedUpdate = OnboardingProfileMapper.profileUpdate(
+            from: record,
+            onboardingState: .established,
+            onboardingCompletedAt: completedAt,
+            firstIdeaHandoff: completedHandoff
+        )
+        _ = await updateCreatorProfileImmediately(completedUpdate)
+        return .completed(navigatedToday: navigatedToday)
+    }
+
+    private func failFirstIdeaHandoff(
+        record: OnboardingRecord,
+        scheduledDate: String,
+        completedAt: String,
+        briefFingerprint: String,
+        error: Error
+    ) async -> OnboardingFirstIdeaHandoffResult {
+        let failedHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
+            scheduledDate: scheduledDate,
+            status: .failed,
+            briefFingerprint: briefFingerprint
+        )
+        var failedUpdate = OnboardingProfileMapper.profileUpdate(
+            from: record,
+            onboardingState: .established,
+            onboardingCompletedAt: completedAt,
+            firstIdeaHandoff: failedHandoff
+        )
+        _ = await updateCreatorProfileImmediately(failedUpdate)
+        return .generationFailed(message: Self.firstIdeaHandoffErrorMessage(for: error))
+    }
+
+    private static let todayCardLoadingTitles: Set<String> = [
+        "Checking today's plan"
+    ]
+
+    private func hasUsableReadyTodayPackage(for scheduledDate: String) -> Bool {
+        guard scheduledDate == currentTodayDateString else { return false }
+        let title = todayCard.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, !Self.todayCardLoadingTitles.contains(title) else { return false }
+        return !todayCard.scenes.isEmpty
+    }
+
+    private static func isReadyPackageOverwriteRequired(_ error: Error) -> Bool {
+        if case RepositoryError.edgeFunction(let code) = error {
+            return code == "ready_package_overwrite_required"
+        }
+        return error.localizedDescription.contains("ready_package_overwrite_required")
+    }
+
+    private static func firstIdeaHandoffErrorMessage(for error: Error) -> String {
+        if case RepositoryError.edgeFunction(let code) = error {
+            if code == "ready_package_overwrite_required" {
+                return "We saved your preferences, but Today already has an idea, so we left it."
+            }
+            if let message = DayLifecycleErrorDisplay.message(forCode: code).nilIfBlank {
+                return message
+            }
+        }
+        let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if description.contains("ready_package_overwrite_required") {
+            return "We saved your preferences, but Today already has an idea, so we left it."
+        }
+        if description.contains("_") && !description.contains(" ") {
+            return "We saved your preferences but couldn't prepare your first idea."
+        }
+        return description.nilIfBlank ?? "We saved your preferences but couldn't prepare your first idea."
+    }
+
+    private func firstIdeaPackage(for scheduledDate: String) -> GeneratedDailyCardDraft? {
+        dayBriefGeneratedCards[scheduledDate]
+            ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
+    }
+
+    private func existingFirstIdeaPackageStatus(for scheduledDate: String) -> String? {
+        firstIdeaPackage(for: scheduledDate)?.status
+    }
+
+    private func hasUserEditedFirstIdeaPackage(for scheduledDate: String) -> Bool {
+        guard let package = firstIdeaPackage(for: scheduledDate) else {
+            return false
+        }
+        return OnboardingFirstIdeaPackageEditDetector.hasUserEditedPackage(
+            packageStatus: package.status,
+            packageTitle: package.title,
+            packageScript: package.script,
+            packageCaption: package.caption,
+            lastGeneratedSnapshot: nil
+        )
+    }
+
+    private func isFirstIdeaDraftComplete(_ package: GeneratedDailyCardDraft?) -> Bool {
+        guard let package else { return false }
+        return OnboardingFirstIdeaPackageEditDetector.isCompleteGeneratedDraft(
+            packageTitle: package.title,
+            packageScript: package.script,
+            packageCaption: package.caption
+        )
+    }
+
     func publishCurrentWeek() {
         Task {
             await publishCurrentWeekImmediately()
@@ -1947,8 +2189,18 @@ final class AppServices {
 
         do {
             creatorProfileSummary = try await repositories.creatorProfile.activeProfileSummary(for: context)
+            creatorOnboardingPresentation = CreatorOnboardingPresentationMapper.presentation(
+                from: creatorProfileSummary,
+                loadFailed: false,
+                previousPresentation: creatorOnboardingPresentation
+            )
         } catch {
             refreshError = refreshError ?? error
+            creatorOnboardingPresentation = CreatorOnboardingPresentationMapper.presentation(
+                from: creatorProfileSummary,
+                loadFailed: true,
+                previousPresentation: creatorOnboardingPresentation
+            )
         }
 
         if refreshError == nil {

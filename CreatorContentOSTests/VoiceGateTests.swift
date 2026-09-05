@@ -74,12 +74,12 @@ final class VoiceGateTests: XCTestCase {
         XCTAssertFalse(services.canGenerateContent)
     }
 
-    func testVoiceDeferredOpensGateWithEmptyVoice() {
+    func testLegacyUserDefaultsDeferralDoesNotOpenVoiceGate() {
         UserDefaultsOnboardingStore().markComplete(with: Self.deferredData)
         let services = makeServices(profile: Self.emptyProfile)
-        XCTAssertTrue(services.voiceDeferred)
-        XCTAssertFalse(services.voiceGateOpen)
-        XCTAssertTrue(services.canGenerateContent)
+        XCTAssertFalse(services.voiceDeferred)
+        XCTAssertTrue(services.voiceGateOpen)
+        XCTAssertFalse(services.canGenerateContent)
     }
 
     func testGenerateDayCardRejectsWhenVoiceGateClosed() async throws {
@@ -102,5 +102,41 @@ final class VoiceGateTests: XCTestCase {
             // With voice configured the gate is open; any error here is unrelated to the voice gate.
             XCTAssertFalse(services.dayBriefGenerationErrors["2026-09-10"] == "creator_voice_required")
         }
+    }
+
+    func testOnboardingEstablishedProfileUpdateOpensVoiceGate() {
+        let update = OnboardingProfileMapper.profileUpdate(
+            from: OnboardingRecord(
+                completedData: OnboardingCompletedData(
+                    selectedCategoryIDs: ["books"],
+                    customSubjects: [],
+                    startingPoint: .justStarting,
+                    selectedTasteExampleIDs: ["books-rec-1"],
+                    tasteExampleTitles: ["3 underrated books"],
+                    formats: [.talkingToCamera],
+                    timeToCreate: .tenToThirty,
+                    contentLanguage: "English",
+                    showFace: true,
+                    useVoice: true,
+                    contextAnswers: [:],
+                    references: [],
+                    voiceDeferred: false
+                )
+            ),
+            onboardingState: .established,
+            onboardingCompletedAt: "2026-09-05T12:00:00Z"
+        )
+        let services = makeServices(
+            profile: CreatorProfileSummary(
+                displayName: "Creator",
+                positioning: update.positioning ?? "",
+                voiceLine: "",
+                noGoTopics: [],
+                voiceRules: update.voiceRules ?? [],
+                contentPillars: update.contentPillars ?? []
+            )
+        )
+        XCTAssertTrue(services.voiceIsConfigured)
+        XCTAssertTrue(services.canGenerateContent)
     }
 }

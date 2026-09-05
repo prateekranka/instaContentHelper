@@ -334,6 +334,51 @@ final class DayLifecycleTests: XCTestCase {
             XCTAssertNotNil(services.lastUnpublishDayError)
         }
     }
+
+    func testFirstIdeaPromotionUsesMakeDayAvailableNotInstagramPublish() async throws {
+        let today = "2026-09-05"
+        let trackingWeekly = FirstIdeaTrackingWeeklyPlanRepository()
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: trackingWeekly,
+                references: FixtureReferenceRepository(),
+                dailyGeneration: FirstIdeaDayGenerationStub(),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayDate: { today }
+        )
+
+        let result = await services.confirmOnboardingAndPrepareFirstIdea(
+            completedData: OnboardingCompletedData(
+                selectedCategoryIDs: ["books"],
+                customSubjects: [],
+                startingPoint: .justStarting,
+                selectedTasteExampleIDs: ["books-rec-1"],
+                tasteExampleTitles: ["3 underrated books"],
+                formats: [.talkingToCamera],
+                timeToCreate: .tenToThirty,
+                contentLanguage: "English",
+                showFace: true,
+                useVoice: true,
+                contextAnswers: [:],
+                references: [],
+                voiceDeferred: false
+            ),
+            scheduledDate: today
+        )
+
+        guard case .completed = result else {
+            return XCTFail("Expected completed first-idea handoff")
+        }
+        let makeDayAvailableCalls = await trackingWeekly.makeDayAvailableCallCount
+        let publishWeekCalls = await trackingWeekly.publishWeekCallCount
+        XCTAssertEqual(makeDayAvailableCalls, 1)
+        XCTAssertEqual(publishWeekCalls, 0)
+    }
 }
 
 // MARK: - Helpers
@@ -622,6 +667,148 @@ private struct DayLifecycleDayGenerationRepository: DayGenerationRepository {
             sourceSummary: "Day lifecycle test.",
             generatedAt: "2026-07-21T00:00:00Z"
         )
+    }
+}
+
+private actor FirstIdeaTrackingWeeklyPlanRepository: WeeklyPlanRepository {
+    private(set) var makeDayAvailableCallCount = 0
+    private(set) var publishWeekCallCount = 0
+
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan { .raceWeek }
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? { nil }
+    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] { [] }
+    func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
+        WeeklyRepositoryContent(publishedPlan: .raceWeek, generatedDraft: nil, ideaBank: [])
+    }
+    func publishWeek(
+        _ plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        generatedDraft: GeneratedWeekDraft?,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPublishResult {
+        publishWeekCallCount += 1
+        throw RepositoryError.notConfigured("publish_not_used")
+    }
+    func selectIdeaForNextOpenDay(
+        _ idea: WeeklyIdea,
+        in plan: WeeklyPlan,
+        ideaBank: [WeeklyIdea],
+        context: WorkspaceContext
+    ) async throws -> WeeklySelectionUpdate {
+        WeeklySelectionUpdate(weeklyPlan: plan, ideaBank: ideaBank)
+    }
+    func updateWeeklySetupSections(
+        _ sections: [WeeklySetupSection],
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan { plan }
+    func updateWeeklyBrief(
+        _ text: String,
+        in plan: WeeklyPlan,
+        context: WorkspaceContext
+    ) async throws -> WeeklyPlan { plan }
+    func updateDailyCardReviewState(
+        dailyCardID: UUID,
+        reviewState: String,
+        context: WorkspaceContext
+    ) async throws {}
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult {
+        makeDayAvailableCallCount += 1
+        return DayAvailabilityResult(
+            dailyCardID: dailyCardID ?? UUID(),
+            scheduledDate: scheduledDate,
+            status: "published",
+            weeklyPlanID: UUID(),
+            weekIsSoftLocked: false
+        )
+    }
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult {
+        throw RepositoryError.notConfigured("unpublish_not_used")
+    }
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        package: ReadyDayPackageUpdate,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult {
+        throw RepositoryError.notConfigured("update_ready_not_used")
+    }
+}
+
+private struct FirstIdeaDayGenerationStub: DayGenerationRepository {
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        DailyGenerationResult(
+            generationID: UUID(),
+            weeklyPlanID: UUID(),
+            status: "draft",
+            targetScheduledDate: scheduledDate,
+            dailyCard: GeneratedDailyCardDraft(
+                id: UUID(),
+                scheduledDate: scheduledDate,
+                status: "draft",
+                title: "First idea",
+                whyToday: "Onboarding.",
+                growthJob: "Consistency.",
+                contentPillar: "books",
+                shootability: "easy",
+                estimatedShootMinutes: 12,
+                energyRequired: "low",
+                languageMode: "English",
+                sceneList: [],
+                script: "Script.",
+                noVoiceoverVersion: "",
+                onScreenText: [],
+                caption: "Caption.",
+                cta: "Save.",
+                hashtags: [],
+                coverText: "Cover",
+                postInstructions: "",
+                brandEventNotes: "",
+                backupStory: "",
+                backupCaptionOnly: "",
+                audioOptionNotes: "",
+                creatorFitScore: 90,
+                riskNotes: [],
+                assumptions: [],
+                sourceNote: "Stub."
+            ),
+            warnings: [],
+            assumptions: [],
+            sourceSummary: "Stub",
+            generatedAt: "2026-09-05T00:00:00Z"
+        )
+    }
+
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        dayGuidance: String?,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        throw RepositoryError.notConfigured("regenerate_not_used")
+    }
+
+    func resumeAcceptedDayGeneration(
+        generationID: UUID,
+        creatorID: UUID,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        throw RepositoryError.notConfigured("resume_not_used")
     }
 }
 

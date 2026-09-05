@@ -2,35 +2,26 @@ import Foundation
 
 enum OnboardingReferenceParseError: Error, Equatable {
     case empty
-    case wrongKind(expected: OnboardingReferenceInputKind)
-    case malformed(expected: OnboardingReferenceInputKind)
+    case malformed
     case nonInstagram
     case unsupportedStory
     case unsupportedAudio
-    case invalidHandle(expected: OnboardingReferenceInputKind)
+    case invalidHandle
 
     var userMessage: String {
         switch self {
         case .empty:
             "Paste a reel URL or @handle"
-        case .wrongKind(let expected):
-            expected == .reel
-                ? "Handles are for profiles — paste a reel URL or switch to Profile @handle."
-                : "That's a reel link — switch to Profile @handle or paste a profile @handle."
-        case .malformed(let expected):
-            expected == .reel
-                ? "That doesn't look like a reel — try instagram.com/reel/…"
-                : "That doesn't look like a profile — try @handle or instagram.com/handle"
+        case .malformed:
+            "That doesn't look like a reel or profile — try instagram.com/reel/… or @handle"
         case .nonInstagram:
             "Paste an Instagram link — instagram.com/reel/… or instagram.com/handle"
         case .unsupportedStory:
             "Story links can't be used as references."
         case .unsupportedAudio:
             "Audio links aren't supported — paste a reel or profile."
-        case .invalidHandle(let expected):
-            expected == .reel
-                ? "Paste a full reel URL — e.g. instagram.com/reel/…"
-                : "Enter a valid @handle — letters, numbers, dots, underscores (2–30 chars)."
+        case .invalidHandle:
+            "Enter a valid @handle — letters, numbers, dots, underscores (2–30 chars)."
         }
     }
 }
@@ -51,10 +42,7 @@ enum OnboardingReferenceParser {
         "p", "reel", "reels", "stories", "tv", "music",
     ]
 
-    static func parse(
-        _ rawText: String,
-        expected: OnboardingReferenceInputKind
-    ) -> Result<OnboardingReferenceParseResult, OnboardingReferenceParseError> {
+    static func parse(_ rawText: String) -> Result<OnboardingReferenceParseResult, OnboardingReferenceParseError> {
         let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .failure(.empty) }
 
@@ -64,18 +52,52 @@ enum OnboardingReferenceParser {
         ) != nil
 
         if looksLikeURL {
-            return parseURL(trimmed, expected: expected)
+            return parseURL(trimmed)
         }
 
-        return parsePlainHandle(trimmed, expected: expected)
+        return parsePlainHandle(trimmed)
+    }
+
+    /// A full reel/post URL is complete enough to add on paste or when typing finishes.
+    static func shouldAutoAddCompleteReelOrPost(previous: String, current: String) -> Bool {
+        guard looksLikeCompleteReelOrPostURL(current) else { return false }
+        let inserted = current.count - previous.count
+        if inserted >= 12 { return true }
+        return reelOrPostURLLooksTerminated(current)
+    }
+
+    static func looksLikeCompleteReelOrPostURL(_ rawText: String) -> Bool {
+        guard case .success(let parsed) = parse(rawText), parsed.reference.isReel else {
+            return false
+        }
+        return true
+    }
+
+    static func looksLikeURLAttempt(_ rawText: String) -> Bool {
+        rawText.range(
+            of: #"instagram\.com|https?://"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+    }
+
+    private static func reelOrPostURLLooksTerminated(_ rawText: String) -> Bool {
+        let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let delimited = trimmed.range(
+            of: #"(?i)instagram\.com/(?:reel|reels|p)/[A-Za-z0-9_-]{5,}(/|\?)"#,
+            options: .regularExpression
+        ) != nil
+        if delimited { return true }
+        return trimmed.range(
+            of: #"(?i)instagram\.com/(?:reel|reels|p)/[A-Za-z0-9_-]{11,}\s*$"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private static func parseURL(
-        _ value: String,
-        expected: OnboardingReferenceInputKind
+        _ value: String
     ) -> Result<OnboardingReferenceParseResult, OnboardingReferenceParseError> {
         guard let classification = classifyInstagramURL(value) else {
-            return .failure(.malformed(expected: expected))
+            return .failure(.malformed)
         }
 
         switch classification.kind {
@@ -86,9 +108,8 @@ enum OnboardingReferenceParser {
         case .audio:
             return .failure(.unsupportedAudio)
         case .malformed:
-            return .failure(.malformed(expected: expected))
+            return .failure(.malformed)
         case .reel, .post:
-            if expected == .profile { return .failure(.wrongKind(expected: expected)) }
             return .success(
                 OnboardingReferenceParseResult(
                     reference: buildReelRef(classification: classification),
@@ -97,7 +118,6 @@ enum OnboardingReferenceParser {
                 )
             )
         case .profile(let handle):
-            if expected == .reel { return .failure(.wrongKind(expected: expected)) }
             let url = instagramProfileURL(handle: handle)
             return .success(
                 OnboardingReferenceParseResult(
@@ -110,23 +130,22 @@ enum OnboardingReferenceParser {
     }
 
     private static func parsePlainHandle(
-        _ value: String,
-        expected: OnboardingReferenceInputKind
+        _ value: String
     ) -> Result<OnboardingReferenceParseResult, OnboardingReferenceParseError> {
-        guard expected == .profile else {
-            return .failure(.invalidHandle(expected: expected))
-        }
-        guard let handle = normalizePlainHandle(value) else {
-            return .failure(.invalidHandle(expected: expected))
-        }
-        let url = instagramProfileURL(handle: handle)
-        return .success(
-            OnboardingReferenceParseResult(
-                reference: buildProfileRef(handle: handle, url: url),
-                needsProfileVerification: true,
-                handle: handle
+        if let handle = normalizePlainHandle(value) {
+            let url = instagramProfileURL(handle: handle)
+            return .success(
+                OnboardingReferenceParseResult(
+                    reference: buildProfileRef(handle: handle, url: url),
+                    needsProfileVerification: true,
+                    handle: handle
+                )
             )
-        )
+        }
+
+        let looksLikeHandleAttempt = value.hasPrefix("@")
+            || value.range(of: #"^[A-Za-z0-9._]+$"#, options: .regularExpression) != nil
+        return .failure(looksLikeHandleAttempt ? .invalidHandle : .malformed)
     }
 
     private enum URLKind {

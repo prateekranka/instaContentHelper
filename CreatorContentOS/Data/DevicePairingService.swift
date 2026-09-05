@@ -192,7 +192,8 @@ struct DevicePairingService {
 
         let repositories = SupabaseRepositoryBundleFactory().makeRepositories(
             context: session.context,
-            configuration: session.runtimeConfiguration
+            configuration: session.runtimeConfiguration,
+            creatorDisplayName: session.creatorDisplayName ?? "Creator"
         )
 
         return DevicePairingResult(session: session, repositories: repositories)

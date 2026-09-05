@@ -314,6 +314,29 @@ async function autoProvisionCreatorMembership(
     return { ok: false, error: "device_session_failed", status: 500 };
   }
 
+  const { error: profileError } = await admin.from("creator_profiles").insert({
+    workspace_id: workspace.id,
+    creator_id: creator.id,
+    status: "active",
+    version: 1,
+    onboarding_state: "new",
+    content_pillars: [],
+    voice_rules: [],
+    never_say: [],
+    recurring_formats: [],
+    custom_subjects: [],
+    taste_example_ids: [],
+    production_formats: [],
+    on_camera_restrictions: {},
+    recent_context: [],
+    first_idea_handoff: {},
+    created_by_member_id: member.id,
+  });
+  if (profileError) {
+    await admin.from("workspaces").delete().eq("id", workspace.id);
+    return { ok: false, error: "device_session_failed", status: 500 };
+  }
+
   return {
     ok: true,
     member: member as MemberRecord,

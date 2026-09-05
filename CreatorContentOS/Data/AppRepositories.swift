@@ -565,6 +565,32 @@ struct CreatorProfileSummary: Hashable, Sendable {
     var contentPillars: [String] = []
     var captionStyle: String? = nil
     var recurringFormats: [String] = []
+    var onboardingState: CreatorProfileOnboardingState = .new
+    var onboardingStep: Int? = nil
+    var onboardingVersion: Int = 1
+    var onboardingCompletedAt: String? = nil
+    var startingPoint: String? = nil
+    var customSubjects: [String] = []
+    var tasteExampleIDs: [String] = []
+    var productionFormats: [String] = []
+    var timeToCreate: String? = nil
+    var onCameraRestrictions: OnCameraRestrictionsPayload = .init()
+    var recentContext: [[String: String]] = []
+    var creatorNote: String? = nil
+    var firstIdeaHandoff: [String: String] = [:]
+    var contentLanguage: String = "English"
+
+    static func emptyLiveFallback(displayName: String) -> CreatorProfileSummary {
+        CreatorProfileSummary(
+            displayName: displayName.nilIfBlank ?? "Creator",
+            positioning: "",
+            voiceLine: "",
+            noGoTopics: [],
+            voiceRules: [],
+            contentPillars: [],
+            onboardingState: .new
+        )
+    }
 
     static let creatorFixture = CreatorProfileSummary(
         displayName: "Creator",
@@ -594,17 +620,31 @@ struct CreatorProfileSummary: Hashable, Sendable {
             "Food That Supports Training",
             "Training While Life Is Still Happening",
             "Brand In My Real Routine"
-        ]
+        ],
+        onboardingState: .established
     )
 }
 
-struct CreatorProfileUpdate: Hashable, Sendable {
-    var positioning: String
-    var voiceRules: [String]
-    var contentPillars: [String]
-    var captionStyle: String
-    var noGoTopics: [String]
-    var recurringFormats: [String]
+struct CreatorProfileUpdate: Sendable {
+    var positioning: String?
+    var voiceRules: [String]?
+    var contentPillars: [String]?
+    var captionStyle: String?
+    var noGoTopics: [String]?
+    var recurringFormats: [String]?
+    var onboardingState: CreatorProfileOnboardingState?
+    var onboardingStep: Int?
+    var onboardingCompletedAt: String?
+    var startingPoint: String?
+    var customSubjects: [String]?
+    var tasteExampleIDs: [String]?
+    var productionFormats: [String]?
+    var timeToCreate: String?
+    var onCameraRestrictions: OnCameraRestrictionsPayload?
+    var recentContext: [[String: String]]?
+    var creatorNote: String?
+    var firstIdeaHandoff: [String: String]?
+    var languagePreferences: [String: String]?
 
     init(
         positioning: String,
@@ -612,7 +652,20 @@ struct CreatorProfileUpdate: Hashable, Sendable {
         contentPillars: [String],
         captionStyle: String,
         noGoTopics: [String],
-        recurringFormats: [String]
+        recurringFormats: [String],
+        onboardingState: CreatorProfileOnboardingState? = nil,
+        onboardingStep: Int? = nil,
+        onboardingCompletedAt: String? = nil,
+        startingPoint: String? = nil,
+        customSubjects: [String]? = nil,
+        tasteExampleIDs: [String]? = nil,
+        productionFormats: [String]? = nil,
+        timeToCreate: String? = nil,
+        onCameraRestrictions: OnCameraRestrictionsPayload? = nil,
+        recentContext: [[String: String]]? = nil,
+        creatorNote: String? = nil,
+        firstIdeaHandoff: [String: String]? = nil,
+        languagePreferences: [String: String]? = nil
     ) {
         self.positioning = positioning
         self.voiceRules = voiceRules
@@ -620,6 +673,19 @@ struct CreatorProfileUpdate: Hashable, Sendable {
         self.captionStyle = captionStyle
         self.noGoTopics = noGoTopics
         self.recurringFormats = recurringFormats
+        self.onboardingState = onboardingState
+        self.onboardingStep = onboardingStep
+        self.onboardingCompletedAt = onboardingCompletedAt
+        self.startingPoint = startingPoint
+        self.customSubjects = customSubjects
+        self.tasteExampleIDs = tasteExampleIDs
+        self.productionFormats = productionFormats
+        self.timeToCreate = timeToCreate
+        self.onCameraRestrictions = onCameraRestrictions
+        self.recentContext = recentContext
+        self.creatorNote = creatorNote
+        self.firstIdeaHandoff = firstIdeaHandoff
+        self.languagePreferences = languagePreferences
     }
 
     init(summary: CreatorProfileSummary) {
@@ -631,6 +697,55 @@ struct CreatorProfileUpdate: Hashable, Sendable {
         captionStyle = summary.captionStyle ?? ""
         noGoTopics = summary.noGoTopics
         recurringFormats = summary.recurringFormats
+        onboardingState = summary.onboardingState
+        onboardingStep = summary.onboardingStep
+        onboardingCompletedAt = summary.onboardingCompletedAt
+        startingPoint = summary.startingPoint
+        customSubjects = summary.customSubjects
+        tasteExampleIDs = summary.tasteExampleIDs
+        productionFormats = summary.productionFormats
+        timeToCreate = summary.timeToCreate
+        onCameraRestrictions = summary.onCameraRestrictions
+        recentContext = summary.recentContext
+        creatorNote = summary.creatorNote
+        firstIdeaHandoff = summary.firstIdeaHandoff
+        languagePreferences = ["primary": summary.contentLanguage]
+    }
+
+    /// You voice/categories editor path: only the legacy six fields.
+    init(youEditorFields summary: CreatorProfileSummary) {
+        positioning = summary.positioning
+        voiceRules = summary.voiceRules.isEmpty
+            ? [summary.voiceLine].compactMap(\.nilIfBlank)
+            : summary.voiceRules
+        contentPillars = summary.contentPillars
+        captionStyle = summary.captionStyle ?? ""
+        noGoTopics = summary.noGoTopics
+        recurringFormats = summary.recurringFormats
+    }
+}
+
+extension CreatorProfileUpdate: Equatable {
+    static func == (lhs: CreatorProfileUpdate, rhs: CreatorProfileUpdate) -> Bool {
+        lhs.positioning == rhs.positioning
+            && lhs.voiceRules == rhs.voiceRules
+            && lhs.contentPillars == rhs.contentPillars
+            && lhs.captionStyle == rhs.captionStyle
+            && lhs.noGoTopics == rhs.noGoTopics
+            && lhs.recurringFormats == rhs.recurringFormats
+            && lhs.onboardingState == rhs.onboardingState
+            && lhs.onboardingStep == rhs.onboardingStep
+            && lhs.onboardingCompletedAt == rhs.onboardingCompletedAt
+            && lhs.startingPoint == rhs.startingPoint
+            && lhs.customSubjects == rhs.customSubjects
+            && lhs.tasteExampleIDs == rhs.tasteExampleIDs
+            && lhs.productionFormats == rhs.productionFormats
+            && lhs.timeToCreate == rhs.timeToCreate
+            && lhs.onCameraRestrictions == rhs.onCameraRestrictions
+            && lhs.recentContext == rhs.recentContext
+            && lhs.creatorNote == rhs.creatorNote
+            && lhs.firstIdeaHandoff == rhs.firstIdeaHandoff
+            && lhs.languagePreferences == rhs.languagePreferences
     }
 }
 

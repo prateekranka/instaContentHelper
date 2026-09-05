@@ -88,6 +88,41 @@ export function normalizeContentPillar(value: unknown): ContentPillar | null {
   }
   return null;
 }
+
+/** generate_day: legacy four pillars plus any saved creator content_pillar labels. */
+export function buildAllowedDayContentPillars(
+  creatorProfile: Record<string, unknown> | null | undefined,
+): string[] {
+  const allowed = new Set<string>(CONTENT_PILLARS);
+  const pillars = creatorProfile?.content_pillars;
+  if (Array.isArray(pillars)) {
+    for (const item of pillars) {
+      const label = stringValue(item)?.trim().toLowerCase();
+      if (label) {
+        allowed.add(label);
+      }
+    }
+  }
+  return [...allowed];
+}
+
+export function normalizeDayContentPillar(
+  value: unknown,
+  allowedPillars: string[],
+): string | null {
+  const legacy = normalizeContentPillar(value);
+  if (legacy) {
+    return legacy;
+  }
+  const normalized = stringValue(value)?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return null;
+  }
+  const match = allowedPillars.find((pillar) =>
+    pillar.toLowerCase() === normalized
+  );
+  return match ?? null;
+}
 export type GenerateWeekValidationCode =
   | "invalid_generation_payload"
   | "day_brief_required"
@@ -723,6 +758,7 @@ export function validateGeneratedDayOutput(
   value: unknown,
   scheduledDate: string,
   dayIndex: number,
+  options?: { allowedContentPillars?: string[] },
 ): GeneratedDayOutput {
   if (!isRecord(value)) {
     throw invalidWeek("Generated day must be an object.");
@@ -730,7 +766,7 @@ export function validateGeneratedDayOutput(
 
   const cardValue = value.daily_card ??
     (Array.isArray(value.daily_cards) ? value.daily_cards[0] : undefined);
-  const dailyCard = validateGeneratedDailyCard(cardValue, dayIndex);
+  const dailyCard = validateGeneratedDailyCard(cardValue, dayIndex, options);
   if (dailyCard.scheduled_date !== scheduledDate) {
     throw invalidWeek("Generated card date is outside the requested day.");
   }
@@ -947,6 +983,7 @@ export function isUUID(value: string | undefined): value is string {
 function validateGeneratedDailyCard(
   value: unknown,
   index: number,
+  options?: { allowedContentPillars?: string[] },
 ): GeneratedDailyCard {
   if (!isRecord(value)) {
     throw invalidWeek(`daily_cards[${index}] must be an object.`);
@@ -1037,7 +1074,12 @@ function validateGeneratedDailyCard(
       value.save_share_reason,
       "save_share_reason",
     ),
-    content_pillar: requiredContentPillar(value.content_pillar),
+    content_pillar: options?.allowedContentPillars
+      ? requiredDayContentPillar(
+        value.content_pillar,
+        options.allowedContentPillars,
+      )
+      : requiredContentPillar(value.content_pillar),
     shootability: requiredString(value.shootability, "shootability"),
     estimated_shoot_minutes: minutes,
     energy_required: requiredString(value.energy_required, "energy_required"),
@@ -1137,6 +1179,21 @@ function requiredContentPillar(value: unknown): ContentPillar {
   if (!pillar) {
     throw invalidWeek(
       `content_pillar must be one of: ${CONTENT_PILLARS.join(", ")}.`,
+    );
+  }
+  return pillar;
+}
+
+function requiredDayContentPillar(
+  value: unknown,
+  allowedPillars: string[],
+): string {
+  const pillar = normalizeDayContentPillar(value, allowedPillars);
+  if (!pillar) {
+    throw invalidWeek(
+      `content_pillar must match a saved creator pillar or one of: ${
+        CONTENT_PILLARS.join(", ")
+      }.`,
     );
   }
   return pillar;

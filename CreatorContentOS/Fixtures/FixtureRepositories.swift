@@ -462,13 +462,14 @@ struct FixtureCreatorProfileRepository: CreatorProfileRepository {
     func updateProfile(_ update: CreatorProfileUpdate, context: WorkspaceContext) async throws -> CreatorProfileSummary {
         CreatorProfileSummary(
             displayName: CreatorProfileSummary.creatorFixture.displayName,
-            positioning: update.positioning,
-            voiceLine: update.voiceRules.joined(separator: ", "),
-            noGoTopics: update.noGoTopics,
-            voiceRules: update.voiceRules,
-            contentPillars: update.contentPillars,
+            positioning: update.positioning ?? "",
+            voiceLine: update.voiceRules?.joined(separator: ", ") ?? "",
+            noGoTopics: update.noGoTopics ?? [],
+            voiceRules: update.voiceRules ?? [],
+            contentPillars: update.contentPillars ?? [],
             captionStyle: update.captionStyle,
-            recurringFormats: update.recurringFormats
+            recurringFormats: update.recurringFormats ?? [],
+            onboardingState: update.onboardingState ?? .established
         )
     }
 }

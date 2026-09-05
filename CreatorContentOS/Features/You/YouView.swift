@@ -85,7 +85,11 @@ struct YouView: View {
     private var generationInputsBlock: some View {
         PocketSheetBlock(header: "Generation inputs") {
             VStack(spacing: 0) {
-                setupRow(.contentCategories, title: "Content categories", subtitle: categorySubtitle)
+                setupRow(.contentCategories, title: "Interests & style", subtitle: interestsSubtitle)
+                PocketSheetDivider()
+                setupRow(.productionPreferences, title: "Content preferences", subtitle: productionSubtitle)
+                PocketSheetDivider()
+                setupRow(.currentContext, title: "Current reads & watches", subtitle: contextSubtitle)
                 PocketSheetDivider()
                 setupRow(.creatorVoice, title: "Creator voice", subtitle: voiceSubtitle)
                 PocketSheetDivider()
@@ -138,8 +142,16 @@ struct YouView: View {
         }
     }
 
-    private var categorySubtitle: String {
-        YouSetupMeta.categoriesSubtitle(from: services.creatorProfileSummary.contentPillars)
+    private var interestsSubtitle: String {
+        YouInterestsSelection.from(profile: services.creatorProfileSummary).summarySubtitle
+    }
+
+    private var productionSubtitle: String {
+        YouProductionSelection.from(profile: services.creatorProfileSummary).summarySubtitle
+    }
+
+    private var contextSubtitle: String {
+        YouContextSelection.from(profile: services.creatorProfileSummary).summarySubtitle
     }
 
     private var voiceSubtitle: String {
@@ -170,7 +182,9 @@ struct YouView: View {
 
     private func accessibilitySuffix(for route: YouRoute) -> String {
         switch route {
-        case .contentCategories: "categories"
+        case .contentCategories: "interests"
+        case .productionPreferences: "production"
+        case .currentContext: "context"
         case .creatorVoice: "voice"
         case .references: "references"
         case .account: "account"
@@ -207,6 +221,10 @@ struct YouRouteView: View {
             switch route {
             case .contentCategories:
                 YouContentCategoriesView(backLabel: backLabel, onBack: handleBack)
+            case .productionPreferences:
+                YouProductionPreferencesView(backLabel: backLabel, onBack: handleBack)
+            case .currentContext:
+                YouCurrentContextView(backLabel: backLabel, onBack: handleBack)
             case .creatorVoice:
                 YouCreatorVoiceView(backLabel: backLabel, onBack: handleBack)
             case .references:

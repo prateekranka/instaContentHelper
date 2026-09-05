@@ -6,6 +6,7 @@ import {
   StoryboardThumbnailGenerationError,
 } from "../_shared/storyboard-thumbnail-generation.ts";
 import {
+  buildAllowedDayContentPillars,
   GeneratedDailyCard,
   GeneratedDayOutput,
   GenerationInputSnapshot,
@@ -383,6 +384,11 @@ export async function runDayGenerationPipeline(
         rawOutput,
         prepared.request.scheduled_date,
         dayIndex,
+        {
+          allowedContentPillars: buildAllowedDayContentPillars(
+            prepared.inputSnapshot.creator_profile,
+          ),
+        },
       );
     } finally {
       stageTimings.finish("validation");

@@ -5,24 +5,28 @@ struct OnboardingFlowView: View {
     @Environment(AppServices.self) private var services
     @Bindable var model: OnboardingViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var reelDraft = ""
-    @State private var profileDraft = ""
-    @FocusState private var focusedReferenceField: OnboardingReferenceInputKind?
+    @FocusState private var focusedField: OnboardingFocusField?
 
     var onSoftSkip: () -> Void
-    var onComplete: (OnboardingFirstDayHandoff) -> Void
+    var onHandoffComplete: (OnboardingFirstIdeaHandoffResult, OnboardingFirstDayHandoff) -> Void
+
+    private enum OnboardingFocusField: Hashable {
+        case customSubject
+        case context(String)
+        case creatorNote
+    }
 
     var body: some View {
         ZStack {
             PocketSheetTheme.Color.paper.ignoresSafeArea()
             ScrollView {
                 VStack(spacing: 0) {
-                    header
+                    progressHeader
                     stepContent
                         .padding(.horizontal, PocketSheetSpace.l)
                         .padding(.top, PocketSheetSpace.m)
+                        .padding(.bottom, model.step == .review ? 160 : PocketSheetSpace.l)
                 }
-                .padding(.bottom, PocketSheetSpace.l)
             }
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -43,100 +47,121 @@ struct OnboardingFlowView: View {
                     }
             }
         }
-        .animation(.snappy(duration: 0.2), value: model.toastMessage)
-        .onAppear {
-            configureLiveProfileVerifierIfNeeded()
-        }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: model.toastMessage)
         .accessibilityIdentifier("onboarding.flow")
-    }
-
-    private func configureLiveProfileVerifierIfNeeded() {
-        guard services.isLiveSupabaseRuntime else { return }
-        model.configureProfileVerifier(AppServicesOnboardingProfileVerifier(services: services))
     }
 
     @ViewBuilder
     private var stepContent: some View {
         switch model.step {
-        case .categories:
-            categoriesStep
-        case .references:
-            referencesStep
-        case .confirm:
-            confirmStep
+        case .interests:
+            interestsStep
+        case .tasteExamples:
+            tasteExamplesStep
+        case .productionConstraints:
+            productionConstraintsStep
+        case .interestContext:
+            interestContextStep
+        case .review:
+            reviewStep
         }
     }
 
-    private var header: some View {
-        let centersCategoriesHeader = model.step == .categories
-        let centersStepIndicatorOnly = model.step == .references
-        return VStack(alignment: centersCategoriesHeader ? .center : .leading, spacing: PocketSheetSpace.xs) {
-            Text("Step \(model.step.rawValue + 1) of 3")
-                .font(PocketSheetType.sectionLabel)
-                .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
-                .tracking(0.44)
-                .frame(maxWidth: .infinity, alignment: centersStepIndicatorOnly || centersCategoriesHeader ? .center : .leading)
-                .accessibilityIdentifier("onboarding.stepIndicator")
+    // MARK: - Header
 
-            Text(stepTitle)
-                .font(PocketSheetType.screenTitle)
-                .foregroundStyle(PocketSheetTheme.Color.ink)
-                .accessibilityAddTraits(.isHeader)
+    private var progressHeader: some View {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+            OnboardingProgressBar(
+                currentStep: model.step.rawValue,
+                totalSteps: OnboardingStep.allCases.count
+            )
+            .padding(.horizontal, PocketSheetSpace.l)
+            .accessibilityIdentifier("onboarding.stepIndicator")
 
-            Text(stepSubtitle)
-                .font(.system(size: 15))
-                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                .multilineTextAlignment(centersCategoriesHeader ? .center : .leading)
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
+                Text(stepTitle)
+                    .font(PocketSheetType.screenTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .accessibilityAddTraits(.isHeader)
+
+                Text(stepSubtitle)
+                    .font(.system(size: 15))
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding(.horizontal, PocketSheetSpace.l)
+            .padding(.top, PocketSheetSpace.xs)
         }
-        .frame(maxWidth: .infinity, alignment: centersCategoriesHeader ? .center : .leading)
-        .padding(.horizontal, PocketSheetSpace.l)
         .padding(.top, PocketSheetSpace.l)
     }
 
     private var stepTitle: String {
         switch model.step {
-        case .categories: "What do you create about?"
-        case .references: "Who should we learn from?"
-        case .confirm: "Ready to generate?"
+        case .interests: "Let's get to know you"
+        case .tasteExamples: "Which of these could you imagine posting?"
+        case .productionConstraints: "What can you comfortably create?"
+        case .interestContext: "A bit more about you"
+        case .review: "Here's what we've understood"
         }
     }
 
     private var stepSubtitle: String {
         switch model.step {
-        case .categories:
-            "Pick your content categories — you can always change these later in You."
-        case .references:
-            "Reels and profiles teach us your aesthetic."
-        case .confirm:
-            "Done."
+        case .interests:
+            "What would you enjoy making content about? (Pick as many as you like)"
+        case .tasteExamples:
+            "Pick what feels most like you (no right or wrong answer)."
+        case .productionConstraints:
+            "Select all that work for you."
+        case .interestContext:
+            "These help us make ideas that feel personal and relevant."
+        case .review:
+            "You can edit anything."
         }
     }
 
-    // MARK: - Categories
+    // MARK: - Step 1: Interests
 
-    private var categoriesStep: some View {
+    private var interestsStep: some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
-            Text("Pick 1–3")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                .frame(maxWidth: .infinity)
-                .multilineTextAlignment(.center)
+            HStack(spacing: PocketSheetSpace.xs) {
+                ForEach(OnboardingStartingPoint.allCases, id: \.self) { point in
+                    OnboardingStartingPointChip(
+                        point: point,
+                        isSelected: model.startingPoint == point
+                    ) {
+                        model.setStartingPoint(point)
+                    }
+                    .accessibilityIdentifier("onboarding.startingPoint.\(point.rawValue)")
+                }
+            }
 
             LazyVGrid(
                 columns: [GridItem(.adaptive(minimum: 120), spacing: PocketSheetSpace.xs)],
                 spacing: PocketSheetSpace.xs
             ) {
-                ForEach(OnboardingCategories.starter) { category in
-                    categoryChip(id: category.id, label: category.label)
+                ForEach(OnboardingInterestCatalog.starter) { interest in
+                    OnboardingInterestChip(
+                        label: interest.label,
+                        isSelected: model.interestIDs.contains(interest.id)
+                    ) {
+                        model.toggleInterest(interest.id)
+                    }
+                    .accessibilityIdentifier("onboarding.interest.\(interest.id)")
                 }
-                categoryChip(id: OnboardingCategories.otherID, label: "Other")
             }
 
-            if model.selectedCategoryIDs.contains(OnboardingCategories.otherID) {
-                TextField("Your category…", text: Binding(
-                    get: { model.categoryOtherText },
-                    set: { model.updateCategoryOther($0) }
-                ))
+            if !model.customSubjects.isEmpty {
+                FlowLayout(spacing: PocketSheetSpace.xs) {
+                    ForEach(model.customSubjects, id: \.self) { subject in
+                        OnboardingCustomSubjectTag(subject: subject) {
+                            model.removeCustomSubject(subject)
+                        }
+                    }
+                }
+            }
+
+            TextField("Or tell us in your own words…", text: $model.customSubjectDraft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 16))
                 .padding(PocketSheetSpace.s)
@@ -146,226 +171,229 @@ struct OnboardingFlowView: View {
                     RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
                         .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
                 }
-                .accessibilityIdentifier("onboarding.categoryOther")
+                .focused($focusedField, equals: .customSubject)
+                .submitLabel(.done)
+                .onSubmit { model.addCustomSubject() }
+                .accessibilityIdentifier("onboarding.customSubject")
+        }
+    }
+
+    // MARK: - Step 2: Taste
+
+    private var tasteExamplesStep: some View {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
+            ForEach(model.displayedTasteExamples) { example in
+                tasteExampleCard(example)
             }
-        }
-    }
 
-    private func categoryChip(id: String, label: String) -> some View {
-        let selected = model.selectedCategoryIDs.contains(id)
-        return Button {
-            model.toggleCategory(id)
-        } label: {
-            Text(label)
-                .font(PocketSheetType.chip)
-                .foregroundStyle(selected ? PocketSheetTheme.Color.inversePaper : PocketSheetTheme.Color.ink)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 36)
-                .background(selected ? PocketSheetTheme.Color.inverseInk : PocketSheetTheme.Color.fillMuted)
-                .clipShape(Capsule())
-                .overlay {
-                    Capsule().stroke(
-                        selected ? PocketSheetTheme.Color.inverseInk : PocketSheetTheme.Color.hairline,
-                        lineWidth: 1
-                    )
-                }
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("onboarding.category.\(id)")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    // MARK: - References
-
-    @ViewBuilder
-    private var referencesStep: some View {
-        let attn = model.referenceValidation
-        VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
-            referenceFieldSection(
-                title: "Reel URL",
-                placeholder: "https://instagram.com/reel/…",
-                draft: $reelDraft,
-                kind: .reel,
-                showAttention: attn.reel,
-                addTitle: "+ Add reel",
-                isAddDisabled: false
-            )
-
-            referenceFieldSection(
-                title: "Profile @handle",
-                placeholder: "@creator",
-                draft: $profileDraft,
-                kind: .profile,
-                showAttention: attn.profile,
-                addTitle: model.isVerifyingProfile ? "Checking on Instagram…" : "+ Add profile",
-                isAddDisabled: model.isVerifyingProfile
-            )
-
-            if model.references.isEmpty {
-                Text("No references yet.")
-                    .font(.system(size: 13))
+            Button {
+                model.refreshTasteExamples()
+            } label: {
+                Text("None of these — show different examples")
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(model.references) { ref in
-                        HStack {
-                            Text(ref.listDisplayLabel)
-                                .font(.system(size: 14))
-                                .foregroundStyle(PocketSheetTheme.Color.ink)
-                            Spacer(minLength: PocketSheetSpace.s)
-                            Button {
-                                model.removeReference(id: ref.id)
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .frame(width: 32, height: 32)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                            .accessibilityLabel("Remove reference")
-                        }
-                        .padding(.vertical, PocketSheetSpace.xs)
-                        if ref.id != model.references.last?.id {
-                            PocketSheetDivider()
-                        }
-                    }
-                }
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
-
-            Text("\(model.references.count)/10 · \(OnboardingValidation.reelCount(in: model.references)) reel · \(OnboardingValidation.profileCount(in: model.references)) profile")
-                .font(.system(size: 12))
-                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-
-            if let hint = model.displayedReferenceHint {
-                Text(hint)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(
-                        model.referenceValidationMessage != nil
-                            ? PocketSheetTheme.Color.validationAttention
-                            : PocketSheetTheme.Color.inkMuted
-                    )
-                    .accessibilityIdentifier("onboarding.refHint")
-                    .accessibilityAddTraits(model.referenceValidationMessage != nil ? .isStaticText : [])
-            }
-        }
-        .onChange(of: reelDraft) { _, newValue in
-            model.reelDraftText = newValue
-        }
-        .onChange(of: profileDraft) { _, newValue in
-            model.profileDraftText = newValue
-        }
-        .onChange(of: model.reelDraftText) { _, newValue in
-            if newValue != reelDraft {
-                reelDraft = newValue
-            }
-        }
-        .onChange(of: model.profileDraftText) { _, newValue in
-            if newValue != profileDraft {
-                profileDraft = newValue
-            }
-        }
-        .onChange(of: model.step) { _, newStep in
-            if newStep == .references {
-                reelDraft = model.reelDraftText
-                profileDraft = model.profileDraftText
-            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("onboarding.taste.refresh")
         }
     }
 
-    private func referenceFieldSection(
-        title: String,
-        placeholder: String,
-        draft: Binding<String>,
-        kind: OnboardingReferenceInputKind,
-        showAttention: Bool,
-        addTitle: String,
-        isAddDisabled: Bool
-    ) -> some View {
-        VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
-            Text(title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-
-            ZStack(alignment: .topLeading) {
-                TextField("", text: draft, axis: .vertical)
-                    .lineLimit(2...4)
-                    .font(.system(size: 15))
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
-                    .focused($focusedReferenceField, equals: kind)
-                    .scrollContentBackground(.hidden)
-                    .accessibilityIdentifier("onboarding.refInput.\(kind.rawValue)")
-                    .accessibilityLabel(placeholder)
-
-                if draft.wrappedValue.isEmpty {
-                    Text(placeholder)
-                        .font(.system(size: 15))
-                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                        .padding(PocketSheetSpace.xs)
+    private func tasteExampleCard(_ example: OnboardingTasteExample) -> some View {
+        let selected = model.selectedTasteExampleIDs.contains(example.id)
+        return Button {
+            model.toggleTasteExample(example.id)
+        } label: {
+            HStack(alignment: .top, spacing: PocketSheetSpace.s) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
+                    Text(example.title)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                        .multilineTextAlignment(.leading)
                 }
+                Spacer(minLength: PocketSheetSpace.s)
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22))
+                    .foregroundStyle(selected ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.inkQuiet)
             }
-            .frame(minHeight: 52)
-            .padding(PocketSheetSpace.xs)
-            .background(PocketSheetTheme.Color.paperRaised)
+            .padding(PocketSheetSpace.m)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(selected ? OnboardingTheme.selectionFill : PocketSheetTheme.Color.paperRaised)
             .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
                     .stroke(
-                        showAttention ? PocketSheetTheme.Color.validationAttention : PocketSheetTheme.Color.hairline,
-                        lineWidth: showAttention ? 2 : 1
+                        selected ? OnboardingTheme.selectionStroke : PocketSheetTheme.Color.hairline,
+                        lineWidth: 1
                     )
             }
-            .onboardingAttentionShake(
-                active: showAttention && model.referenceValidation.motion,
-                reduceMotion: reduceMotion
-            ) {
-                model.consumeReferenceAttentionMotionIfNeeded()
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("onboarding.taste.\(example.id)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    // MARK: - Step 3: Production
+
+    private var productionConstraintsStep: some View {
+        OnboardingProductionForm(
+            formats: Binding(
+                get: { model.formats },
+                set: { model.formats = $0; model.persistProgress() }
+            ),
+            timeToCreate: Binding(
+                get: { model.timeToCreate },
+                set: { model.timeToCreate = $0; model.persistProgress() }
+            ),
+            contentLanguage: Binding(
+                get: { model.contentLanguage },
+                set: { model.updateContentLanguage($0) }
+            ),
+            showFace: Binding(
+                get: { model.showFace },
+                set: { model.showFace = $0; model.persistProgress() }
+            ),
+            useVoice: Binding(
+                get: { model.useVoice },
+                set: { model.useVoice = $0; model.persistProgress() }
+            )
+        )
+    }
+
+    // MARK: - Step 4: Context
+
+    private var interestContextStep: some View {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+            ForEach(model.promptedContextQuestions) { question in
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
+                    Text(question.prompt)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                    TextField(question.placeholder, text: Binding(
+                        get: { model.contextAnswers[question.id, default: ""] },
+                        set: { model.updateContextAnswer(questionID: question.id, answer: $0) }
+                    ), axis: .vertical)
+                    .lineLimit(2...4)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 15))
+                    .padding(PocketSheetSpace.s)
+                    .background(PocketSheetTheme.Color.paperRaised)
+                    .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                            .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
+                    }
+                    .focused($focusedField, equals: .context(question.id))
+                    .accessibilityIdentifier(question.accessibilityIdentifier)
+                }
             }
 
-            Button {
-                switch kind {
-                case .reel:
-                    model.reelDraftText = draft.wrappedValue
-                    focusedReferenceField = .profile
-                case .profile:
-                    model.profileDraftText = draft.wrappedValue
-                }
-                Task { await model.addReference(from: draft.wrappedValue, kind: kind) }
-            } label: {
-                Text(addTitle)
-                    .font(PocketSheetType.actionSecondary)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
+                Text("Anything else you want to share? (Optional)")
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(PocketSheetTheme.Color.ink)
-                    .background(PocketSheetTheme.Color.fillMuted)
-                    .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+                TextField("Anything you'd like us to keep in mind…", text: Binding(
+                    get: { model.creatorNote },
+                    set: { model.updateCreatorNote($0) }
+                ), axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15))
+                .padding(PocketSheetSpace.s)
+                .background(PocketSheetTheme.Color.paperRaised)
+                .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                        .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
+                }
+                .focused($focusedField, equals: .creatorNote)
+                .accessibilityIdentifier("onboarding.creatorNote")
             }
-            .buttonStyle(.plain)
-            .disabled(isAddDisabled)
-            .accessibilityIdentifier(kind == .reel ? "onboarding.refAdd.reel" : "onboarding.refAdd.profile")
         }
     }
 
-    // MARK: - Confirm
+    // MARK: - Step 5: Review
 
-    private var confirmStep: some View {
+    private var reviewStep: some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
-            summaryBlock(title: "Categories", editStep: .categories) {
+            if model.isConfirmingFirstIdea {
+                HStack(spacing: PocketSheetSpace.s) {
+                    ProgressView()
+                        .tint(PocketSheetTheme.Color.ink)
+                    Text("Preparing your first idea…")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .accessibilityIdentifier("onboarding.preparing")
+            }
+
+            PocketSheetFeedbackBanner(message: model.confirmErrorMessage, kind: .neutral)
+
+            summaryBlock(title: "Your interests", editStep: .interests) {
                 FlowLayout(spacing: PocketSheetSpace.xs) {
-                    ForEach(model.categoryDisplayLabels, id: \.self) { label in
+                    ForEach(model.interestDisplayLabels, id: \.self) { label in
                         PocketSheetChip(text: label, isEmphasized: true)
                     }
                 }
             }
 
-            summaryBlock(title: "References (\(model.references.count))", editStep: .references) {
-                VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
-                    ForEach(model.references) { ref in
-                        Text(ref.listDisplayLabel)
-                            .font(.system(size: 14))
-                            .foregroundStyle(PocketSheetTheme.Color.ink)
+            if let starting = model.startingPoint {
+                summaryBlock(title: "Starting point", editStep: .interests) {
+                    Text(starting.displayLabel)
+                        .font(.system(size: 14))
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                }
+            }
+
+            summaryBlock(title: "Your style", editStep: .tasteExamples) {
+                Text(OnboardingReviewSummary.stylePhrase(
+                    selectedExamples: model.displayedTasteExamples.filter {
+                        model.selectedTasteExampleIDs.contains($0.id)
+                    },
+                    formats: model.formats
+                ))
+                .font(.system(size: 14))
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+            }
+
+            summaryBlock(title: "Your formats", editStep: .productionConstraints) {
+                Text(model.formats.map(\.displayLabel).joined(separator: ", "))
+                    .font(.system(size: 14))
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+            }
+
+            summaryBlock(title: "Your time", editStep: .productionConstraints) {
+                Text(OnboardingReviewSummary.timeLabel(model.timeToCreate))
+                    .font(.system(size: 14))
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+            }
+
+            summaryBlock(title: "Language & camera", editStep: .productionConstraints) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
+                    Text(model.contentLanguage)
+                    Text(OnboardingReviewSummary.faceVoiceLabel(showFace: model.showFace, useVoice: model.useVoice))
+                }
+                .font(.system(size: 14))
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+            }
+
+            let contextLines = model.promptedContextQuestions.compactMap { question -> String? in
+                let answer = model.contextAnswers[question.id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return answer.isEmpty ? nil : answer
+            }
+            if !contextLines.isEmpty || model.creatorNote.nilIfBlank != nil {
+                summaryBlock(title: "Recent interests", editStep: .interestContext) {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
+                        ForEach(contextLines, id: \.self) { line in
+                            Text(line)
+                        }
+                        if let note = model.creatorNote.nilIfBlank {
+                            Text(note)
+                        }
                     }
+                    .font(.system(size: 14))
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 }
             }
         }
@@ -388,6 +416,7 @@ struct OnboardingFlowView: View {
                     }
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .frame(minHeight: 44)
                     .accessibilityIdentifier("onboarding.edit.\(editStep.rawValue)")
                 }
                 content()
@@ -402,39 +431,94 @@ struct OnboardingFlowView: View {
     private var dock: some View {
         VStack(spacing: PocketSheetSpace.s) {
             switch model.step {
-            case .categories:
+            case .interests:
                 skipLink
-                PocketSheetPrimaryAction(title: "Continue") {
-                    model.advanceFromCategories()
+                continueButton(
+                    title: "Continue",
+                    enabled: model.interestsContinueEnabled,
+                    identifier: "onboarding.continue.interests"
+                ) {
+                    model.advanceFromInterests()
                 }
-                .disabled(!model.categoriesContinueEnabled)
-                .opacity(model.categoriesContinueEnabled ? 1 : 0.48)
-                .accessibilityIdentifier("onboarding.continue.categories")
 
-            case .references:
-                PocketSheetPrimaryAction(title: "Continue") {
-                    model.continueFromReferences(reduceMotion: reduceMotion)
+            case .tasteExamples:
+                if model.step.rawValue > 0 {
+                    backButton
                 }
-                .accessibilityIdentifier("onboarding.continue.references")
+                continueButton(
+                    title: "Continue",
+                    enabled: model.tasteContinueEnabled,
+                    identifier: "onboarding.continue.taste"
+                ) {
+                    model.advanceFromTasteExamples()
+                }
 
-            case .confirm:
-                Text("Five ideas are ready in Plan. Voice is prefilled from your references.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                    .multilineTextAlignment(.center)
-                PocketSheetPrimaryAction(title: "Show my ideas") {
-                    completeOnboarding()
+            case .productionConstraints:
+                backButton
+                continueButton(
+                    title: "Continue",
+                    enabled: model.productionContinueEnabled,
+                    identifier: "onboarding.continue.production"
+                ) {
+                    model.advanceFromProductionConstraints()
                 }
-                .accessibilityIdentifier("onboarding.generateFirstDay")
-                PocketSheetSecondaryAction(title: "Back") {
-                    model.goToStep(.references)
+
+            case .interestContext:
+                backButton
+                Button("Nothing specific right now") {
+                    model.skipContextStep()
                 }
-                .accessibilityIdentifier("onboarding.back.confirm")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("onboarding.context.skip")
+                continueButton(
+                    title: "Continue",
+                    enabled: model.contextContinueEnabled,
+                    identifier: "onboarding.continue.context"
+                ) {
+                    model.advanceFromInterestContext()
+                }
+
+            case .review:
+                backButton
+                if case .generationFailed = model.confirmState {
+                    PocketSheetPrimaryAction(title: "Retry") {
+                        Task { await confirmFirstIdea() }
+                    }
+                    .accessibilityIdentifier("onboarding.retryFirstIdea")
+                } else {
+                    PocketSheetPrimaryAction(title: "Show my first idea") {
+                        Task { await confirmFirstIdea() }
+                    }
+                    .disabled(model.isConfirmingFirstIdea)
+                    .opacity(model.isConfirmingFirstIdea ? 0.48 : 1)
+                    .accessibilityIdentifier("onboarding.generateFirstDay")
+                }
             }
         }
         .padding(.horizontal, PocketSheetSpace.l)
         .padding(.bottom, PocketSheetSpace.l)
         .background(PocketSheetTheme.Color.paper)
+    }
+
+    private var backButton: some View {
+        PocketSheetSecondaryAction(title: "Back") {
+            model.goBack()
+        }
+        .accessibilityIdentifier("onboarding.back")
+    }
+
+    private func continueButton(
+        title: String,
+        enabled: Bool,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        PocketSheetPrimaryAction(title: title, action: action)
+            .disabled(!enabled)
+            .opacity(enabled ? 1 : 0.48)
+            .accessibilityIdentifier(identifier)
     }
 
     private var skipLink: some View {
@@ -448,21 +532,31 @@ struct OnboardingFlowView: View {
         .accessibilityIdentifier("onboarding.setUpLater")
     }
 
-    private func completeOnboarding() {
+    private func confirmFirstIdea() async {
         let handoff = model.finishAndGenerateFirstDay(todayDate: services.currentTodayDateString)
-        Task {
-            await applyCompletedDataToProfile(handoff.completedData)
-        }
-        onComplete(handoff)
+        let result = await model.confirmFirstIdea(
+            services: services,
+            scheduledDate: handoff.scheduledDate
+        )
+        onHandoffComplete(result, handoff)
     }
+}
 
-    private func applyCompletedDataToProfile(_ data: OnboardingCompletedData) async {
-        var update = CreatorProfileUpdate(summary: services.creatorProfileSummary)
-        update.contentPillars = data.categoryLabels
-        _ = await services.updateCreatorProfileImmediately(update)
+// MARK: - Progress bar
 
-        guard services.isLiveSupabaseRuntime, !data.references.isEmpty else { return }
-        _ = await OnboardingReferenceImporter.live(services: services).importReferences(data.references)
+private struct OnboardingProgressBar: View {
+    let currentStep: Int
+    let totalSteps: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<totalSteps, id: \.self) { index in
+                Capsule()
+                    .fill(index <= currentStep ? OnboardingTheme.progressFill : OnboardingTheme.progressTrack)
+                    .frame(height: 3)
+            }
+        }
+        .accessibilityLabel("Step \(currentStep + 1) of \(totalSteps)")
     }
 }
 
@@ -483,65 +577,13 @@ private struct OnboardingToast: View {
     }
 }
 
-// MARK: - Attention shake
-
-private struct OnboardingAttentionShakeModifier: ViewModifier {
-    let active: Bool
-    let reduceMotion: Bool
-    let onCycleComplete: () -> Void
-
-    @State private var phase: CGFloat = 0
-
-    func body(content: Content) -> some View {
-        content
-            .offset(x: reduceMotion ? 0 : phase)
-            .onChange(of: active) { _, isActive in
-                guard isActive, !reduceMotion else { return }
-                runShakeCycle()
-            }
-    }
-
-    private func runShakeCycle() {
-        let steps: [CGFloat] = [0, -6, 6, -4, 4, 0]
-        var delay = 0.0
-        for (index, offset) in steps.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                withAnimation(.linear(duration: 0.06)) {
-                    phase = offset
-                }
-                if index == steps.count - 1 {
-                    onCycleComplete()
-                }
-            }
-            delay += 0.06
-        }
-    }
-}
-
-private extension View {
-    func onboardingAttentionShake(
-        active: Bool,
-        reduceMotion: Bool,
-        onCycleComplete: @escaping () -> Void
-    ) -> some View {
-        modifier(
-            OnboardingAttentionShakeModifier(
-                active: active,
-                reduceMotion: reduceMotion,
-                onCycleComplete: onCycleComplete
-            )
-        )
-    }
-}
-
-// MARK: - Flow layout for chips
+// MARK: - Flow layout
 
 private struct FlowLayout: Layout {
     var spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = arrange(proposal: proposal, subviews: subviews)
-        return result.size
+        arrange(proposal: proposal, subviews: subviews).size
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {

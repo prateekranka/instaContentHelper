@@ -499,6 +499,8 @@ enum CreatorTab: String, CaseIterable, Identifiable, Hashable, Sendable {
 
 enum YouRoute: Hashable, Sendable {
     case contentCategories
+    case productionPreferences
+    case currentContext
     case creatorVoice
     case references
     case account

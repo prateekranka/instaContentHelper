@@ -70,11 +70,12 @@ final class AppState {
         planSelectedDate?.nilIfBlank ?? planSelectedDateStore.load()
     }
 
-    /// Opens Plan on the given local date and queues one day-only generation.
+    /// Opens Today after onboarding first-idea handoff (does not open Plan).
     func handoffFirstDayFromOnboarding(_ handoff: OnboardingFirstDayHandoff) {
-        pendingFirstDayHandoff = handoff
-        preparePlan(selecting: handoff.scheduledDate)
-        pendingCreatorTab = .plan
+        pendingFirstDayHandoff = nil
+        planSelectedDate = nil
+        planSelectedDateStore.save(nil)
+        pendingCreatorTab = .today
     }
 
     /// Returns and clears a pending first-day generation handoff.
@@ -204,6 +205,11 @@ final class AppState {
 
     private func finishLocalSignOut() {
         activeMode = .creator
+        pendingCreatorTab = nil
+        pendingFirstDayHandoff = nil
+        planSelectedDate = nil
+        pendingYouNavigation = nil
+        youNavigationOrigin = nil
         runtime = .fixtures()
         authenticationPhase = .signedOut
     }

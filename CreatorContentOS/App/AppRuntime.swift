@@ -49,7 +49,8 @@ struct AppRuntime {
     ) -> AppRuntime {
         let repositories = repositories ?? SupabaseRepositoryBundleFactory().makeRepositories(
             context: session.context,
-            configuration: session.runtimeConfiguration
+            configuration: session.runtimeConfiguration,
+            creatorDisplayName: session.creatorDisplayName ?? "Creator"
         )
         return AppRuntime(
             mode: .live(session),
@@ -169,12 +170,7 @@ private extension IntelligenceHome {
 }
 
 private extension CreatorProfileSummary {
-    static let liveLoadingPlaceholder = CreatorProfileSummary(
-        displayName: "Loading",
-        positioning: "Fetching the creator profile from Supabase.",
-        voiceLine: "",
-        noGoTopics: []
-    )
+    static let liveLoadingPlaceholder = CreatorProfileSummary.emptyLiveFallback(displayName: "Loading")
 }
 
 private extension PairedDeviceSession {

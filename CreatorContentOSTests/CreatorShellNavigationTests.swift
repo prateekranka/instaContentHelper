@@ -30,7 +30,7 @@ final class CreatorShellNavigationTests: XCTestCase {
         XCTAssertEqual(state.pendingCreatorTab, .plan)
     }
 
-    func testHandoffFirstDayFromOnboardingOpensPlanOnToday() {
+    func testHandoffFirstDayFromOnboardingOpensToday() {
         let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
         let handoff = OnboardingFirstDayHandoff(
             scheduledDate: "2026-08-07",
@@ -45,10 +45,28 @@ final class CreatorShellNavigationTests: XCTestCase {
 
         state.handoffFirstDayFromOnboarding(handoff)
 
-        XCTAssertEqual(state.pendingCreatorTab, .plan)
-        XCTAssertEqual(state.planSelectedDate, "2026-08-07")
-        XCTAssertEqual(state.consumeFirstDayHandoff(), handoff)
+        XCTAssertEqual(state.pendingCreatorTab, .today)
+        XCTAssertNil(state.planSelectedDate)
         XCTAssertNil(state.consumeFirstDayHandoff())
+    }
+
+    func testAdaptiveOnboardingHandoffNeverOpensPlanTabEvenWithNilBrief() {
+        let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
+        state.handoffFirstDayFromOnboarding(
+            OnboardingFirstDayHandoff(
+                scheduledDate: "2026-09-05",
+                dayBrief: nil,
+                completedData: OnboardingCompletedData(
+                    selectedCategoryIDs: ["books"],
+                    categoryOtherText: "",
+                    references: [],
+                    voiceDeferred: false
+                )
+            )
+        )
+
+        XCTAssertEqual(state.pendingCreatorTab, .today)
+        XCTAssertNil(state.planSelectedDate)
     }
 
     func testConsumePlanSelectedDateReturnsAndClearsPendingDate() {

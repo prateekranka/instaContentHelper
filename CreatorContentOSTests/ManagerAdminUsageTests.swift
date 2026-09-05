@@ -319,13 +319,14 @@ private actor RecordingCreatorProfileRepository: CreatorProfileRepository {
 
         summary = CreatorProfileSummary(
             displayName: summary.displayName,
-            positioning: update.positioning,
-            voiceLine: update.voiceRules.joined(separator: ", "),
-            noGoTopics: update.noGoTopics,
-            voiceRules: update.voiceRules,
-            contentPillars: update.contentPillars,
-            captionStyle: update.captionStyle,
-            recurringFormats: update.recurringFormats
+            positioning: update.positioning ?? summary.positioning,
+            voiceLine: (update.voiceRules ?? summary.voiceRules).joined(separator: ", "),
+            noGoTopics: update.noGoTopics ?? summary.noGoTopics,
+            voiceRules: update.voiceRules ?? summary.voiceRules,
+            contentPillars: update.contentPillars ?? summary.contentPillars,
+            captionStyle: update.captionStyle ?? summary.captionStyle,
+            recurringFormats: update.recurringFormats ?? summary.recurringFormats,
+            onboardingState: update.onboardingState ?? summary.onboardingState
         )
         return summary
     }

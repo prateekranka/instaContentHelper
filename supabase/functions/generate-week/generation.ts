@@ -14,6 +14,7 @@ import type { AIOutputQualityMetrics } from "./generation-quality.ts";
 import {
   combineText,
   CONTENT_PILLARS,
+  buildAllowedDayContentPillars,
   GenerateWeekValidationError,
   GYM_PRIMARY_DAY_CAP,
   isDateString,
@@ -45,6 +46,7 @@ export {
 export type { AIOutputQualityMetrics } from "./generation-quality.ts";
 
 export {
+  buildAllowedDayContentPillars,
   CONTENT_PILLARS,
   GenerateWeekValidationError,
   GYM_PRIMARY_DAY_CAP,
@@ -542,6 +544,53 @@ export function buildDeepSeekChatRequest(
   };
 }
 
+function profileContentPillars(
+  profile: Record<string, unknown> | null,
+): string[] {
+  if (!profile || !Array.isArray(profile.content_pillars)) {
+    return [];
+  }
+  return profile.content_pillars
+    .map((item) => stringValue(item)?.trim())
+    .filter((item): item is string => Boolean(item));
+}
+
+function profileMentionsHyrox(profile: Record<string, unknown> | null): boolean {
+  const text = [
+    stringValue(profile?.positioning),
+    ...profileContentPillars(profile),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return text.includes("hyrox");
+}
+
+function buildProfileDrivenDayIdentity(
+  input: GenerationInputSnapshot,
+): string {
+  const profile = isRecord(input.creator_profile)
+    ? input.creator_profile
+    : null;
+  const positioning = stringValue(profile?.positioning)?.trim();
+  const pillars = profileContentPillars(profile);
+
+  if (positioning) {
+    return `Creator profile: ${positioning}`;
+  }
+  if (pillars.length > 0) {
+    return `Creator documenting ${pillars.join(", ")}; first-person, honest, and specific — not a generic coach.`;
+  }
+  return "Creator documenting their own interests and routines; first-person, honest, and specific — not a generic coach.";
+}
+
+function buildDayContentPillarGuidance(
+  input: GenerationInputSnapshot,
+): string {
+  const allowed = buildAllowedDayContentPillars(input.creator_profile);
+  return allowed.join(", ");
+}
+
 function buildDayPromptMessages(
   input: GenerationInputSnapshot,
   scheduledDate: string,
@@ -558,6 +607,14 @@ function buildDayPromptMessages(
     scheduledDate,
     dayIndex,
   );
+  const profileIdentity = buildProfileDrivenDayIdentity(promptInput);
+  const pillarGuidance = buildDayContentPillarGuidance(promptInput);
+  const profile = isRecord(promptInput.creator_profile)
+    ? promptInput.creator_profile
+    : null;
+  const hyroxNote = profileMentionsHyrox(profile)
+    ? ""
+    : " Do not inject race-training or gym-first fitness identity unless the creator profile or day brief explicitly includes it.";
   const targetWeekday = weekdayName(scheduledDate);
   const dayGuidanceNote = promptInput.day_guidance
     ? `\nCreator/admin instruction for ${scheduledDate} ONLY (not week-wide): ${promptInput.day_guidance}`
@@ -565,11 +622,11 @@ function buildDayPromptMessages(
   return {
     system: [
       "You generate Creator Content OS daily content as strict JSON.",
-      "Creator: Indian mother, wife, HYROX athlete, and rounded lifestyle creator; not a gym instructor or online coach. Gym is one pillar beside lifestyle, eating, and recovery.",
+      profileIdentity + hyroxNote,
       "Use only supplied profile, weekly setup, day-scoped references, brand obligations, key moments, archive feedback, idea bank, and admin guidance.",
       "Apply precedence silently: weekly brief > profile > day-scoped references > older context.",
       "Generate exactly one daily card for the requested scheduled_date.",
-      "Set content_pillar to gym, lifestyle, eating, or recovery. Frame first-person lived observation, never follower instruction.",
+      `Set content_pillar to one of: ${pillarGuidance}. Frame first-person lived observation, never follower instruction.`,
       "Ban coach language: 'do this exercise', 'fix your form', 'my clients', 'your clients', 'training clients', 'upper body cue' as the main angle, generic 'training angle', and coach-like imperatives.",
       "All day-of-week language must match the requested scheduled_date.",
       "In title, why_today, weekly_brief_anchor, brief_alignment, growth_job, post_instructions, and source_note: do not claim another weekday is today. Residual references like 'after Monday' or 'Monday's legs' are allowed when they describe prior context.",
@@ -612,21 +669,30 @@ function buildDailyGenerationGuidance(
       ? input.creator_profile.display_name
       : undefined,
   ) ?? "the creator";
+  const profile = isRecord(input.creator_profile)
+    ? input.creator_profile
+    : null;
+  const identityLine = buildProfileDrivenDayIdentity(input);
+  const voiceRules = Array.isArray(profile?.voice_rules)
+    ? profile!.voice_rules
+      .map((rule) => stringValue(rule)?.trim())
+      .filter((rule): rule is string => Boolean(rule))
+    : [];
 
   return {
-    compact_guidance_version: "creator_daily_generation_compact_v3",
+    compact_guidance_version: "creator_daily_generation_compact_v4",
     precedence: [
       "Weekly brief > creator profile > day-scoped references.",
       "Use references only when they fit the target date and brief.",
     ],
     day_specific_intent: dayIntent,
     creator_voice_compact: {
-      identity:
-        "Indian mother, wife, HYROX athlete in her early 60s; rounded lifestyle creator, not an instructor.",
-      tone:
-        "First-person, warm, witty, self-aware, Indian without caricature, strong without preaching.",
+      identity: identityLine,
+      tone: voiceRules.length > 0
+        ? voiceRules.join("; ")
+        : "First-person, warm, honest, specific, never preachy.",
       writing_test:
-        `If another creator could say a line unchanged, rewrite it with ${creatorDisplayName}'s lived detail, opinion, home/family texture, or dry humour.`,
+        `If another creator could say a line unchanged, rewrite it with ${creatorDisplayName}'s lived detail, opinion, or dry humour.`,
       never_sound_like: ["gym bro", "online coach", "generic brand ambassador"],
     },
     daily_quality_rules: [
@@ -637,7 +703,7 @@ function buildDailyGenerationGuidance(
       "Storyboard must be simple, specific, and realistic to film today.",
     ],
     quota_rules: {
-      content_pillar: CONTENT_PILLARS.join(", "),
+      content_pillar: buildDayContentPillarGuidance(input),
       cta:
         "At most 2 explicit save CTAs/week; use save language only if day_intent allows it.",
       age:

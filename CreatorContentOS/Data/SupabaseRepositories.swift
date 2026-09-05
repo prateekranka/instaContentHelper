@@ -1099,10 +1099,12 @@ struct SupabaseIntelligenceRepository: IntelligenceRepository {
 
 struct SupabaseCreatorProfileRepository: CreatorProfileRepository {
     let client: SupabaseClient
+    var fallbackDisplayName: String = "Creator"
 
     func activeProfileSummary(for context: WorkspaceContext) async throws -> CreatorProfileSummary {
         let response: SupabaseCreatorProfileReadResponse = try await client.readContent(.creatorProfile, context: context)
-        return response.profile?.summary() ?? .creatorFixture
+        return response.profile?.summary(fallbackDisplayName: fallbackDisplayName)
+            ?? .emptyLiveFallback(displayName: fallbackDisplayName)
     }
 
     func updateProfile(_ update: CreatorProfileUpdate, context: WorkspaceContext) async throws -> CreatorProfileSummary {
@@ -1113,15 +1115,20 @@ struct SupabaseCreatorProfileRepository: CreatorProfileRepository {
             )
         )
 
-        return response.creatorProfile?.summary() ?? CreatorProfileSummary(
-            displayName: "Creator",
-            positioning: update.positioning,
-            voiceLine: update.voiceRules.joined(separator: ", "),
-            noGoTopics: update.noGoTopics,
-            voiceRules: update.voiceRules,
-            contentPillars: update.contentPillars,
+        if let profile = response.creatorProfile {
+            return profile.summary(fallbackDisplayName: fallbackDisplayName)
+        }
+
+        return CreatorProfileSummary(
+            displayName: fallbackDisplayName,
+            positioning: update.positioning ?? "",
+            voiceLine: update.voiceRules?.joined(separator: ", ") ?? "",
+            noGoTopics: update.noGoTopics ?? [],
+            voiceRules: update.voiceRules ?? [],
+            contentPillars: update.contentPillars ?? [],
             captionStyle: update.captionStyle,
-            recurringFormats: update.recurringFormats
+            recurringFormats: update.recurringFormats ?? [],
+            onboardingState: update.onboardingState ?? .new
         )
     }
 }

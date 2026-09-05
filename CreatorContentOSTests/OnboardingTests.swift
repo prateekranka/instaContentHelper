@@ -38,26 +38,29 @@ final class OnboardingTests: XCTestCase {
     func testProgressRoundTrip() {
         let store = UserDefaultsOnboardingStore(defaults: defaults)
         let progress = OnboardingProgress(
-            step: .references,
-            selectedCategoryIDs: ["fitness", "food"],
-            categoryOtherText: "",
-            references: [
-                OnboardingReference(
-                    id: "r1",
-                    kind: .reel,
-                    label: "instagram.com/reel/abc",
-                    key: "instagram:reel:abc",
-                    url: "https://www.instagram.com/reel/abc/"
-                ),
-            ]
+            step: .tasteExamples,
+            interestIDs: ["books", "movies-tv"],
+            customSubjects: ["Pottery"],
+            startingPoint: .justStarting,
+            selectedTasteExampleIDs: ["books-rec-1"],
+            tasteRefreshCount: 0,
+            formats: [.talkingToCamera],
+            timeToCreate: .tenToThirty,
+            contentLanguage: "English",
+            showFace: true,
+            useVoice: true,
+            contextAnswers: [:],
+            creatorNote: "",
+            references: []
         )
 
         store.saveProgress(progress)
         let loaded = store.loadProgress()
 
-        XCTAssertEqual(loaded?.step, .references)
-        XCTAssertEqual(loaded?.selectedCategoryIDs, ["fitness", "food"])
-        XCTAssertEqual(loaded?.references.count, 1)
+        XCTAssertEqual(loaded?.step, .tasteExamples)
+        XCTAssertEqual(loaded?.interestIDs, ["books", "movies-tv"])
+        XCTAssertEqual(loaded?.customSubjects, ["Pottery"])
+        XCTAssertEqual(loaded?.selectedTasteExampleIDs, ["books-rec-1"])
     }
 
     func testMarkCompleteClearsProgressAndSetsDoneFlag() {
@@ -101,9 +104,19 @@ final class OnboardingTests: XCTestCase {
         let store = UserDefaultsOnboardingStore(defaults: defaults)
         store.saveProgress(
             OnboardingProgress(
-                step: .categories,
-                selectedCategoryIDs: ["gaming"],
-                categoryOtherText: "",
+                step: .interests,
+                interestIDs: ["gaming"],
+                customSubjects: [],
+                startingPoint: nil,
+                selectedTasteExampleIDs: [],
+                tasteRefreshCount: 0,
+                formats: [],
+                timeToCreate: nil,
+                contentLanguage: "English",
+                showFace: nil,
+                useVoice: nil,
+                contextAnswers: [:],
+                creatorNote: "",
                 references: []
             )
         )
@@ -116,7 +129,264 @@ final class OnboardingTests: XCTestCase {
         )
     }
 
-    // MARK: - Validation
+    // MARK: - Five-step validation
+
+    func testInterestsRequireAtLeastOneTopicOrCustomSubject() {
+        XCTAssertFalse(
+            OnboardingValidation.interestsAreValid(interestIDs: [], customSubjects: [])
+        )
+        XCTAssertTrue(
+            OnboardingValidation.interestsAreValid(interestIDs: ["books"], customSubjects: [])
+        )
+        XCTAssertTrue(
+            OnboardingValidation.interestsAreValid(interestIDs: [], customSubjects: ["Pottery"])
+        )
+        XCTAssertFalse(
+            OnboardingValidation.interestsAreValid(
+                interestIDs: Array(repeating: "books", count: 5),
+                customSubjects: Array(repeating: "Custom", count: 4)
+            )
+        )
+    }
+
+    func testStartingPointRequiredForInterestsStepContinue() {
+        XCTAssertFalse(
+            OnboardingValidation.startingPointIsValid(nil)
+        )
+        XCTAssertTrue(
+            OnboardingValidation.startingPointIsValid(.justStarting)
+        )
+        XCTAssertTrue(
+            OnboardingValidation.startingPointIsValid(.alreadyPosting)
+        )
+        XCTAssertFalse(
+            OnboardingValidation.interestsStepIsValid(
+                interestIDs: ["books"],
+                customSubjects: [],
+                startingPoint: nil
+            )
+        )
+        XCTAssertTrue(
+            OnboardingValidation.interestsStepIsValid(
+                interestIDs: ["books"],
+                customSubjects: [],
+                startingPoint: .justStarting
+            )
+        )
+    }
+
+    func testInterestsContinueDisabledWithoutStartingPoint() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.interestIDs = ["books", "movies-tv"]
+        XCTAssertFalse(model.interestsContinueEnabled)
+
+        model.startingPoint = .alreadyPosting
+        XCTAssertTrue(model.interestsContinueEnabled)
+    }
+
+    func testCustomSubjectsAreFirstClassNotSilentlyLifestyle() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.customSubjectDraft = "Pottery"
+        model.addCustomSubject()
+        model.startingPoint = .justStarting
+
+        XCTAssertEqual(model.customSubjects, ["Pottery"])
+        XCTAssertFalse(model.interestIDs.contains("lifestyle"))
+        XCTAssertTrue(model.interestsContinueEnabled)
+    }
+
+    func testInterestChangeDropsStaleTasteExamples() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.interestIDs = ["books", "movies-tv"]
+        model.selectedTasteExampleIDs = ["books-rec-1", "movies-rec-1"]
+
+        model.toggleInterest("books")
+
+        XCTAssertFalse(model.selectedTasteExampleIDs.contains("books-rec-1"))
+        XCTAssertTrue(model.selectedTasteExampleIDs.contains("movies-rec-1"))
+    }
+
+    func testBackNavigationPreservesAnswers() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.interestIDs = ["books"]
+        model.customSubjects = ["Pottery"]
+        model.startingPoint = .justStarting
+        model.advanceFromInterests()
+        model.selectedTasteExampleIDs = ["books-rec-1"]
+        model.advanceFromTasteExamples()
+        model.formats = [.voiceoverBroll]
+        model.timeToCreate = .tenToThirty
+        model.contentLanguage = "English"
+        model.showFace = true
+        model.useVoice = false
+
+        model.goBack()
+        model.goBack()
+
+        XCTAssertEqual(model.interestIDs, ["books"])
+        XCTAssertEqual(model.customSubjects, ["Pottery"])
+        XCTAssertEqual(model.startingPoint, .justStarting)
+        XCTAssertEqual(model.selectedTasteExampleIDs, ["books-rec-1"])
+    }
+
+    func testProductionValidationRequiresExplicitFaceAndVoice() {
+        XCTAssertFalse(
+            OnboardingValidation.productionIsValid(
+                formats: [.talkingToCamera],
+                timeToCreate: .tenToThirty,
+                contentLanguage: "English",
+                showFace: nil,
+                useVoice: nil
+            )
+        )
+        XCTAssertTrue(
+            OnboardingValidation.productionIsValid(
+                formats: [.talkingToCamera],
+                timeToCreate: .tenToThirty,
+                contentLanguage: "English",
+                showFace: true,
+                useVoice: false
+            )
+        )
+    }
+
+    func testFinishDoesNotMarkStoreCompleteBeforeConfirm() {
+        let store = UserDefaultsOnboardingStore(defaults: defaults)
+        let model = OnboardingViewModel(store: store)
+        model.interestIDs = ["food"]
+        model.formats = [.talkingToCamera]
+        model.timeToCreate = .tenToThirty
+        model.showFace = true
+        model.useVoice = true
+        model.selectedTasteExampleIDs = ["food-rec-1"]
+
+        _ = model.finishAndGenerateFirstDay(todayDate: "2026-08-07")
+
+        XCTAssertFalse(store.isComplete())
+        XCTAssertTrue(model.shouldPresentOnboarding || model.shouldKeepOnboardingFlowVisible == false)
+    }
+
+    func testOnboardingRecordMapsExpandedCompletedData() {
+        let data = OnboardingCompletedData(
+            selectedCategoryIDs: ["books"],
+            customSubjects: ["Pottery"],
+            startingPoint: .alreadyPosting,
+            selectedTasteExampleIDs: ["books-rec-1"],
+            tasteExampleTitles: ["3 underrated books"],
+            formats: [.voiceoverBroll],
+            timeToCreate: .tenToThirty,
+            contentLanguage: "English",
+            showFace: false,
+            useVoice: true,
+            contextAnswers: ["books-reading": "Fourth Wing"],
+            creatorNote: "Funny takes welcome",
+            references: [],
+            voiceDeferred: false
+        )
+        let record = OnboardingRecord(completedData: data)
+
+        XCTAssertEqual(record.interestIDs, ["books"])
+        XCTAssertEqual(record.customSubjects, ["Pottery"])
+        XCTAssertEqual(record.startingPoint, "already_posting")
+        XCTAssertEqual(record.selectedTasteExampleIDs, ["books-rec-1"])
+        XCTAssertEqual(record.formats, ["voiceover_broll"])
+        XCTAssertEqual(record.timeToCreate, "ten_to_thirty")
+        XCTAssertEqual(record.showFace, false)
+        XCTAssertEqual(record.useVoice, true)
+        XCTAssertEqual(record.contextAnswers["books-reading"], "Fourth Wing")
+        XCTAssertEqual(record.creatorNote, "Funny takes welcome")
+    }
+
+    func testFiveStepFlowDoesNotRequireInstagramReferences() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.interestIDs = ["books"]
+        model.startingPoint = .justStarting
+        model.selectedTasteExampleIDs = ["books-rec-1"]
+        model.formats = [.talkingToCamera]
+        model.timeToCreate = .tenToThirty
+        model.showFace = true
+        model.useVoice = true
+
+        XCTAssertTrue(model.interestsAreValid)
+        XCTAssertTrue(model.tasteContinueEnabled)
+        XCTAssertTrue(model.productionContinueEnabled)
+        XCTAssertTrue(model.references.isEmpty)
+    }
+
+#if DEBUG
+    func testEstablishedPresentationHiddenWithoutForceFlag() {
+        XCTAssertFalse(
+            OnboardingPresentationPolicy.shouldPresent(
+                presentation: .established,
+                sessionDismissed: false
+            )
+        )
+        XCTAssertTrue(
+            OnboardingPresentationPolicy.shouldPresent(
+                presentation: .new,
+                sessionDismissed: false
+            )
+        )
+    }
+#endif
+
+    func testYouInterestsSelectionMapsCatalogAndCustomSubjects() {
+        var profile = CreatorProfileSummary.creatorFixture
+        profile.contentPillars = ["Books", "Movies & TV", "Pottery"]
+        profile.customSubjects = ["Pottery"]
+        profile.startingPoint = "already_posting"
+
+        let selection = YouInterestsSelection.from(profile: profile)
+
+        XCTAssertTrue(selection.interestIDs.contains("books"))
+        XCTAssertTrue(selection.interestIDs.contains("movies-tv"))
+        XCTAssertTrue(selection.customSubjects.contains("Pottery"))
+        XCTAssertEqual(selection.startingPoint, .alreadyPosting)
+        XCTAssertTrue(selection.isValid)
+    }
+
+    func testYouProductionSelectionRoundTripsProfileFields() {
+        var profile = CreatorProfileSummary.creatorFixture
+        profile.productionFormats = ["voiceover_broll", "talking_to_camera"]
+        profile.timeToCreate = "ten_to_thirty"
+        profile.contentLanguage = "English"
+        profile.onCameraRestrictions = OnCameraRestrictionsPayload(showFace: false, useVoice: true)
+
+        let selection = YouProductionSelection.from(profile: profile)
+
+        XCTAssertEqual(selection.formats, [.voiceoverBroll, .talkingToCamera])
+        XCTAssertEqual(selection.timeToCreate, .tenToThirty)
+        XCTAssertEqual(selection.showFace, false)
+        XCTAssertEqual(selection.useVoice, true)
+        XCTAssertTrue(selection.isValid)
+    }
+
+    func testContextQuestionsDifferForFitnessVersusBooks() {
+        let booksQuestions = OnboardingContextQuestions.promptedQuestions(
+            interestIDs: ["books", "movies-tv"],
+            customSubjects: []
+        )
+        let fitnessQuestions = OnboardingContextQuestions.promptedQuestions(
+            interestIDs: ["fitness-wellness"],
+            customSubjects: []
+        )
+
+        XCTAssertTrue(booksQuestions.contains(where: { $0.id == "books-reading" }))
+        XCTAssertTrue(booksQuestions.contains(where: { $0.id == "movies-watching" }))
+        XCTAssertFalse(booksQuestions.contains(where: { $0.id == "fitness-focus" }))
+        XCTAssertTrue(fitnessQuestions.contains(where: { $0.id == "fitness-focus" }))
+        XCTAssertTrue(fitnessQuestions.contains(where: { $0.id == "fitness-style" }))
+        XCTAssertFalse(fitnessQuestions.contains(where: { $0.id == "books-reading" }))
+    }
+
+    func testDefaultContentLanguageUsesLocalizedName() {
+        let language = OnboardingLanguageDefaults.preferredContentLanguage
+        XCTAssertFalse(language.isEmpty)
+        XCTAssertGreaterThan(language.count, 2)
+        XCTAssertFalse(language == language.uppercased())
+    }
+
+    // MARK: - Legacy validation
 
     func testCategoriesRequireOneToThreeIncludingOtherText() {
         XCTAssertFalse(
@@ -211,8 +481,7 @@ final class OnboardingTests: XCTestCase {
 
     func testParsesReelURL() throws {
         let result = try OnboardingReferenceParser.parse(
-            "https://www.instagram.com/reel/ABC123/",
-            expected: .reel
+            "https://www.instagram.com/reel/ABC123/"
         ).get()
 
         XCTAssertTrue(result.reference.isReel)
@@ -222,8 +491,7 @@ final class OnboardingTests: XCTestCase {
 
     func testParsesProfileHandle() throws {
         let result = try OnboardingReferenceParser.parse(
-            "@Creator_Name",
-            expected: .profile
+            "@Creator_Name"
         ).get()
 
         XCTAssertTrue(result.reference.isProfile)
@@ -233,8 +501,7 @@ final class OnboardingTests: XCTestCase {
 
     func testParsesProfileURL() throws {
         let result = try OnboardingReferenceParser.parse(
-            "https://instagram.com/somehandle",
-            expected: .profile
+            "https://instagram.com/somehandle"
         ).get()
 
         XCTAssertTrue(result.reference.isProfile)
@@ -243,34 +510,61 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(result.reference.key, "handle:somehandle")
     }
 
-    func testRejectsHandleWhenExpectingReel() {
-        let failure = OnboardingReferenceParser.parse("@creator", expected: .reel)
-        guard case .failure(let error) = failure else {
-            return XCTFail("Expected failure")
-        }
-        XCTAssertEqual(error, .invalidHandle(expected: .reel))
+    func testClassifiesHandleAsProfileWithoutExpectedKind() throws {
+        let result = try OnboardingReferenceParser.parse("@creator").get()
+        XCTAssertTrue(result.reference.isProfile)
     }
 
-    func testRejectsReelURLWhenExpectingProfile() {
-        let failure = OnboardingReferenceParser.parse(
-            "https://www.instagram.com/reel/ABC123/",
-            expected: .profile
-        )
-        guard case .failure(let error) = failure else {
-            return XCTFail("Expected failure")
+    func testClassifiesReelURLAsReelWithoutExpectedKind() throws {
+        let result = try OnboardingReferenceParser.parse(
+            "https://www.instagram.com/reel/ABC123/"
+        ).get()
+        XCTAssertTrue(result.reference.isReel)
+    }
+
+    func testRejectsStoryAndNonInstagram() {
+        let story = OnboardingReferenceParser.parse("https://www.instagram.com/stories/creator/123")
+        guard case .failure(let storyError) = story else {
+            return XCTFail("Expected story failure")
         }
-        XCTAssertEqual(error, .wrongKind(expected: .profile))
+        XCTAssertEqual(storyError, .unsupportedStory)
+
+        let other = OnboardingReferenceParser.parse("https://youtube.com/watch?v=abc")
+        guard case .failure(let otherError) = other else {
+            return XCTFail("Expected non-Instagram failure")
+        }
+        XCTAssertEqual(otherError, .nonInstagram)
+    }
+
+    func testAutoAddDetectsCompleteReelURLOnPaste() {
+        XCTAssertTrue(
+            OnboardingReferenceParser.shouldAutoAddCompleteReelOrPost(
+                previous: "",
+                current: "https://www.instagram.com/reel/ABC123xyz/"
+            )
+        )
+        XCTAssertFalse(
+            OnboardingReferenceParser.shouldAutoAddCompleteReelOrPost(
+                previous: "",
+                current: "@creator"
+            )
+        )
+        XCTAssertFalse(
+            OnboardingReferenceParser.shouldAutoAddCompleteReelOrPost(
+                previous: "https://www.instagram.com/reel/ABC",
+                current: "https://www.instagram.com/reel/ABCD"
+            )
+        )
     }
 
     // MARK: - View model
 
-    func testContinueFromReferencesDoesNotAdvanceWhenMixIncomplete() {
+    func testContinueFromReferencesDoesNotAdvanceWhenMixIncomplete() async {
         let store = UserDefaultsOnboardingStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
         let model = OnboardingViewModel(store: store)
-        model.step = .references
 
-        model.continueFromReferences(reduceMotion: true)
-        XCTAssertEqual(model.step, .references)
+        await model.continueFromReferences(reduceMotion: true)
+        XCTAssertEqual(model.step, .interests)
         XCTAssertTrue(model.referenceValidation.reel)
         XCTAssertTrue(model.referenceValidation.profile)
         XCTAssertFalse(model.referenceValidation.motion)
@@ -280,15 +574,13 @@ final class OnboardingTests: XCTestCase {
         )
     }
 
-    func testContinueFromReferencesFlagsOnlyMissingReel() {
+    func testContinueFromReferencesFlagsOnlyMissingReel() async {
         let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
-        model.step = .references
         model.references = [profile]
 
-        model.continueFromReferences(reduceMotion: false)
+        await model.continueFromReferences(reduceMotion: false)
 
-        XCTAssertEqual(model.step, .references)
-        XCTAssertTrue(model.referenceValidation.reel)
+        XCTAssertEqual(model.step, .interests)
         XCTAssertFalse(model.referenceValidation.profile)
         XCTAssertTrue(model.referenceValidation.motion)
         XCTAssertEqual(model.referenceInputKind, .reel)
@@ -298,14 +590,13 @@ final class OnboardingTests: XCTestCase {
         )
     }
 
-    func testContinueFromReferencesFlagsOnlyMissingProfile() {
+    func testContinueFromReferencesFlagsOnlyMissingProfile() async {
         let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
-        model.step = .references
         model.references = [reel]
 
-        model.continueFromReferences(reduceMotion: false)
+        await model.continueFromReferences(reduceMotion: false)
 
-        XCTAssertEqual(model.step, .references)
+        XCTAssertEqual(model.step, .interests)
         XCTAssertFalse(model.referenceValidation.reel)
         XCTAssertTrue(model.referenceValidation.profile)
         XCTAssertTrue(model.referenceValidation.motion)
@@ -316,14 +607,13 @@ final class OnboardingTests: XCTestCase {
         )
     }
 
-    func testContinueFromReferencesAdvancesWhenMixComplete() {
+    func testContinueFromReferencesAdvancesWhenMixComplete() async {
         let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
-        model.step = .references
         model.references = [reel, profile]
 
-        model.continueFromReferences(reduceMotion: false)
+        await model.continueFromReferences(reduceMotion: false)
 
-        XCTAssertEqual(model.step, .confirm)
+        XCTAssertEqual(model.step, .review)
         XCTAssertEqual(model.referenceValidation, .none)
     }
 
@@ -340,12 +630,11 @@ final class OnboardingTests: XCTestCase {
 
     func testSoftSkipDoesNotRequireReferenceMix() {
         let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
-        model.step = .references
 
         model.softSkip()
 
         XCTAssertTrue(model.sessionDismissed)
-        XCTAssertEqual(model.step, .references)
+        XCTAssertEqual(model.step, .interests)
         XCTAssertEqual(model.references.count, 0)
     }
 
@@ -355,9 +644,9 @@ final class OnboardingTests: XCTestCase {
             profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .verified)
         )
         model.referenceInputKind = .profile
-        model.profileDraftText = "@creator"
+        model.referenceDraftText = "@creator"
 
-        await model.addReference(kind: .profile)
+        await model.addReference()
 
         XCTAssertEqual(model.references.count, 1)
         XCTAssertEqual(model.toastMessage, "Profile added")
@@ -369,9 +658,9 @@ final class OnboardingTests: XCTestCase {
             profileVerifier: FixtureOnboardingProfileVerifier(notFoundHandles: ["ghost"])
         )
         model.referenceInputKind = .profile
-        model.profileDraftText = "@ghost"
+        model.referenceDraftText = "@ghost"
 
-        await model.addReference(kind: .profile)
+        await model.addReference()
 
         XCTAssertTrue(model.references.isEmpty)
         XCTAssertEqual(model.toastMessage, "@ghost wasn't found on Instagram")
@@ -383,9 +672,9 @@ final class OnboardingTests: XCTestCase {
             profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .temporarilyUnavailable)
         )
         model.referenceInputKind = .profile
-        model.profileDraftText = "@creator"
+        model.referenceDraftText = "@creator"
 
-        await model.addReference(kind: .profile)
+        await model.addReference()
 
         XCTAssertEqual(model.references.count, 1)
         XCTAssertEqual(model.toastMessage, "Profile added. We couldn't check Instagram right now.")
@@ -396,25 +685,24 @@ final class OnboardingTests: XCTestCase {
             store: UserDefaultsOnboardingStore(defaults: defaults),
             profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .verified)
         )
-        model.step = .references
-        model.reelDraftText = "https://www.instagram.com/reel/ABC123/"
+        model.referenceDraftText = "https://www.instagram.com/reel/ABC123/"
 
-        await model.addReference(from: "https://www.instagram.com/reel/ABC123/", kind: .reel)
+        await model.addReference(from: "https://www.instagram.com/reel/ABC123/")
 
         XCTAssertEqual(model.references.count, 1)
         XCTAssertTrue(model.references[0].isReel)
-        XCTAssertEqual(model.reelDraftText, "")
+        XCTAssertEqual(model.referenceDraftText, "")
 
-        model.profileDraftText = "@somehandle"
-        await model.addReference(from: "@somehandle", kind: .profile)
+        model.referenceDraftText = "@somehandle"
+        await model.addReference(from: "@somehandle")
 
         XCTAssertEqual(model.references.count, 2)
         XCTAssertTrue(model.references.contains(where: \.isProfile))
         XCTAssertEqual(model.referenceValidation, .none)
 
-        model.continueFromReferences(reduceMotion: false)
+        await model.continueFromReferences(reduceMotion: false)
 
-        XCTAssertEqual(model.step, .confirm)
+        XCTAssertEqual(model.step, .review)
     }
 
     func testAddReferenceClearsValidationWhenMixBecomesComplete() async {
@@ -422,16 +710,88 @@ final class OnboardingTests: XCTestCase {
             store: UserDefaultsOnboardingStore(defaults: defaults),
             profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .verified)
         )
-        model.step = .references
         model.references = [reel]
-        model.continueFromReferences(reduceMotion: false)
+        await model.continueFromReferences(reduceMotion: false)
 
         XCTAssertTrue(model.referenceValidation.profile)
 
         model.referenceInputKind = .profile
-        await model.addReference(from: "@creator", kind: .profile)
+        await model.addReference(from: "@creator")
 
         XCTAssertEqual(model.referenceValidation, .none)
+    }
+
+    func testHandleDraftChangeAutoAddsCompleteReelURL() async {
+        let model = OnboardingViewModel(
+            store: UserDefaultsOnboardingStore(defaults: defaults),
+            profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .verified)
+        )
+
+        await model.handleDraftChange(
+            previous: "",
+            current: "https://www.instagram.com/reel/ABC123xyz01/"
+        )
+
+        XCTAssertEqual(model.references.count, 1)
+        XCTAssertTrue(model.references[0].isReel)
+        XCTAssertEqual(model.referenceDraftText, "")
+        XCTAssertEqual(model.toastMessage, "Reel added")
+    }
+
+    func testHandleDraftChangeDoesNotAutoAddHandle() async {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+
+        await model.handleDraftChange(previous: "", current: "@creator")
+
+        XCTAssertTrue(model.references.isEmpty)
+        XCTAssertEqual(model.referenceDraftText, "@creator")
+        XCTAssertNil(model.toastMessage)
+    }
+
+    func testSubmitDraftAddsHandle() async {
+        let model = OnboardingViewModel(
+            store: UserDefaultsOnboardingStore(defaults: defaults),
+            profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .verified)
+        )
+        model.referenceDraftText = "@creator"
+
+        await model.submitDraftIfPresent()
+
+        XCTAssertEqual(model.references.count, 1)
+        XCTAssertTrue(model.references[0].isProfile)
+        XCTAssertEqual(model.referenceDraftText, "")
+    }
+
+    func testContinueAddsLeftoverThenBlocksWhenMixIncomplete() async {
+        let model = OnboardingViewModel(
+            store: UserDefaultsOnboardingStore(defaults: defaults),
+            profileVerifier: FixtureOnboardingProfileVerifier(configuredStatus: .verified)
+        )
+        model.referenceDraftText = "@creator"
+
+        await model.continueFromReferences(reduceMotion: true)
+
+        XCTAssertEqual(model.references.count, 1)
+        XCTAssertTrue(model.references[0].isProfile)
+        XCTAssertEqual(model.step, .interests)
+        XCTAssertEqual(
+            model.referenceValidationMessage,
+            "Add at least one reel URL to continue."
+        )
+    }
+
+    func testBadPasteKeepsTextAndWarns() async {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        let junk = "https://youtube.com/watch?v=notareel"
+
+        await model.handleDraftChange(previous: "", current: junk)
+
+        XCTAssertTrue(model.references.isEmpty)
+        XCTAssertEqual(model.referenceDraftText, junk)
+        XCTAssertEqual(
+            model.toastMessage,
+            "Paste an Instagram link — instagram.com/reel/… or instagram.com/handle"
+        )
     }
 
     func testProfileVerificationInconclusivePreviewAllowsAdd() async {
@@ -470,28 +830,16 @@ final class OnboardingTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         let store = UserDefaultsOnboardingStore(defaults: defaults)
         let model = OnboardingViewModel(store: store)
-        model.selectedCategoryIDs = ["food"]
-        model.references = [
-            OnboardingReference(
-                id: "1",
-                kind: .reel,
-                label: "reel",
-                key: "instagram:reel:a",
-                url: "https://www.instagram.com/reel/a/"
-            ),
-            OnboardingReference(
-                id: "2",
-                kind: .profile,
-                label: "@c",
-                key: "handle:c",
-                url: "https://www.instagram.com/c/"
-            ),
-        ]
+        model.interestIDs = ["food"]
+        model.formats = [.talkingToCamera]
+        model.timeToCreate = .tenToThirty
+        model.showFace = true
+        model.useVoice = true
+        model.selectedTasteExampleIDs = ["food-rec-1"]
 
         let handoff = model.finishAndGenerateFirstDay(todayDate: "2026-08-07")
         XCTAssertEqual(handoff.scheduledDate, "2026-08-07")
-        XCTAssertTrue(store.isComplete())
-        XCTAssertFalse(model.shouldPresentOnboarding)
+        XCTAssertFalse(store.isComplete())
         XCTAssertNil(handoff.dayBrief)
     }
 

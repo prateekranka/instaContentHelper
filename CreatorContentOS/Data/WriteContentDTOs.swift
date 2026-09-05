@@ -29,6 +29,19 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
         case captionStyle = "caption_style"
         case neverSay = "never_say"
         case recurringFormats = "recurring_formats"
+        case onboardingState = "onboarding_state"
+        case onboardingStep = "onboarding_step"
+        case onboardingCompletedAt = "onboarding_completed_at"
+        case startingPoint = "starting_point"
+        case customSubjects = "custom_subjects"
+        case tasteExampleIDs = "taste_example_ids"
+        case productionFormats = "production_formats"
+        case timeToCreate = "time_to_create"
+        case onCameraRestrictions = "on_camera_restrictions"
+        case recentContext = "recent_context"
+        case creatorNote = "creator_note"
+        case firstIdeaHandoff = "first_idea_handoff"
+        case languagePreferences = "language_preferences"
         case reviewState = "review_state"
     }
 
@@ -81,12 +94,33 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
         case .updateCreatorProfile(let update, let context):
             try container.encode("update_creator_profile", forKey: .action)
             try container.encode(context.creatorID, forKey: .creatorID)
-            try container.encode(update.positioning, forKey: .positioning)
-            try container.encode(update.voiceRules, forKey: .voiceRules)
-            try container.encode(update.contentPillars, forKey: .contentPillars)
-            try container.encode(update.captionStyle, forKey: .captionStyle)
-            try container.encode(update.noGoTopics, forKey: .neverSay)
-            try container.encode(update.recurringFormats, forKey: .recurringFormats)
+            try encodeIfPresent(update.positioning, forKey: .positioning, into: &container)
+            try encodeIfPresent(update.voiceRules, forKey: .voiceRules, into: &container)
+            try encodeIfPresent(update.contentPillars, forKey: .contentPillars, into: &container)
+            try encodeIfPresent(update.captionStyle, forKey: .captionStyle, into: &container)
+            try encodeIfPresent(update.noGoTopics, forKey: .neverSay, into: &container)
+            try encodeIfPresent(update.recurringFormats, forKey: .recurringFormats, into: &container)
+            if let onboardingState = update.onboardingState {
+                try container.encode(onboardingState.rawValue, forKey: .onboardingState)
+            }
+            try encodeIfPresent(update.onboardingStep, forKey: .onboardingStep, into: &container)
+            try encodeIfPresent(update.onboardingCompletedAt, forKey: .onboardingCompletedAt, into: &container)
+            try encodeIfPresent(update.startingPoint, forKey: .startingPoint, into: &container)
+            try encodeIfPresent(update.customSubjects, forKey: .customSubjects, into: &container)
+            try encodeIfPresent(update.tasteExampleIDs, forKey: .tasteExampleIDs, into: &container)
+            try encodeIfPresent(update.productionFormats, forKey: .productionFormats, into: &container)
+            try encodeIfPresent(update.timeToCreate, forKey: .timeToCreate, into: &container)
+            if let restrictions = update.onCameraRestrictions {
+                try container.encode(restrictions, forKey: .onCameraRestrictions)
+            }
+            try encodeIfPresent(update.recentContext, forKey: .recentContext, into: &container)
+            try encodeIfPresent(update.creatorNote, forKey: .creatorNote, into: &container)
+            if let handoff = update.firstIdeaHandoff {
+                try container.encode(handoff, forKey: .firstIdeaHandoff)
+            }
+            if let languagePreferences = update.languagePreferences {
+                try container.encode(languagePreferences, forKey: .languagePreferences)
+            }
 
         case .updateDailyCardReviewState(let dailyCardID, let reviewState, let context):
             try container.encode("update_daily_card_review_state", forKey: .action)
@@ -102,6 +136,16 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
     ) throws {
         if let weekStartDate = weekStartDate?.nilIfBlank {
             try container.encode(weekStartDate, forKey: .weekStartDate)
+        }
+    }
+
+    private func encodeIfPresent<T: Encodable>(
+        _ value: T?,
+        forKey key: CodingKeys,
+        into container: inout KeyedEncodingContainer<CodingKeys>
+    ) throws {
+        if let value {
+            try container.encode(value, forKey: key)
         }
     }
 }

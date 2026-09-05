@@ -794,18 +794,27 @@ async function assertCreatorProfileUpdateBoundary() {
     {
       action: "update_creator_profile",
       creator_id: ids.creatorNoProfileA,
-      positioning: "No active profile should fail",
+      positioning: "Upserted active profile",
+      onboarding_state: "new",
     },
   );
   assertEquals(
     missingProfile.status,
-    404,
-    "missing creator profile status",
+    200,
+    "missing creator profile upsert status",
+  );
+  const upsertedProfile = missingProfile.json.creator_profile as
+    | { positioning?: string; onboarding_state?: string }
+    | undefined;
+  assertEquals(
+    upsertedProfile?.positioning,
+    "Upserted active profile",
+    "missing creator profile upsert body",
   );
   assertEquals(
-    missingProfile.json.error,
-    "creator_profile_not_found",
-    "missing creator profile error",
+    upsertedProfile?.onboarding_state,
+    "new",
+    "missing creator profile onboarding state",
   );
 
   console.log("PASS creator profile update boundary");
