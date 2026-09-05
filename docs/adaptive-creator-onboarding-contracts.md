@@ -374,7 +374,7 @@ Parent orchestrator stays on Grok 4.6. These three agents are Composer 2.5 Fast 
 
 ## N. Remaining limitations / QA evidence
 
-- **Live first-idea generate (Edge `generate_day`):** **Not completed.** Local non-production path exists (Colima + `supabase start -x vector` + `supabase db push --local`). Migration `20260905120000_adaptive_creator_onboarding.sql` is applied locally. A books/movies `creator_profiles` row was seeded and `generate-week` `action=generate_day` was invoked at `http://127.0.0.1:54321/functions/v1/generate-week` (see `artifacts/adaptive-onboarding-qa/live-generate-day-evidence.json`). The run reached provider call but failed with `openai_request_failed:401` because no valid `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` is configured for local Edge serve (shell `OPENAI_API_KEY` is a 15-char placeholder). **No terminal books/movies daily card was returned.** Linked remote project `zogvvrxhiwozjmufvddu` is production; do not apply migration or run onboarding smoke there without human approval.
+- **Live first-idea generate (Edge `generate_day`):** **Completed locally.** Books/movies `creator_profiles` row seeded; `generate-week` `action=generate_day` at `http://127.0.0.1:54321/functions/v1/generate-week` returned a real card (title snippet: "The Saturday stack rule"; books/movies in copy; no HYROX). Evidence: `artifacts/adaptive-onboarding-qa/live-generate-day-evidence.json`. Local provider key from gitignored `~/.hermes/.env`; functions served with `/tmp/mco-functions-live-local.env` (not committed). Default `deepseek-v4-flash` failed JSON validation locally; rerun used `MCO_DEEPSEEK_MODEL=deepseek-chat` and async poll (sync hit Kong 504). Linked remote project `zogvvrxhiwozjmufvddu` is production; do not apply migration or run onboarding smoke there without human approval.
 - **Human rerun (local, after valid provider secrets):**
 
   ```bash
@@ -382,7 +382,7 @@ Parent orchestrator stays on Grok 4.6. These three agents are Composer 2.5 Fast 
   cd /path/to/contenthelper
   supabase start -x vector
   supabase db push --local --include-all --yes
-  printf 'DEEPSEEK_API_KEY=<your-key>\nMCO_AI_PROVIDER_ORDER=deepseek,openai\n' > /tmp/mco-functions-live-local.env
+  printf 'DEEPSEEK_API_KEY=<your-key>\nMCO_AI_PROVIDER_ORDER=deepseek,openai\nMCO_DEEPSEEK_MODEL=deepseek-chat\n' > /tmp/mco-functions-live-local.env
   supabase functions serve --no-verify-jwt --env-file /tmp/mco-functions-live-local.env
   # new terminal:
   eval "$(supabase status -o env)"

@@ -1,10 +1,11 @@
 {
   "live_generate_attempted": true,
-  "live_generate_completed": false,
+  "live_generate_completed": true,
   "environment": "local-supabase",
   "migration_applied": "supabase/migrations/20260905120000_adaptive_creator_onboarding.sql (local db push)",
   "endpoint": "http://127.0.0.1:54321/functions/v1/generate-week",
   "action": "generate_day",
+  "response_mode": "async",
   "scheduled_date": "2026-09-05",
   "profile": {
     "content_pillars": ["books", "movies-tv"],
@@ -12,19 +13,22 @@
     "positioning_snippet": "book and movie picks with warm, honest takes",
     "hyrox_in_positioning": false
   },
-  "generate_http_status": 502,
-  "terminal_error": "openai_request_failed:401",
-  "provider": "openai",
-  "provider_key_present_in_shell": true,
-  "provider_key_note": "Shell OPENAI_API_KEY length 15 (placeholder); DEEPSEEK unset",
-  "edge_lifecycle": {
-    "phase": "request_accepted",
-    "generation_id": "1e6402b5-0e7d-4616-9f4d-0a0f59a919f2",
-    "creator_profile_chars": 329,
-    "prompt_system_chars": 2305,
-    "day_guidance_chars": 269
-  },
-  "books_movies_card_produced": false,
+  "provider_key_source": "local gitignored env (~/.hermes/.env DEEPSEEK_API_KEY, len=35)",
+  "provider_key_found": true,
+  "local_functions_env": "/tmp/mco-functions-live-local.env (not committed)",
+  "local_model_override": "MCO_DEEPSEEK_MODEL=deepseek-chat (default deepseek-v4-flash returned invalid JSON locally)",
+  "generate_http_status": 202,
+  "generation_id": "30181b7d-1c2b-41c5-8ca8-1a9060f96cec",
+  "generation_status": "draft",
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "generation_duration_ms_approx": 61610,
+  "content_pillar": "lifestyle",
+  "title_snippet": "The Saturday stack rule",
+  "card_mentions_books_or_movies": true,
+  "books_movies_card_produced": true,
   "hyrox_in_response": false,
+  "terminal_error": null,
+  "notes": "Real generate_day via generate-week on local Supabase. Books/movies profile; card text references books/movies; no HYROX. Sync mode hit Kong 504; async poll succeeded.",
   "hermetic_prompt_test": "supabase/functions/generate-week/generation_test.ts — generate_day prompt uses profile identity without HYROX default for books profile"
 }
