@@ -1,0 +1,30 @@
+{
+  "live_generate_attempted": true,
+  "live_generate_completed": false,
+  "environment": "local-supabase",
+  "migration_applied": "supabase/migrations/20260905120000_adaptive_creator_onboarding.sql (local db push)",
+  "endpoint": "http://127.0.0.1:54321/functions/v1/generate-week",
+  "action": "generate_day",
+  "scheduled_date": "2026-09-05",
+  "profile": {
+    "content_pillars": ["books", "movies-tv"],
+    "onboarding_state": "established",
+    "positioning_snippet": "book and movie picks with warm, honest takes",
+    "hyrox_in_positioning": false
+  },
+  "generate_http_status": 502,
+  "terminal_error": "openai_request_failed:401",
+  "provider": "openai",
+  "provider_key_present_in_shell": true,
+  "provider_key_note": "Shell OPENAI_API_KEY length 15 (placeholder); DEEPSEEK unset",
+  "edge_lifecycle": {
+    "phase": "request_accepted",
+    "generation_id": "1e6402b5-0e7d-4616-9f4d-0a0f59a919f2",
+    "creator_profile_chars": 329,
+    "prompt_system_chars": 2305,
+    "day_guidance_chars": 269
+  },
+  "books_movies_card_produced": false,
+  "hyrox_in_response": false,
+  "hermetic_prompt_test": "supabase/functions/generate-week/generation_test.ts — generate_day prompt uses profile identity without HYROX default for books profile"
+}

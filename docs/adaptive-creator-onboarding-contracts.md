@@ -374,6 +374,24 @@ Parent orchestrator stays on Grok 4.6. These three agents are Composer 2.5 Fast 
 
 ## N. Remaining limitations / QA evidence
 
+- **Live first-idea generate (Edge `generate_day`):** **Not completed.** Local non-production path exists (Colima + `supabase start -x vector` + `supabase db push --local`). Migration `20260905120000_adaptive_creator_onboarding.sql` is applied locally. A books/movies `creator_profiles` row was seeded and `generate-week` `action=generate_day` was invoked at `http://127.0.0.1:54321/functions/v1/generate-week` (see `artifacts/adaptive-onboarding-qa/live-generate-day-evidence.json`). The run reached provider call but failed with `openai_request_failed:401` because no valid `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` is configured for local Edge serve (shell `OPENAI_API_KEY` is a 15-char placeholder). **No terminal books/movies daily card was returned.** Linked remote project `zogvvrxhiwozjmufvddu` is production; do not apply migration or run onboarding smoke there without human approval.
+- **Human rerun (local, after valid provider secrets):**
+
+  ```bash
+  colima start --cpu 4 --memory 8 --disk 60
+  cd /path/to/contenthelper
+  supabase start -x vector
+  supabase db push --local --include-all --yes
+  printf 'DEEPSEEK_API_KEY=<your-key>\nMCO_AI_PROVIDER_ORDER=deepseek,openai\n' > /tmp/mco-functions-live-local.env
+  supabase functions serve --no-verify-jwt --env-file /tmp/mco-functions-live-local.env
+  # new terminal:
+  eval "$(supabase status -o env)"
+  export FUNCTIONS_URL="${API_URL}/functions/v1"
+  deno run --allow-env --allow-net --allow-read scripts/onboarding-books-movies-live-smoke.ts \
+    | tee artifacts/adaptive-onboarding-qa/live-generate-day-evidence.json
+  ```
+
+  Expect `generate_status: 200`, `content_pillar` in `books` / `movies-tv`, and no HYROX in title/script/caption. Hermetic prompt proof already passes: `deno test supabase/functions/generate-week/generation_test.ts --filter "books profile"`.
 - **Fixture confirm idempotency:** With `MCO_FORCE_FIXTURE_UI=1` alone, confirming onboarding skips generating a new books/movies card when Today already has the HYROX ready package (by design; see idempotency rules in section E). Use **`MCO_FORCE_EMPTY_TODAY=1`** with fixture UI + force onboarding to prove personalized first idea without clobbering the HYROX card.
 - **Preparing UI:** The "Preparing your first idea…" state on review is too brief to capture reliably. Use **`MCO_SLOW_FIRST_IDEA=1`** (DEBUG only) with empty Today to slow fixture generation for screenshots. Default off.
 - **Generation failure QA:** Use **`MCO_FAIL_FIRST_IDEA=1`** (DEBUG only) with empty Today to show Review retry with human copy (no raw error codes).
