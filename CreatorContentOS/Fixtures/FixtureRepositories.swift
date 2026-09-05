@@ -30,6 +30,9 @@ struct FixtureTodayCardRepository: TodayCardRepository {
         if let publishedCard = await publishedStore?.readTodayCard() {
             return publishedCard
         }
+        if DebugLaunchFlags.forceEmptyToday {
+            return .emptyTodayPlaceholder
+        }
         return DailyCard.raceWeekToday
     }
 
@@ -312,7 +315,7 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
 /// without a live edge function.
 struct FixtureDayGenerationRepository: DayGenerationRepository {
     /// Brief artificial delay so Plan can show in-progress chrome before the draft lands.
-    var artificialDelayNanoseconds: UInt64 = 450_000_000
+    var artificialDelayNanoseconds: UInt64 = DebugLaunchFlags.fixtureFirstIdeaDelayNanoseconds
 
     func generateDay(
         creatorID: UUID,
@@ -322,6 +325,11 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
     ) async throws -> DailyGenerationResult {
         _ = creatorID
         _ = context
+#if DEBUG
+        if DebugLaunchFlags.failFirstIdea {
+            throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed")
+        }
+#endif
         try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
         return makeResult(scheduledDate: scheduledDate, dayBrief: dayBrief)
     }
@@ -338,6 +346,11 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
         _ = weeklyPlanID
         _ = preserveManualEdits
         _ = context
+#if DEBUG
+        if DebugLaunchFlags.failFirstIdea {
+            throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed")
+        }
+#endif
         try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
         let guidance = dayGuidance?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let brief = guidance.isEmpty
@@ -362,8 +375,10 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
 
     private func makeResult(scheduledDate: String, dayBrief: String) -> DailyGenerationResult {
         let trimmedBrief = dayBrief.trimmingCharacters(in: .whitespacesAndNewlines)
-        let titleSeed = trimmedBrief.split(separator: ".").first.map(String.init) ?? trimmedBrief
-        let title = String(titleSeed.prefix(72))
+        let pillar = inferredContentPillar(from: trimmedBrief)
+        let title = synthesizedTitle(from: trimmedBrief, pillar: pillar)
+        let script = synthesizedScript(from: trimmedBrief, pillar: pillar)
+        let scenes = synthesizedScenes(for: pillar)
         return DailyGenerationResult(
             generationID: UUID(),
             weeklyPlanID: WeeklyPlan.raceWeek.id,
@@ -373,12 +388,12 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
                 id: UUID(),
                 scheduledDate: scheduledDate,
                 status: "draft",
-                title: title.isEmpty ? "Fixture day draft" : title,
+                title: title,
                 whyToday: trimmedBrief.isEmpty
                     ? "Fixture day generation for \(scheduledDate)."
                     : trimmedBrief,
                 growthJob: "Consistency.",
-                contentPillar: "lifestyle",
+                contentPillar: pillar,
                 shootability: "easy",
                 estimatedShootMinutes: 12,
                 energyRequired: "low",
@@ -386,25 +401,16 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
                 format: "Reel",
                 primarySurface: "instagram_reels",
                 durationSeconds: 30,
-                hook: title.isEmpty ? "One honest beat for today." : title,
+                hook: title,
                 saveShareReason: "Save this as a reminder to shoot the day as planned.",
-                sceneList: [
-                    ShotScene(number: 1, title: "Talking-head hook", duration: "3 sec", symbol: "person.crop.rectangle"),
-                    ShotScene(number: 2, title: "Process b-roll", duration: "4 sec", symbol: "film.stack"),
-                    ShotScene(number: 3, title: "Proof moment", duration: "3 sec", symbol: "checkmark.circle"),
-                    ShotScene(number: 4, title: "Soft CTA", duration: "2 sec", symbol: "heart")
-                ],
-                script: trimmedBrief.isEmpty
-                    ? "Open with the day's angle. Show one real beat. Close with a simple ask."
-                    : trimmedBrief,
+                sceneList: scenes,
+                script: script,
                 noVoiceoverVersion: "Use bold captions over the same shots.",
-                onScreenText: ["Today", "Keep it real", "Save this"],
-                caption: trimmedBrief.isEmpty
-                    ? "A fixture draft for \(scheduledDate)."
-                    : trimmedBrief,
+                onScreenText: sceneOnScreenText(for: pillar),
+                caption: script,
                 cta: "Save this for later.",
-                hashtags: ["fixture", "dayplan"],
-                coverText: title.isEmpty ? "Today's draft" : String(title.prefix(40)),
+                hashtags: hashtags(for: pillar),
+                coverText: String(title.prefix(40)),
                 postInstructions: "Keep it real, natural, and personal.",
                 brandEventNotes: "",
                 backupStory: "Post one phone clip with the same hook.",
@@ -420,6 +426,114 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
             sourceSummary: "Fixture day brief only.",
             generatedAt: ISO8601DateFormatter().string(from: Date())
         )
+    }
+
+    private func inferredContentPillar(from brief: String) -> String {
+        let lower = brief.lowercased()
+        let hasBooks = lower.contains("book")
+        let hasMovies = lower.contains("movie") || lower.contains(" tv") || lower.contains("tv ")
+        if hasBooks && hasMovies { return "books" }
+        if hasMovies { return "movies-tv" }
+        if hasBooks { return "books" }
+        if lower.contains("hyrox") || lower.contains("race week") || lower.contains("fitness") || lower.contains("gym") {
+            return "fitness-wellness"
+        }
+        return "lifestyle"
+    }
+
+    private func synthesizedTitle(from brief: String, pillar: String) -> String {
+        let lower = brief.lowercased()
+        if lower.contains("book") && (lower.contains("movie") || lower.contains(" tv")) {
+            return "What I'm reading and watching right now"
+        }
+        switch pillar {
+        case "books":
+            return "The book on my nightstand — one honest takeaway"
+        case "movies-tv":
+            return "One scene from what I'm watching that stuck with me"
+        case "fitness-wellness":
+            return "One small training win worth sharing today"
+        default:
+            let titleSeed = brief.split(separator: ".").first.map(String.init) ?? brief
+            let title = String(titleSeed.prefix(72))
+            return title.isEmpty ? "Fixture day draft" : title
+        }
+    }
+
+    private func synthesizedScript(from brief: String, pillar: String) -> String {
+        switch pillar {
+        case "books":
+            return """
+            Here is the book I cannot stop thinking about.
+            One line about why it landed for me.
+            What I would tell a friend who asked if it is worth it.
+            """
+        case "movies-tv":
+            return """
+            Here is what I am watching this week.
+            The moment that made me pause the scroll.
+            Why it fits the mood I am in right now.
+            """
+        default:
+            if brief.localizedCaseInsensitiveContains("book") && brief.localizedCaseInsensitiveContains("movie") {
+                return """
+                Two things on my mind this week: a book and a show.
+                One honest line about each.
+                Why they pair well for the kind of content I make.
+                """
+            }
+            return brief.isEmpty
+                ? "Open with the day's angle. Show one real beat. Close with a simple ask."
+                : brief
+        }
+    }
+
+    private func synthesizedScenes(for pillar: String) -> [ShotScene] {
+        switch pillar {
+        case "books":
+            return [
+                ShotScene(number: 1, title: "Book on the table", duration: "3 sec", symbol: "book.closed"),
+                ShotScene(number: 2, title: "Favorite page", duration: "4 sec", symbol: "text.book.closed"),
+                ShotScene(number: 3, title: "Quick rating", duration: "3 sec", symbol: "star"),
+                ShotScene(number: 4, title: "Save for later", duration: "2 sec", symbol: "bookmark")
+            ]
+        case "movies-tv":
+            return [
+                ShotScene(number: 1, title: "Remote and couch", duration: "3 sec", symbol: "tv"),
+                ShotScene(number: 2, title: "Pause on the scene", duration: "4 sec", symbol: "film"),
+                ShotScene(number: 3, title: "Reaction beat", duration: "3 sec", symbol: "face.smiling"),
+                ShotScene(number: 4, title: "Soft ask", duration: "2 sec", symbol: "heart")
+            ]
+        default:
+            return [
+                ShotScene(number: 1, title: "Talking-head hook", duration: "3 sec", symbol: "person.crop.rectangle"),
+                ShotScene(number: 2, title: "Process b-roll", duration: "4 sec", symbol: "film.stack"),
+                ShotScene(number: 3, title: "Proof moment", duration: "3 sec", symbol: "checkmark.circle"),
+                ShotScene(number: 4, title: "Soft CTA", duration: "2 sec", symbol: "heart")
+            ]
+        }
+    }
+
+    private func sceneOnScreenText(for pillar: String) -> [String] {
+        switch pillar {
+        case "books":
+            return ["Currently reading", "Worth it?", "Save this"]
+        case "movies-tv":
+            return ["Watching now", "This scene", "Save this"]
+        default:
+            return ["Today", "Keep it real", "Save this"]
+        }
+    }
+
+    private func hashtags(for pillar: String) -> [String] {
+        switch pillar {
+        case "books":
+            return ["books", "currentlyreading", "fixture"]
+        case "movies-tv":
+            return ["movies", "whattowatch", "fixture"]
+        default:
+            return ["fixture", "dayplan"]
+        }
     }
 }
 
@@ -455,22 +569,102 @@ struct FixtureIntelligenceRepository: IntelligenceRepository {
 }
 
 struct FixtureCreatorProfileRepository: CreatorProfileRepository {
+    private let store: FixtureCreatorProfileStore
+
+    init(store: FixtureCreatorProfileStore = FixtureCreatorProfileStore()) {
+        self.store = store
+    }
+
     func activeProfileSummary(for context: WorkspaceContext) async throws -> CreatorProfileSummary {
-        .creatorFixture
+        _ = context
+        return await store.read()
     }
 
     func updateProfile(_ update: CreatorProfileUpdate, context: WorkspaceContext) async throws -> CreatorProfileSummary {
-        CreatorProfileSummary(
-            displayName: CreatorProfileSummary.creatorFixture.displayName,
-            positioning: update.positioning ?? "",
-            voiceLine: update.voiceRules?.joined(separator: ", ") ?? "",
-            noGoTopics: update.noGoTopics ?? [],
-            voiceRules: update.voiceRules ?? [],
-            contentPillars: update.contentPillars ?? [],
-            captionStyle: update.captionStyle,
-            recurringFormats: update.recurringFormats ?? [],
-            onboardingState: update.onboardingState ?? .established
-        )
+        _ = context
+        return await store.apply(update)
+    }
+}
+
+actor FixtureCreatorProfileStore {
+    private var profile: CreatorProfileSummary = .creatorFixture
+
+    func read() -> CreatorProfileSummary {
+        profile
+    }
+
+    func apply(_ update: CreatorProfileUpdate) -> CreatorProfileSummary {
+        profile = Self.mergedProfile(existing: profile, update: update)
+        return profile
+    }
+
+    private static func mergedProfile(
+        existing: CreatorProfileSummary,
+        update: CreatorProfileUpdate
+    ) -> CreatorProfileSummary {
+        var summary = existing
+
+        if let positioning = update.positioning {
+            summary.positioning = positioning
+        }
+        if let voiceRules = update.voiceRules {
+            summary.voiceRules = voiceRules
+            summary.voiceLine = voiceRules.joined(separator: ", ")
+        }
+        if let contentPillars = update.contentPillars {
+            summary.contentPillars = contentPillars
+        }
+        if let captionStyle = update.captionStyle {
+            summary.captionStyle = captionStyle
+        }
+        if let noGoTopics = update.noGoTopics {
+            summary.noGoTopics = noGoTopics
+        }
+        if let recurringFormats = update.recurringFormats {
+            summary.recurringFormats = recurringFormats
+        }
+        if let onboardingState = update.onboardingState {
+            summary.onboardingState = onboardingState
+        }
+        if let onboardingStep = update.onboardingStep {
+            summary.onboardingStep = onboardingStep
+        }
+        if update.onboardingCompletedAt != nil {
+            summary.onboardingCompletedAt = update.onboardingCompletedAt
+        }
+        if let startingPoint = update.startingPoint {
+            summary.startingPoint = startingPoint
+        }
+        if let customSubjects = update.customSubjects {
+            summary.customSubjects = customSubjects
+        }
+        if let tasteExampleIDs = update.tasteExampleIDs {
+            summary.tasteExampleIDs = tasteExampleIDs
+        }
+        if let productionFormats = update.productionFormats {
+            summary.productionFormats = productionFormats
+        }
+        if let timeToCreate = update.timeToCreate {
+            summary.timeToCreate = timeToCreate
+        }
+        if let onCameraRestrictions = update.onCameraRestrictions {
+            summary.onCameraRestrictions = onCameraRestrictions
+        }
+        if let recentContext = update.recentContext {
+            summary.recentContext = recentContext
+        }
+        if update.creatorNote != nil {
+            summary.creatorNote = update.creatorNote
+        }
+        if let firstIdeaHandoff = update.firstIdeaHandoff {
+            summary.firstIdeaHandoff = firstIdeaHandoff
+        }
+        if let languagePreferences = update.languagePreferences,
+           let primary = languagePreferences["primary"]?.nilIfBlank {
+            summary.contentLanguage = primary
+        }
+
+        return summary
     }
 }
 

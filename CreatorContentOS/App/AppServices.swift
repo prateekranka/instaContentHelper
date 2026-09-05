@@ -281,7 +281,7 @@ final class AppServices {
             todayCache: todayCache,
             notifications: notifications,
             todayDate: todayDate,
-            todayCard: .raceWeekToday,
+            todayCard: DebugLaunchFlags.forceEmptyToday ? .emptyTodayPlaceholder : .raceWeekToday,
             archiveEntries: ArchiveEntry.fixtures,
             weeklyPlan: .raceWeek,
             weeklyIdeas: WeeklyIdea.raceWeekBank,
@@ -1558,7 +1558,8 @@ final class AppServices {
             if code == "ready_package_overwrite_required" {
                 return "We saved your preferences, but Today already has an idea, so we left it."
             }
-            if let message = DayLifecycleErrorDisplay.message(forCode: code).nilIfBlank {
+            let mapped = DayLifecycleErrorDisplay.message(forCode: code)
+            if mapped != code, let message = mapped.nilIfBlank {
                 return message
             }
         }
@@ -1690,7 +1691,7 @@ final class AppServices {
                     todayCard = draftCard.dailyCard(completionState: nil)
                     todayContentState = .ready
                 }
-                await refreshPublishedContentAfterPublishImmediately()
+                await refreshPublishedContentAfterPublishImmediately(skipTodayCard: draftCard != nil)
                 if !Self.hasUsableStoryboardThumbnails(todayCard.storyboardThumbnailAssets),
                    Self.hasUsableStoryboardThumbnails(preservedAssets) {
                     todayCard.storyboardThumbnailAssets = preservedAssets
@@ -2233,18 +2234,20 @@ final class AppServices {
     /// Re-fetches canonical published content immediately after publish so the
     /// manager week state and creator Today state come from the same source of truth.
     /// This prevents local reviewed-draft state from diverging from published rows.
-    func refreshPublishedContentAfterPublishImmediately() async {
+    func refreshPublishedContentAfterPublishImmediately(skipTodayCard: Bool = false) async {
         var refreshError: Error?
 
-        do {
-            todayCard = try await repositories.today.todayCard(for: context)
-            todayContentState = .ready
-        } catch RepositoryError.noPublishedTodayCard(let date) {
-            todayContentState = .missingPublishedCard(date: date)
-            lastNotificationSchedule = nil
-            lastNotificationError = nil
-        } catch {
-            refreshError = error
+        if !skipTodayCard {
+            do {
+                todayCard = try await repositories.today.todayCard(for: context)
+                todayContentState = .ready
+            } catch RepositoryError.noPublishedTodayCard(let date) {
+                todayContentState = .missingPublishedCard(date: date)
+                lastNotificationSchedule = nil
+                lastNotificationError = nil
+            } catch {
+                refreshError = error
+            }
         }
 
         do {

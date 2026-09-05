@@ -122,6 +122,9 @@ add_launch_env MCO_DEBUG_PAIRED_MEMBER_ROLE
 add_launch_env MCO_RESET_ONBOARDING
 add_launch_env MCO_FORCE_ONBOARDING
 add_launch_env MCO_FORCE_FIXTURE_UI
+add_launch_env MCO_FORCE_EMPTY_TODAY
+add_launch_env MCO_SLOW_FIRST_IDEA
+add_launch_env MCO_FAIL_FIRST_IDEA
 add_launch_env MCO_FORCE_APP_MODE
 add_launch_env MCO_FORCE_SCREEN
 

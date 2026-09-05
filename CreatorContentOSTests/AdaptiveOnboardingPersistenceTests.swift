@@ -146,4 +146,38 @@ final class AdaptiveOnboardingPersistenceTests: XCTestCase {
         XCTAssertEqual(booksEntry?["answer"], "Fourth Wing")
         XCTAssertEqual(booksEntry?["interest_id"], "books")
     }
+
+    func testFixtureProfileRepositoryRoundTripsOnboardingFields() async throws {
+        let repository = FixtureCreatorProfileRepository()
+        let context = WorkspaceContext.creatorFixture
+        var completed = OnboardingCompletedData(
+            selectedCategoryIDs: ["books", "movies-tv"],
+            customSubjects: ["Indie comics"],
+            startingPoint: .alreadyPosting,
+            selectedTasteExampleIDs: ["books-rec-1"],
+            tasteExampleTitles: ["3 underrated books"],
+            formats: [.voiceoverBroll, .talkingToCamera],
+            timeToCreate: .tenToThirty,
+            contentLanguage: "English",
+            showFace: false,
+            useVoice: true,
+            contextAnswers: ["books-reading": "Fourth Wing"],
+            references: [],
+            voiceDeferred: false
+        )
+        let update = OnboardingProfileMapper.profileUpdate(
+            from: OnboardingRecord(completedData: completed),
+            onboardingState: .established,
+            onboardingCompletedAt: "2026-09-05T12:00:00Z"
+        )
+
+        let saved = try await repository.updateProfile(update, context: context)
+        let reloaded = try await repository.activeProfileSummary(for: context)
+
+        XCTAssertEqual(saved.productionFormats, ["voiceover_broll", "talking_to_camera"])
+        XCTAssertEqual(reloaded.customSubjects, ["Indie comics"])
+        XCTAssertEqual(reloaded.recentContext.first?["answer"], "Fourth Wing")
+        XCTAssertFalse(YouProductionSelection.from(profile: reloaded).summarySubtitle.contains("Not set"))
+        XCTAssertFalse(YouContextSelection.from(profile: reloaded).summarySubtitle.contains("Not set"))
+    }
 }

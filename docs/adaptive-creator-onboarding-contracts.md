@@ -353,6 +353,9 @@ Uncommitted local work (preserve; not this contracts pass): unified onboarding r
 
 - `MCO_RESET_ONBOARDING=1` still allowed in DEBUG launch; must clear workspace-scoped cache **and** not delete an established live profile unless a dedicated debug action says so. Prefer resetting local presentation so the flow shows, without UPDATE of production rows.
 - `MCO_FORCE_ONBOARDING=1` (DEBUG only): present the full five-step flow even when the loaded profile is `established` (including fixture HYROX). Does **not** wipe or empty the profile Today card. Soft skip still hides the flow for the current process; completing still calls `confirmOnboardingAndPrepareFirstIdea`. Combine with `MCO_FORCE_FIXTURE_UI=1` for simulator QA screenshots.
+- `MCO_FORCE_EMPTY_TODAY=1` (DEBUG only): with fixture UI, start Today empty (no scenes, no seeded draft) so confirm runs `generateDayCard` + `makeDayAvailable`. Combine with `MCO_FORCE_ONBOARDING=1` to prove books/movies first idea without overwriting the HYROX card when the flag is off.
+- `MCO_SLOW_FIRST_IDEA=1` (DEBUG only): slow fixture first-idea generation (~3.5s) for screenshot capture. Default off.
+- `MCO_FAIL_FIRST_IDEA=1` (DEBUG only): fail fixture first-idea generation with recoverable human copy on Review. Default off.
 - Fixture UI (`MCO_FORCE_FIXTURE_UI`) may show onboarding with in-memory store.
 - Hermetic: `deno task ci:backend`. iOS: scheme `CreatorContentOS` / target `CreatorContentOSTests`.
 - Do not log personal notes in tests' print/debug either.
@@ -371,11 +374,31 @@ Parent orchestrator stays on Grok 4.6. These three agents are Composer 2.5 Fast 
 
 ## N. Remaining limitations / QA evidence
 
-- **Fixture confirm idempotency:** With `MCO_FORCE_FIXTURE_UI=1`, confirming onboarding skips generating a new books/movies card when Today already has the HYROX ready package (by design; see idempotency rules in section E).
-- **Preparing UI:** The "Preparing your first idea…" state on review is too brief to capture reliably in a screenshot; QA should accept enabled **Show my first idea** or a visible preparing row, not a disabled primary with no explanation.
+- **Fixture confirm idempotency:** With `MCO_FORCE_FIXTURE_UI=1` alone, confirming onboarding skips generating a new books/movies card when Today already has the HYROX ready package (by design; see idempotency rules in section E). Use **`MCO_FORCE_EMPTY_TODAY=1`** with fixture UI + force onboarding to prove personalized first idea without clobbering the HYROX card.
+- **Preparing UI:** The "Preparing your first idea…" state on review is too brief to capture reliably. Use **`MCO_SLOW_FIRST_IDEA=1`** (DEBUG only) with empty Today to slow fixture generation for screenshots. Default off.
+- **Generation failure QA:** Use **`MCO_FAIL_FIRST_IDEA=1`** (DEBUG only) with empty Today to show Review retry with human copy (no raw error codes).
 - **Shoot Folio:** In this shell, Shoot Folio opens inline on Today (storyboard expand), not as a separate tab.
 - **Migration gate:** `supabase/migrations/20260905120000_adaptive_creator_onboarding.sql` must not be applied to production without human approval.
-- **QA launch (DEBUG):** Present the five-step flow over an established fixture profile:
+- **QA launch (DEBUG) — empty Today first idea:**
+
+  ```bash
+  MCO_SIMULATOR_UDID=FAE1FD16-D185-433C-AC85-544FF45F2C82 \
+  MCO_FORCE_FIXTURE_UI=1 \
+  MCO_FORCE_ONBOARDING=1 \
+  MCO_FORCE_EMPTY_TODAY=1 \
+  scripts/fast-sim-refresh.sh
+  ```
+
+  Optional capture helpers (combine with the above):
+
+  ```bash
+  MCO_SLOW_FIRST_IDEA=1    # slow "Preparing your first idea…" for screenshots
+  MCO_FAIL_FIRST_IDEA=1    # Review retry with human copy (not for happy path)
+  ```
+
+  Screenshot evidence lives in `artifacts/adaptive-onboarding-qa/`.
+
+- **QA launch (DEBUG) — idempotency over HYROX (no new card):**
 
   ```bash
   MCO_SIMULATOR_UDID=FAE1FD16-D185-433C-AC85-544FF45F2C82 \
@@ -383,5 +406,3 @@ Parent orchestrator stays on Grok 4.6. These three agents are Composer 2.5 Fast 
   MCO_FORCE_ONBOARDING=1 \
   scripts/fast-sim-refresh.sh
   ```
-
-  Screenshot evidence lives in `artifacts/adaptive-onboarding-qa/`.

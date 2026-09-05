@@ -58,17 +58,18 @@ struct AppRepositories: Sendable {
     }
 
     static var fixture: AppRepositories {
-        let store = FixturePublishedContentStore()
+        let publishedStore = FixturePublishedContentStore()
+        let profileStore = FixtureCreatorProfileStore()
         return AppRepositories(
             context: .creatorFixture,
-            today: FixtureTodayCardRepository(publishedStore: store),
-            weeklyPlans: FixtureWeeklyPlanRepository(publishedStore: store),
+            today: FixtureTodayCardRepository(publishedStore: publishedStore),
+            weeklyPlans: FixtureWeeklyPlanRepository(publishedStore: publishedStore),
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
             dailyGeneration: FixtureDayGenerationRepository(),
             planDayIdeas: FixturePlanDayIdeaRepository(),
             intelligence: FixtureIntelligenceRepository(),
-            creatorProfile: FixtureCreatorProfileRepository(),
+            creatorProfile: FixtureCreatorProfileRepository(store: profileStore),
             archive: FixtureArchiveRepository(),
             testerAccess: FixtureTesterAccessRepository()
         )

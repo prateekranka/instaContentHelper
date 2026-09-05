@@ -1,6 +1,15 @@
 import Foundation
 
 extension DailyCard {
+    /// Placeholder Today card with no scenes — used when `MCO_FORCE_EMPTY_TODAY=1`.
+    static let emptyTodayPlaceholder = DailyCard(
+        title: "Checking today's plan",
+        context: "Today",
+        effortLabel: "Loading",
+        whyToday: "Your first idea will appear after onboarding.",
+        scenes: []
+    )
+
     static let raceWeekToday = DailyCard(
         title: "Race week has entered the house",
         context: "Friday, Race Week",
