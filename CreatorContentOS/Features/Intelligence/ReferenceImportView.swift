@@ -14,7 +14,40 @@ typealias ReferenceImportConfirmAction = @MainActor (
     _ previewChecksum: String
 ) async throws -> ReferenceImportConfirmResult
 
+/// Canonical copy for the non-blocking verification fallback. AppServices sets
+/// this exact message when the live check times out, so the view can detect
+/// "couldn't verify" without depending on the error type.
+enum ReferenceImportVerificationCopy {
+    static let couldNotVerifyAddAnyway = "Couldn't verify — add it anyway."
+}
+
+/// Raised when the live Instagram check could not complete: the bounded
+/// timeout fired, or the server reported the check unavailable. The import
+/// must never hang or hard-fail on this — the user can still add the
+/// reference as-is.
+enum ReferenceImportCheckUnavailableError: Error, LocalizedError {
+    case timedOut
+    case serverUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .timedOut:
+            "The check timed out. Instagram couldn't be reached."
+        case .serverUnavailable:
+            ReferenceImportVerificationCopy.couldNotVerifyAddAnyway
+        }
+    }
+
+    static func matches(_ error: Error) -> Bool {
+        if error is ReferenceImportCheckUnavailableError {
+            return true
+        }
+        return error.localizedDescription == ReferenceImportVerificationCopy.couldNotVerifyAddAnyway
+    }
+}
+
 struct ReferenceImportView: View {
+    @Environment(\.chromePalette) private var chrome
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isInputFocused: Bool
 
@@ -32,6 +65,7 @@ struct ReferenceImportView: View {
     @State private var isConfirming = false
     @State private var isFileImporterPresented = false
     @State private var message: ReferenceImportMessage?
+    @State private var showsUnverifiedFallback = false
 
     init(
         isLiveRuntime: Bool,
@@ -46,7 +80,7 @@ struct ReferenceImportView: View {
     }
 
     var body: some View {
-        EditorialScreen(bottomContentPadding: 72) {
+        ChromeScreen(bottomContentPadding: 72) {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
 
@@ -68,7 +102,9 @@ struct ReferenceImportView: View {
                     ReferenceImportMessageBanner(message: message)
                 }
 
-                if let preview {
+                if showsUnverifiedFallback {
+                    ReferenceImportUnverifiedFallbackView()
+                } else if let preview {
                     ReferenceImportPreviewView(preview: preview)
                 } else {
                     ReferenceImportEmptyGuidance()
@@ -80,23 +116,24 @@ struct ReferenceImportView: View {
             }
         } bottomBar: {
             GlassCommandBar {
-                SecondaryActionButton(title: preview == nil ? "Close" : "Edit paste") {
-                    if preview == nil {
-                        dismiss()
-                    } else {
+                SecondaryActionButton(title: hasPreviewContent ? "Edit paste" : "Close") {
+                    if hasPreviewContent {
                         preview = nil
                         result = nil
+                        showsUnverifiedFallback = false
                         isInputFocused = true
+                    } else {
+                        dismiss()
                     }
                 }
                 .frame(maxWidth: 132)
 
                 PrimaryActionButton(
                     title: primaryButtonTitle,
-                    systemImage: preview == nil ? "text.badge.plus" : "checkmark.circle"
+                    systemImage: hasPreviewContent ? "checkmark.circle" : "text.badge.plus"
                 ) {
                     Task {
-                        if preview == nil {
+                        if preview == nil && !showsUnverifiedFallback {
                             await previewImport()
                         } else {
                             await confirmImport()
@@ -133,11 +170,11 @@ struct ReferenceImportView: View {
             HStack(alignment: .top, spacing: MCOSpace.s) {
                 Text("MC")
                     .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.brass)
+                    .foregroundStyle(chrome.accentSecondary)
                     .frame(width: 42, height: 42)
-                    .background(MCOTheme.Color.paperRaised, in: Circle())
+                    .background(chrome.paperRaised, in: Circle())
                     .overlay {
-                        Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                        Circle().stroke(chrome.hairline, lineWidth: 1)
                     }
 
                 Spacer()
@@ -150,12 +187,12 @@ struct ReferenceImportView: View {
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
                 Text("Inspiration")
                     .font(MCOType.display)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Text("Paste handles, reel links, audio links, or a CSV. The server decides what is clean and what needs your call.")
+                Text("Paste handles, reel links, audio links, or a CSV. We'll sort what's usable and flag anything that needs your review.")
                     .font(.system(size: 16, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -170,16 +207,27 @@ struct ReferenceImportView: View {
             return "Saving"
         }
 
+        if showsUnverifiedFallback {
+            return "Add anyway"
+        }
+
         return preview == nil ? "Preview import" : "Import clean rows"
     }
 
     private var canRunPrimaryAction: Bool {
         guard isLiveRuntime, !isBusy else { return false }
+        if showsUnverifiedFallback {
+            return result == nil
+        }
         if preview == nil {
             return !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
         return result == nil
+    }
+
+    private var hasPreviewContent: Bool {
+        preview != nil || showsUnverifiedFallback
     }
 
     private var isBusy: Bool {
@@ -193,6 +241,7 @@ struct ReferenceImportView: View {
         preview = nil
         result = nil
         message = nil
+        showsUnverifiedFallback = false
     }
 
     private func previewImport() async {
@@ -204,25 +253,46 @@ struct ReferenceImportView: View {
         defer { isPreviewing = false }
 
         do {
+            // The live check is bounded by the repository layer (10s); a
+            // timeout surfaces as a nil preview + the canonical fallback copy.
             preview = try await previewReferenceImport(rawText, inputType, filename)
+            showsUnverifiedFallback = false
         } catch {
             preview = nil
-            message = .error(error.localizedDescription)
+            if ReferenceImportCheckUnavailableError.matches(error) {
+                showsUnverifiedFallback = true
+                message = nil
+            } else {
+                showsUnverifiedFallback = false
+                message = .error(error.localizedDescription)
+            }
         }
     }
 
     private func confirmImport() async {
-        guard let preview, canRunPrimaryAction else { return }
+        guard canRunPrimaryAction else { return }
         isConfirming = true
         message = nil
         defer { isConfirming = false }
+
+        let checksum: String
+        if let preview {
+            checksum = preview.previewChecksum
+        } else if showsUnverifiedFallback {
+            // No preview was produced by the live check; the server re-parses
+            // and re-checks the raw text when saving, so an empty checksum is
+            // safe ("add it anyway").
+            checksum = ""
+        } else {
+            return
+        }
 
         do {
             let confirmResult = try await confirmReferenceImport(
                 rawText,
                 inputType,
                 filename,
-                preview.previewChecksum
+                checksum
             )
             result = confirmResult
             message = .success(confirmResult.toast)
@@ -247,6 +317,7 @@ struct ReferenceImportView: View {
                 inputType = .csv
                 preview = nil
                 self.result = nil
+                showsUnverifiedFallback = false
                 message = .success("Loaded \(url.lastPathComponent). Preview before importing.")
             } catch {
                 message = .error(error.localizedDescription)
@@ -258,6 +329,7 @@ struct ReferenceImportView: View {
 }
 
 struct ReferenceImportInputBlock: View {
+    @Environment(\.chromePalette) private var chrome
     @Binding var rawText: String
     let inputType: ReferenceImportInputType
     let filename: String?
@@ -273,10 +345,10 @@ struct ReferenceImportInputBlock: View {
                     VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                         Text("INPUT")
                             .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.oxblood)
+                            .foregroundStyle(chrome.accent)
                         Text(inputLabel)
                             .font(.system(size: 18, weight: .regular, design: .serif))
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .foregroundStyle(chrome.ink)
                             .lineLimit(1)
                     }
 
@@ -289,7 +361,7 @@ struct ReferenceImportInputBlock: View {
                                 .frame(width: 34, height: 34)
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(isEnabled ? MCOTheme.Color.ink : MCOTheme.Color.inkMuted)
+                        .foregroundStyle(isEnabled ? chrome.ink : chrome.inkMuted)
                         .disabled(!isEnabled)
                         .accessibilityLabel("Choose CSV")
 
@@ -299,7 +371,7 @@ struct ReferenceImportInputBlock: View {
                                 .frame(width: 34, height: 34)
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(rawText.isEmpty ? MCOTheme.Color.inkMuted : MCOTheme.Color.clay)
+                        .foregroundStyle(rawText.isEmpty ? chrome.inkMuted : chrome.validationAttention)
                         .disabled(rawText.isEmpty || !isEnabled)
                         .accessibilityLabel("Clear import input")
                     }
@@ -307,23 +379,23 @@ struct ReferenceImportInputBlock: View {
 
                 ZStack(alignment: .topLeading) {
                     RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
-                        .fill(MCOTheme.Color.paper.opacity(0.72))
+                        .fill(chrome.paper.opacity(0.72))
                         .overlay {
                             RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
-                                .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                                .stroke(chrome.hairline, lineWidth: 1)
                         }
 
                     if rawText.isEmpty {
                         Text("Paste Instagram handles, profile URLs, reel/audio links, one note per line, or CSV text.")
                             .font(MCOType.bodySmall)
-                            .foregroundStyle(MCOTheme.Color.inkMuted)
+                            .foregroundStyle(chrome.inkMuted)
                             .padding(MCOSpace.s)
                     }
 
                     TextEditor(text: $rawText)
                         .focused(isInputFocused)
                         .font(MCOType.bodySmall)
-                        .foregroundStyle(MCOTheme.Color.ink)
+                        .foregroundStyle(chrome.ink)
                         .scrollContentBackground(.hidden)
                         .padding(MCOSpace.xs)
                         .disabled(!isEnabled)
@@ -334,11 +406,11 @@ struct ReferenceImportInputBlock: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Max 500 rows. Story URLs are rejected.")
                         .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .foregroundStyle(chrome.inkMuted)
                     Spacer(minLength: MCOSpace.s)
                     Text("\(nonEmptyLineCount) rows")
                         .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .foregroundStyle(chrome.inkMuted)
                 }
             }
         }
@@ -361,34 +433,36 @@ struct ReferenceImportInputBlock: View {
 }
 
 struct ReferenceImportLiveGate: View {
+    @Environment(\.chromePalette) private var chrome
     var body: some View {
         HStack(alignment: .top, spacing: MCOSpace.s) {
             Image(systemName: "link.badge.plus")
                 .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(MCOTheme.Color.brass)
+                .foregroundStyle(chrome.accentSecondary)
                 .frame(width: 28)
 
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
                 Text("Live workspace required")
                     .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                 Text("Reference Import writes through Supabase Edge Functions. Fixtures keep Creator Mode unchanged but do not import.")
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(MCOSpace.m)
-        .background(MCOTheme.Color.brass.opacity(0.08))
+        .background(chrome.accentSecondary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: MCOShape.blockRadius, style: .continuous)
-                .stroke(MCOTheme.Color.brass.opacity(0.32), lineWidth: 1)
+                .stroke(chrome.accentSecondary.opacity(0.32), lineWidth: 1)
         }
     }
 }
 
 struct ReferenceImportEmptyGuidance: View {
+    @Environment(\.chromePalette) private var chrome
     var body: some View {
         VStack(alignment: .leading, spacing: MCOSpace.s) {
             ShelfHeader(title: "What the preview will separate", trailing: nil)
@@ -423,6 +497,7 @@ struct ReferenceImportEmptyGuidance: View {
 }
 
 struct ReferenceImportGuideRow: View {
+    @Environment(\.chromePalette) private var chrome
     let symbol: String
     let title: String
     let detail: String
@@ -431,16 +506,16 @@ struct ReferenceImportGuideRow: View {
         HStack(alignment: .center, spacing: MCOSpace.m) {
             Image(systemName: symbol)
                 .font(.system(size: 20, weight: .light))
-                .foregroundStyle(MCOTheme.Color.brass)
+                .foregroundStyle(chrome.accentSecondary)
                 .frame(width: 34)
 
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                 Text(title)
                     .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                 Text(detail)
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -451,6 +526,7 @@ struct ReferenceImportGuideRow: View {
 }
 
 struct ReferenceImportSuccessBlock: View {
+    @Environment(\.chromePalette) private var chrome
     let result: ReferenceImportConfirmResult
 
     var body: some View {
@@ -459,14 +535,14 @@ struct ReferenceImportSuccessBlock: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("CONFIRMED")
                         .font(MCOType.tinyLabel)
-                        .foregroundStyle(MCOTheme.Color.sageDeep)
+                        .foregroundStyle(chrome.statusPositive)
                     Spacer(minLength: MCOSpace.s)
                     StatusChip(text: result.destination.watchlistName, tone: .ready)
                 }
 
                 Text(result.toast)
                     .font(.system(size: 20, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: MCOSpace.m) {
@@ -510,6 +586,7 @@ enum ReferenceImportMessage: Equatable {
 }
 
 struct ReferenceImportMessageBanner: View {
+    @Environment(\.chromePalette) private var chrome
     let message: ReferenceImportMessage
 
     var body: some View {
@@ -521,7 +598,7 @@ struct ReferenceImportMessageBanner: View {
 
             Text(message.text)
                 .font(MCOType.bodySmall)
-                .foregroundStyle(MCOTheme.Color.ink)
+                .foregroundStyle(chrome.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: MCOSpace.s)
@@ -537,6 +614,7 @@ struct ReferenceImportMessageBanner: View {
 }
 
 struct ReferenceImportProgressPill: View {
+    @Environment(\.chromePalette) private var chrome
     let text: String
 
     var body: some View {
@@ -545,14 +623,14 @@ struct ReferenceImportProgressPill: View {
                 .controlSize(.small)
             Text(text)
                 .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.ink)
+                .foregroundStyle(chrome.ink)
         }
         .padding(.horizontal, MCOSpace.m)
         .padding(.vertical, MCOSpace.xs)
-        .background(MCOTheme.Color.paperRaised.opacity(0.86))
+        .background(chrome.paperRaised.opacity(0.86))
         .clipShape(Capsule())
         .overlay {
-            Capsule().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+            Capsule().stroke(chrome.hairline, lineWidth: 1)
         }
     }
 }

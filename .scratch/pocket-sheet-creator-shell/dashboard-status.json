@@ -1,0 +1,28 @@
+{
+  "updated": "2026-08-07",
+  "source": "prototypes/today-ui/index.html",
+  "note": "Ticket 09 SwiftUI port slices 1–7 shipped: shell, onboarding, Plan daygen, inline Today package, You destinations; simulator QA pass on BillBandit Test",
+  "tickets": {
+    "01-nav-today-archive-plan": { "status": "done", "title": "Nav: Today · Plan · You" },
+    "02-plan-hub-layout": { "status": "done", "title": "Plan hub layout" },
+    "03-today-surfaces": { "status": "done", "title": "Today surfaces" },
+    "04-light-sheets": { "status": "done", "title": "Light sheets" },
+    "05-creator-voice-editor": { "status": "done", "title": "Creator voice editor" },
+    "06-references-list-import-ux": { "status": "done", "title": "References list/import UX" },
+    "07-intelligence-import-research": { "status": "resolved", "title": "Intelligence/import research" },
+    "08-first-run-gates-copy": { "status": "done", "title": "First-run gates copy" },
+    "09-swiftui-port-plan": { "status": "done", "title": "SwiftUI port plan", "notes": "All seven slices implemented; focused unit tests pass" },
+    "10-intelligence-import-polish": { "status": "done", "title": "Intelligence import polish v1" },
+    "11-first-run-accordion-motion": { "status": "hold", "title": "First-run accordion motion" },
+    "12-calendar-day-status-chrome": { "status": "hold", "title": "Calendar day status chrome" },
+    "13-inspiration-only-quality-warning": { "status": "hold", "title": "Inspiration-only quality warning" },
+    "15-daygen-prompts": { "status": "done", "title": "Daygen prompts" },
+    "16-execution-package-done-loop": { "status": "done", "title": "Execution package + done loop" },
+    "17-references-freemium-paywall": { "status": "superseded", "title": "References are unlimited" },
+    "18-onboarding-reference-validation-motion": { "status": "done", "title": "Onboarding reference validation motion", "notes": "Continue stays enabled; one-shot attention on invalid Continue; red static border under Reduce Motion" },
+    "19-profile-verification-diagnostics": { "status": "done", "title": "Profile verification diagnostics", "notes": "import-references preview path; verified/not_found/temporarily_unavailable; prototype unavatar removed" },
+    "20-first-day-generation-handoff": { "status": "done", "title": "First-day generation handoff", "notes": "Generate my first day → Plan on local today → single day-only generation; shell applies pending Plan tab on appear" },
+    "21-selected-day-idea-launcher": { "status": "done", "title": "Selected-day idea launcher", "notes": "Five ideas + Other below eligible dates" },
+    "22-you-content-inputs-navigation": { "status": "done", "title": "You content inputs navigation", "notes": "You owns inputs; Plan summary links with return context" }
+  }
+}

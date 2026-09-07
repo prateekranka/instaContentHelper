@@ -27,6 +27,7 @@ final class AppServices {
     var weeklyIdeas: [WeeklyIdea]
     var intelligenceHome: IntelligenceHome
     var creatorProfileSummary: CreatorProfileSummary
+    var creatorOnboardingPresentation: CreatorOnboardingPresentation = .new
     var weekCards: [DailyCard]
     var lastRepositoryError: String?
     var lastTodayDecisionSyncError: String?
@@ -62,6 +63,9 @@ final class AppServices {
     var generatingDayBriefDates: Set<String> = []
     var dayBriefGenerationErrors: [String: String] = [:]
     var dayBriefGeneratedCards: [String: GeneratedDailyCardDraft] = [:]
+    /// Cached Plan empty-day idea one-liners keyed by `yyyy-MM-dd` (fingerprint inside entry).
+    var planDayIdeasByDate: [String: PlanDayIdeasCacheEntry] = [:]
+    var loadingPlanDayIdeaDates: Set<String> = []
     var generatingStoryboardThumbnailCardIDs: Set<UUID> = []
     var storyboardThumbnailErrors: [UUID: String] = [:]
     var generationError: String?
@@ -80,6 +84,12 @@ final class AppServices {
     var testerAccessMessage: String?
     var lastActionMessage: String?
     private let todayDate: TodayDateProvider
+    private let acceptedGenerationStore: any AcceptedDayGenerationStoring
+    let aiConsentStore: any AIConsentStoring
+    var isAIConsentSheetPresented = false
+    var aiConsentAllowsOutbound = false
+    var aiConsentEpoch = 0
+    private var recoveringAcceptedGenerationDates: Set<String> = []
 
     /// Resolves the Plan package for a date from session cards or the latest draft summary.
     func dayPackage(for scheduledDate: String) -> GeneratedDailyCardDraft? {
@@ -185,7 +195,9 @@ final class AppServices {
         intelligenceHome: IntelligenceHome,
         creatorProfileSummary: CreatorProfileSummary,
         weekCards: [DailyCard],
-        todayContentState: TodayContentState = .ready
+        todayContentState: TodayContentState = .ready,
+        acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared,
+        aiConsentStore: (any AIConsentStoring)? = nil
     ) {
         self.context = repositories.context
         self.isLiveSupabaseRuntime = isLiveSupabaseRuntime
@@ -194,6 +206,12 @@ final class AppServices {
         self.todayCache = todayCache
         self.notifications = notifications
         self.todayDate = todayDate
+        self.acceptedGenerationStore = acceptedGenerationStore
+        self.aiConsentStore = aiConsentStore ?? UserDefaultsAIConsentStore(
+            workspaceID: repositories.context.workspaceID,
+            creatorID: repositories.context.creatorID
+        )
+        self.aiConsentAllowsOutbound = AIConsentPolicy.allowsOutbound(self.aiConsentStore.load())
         self.todayCard = todayCard
         shotSceneIDs = todayCard.completionState == .shot || todayCard.completionState == .posted
             ? Set(todayCard.scenes.map(\.id))
@@ -219,10 +237,41 @@ final class AppServices {
         isLiveSupabaseRuntime && memberRole == "owner"
     }
 
-    /// Generation, Plan prep, and weekly publish are available to Creator sessions.
+    /// Creator voice is configured when positioning and voice rules are both set.
+    var voiceIsConfigured: Bool {
+        let positioning = creatorProfileSummary.positioning.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasRules = !creatorProfileSummary.voiceRules.isEmpty
+            || !creatorProfileSummary.voiceLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return !positioning.isEmpty && hasRules
+    }
+
+    /// Plan / global generation still ignores Launch-A deferral (VG-6).
+    /// First-idea skip/continue passes `allowDeferredVoice` on `generateDayCard` instead.
+    /// A global `established && !voiceIsConfigured` getter was rejected: it would open Plan generate_day.
+    var voiceDeferred: Bool {
+        false
+    }
+
+    /// Honest Launch-A deferral after persist: established profile, empty voice, no fabricated rules.
+    private var isHonestDeferredVoice: Bool {
+        creatorProfileSummary.onboardingState == .established && !voiceIsConfigured
+    }
+
+    /// True while the post-onboarding Creator Voice prefill draft is active.
+    /// UI-only — cleared on the creator's first voice save.
+    var voicePrefilled: Bool {
+        UserDefaultsOnboardingStore().loadCompletedData()?.voicePrefilled == true
+    }
+
+    /// Voice gate: generation is blocked only when voice is neither configured nor deferred.
+    var voiceGateOpen: Bool {
+        !voiceIsConfigured && !voiceDeferred
+    }
+
+    /// Plan generation requires configured voice (VG-6). First-idea may pass `allowDeferredVoice`.
+    /// The app is creator-only — no role check applies anymore.
     var canGenerateContent: Bool {
-        let role = memberRole.lowercased()
-        return role == "owner" || role == "editor" || role == "creator"
+        !voiceGateOpen
     }
 
     var currentTodayDateString: String {
@@ -239,9 +288,10 @@ final class AppServices {
         memberRole: String = "owner",
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
         notifications: any TodayNotificationScheduling = NoopTodayNotificationScheduler(),
-        todayDate: @escaping TodayDateProvider = { SupabaseDateFormatting.todayDateString() }
+        todayDate: @escaping TodayDateProvider = { SupabaseDateFormatting.todayDateString() },
+        acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared,
+        aiConsentStore: (any AIConsentStoring)? = nil
     ) -> AppServices {
-        let today = todayDate()
         let services = AppServices(
             repositories: repositories,
             isLiveSupabaseRuntime: isLiveSupabaseRuntime,
@@ -249,21 +299,16 @@ final class AppServices {
             todayCache: todayCache,
             notifications: notifications,
             todayDate: todayDate,
-            todayCard: .raceWeekToday,
+            todayCard: DebugLaunchFlags.forceEmptyToday ? .emptyTodayPlaceholder : .raceWeekToday,
             archiveEntries: ArchiveEntry.fixtures,
             weeklyPlan: .raceWeek,
             weeklyIdeas: WeeklyIdea.raceWeekBank,
             intelligenceHome: .raceWeekLibrary,
             creatorProfileSummary: .creatorFixture,
-            weekCards: DailyCard.weekFixtures
+            weekCards: DailyCard.weekFixtures,
+            acceptedGenerationStore: acceptedGenerationStore,
+            aiConsentStore: aiConsentStore
         )
-        #if DEBUG
-        // Seed a reviewable draft so Plan can show Approve in fixture UI proofs.
-        var draft = GeneratedDailyCardDraft.storyboardBreakdownFixture
-        draft.scheduledDate = today
-        draft.status = "draft"
-        services.dayBriefGeneratedCards[today] = draft
-        #endif
         return services
     }
 
@@ -310,12 +355,7 @@ final class AppServices {
                 recentlyUsed: [],
                 librarySections: []
             ),
-            creatorProfileSummary: CreatorProfileSummary(
-                displayName: "Creator",
-                positioning: "Loading live profile",
-                voiceLine: "",
-                noGoTopics: []
-            ),
+            creatorProfileSummary: CreatorProfileSummary.emptyLiveFallback(displayName: "Loading"),
             weekCards: [],
             todayContentState: .loading
         )
@@ -708,11 +748,13 @@ final class AppServices {
         }
 
         guard canGenerateContent else {
-            let error = "role_not_allowed"
+            let error = "creator_voice_required"
             regenerationDayErrors[scheduledDate] = error
-            logGeneration("regenerate_day rejected role_not_allowed scheduled_date=\(scheduledDate) role=\(memberRole)")
+            logGeneration("regenerate_day rejected creator_voice_required scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
+
+        try requireAIConsent(for: .regenerateDay(scheduledDate: scheduledDate))
 
         guard !weeklyPlan.isSoftLocked else {
             let error = "published_week_locked"
@@ -758,6 +800,113 @@ final class AppServices {
         }
     }
 
+    /// Resolves Plan idea one-liners for a date. Returns cached DeepSeek/live ideas when
+    /// present for the same setup fingerprint; otherwise the deterministic on-device builder
+    /// so Plan is never blank.
+    func planDayIdeas(
+        for scheduledDate: String,
+        setup: PlanDaySetupSummary
+    ) -> [PlanDayIdeaCandidate] {
+        if let cached = planDayIdeasByDate[scheduledDate],
+           cached.setupFingerprint == setup.cacheFingerprint,
+           !cached.ideas.isEmpty {
+            return cached.ideas
+        }
+        return PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+    }
+
+    /// Loads Plan ideas for an empty day. Fixture / non-live runtimes use the on-device
+    /// builder. Live runtimes call `generate-plan-ideas` (DeepSeek primary) and fall back
+    /// to the builder on any failure / client timeout so the launcher never hangs past ~60s.
+    func refreshPlanDayIdeas(
+        scheduledDate: String,
+        setup: PlanDaySetupSummary
+    ) async {
+        if let cached = planDayIdeasByDate[scheduledDate],
+           cached.setupFingerprint == setup.cacheFingerprint,
+           !cached.ideas.isEmpty {
+            return
+        }
+
+        guard !loadingPlanDayIdeaDates.contains(scheduledDate) else { return }
+
+        if !isLiveSupabaseRuntime {
+            planDayIdeasByDate[scheduledDate] = PlanDayIdeasCacheEntry(
+                setupFingerprint: setup.cacheFingerprint,
+                ideas: PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+            )
+            return
+        }
+
+        loadingPlanDayIdeaDates.insert(scheduledDate)
+        defer { loadingPlanDayIdeaDates.remove(scheduledDate) }
+
+        do {
+            try requireAIConsent(for: .planIdeas)
+        } catch {
+            if planDayIdeasByDate[scheduledDate]?.setupFingerprint != setup.cacheFingerprint {
+                planDayIdeasByDate[scheduledDate] = PlanDayIdeasCacheEntry(
+                    setupFingerprint: setup.cacheFingerprint,
+                    ideas: PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+                )
+            }
+            return
+        }
+
+        do {
+            let ideas = try await fetchPlanDayIdeasWithTimeout(
+                scheduledDate: scheduledDate,
+                setup: setup
+            )
+            if ideas.count == PlanDayIdeaBuilder.ideaCount {
+                planDayIdeasByDate[scheduledDate] = PlanDayIdeasCacheEntry(
+                    setupFingerprint: setup.cacheFingerprint,
+                    ideas: ideas
+                )
+                return
+            }
+        } catch {
+            logGeneration(
+                "plan_ideas failed scheduled_date=\(scheduledDate) error=\(error.localizedDescription)"
+            )
+        }
+
+        if planDayIdeasByDate[scheduledDate]?.setupFingerprint != setup.cacheFingerprint {
+            planDayIdeasByDate[scheduledDate] = PlanDayIdeasCacheEntry(
+                setupFingerprint: setup.cacheFingerprint,
+                ideas: PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+            )
+        }
+    }
+
+    private func fetchPlanDayIdeasWithTimeout(
+        scheduledDate: String,
+        setup: PlanDaySetupSummary
+    ) async throws -> [PlanDayIdeaCandidate] {
+        let timeoutNanoseconds = UInt64(
+            PlanDayIdeaPayloadLimits.clientTimeoutSeconds * 1_000_000_000
+        )
+        return try await withThrowingTaskGroup(of: [PlanDayIdeaCandidate].self) { group in
+            group.addTask {
+                try await self.repositories.planDayIdeas.generatePlanDayIdeas(
+                    creatorID: self.context.creatorID,
+                    scheduledDate: scheduledDate,
+                    setup: setup,
+                    context: self.context
+                )
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+                throw RepositoryError.edgeFunction("plan_ideas_timeout")
+            }
+            guard let result = try await group.next() else {
+                throw RepositoryError.edgeFunction("plan_ideas_timeout")
+            }
+            group.cancelAll()
+            return result
+        }
+    }
+
     /// Day-at-a-time generation: one storyboard + caption card for an explicit
     /// target date, driven entirely by the supplied day brief (which can also
     /// carry one-off asks like brand deliverables). The server sends the
@@ -771,7 +920,8 @@ final class AppServices {
     func generateDayCard(
         scheduledDate: String,
         dayBrief: String,
-        confirmOverwrite: Bool = false
+        confirmOverwrite: Bool = false,
+        allowDeferredVoice: Bool = false
     ) async throws -> GeneratedDailyCardDraft {
         let brief = dayBrief.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !brief.isEmpty else {
@@ -787,28 +937,36 @@ final class AppServices {
             throw RepositoryError.edgeFunction(error)
         }
 
-        guard canGenerateContent else {
-            let error = "role_not_allowed"
+        let firstIdeaDeferredVoiceAllowed = allowDeferredVoice && isHonestDeferredVoice
+        guard canGenerateContent || firstIdeaDeferredVoiceAllowed else {
+            let error = "creator_voice_required"
             dayBriefGenerationErrors[scheduledDate] = error
-            logGeneration("generate_day rejected role_not_allowed scheduled_date=\(scheduledDate) role=\(memberRole)")
+            logGeneration("generate_day rejected creator_voice_required scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
 
+        try requireAIConsent(for: .generateDay(scheduledDate: scheduledDate))
+
         let existingStatus = dayBriefGeneratedCards[scheduledDate]?.status
             ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })?.status
-        if DayPackageLifecycleStatus.requiresOverwriteConfirmation(existingStatus) {
+        // Any existing package — draft or live — must be explicitly confirmed before it is replaced.
+        if existingStatus != nil {
             guard confirmOverwrite else {
                 let error = "ready_package_overwrite_required"
                 dayBriefGenerationErrors[scheduledDate] = DayLifecycleErrorDisplay.message(forCode: error)
                 pendingOverwriteGenerateDate = scheduledDate
                 throw RepositoryError.edgeFunction(error)
             }
-            do {
-                _ = try await unpublishDay(scheduledDate: scheduledDate)
-            } catch {
-                let message = DayLifecycleErrorDisplay.message(for: error)
-                dayBriefGenerationErrors[scheduledDate] = message
-                throw RepositoryError.edgeFunction(message)
+            // Only live packages (published / decision) need unpublishing;
+            // a draft has nothing live to unpublish.
+            if DayPackageLifecycleStatus.requiresOverwriteConfirmation(existingStatus) {
+                do {
+                    _ = try await unpublishDay(scheduledDate: scheduledDate)
+                } catch {
+                    let message = DayLifecycleErrorDisplay.message(for: error)
+                    dayBriefGenerationErrors[scheduledDate] = message
+                    throw RepositoryError.edgeFunction(message)
+                }
             }
         }
         pendingOverwriteGenerateDate = nil
@@ -817,6 +975,10 @@ final class AppServices {
             let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
             dayBriefGenerationErrors[scheduledDate] = message
             throw RepositoryError.edgeFunction(message)
+        }
+
+        if let acceptedRun = acceptedGenerationStore.load(scheduledDate: scheduledDate) {
+            return try await resumeAcceptedDayGeneration(acceptedRun)
         }
 
         generatingDayBriefDates.insert(scheduledDate)
@@ -831,6 +993,78 @@ final class AppServices {
                 dayBrief: brief,
                 context: context
             )
+            return try applyDayGenerationResult(result, scheduledDate: scheduledDate)
+        } catch {
+            let message = DayGenerationErrorDisplay.message(for: error)
+            dayBriefGenerationErrors[scheduledDate] = message
+            logGeneration(
+                "generate_day failed scheduled_date=\(scheduledDate) user_message=\(message) error_type=\(String(describing: type(of: error))) localized=\(error.localizedDescription) dump=\(String(describing: error))"
+            )
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
+    /// Rehydrates persisted accepted runs after relaunch and resumes status polling — no new POST.
+    func restoreAcceptedDayGenerationsIfNeeded() {
+        for run in acceptedGenerationStore.loadAll() {
+            guard !recoveringAcceptedGenerationDates.contains(run.scheduledDate) else { continue }
+            recoveringAcceptedGenerationDates.insert(run.scheduledDate)
+            generatingDayBriefDates.insert(run.scheduledDate)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer {
+                    self.recoveringAcceptedGenerationDates.remove(run.scheduledDate)
+                    self.generatingDayBriefDates.remove(run.scheduledDate)
+                }
+                _ = try? await self.resumeAcceptedDayGeneration(run, fromRecovery: true)
+            }
+        }
+    }
+
+    private func resumeAcceptedDayGeneration(
+        _ run: AcceptedDayGenerationRun,
+        fromRecovery: Bool = false
+    ) async throws -> GeneratedDailyCardDraft {
+        if !fromRecovery {
+            guard !generatingDayBriefDates.contains(run.scheduledDate) else {
+                let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
+                dayBriefGenerationErrors[run.scheduledDate] = message
+                throw RepositoryError.edgeFunction(message)
+            }
+        }
+
+        let manageGeneratingFlag = !fromRecovery && !generatingDayBriefDates.contains(run.scheduledDate)
+        if manageGeneratingFlag {
+            generatingDayBriefDates.insert(run.scheduledDate)
+        }
+        dayBriefGenerationErrors[run.scheduledDate] = nil
+        defer {
+            if manageGeneratingFlag {
+                generatingDayBriefDates.remove(run.scheduledDate)
+            }
+        }
+
+        do {
+            logGeneration("generate_day resume scheduled_date=\(run.scheduledDate) generation_id=\(run.generationID)")
+            let result = try await repositories.dailyGeneration.resumeAcceptedDayGeneration(
+                generationID: run.generationID,
+                creatorID: run.creatorID,
+                context: context
+            )
+            acceptedGenerationStore.remove(scheduledDate: run.scheduledDate)
+            return try applyDayGenerationResult(result, scheduledDate: run.scheduledDate)
+        } catch {
+            let message = DayGenerationErrorDisplay.message(for: error)
+            dayBriefGenerationErrors[run.scheduledDate] = message
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
+    @discardableResult
+    private func applyDayGenerationResult(
+        _ result: DailyGenerationResult,
+        scheduledDate: String
+    ) throws -> GeneratedDailyCardDraft {
             guard result.targetScheduledDate == scheduledDate,
                   result.dailyCard.scheduledDate == scheduledDate
             else {
@@ -844,22 +1078,16 @@ final class AppServices {
                 && weeklyPlan.days.contains(where: { $0.scheduledDate == scheduledDate })
             if integratesWithCurrentWeeklyReview {
                 applyRegeneratedDay(result.dailyCard)
-                await reconcileGeneratedDayCardFromCurrentWeeklyContent(
-                    scheduledDate: scheduledDate,
-                    suppressRepositoryErrorOnFailure: true
-                )
+                Task { @MainActor in
+                    await reconcileGeneratedDayCardFromCurrentWeeklyContent(
+                        scheduledDate: scheduledDate,
+                        suppressRepositoryErrorOnFailure: true
+                    )
+                }
             }
             lastRepositoryError = nil
             logGeneration("generate_day completed scheduled_date=\(scheduledDate) daily_card_id=\(result.dailyCard.id)")
             return result.dailyCard
-        } catch {
-            let message = DayGenerationErrorDisplay.message(for: error)
-            dayBriefGenerationErrors[scheduledDate] = message
-            logGeneration(
-                "generate_day failed scheduled_date=\(scheduledDate) user_message=\(message) error_type=\(String(describing: type(of: error))) localized=\(error.localizedDescription) dump=\(String(describing: error))"
-            )
-            throw RepositoryError.edgeFunction(message)
-        }
     }
 
     func generateStoryboardThumbnails(
@@ -873,6 +1101,8 @@ final class AppServices {
             storyboardThumbnailErrors[card.id] = error
             throw RepositoryError.edgeFunction(error)
         }
+
+        try requireAIConsent(for: .storyboardThumbnails(cardID: card.id, promptIfDeclined: true))
 
         if generatingStoryboardThumbnailCardIDs.contains(card.id) {
             return card.storyboardThumbnailAssets
@@ -912,6 +1142,12 @@ final class AppServices {
                Self.hasMissingStoryboardThumbnails(for: summaryCard) {
                 applyStoryboardThumbnailAssets(card.storyboardThumbnailAssets, toDailyCardID: dailyCardID)
             }
+            return
+        }
+
+        do {
+            try requireAIConsent(for: .storyboardThumbnails(cardID: card.id, promptIfDeclined: false))
+        } catch {
             return
         }
 
@@ -1166,6 +1402,254 @@ final class AppServices {
         }
     }
 
+    func confirmOnboardingAndPrepareFirstIdea(
+        completedData: OnboardingCompletedData,
+        scheduledDate: String
+    ) async -> OnboardingFirstIdeaHandoffResult {
+        let record = OnboardingRecord(completedData: completedData)
+        let completedAt = SupabaseDateFormatting.isoTimestampString()
+        let existingPackage = firstIdeaPackage(for: scheduledDate)
+        let plan = OnboardingFirstIdeaHandoffPlanner.plan(
+            scheduledDate: scheduledDate,
+            record: record,
+            existingPackageStatus: existingPackage?.status,
+            hasUserEditedPackage: hasUserEditedFirstIdeaPackage(for: scheduledDate),
+            firstIdeaHandoffStatus: creatorProfileSummary.firstIdeaHandoff["status"],
+            existingDraftIsComplete: isFirstIdeaDraftComplete(existingPackage)
+        )
+
+        let preparingHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
+            scheduledDate: scheduledDate,
+            status: .preparing,
+            briefFingerprint: plan.briefFingerprint
+        )
+        var establishedUpdate = OnboardingProfileMapper.profileUpdate(
+            from: record,
+            onboardingState: .established,
+            onboardingStep: nil,
+            onboardingCompletedAt: completedAt,
+            firstIdeaHandoff: preparingHandoff
+        )
+
+        guard await updateCreatorProfileImmediately(establishedUpdate) else {
+            var partialUpdate = establishedUpdate
+            partialUpdate.onboardingState = .partial
+            partialUpdate.onboardingCompletedAt = nil
+            _ = await updateCreatorProfileImmediately(partialUpdate)
+            return .persistFailed
+        }
+
+        if !plan.shouldGenerate {
+            if plan.makeAvailableOnly {
+                do {
+                    let navigatedToday = try await makeDayAvailable(scheduledDate: scheduledDate)
+                    return await completeFirstIdeaHandoff(
+                        record: record,
+                        scheduledDate: scheduledDate,
+                        completedAt: completedAt,
+                        briefFingerprint: plan.briefFingerprint,
+                        navigatedToday: navigatedToday
+                    )
+                } catch {
+                    return await failFirstIdeaHandoff(
+                        record: record,
+                        scheduledDate: scheduledDate,
+                        completedAt: completedAt,
+                        briefFingerprint: plan.briefFingerprint,
+                        error: error
+                    )
+                }
+            }
+
+            return await skipFirstIdeaHandoffForExistingReady(
+                record: record,
+                scheduledDate: scheduledDate,
+                completedAt: completedAt,
+                briefFingerprint: plan.briefFingerprint,
+                skipReason: plan.skipReason
+            )
+        }
+
+        if hasUsableReadyTodayPackage(for: scheduledDate) {
+            return await skipFirstIdeaHandoffForExistingReady(
+                record: record,
+                scheduledDate: scheduledDate,
+                completedAt: completedAt,
+                briefFingerprint: plan.briefFingerprint,
+                skipReason: .skippedExistingReady
+            )
+        }
+
+        do {
+            _ = try await generateDayCard(
+                scheduledDate: scheduledDate,
+                dayBrief: plan.dayBrief,
+                confirmOverwrite: plan.confirmOverwrite,
+                allowDeferredVoice: completedData.voiceDeferred
+            )
+            let navigatedToday = try await makeDayAvailable(scheduledDate: scheduledDate)
+            return await completeFirstIdeaHandoff(
+                record: record,
+                scheduledDate: scheduledDate,
+                completedAt: completedAt,
+                briefFingerprint: plan.briefFingerprint,
+                navigatedToday: navigatedToday
+            )
+        } catch {
+            if Self.isReadyPackageOverwriteRequired(error) {
+                return await skipFirstIdeaHandoffForExistingReady(
+                    record: record,
+                    scheduledDate: scheduledDate,
+                    completedAt: completedAt,
+                    briefFingerprint: plan.briefFingerprint,
+                    skipReason: .skippedExistingReady
+                )
+            }
+            return await failFirstIdeaHandoff(
+                record: record,
+                scheduledDate: scheduledDate,
+                completedAt: completedAt,
+                briefFingerprint: plan.briefFingerprint,
+                error: error
+            )
+        }
+    }
+
+    private func skipFirstIdeaHandoffForExistingReady(
+        record: OnboardingRecord,
+        scheduledDate: String,
+        completedAt: String,
+        briefFingerprint: String,
+        skipReason: OnboardingFirstIdeaHandoffStatus?
+    ) async -> OnboardingFirstIdeaHandoffResult {
+        let skippedHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
+            scheduledDate: scheduledDate,
+            status: skipReason ?? .skippedExistingReady,
+            briefFingerprint: briefFingerprint
+        )
+        var skippedUpdate = OnboardingProfileMapper.profileUpdate(
+            from: record,
+            onboardingState: .established,
+            onboardingCompletedAt: completedAt,
+            firstIdeaHandoff: skippedHandoff
+        )
+        _ = await updateCreatorProfileImmediately(skippedUpdate)
+        return .skippedExistingReady
+    }
+
+    private func completeFirstIdeaHandoff(
+        record: OnboardingRecord,
+        scheduledDate: String,
+        completedAt: String,
+        briefFingerprint: String,
+        navigatedToday: Bool
+    ) async -> OnboardingFirstIdeaHandoffResult {
+        let completedHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
+            scheduledDate: scheduledDate,
+            status: .completed,
+            briefFingerprint: briefFingerprint
+        )
+        var completedUpdate = OnboardingProfileMapper.profileUpdate(
+            from: record,
+            onboardingState: .established,
+            onboardingCompletedAt: completedAt,
+            firstIdeaHandoff: completedHandoff
+        )
+        _ = await updateCreatorProfileImmediately(completedUpdate)
+        return .completed(navigatedToday: navigatedToday)
+    }
+
+    private func failFirstIdeaHandoff(
+        record: OnboardingRecord,
+        scheduledDate: String,
+        completedAt: String,
+        briefFingerprint: String,
+        error: Error
+    ) async -> OnboardingFirstIdeaHandoffResult {
+        let failedHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
+            scheduledDate: scheduledDate,
+            status: .failed,
+            briefFingerprint: briefFingerprint
+        )
+        var failedUpdate = OnboardingProfileMapper.profileUpdate(
+            from: record,
+            onboardingState: .established,
+            onboardingCompletedAt: completedAt,
+            firstIdeaHandoff: failedHandoff
+        )
+        _ = await updateCreatorProfileImmediately(failedUpdate)
+        return .generationFailed(message: Self.firstIdeaHandoffErrorMessage(for: error))
+    }
+
+    private static let todayCardLoadingTitles: Set<String> = [
+        "Checking today's plan"
+    ]
+
+    private func hasUsableReadyTodayPackage(for scheduledDate: String) -> Bool {
+        guard scheduledDate == currentTodayDateString else { return false }
+        let title = todayCard.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, !Self.todayCardLoadingTitles.contains(title) else { return false }
+        return !todayCard.scenes.isEmpty
+    }
+
+    private static func isReadyPackageOverwriteRequired(_ error: Error) -> Bool {
+        if case RepositoryError.edgeFunction(let code) = error {
+            return code == "ready_package_overwrite_required"
+        }
+        return error.localizedDescription.contains("ready_package_overwrite_required")
+    }
+
+    private static func firstIdeaHandoffErrorMessage(for error: Error) -> String {
+        if case RepositoryError.edgeFunction(let code) = error {
+            if code == "ready_package_overwrite_required" {
+                return "We saved your preferences, but Today already has an idea, so we left it."
+            }
+            let mapped = DayLifecycleErrorDisplay.message(forCode: code)
+            if mapped != code, let message = mapped.nilIfBlank {
+                return message
+            }
+        }
+        let description = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if description.contains("ready_package_overwrite_required") {
+            return "We saved your preferences, but Today already has an idea, so we left it."
+        }
+        if description.contains("_") && !description.contains(" ") {
+            return "We saved your preferences but couldn't prepare your first idea."
+        }
+        return description.nilIfBlank ?? "We saved your preferences but couldn't prepare your first idea."
+    }
+
+    private func firstIdeaPackage(for scheduledDate: String) -> GeneratedDailyCardDraft? {
+        dayBriefGeneratedCards[scheduledDate]
+            ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
+    }
+
+    private func existingFirstIdeaPackageStatus(for scheduledDate: String) -> String? {
+        firstIdeaPackage(for: scheduledDate)?.status
+    }
+
+    private func hasUserEditedFirstIdeaPackage(for scheduledDate: String) -> Bool {
+        guard let package = firstIdeaPackage(for: scheduledDate) else {
+            return false
+        }
+        return OnboardingFirstIdeaPackageEditDetector.hasUserEditedPackage(
+            packageStatus: package.status,
+            packageTitle: package.title,
+            packageScript: package.script,
+            packageCaption: package.caption,
+            lastGeneratedSnapshot: nil
+        )
+    }
+
+    private func isFirstIdeaDraftComplete(_ package: GeneratedDailyCardDraft?) -> Bool {
+        guard let package else { return false }
+        return OnboardingFirstIdeaPackageEditDetector.isCompleteGeneratedDraft(
+            packageTitle: package.title,
+            packageScript: package.script,
+            packageCaption: package.caption
+        )
+    }
+
     func publishCurrentWeek() {
         Task {
             await publishCurrentWeekImmediately()
@@ -1253,7 +1737,7 @@ final class AppServices {
                     todayCard = draftCard.dailyCard(completionState: nil)
                     todayContentState = .ready
                 }
-                await refreshPublishedContentAfterPublishImmediately()
+                await refreshPublishedContentAfterPublishImmediately(skipTodayCard: draftCard != nil)
                 if !Self.hasUsableStoryboardThumbnails(todayCard.storyboardThumbnailAssets),
                    Self.hasUsableStoryboardThumbnails(preservedAssets) {
                     todayCard.storyboardThumbnailAssets = preservedAssets
@@ -1569,6 +2053,8 @@ final class AppServices {
         defer { isPreviewingReferenceImport = false }
 
         do {
+            // Timeout bound lives inside SupabaseReferenceImportRepository so an
+            // unreachable/slow Instagram probe never hangs either flow.
             let preview = try await repositories.referenceImport.previewImport(
                 rawText: rawText,
                 inputType: inputType,
@@ -1580,11 +2066,19 @@ final class AppServices {
             referenceImportToast = nil
             lastReferenceImportError = nil
             return preview
+        } catch is PreviewImportTimeoutError {
+            lastReferenceImportError = "Couldn't verify — add it anyway."
+            referenceImportToast = nil
+            return nil
         } catch {
             lastReferenceImportError = ReferenceImportErrorDisplay.message(for: error)
             referenceImportToast = nil
             return nil
         }
+    }
+
+    func verifyInstagramProfileImmediately(_ rawHandle: String) async -> OnboardingProfileVerificationResult {
+        await AppServicesOnboardingProfileVerifier(services: self).verify(handle: rawHandle)
     }
 
     func confirmReferenceImport(
@@ -1742,8 +2236,18 @@ final class AppServices {
 
         do {
             creatorProfileSummary = try await repositories.creatorProfile.activeProfileSummary(for: context)
+            creatorOnboardingPresentation = CreatorOnboardingPresentationMapper.presentation(
+                from: creatorProfileSummary,
+                loadFailed: false,
+                previousPresentation: creatorOnboardingPresentation
+            )
         } catch {
             refreshError = refreshError ?? error
+            creatorOnboardingPresentation = CreatorOnboardingPresentationMapper.presentation(
+                from: creatorProfileSummary,
+                loadFailed: true,
+                previousPresentation: creatorOnboardingPresentation
+            )
         }
 
         if refreshError == nil {
@@ -1763,6 +2267,7 @@ final class AppServices {
 #endif
 
         normalizeManagerWeekStartIfStale()
+        restoreAcceptedDayGenerationsIfNeeded()
         await checkRuntimeHealthImmediately()
     }
 
@@ -1775,18 +2280,20 @@ final class AppServices {
     /// Re-fetches canonical published content immediately after publish so the
     /// manager week state and creator Today state come from the same source of truth.
     /// This prevents local reviewed-draft state from diverging from published rows.
-    func refreshPublishedContentAfterPublishImmediately() async {
+    func refreshPublishedContentAfterPublishImmediately(skipTodayCard: Bool = false) async {
         var refreshError: Error?
 
-        do {
-            todayCard = try await repositories.today.todayCard(for: context)
-            todayContentState = .ready
-        } catch RepositoryError.noPublishedTodayCard(let date) {
-            todayContentState = .missingPublishedCard(date: date)
-            lastNotificationSchedule = nil
-            lastNotificationError = nil
-        } catch {
-            refreshError = error
+        if !skipTodayCard {
+            do {
+                todayCard = try await repositories.today.todayCard(for: context)
+                todayContentState = .ready
+            } catch RepositoryError.noPublishedTodayCard(let date) {
+                todayContentState = .missingPublishedCard(date: date)
+                lastNotificationSchedule = nil
+                lastNotificationError = nil
+            } catch {
+                refreshError = error
+            }
         }
 
         do {
@@ -2068,7 +2575,7 @@ private enum DayAvailabilityErrorDisplay {
         "daily_card_not_found": "No draft was found for that day. Generate a draft first.",
         "daily_card_not_draft": "That day is already a ready package.",
         "daily_card_incomplete": "That draft is incomplete. Generate again, then approve.",
-        "invalid_make_day_available_payload": "Approve could not accept that request. Refresh and try again.",
+        "invalid_make_day_available_payload": "Make ready could not accept that request. Refresh and try again.",
         "make_day_available_failed": "Could not approve this day. Try again.",
         "make_day_available_already_running": "Approve is already running. Wait a moment.",
         "role_not_allowed": "This session cannot make a day available.",
@@ -2113,7 +2620,7 @@ private enum DayLifecycleErrorDisplay {
         "update_ready_day_package_already_running": "Package save is already running. Wait a moment.",
         "update_ready_day_package_not_configured": "Package editing is not configured for this runtime.",
         "update_ready_day_package_conflict": "Could not save edits — the day changed. Refresh and try again.",
-        "ready_package_overwrite_required": "This day is a ready package. Confirm Overwrite to replace it with a new draft.",
+        "ready_package_overwrite_required": "This day already has a draft or package. Confirm Overwrite to replace it with a new draft.",
         "role_not_allowed": "This session cannot change that day package.",
         "creator_not_found": "This creator workspace is no longer available. Refresh and try again.",
         "missing_device_token": "This device session is missing. Sign in again.",
@@ -2136,6 +2643,13 @@ private enum DayLifecycleErrorDisplay {
     }
 }
 
+/// Thrown when a reference-import call (live Instagram probe) exceeds its bound.
+struct PreviewImportTimeoutError: Error, LocalizedError {
+    var errorDescription: String? {
+        "Couldn't reach Instagram — try again."
+    }
+}
+
 private enum DayGenerationErrorDisplay {
     private static let userFacingMessages = [
         "invalid_ai_json": "The AI returned an incomplete draft. Try Generate again.",
@@ -2151,6 +2665,8 @@ private enum DayGenerationErrorDisplay {
         "generation_timeout": "Generation timed out. Wait a moment, then try Generate again.",
         "generation_cancelled": "This day’s draft stopped before it finished. You can try Generate again.",
         "generation_already_running": "A generation is already in progress for this day. Wait for it to finish, then try again.",
+        "creator_voice_required": "Set up your creator voice first — or defer voice in You.",
+        "ai_consent_required": AIConsentCopy.blockedMessage,
         "accepted_run_not_found": "Generation status is still syncing. Refresh and try Generate again.",
         "cancelled": "This day’s draft stopped before it finished. You can try Generate again."
     ]
@@ -2173,6 +2689,8 @@ private enum DayGenerationErrorDisplay {
         "generation_timeout",
         "generation_cancelled",
         "generation_already_running",
+        "creator_voice_required",
+        "ai_consent_required",
         "accepted_run_not_found",
         "cancelled"
     ]

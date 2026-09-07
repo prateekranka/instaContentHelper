@@ -187,6 +187,32 @@ final class GeneratedStoryboardBreakdownTests: XCTestCase {
         XCTAssertEqual(rows[3].audioDialogue, "One steady stride is enough for today.")
     }
 
+    func testPackageCopyTextPrefersStoredScriptBlob() {
+        let card = DailyCard.raceWeekToday
+        let copied = PackageCopyText.script(for: card)
+        XCTAssertTrue(copied.contains("Race week starts with the shoes by the door."))
+        XCTAssertTrue(copied.contains("One steady stride is enough for today."))
+        XCTAssertEqual(copied, card.script)
+    }
+
+    func testPackageCopyTextFallsBackToVoiceoverLinesWhenScriptMissing() {
+        var card = DailyCard.raceWeekToday
+        card.script = nil
+        let copied = PackageCopyText.script(for: card)
+        XCTAssertEqual(
+            copied,
+            GeneratedStoryboardBreakdown.rows(for: card).map(\.audioDialogue).joined(separator: "\n")
+        )
+    }
+
+    func testPackageCopyTextUsesCaptionFallbackWhenBlank() {
+        var card = GeneratedDailyCardDraft.storyboardBreakdownFixture
+        card.caption = ""
+        XCTAssertEqual(PackageCopyText.caption(for: card), "No caption recorded for today.")
+        card.caption = "Strength after 40 is not about proving anything."
+        XCTAssertEqual(PackageCopyText.caption(for: card), card.caption)
+    }
+
     func testShootFolioResolvesPlanGeminiThumbnailsWhenTodayCardMissingThem() {
         let assets = Self.sampleThumbnailAssets(forRowCount: 2)
         let services = AppServices.fixtureBacked()

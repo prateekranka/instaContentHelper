@@ -769,7 +769,7 @@ Deno.test("per-day prompt uses compact daily guidance instead of full weekly gui
 
   assertEquals(
     guidance.compact_guidance_version,
-    "creator_daily_generation_compact_v3",
+    "creator_daily_generation_compact_v4",
   );
   assert(guidanceText.includes("Wednesday 2026-06-10"));
   assert(!guidanceText.includes("creator_positioning"));
@@ -2219,6 +2219,65 @@ function dayIntentFromPrompt(
   const userPayload = JSON.parse(userContent.split("\n")[0]);
   return userPayload.target.day_intent as string;
 }
+
+Deno.test("generate_day prompt uses profile identity without HYROX default for books profile", () => {
+  const input: GenerationInputSnapshot = {
+    creator_id: "11111111-1111-4111-8111-111111111111",
+    week_start_date: "2026-06-08",
+    creator_profile: {
+      display_name: "Casey",
+      positioning: "A creator sharing book and movie picks with warm, honest takes.",
+      voice_rules: ["Specific", "No hype"],
+      content_pillars: ["books", "movies-tv"],
+      caption_style: "Short and clear.",
+      never_say: [],
+      language_preferences: { primary: "English" },
+    },
+    weekly_setup: {
+      location: "Home office",
+      notes: "Books and movies week.",
+    },
+    confirmed_references: [],
+    reference_extractions: [],
+    recent_archive: [],
+    idea_bank: [],
+    brand_briefs: [],
+    key_moments: [],
+    patterns: [],
+    trends: [],
+    audio_options: [],
+  };
+
+  const request = buildDeepSeekDayChatRequest(
+    input,
+    "deepseek-v4-pro",
+    "2026-06-10",
+    2,
+  );
+  const messages = request.messages as Record<string, string>[];
+  const system = messages[0].content as string;
+
+  assert(
+    system.includes("book and movie"),
+    "generate_day should use saved profile positioning",
+  );
+  assert(
+    system.includes("books") && system.includes("movies-tv"),
+    "generate_day should expose saved content pillars",
+  );
+  assert(
+    !system.includes("gym, lifestyle, eating, recovery"),
+    "generate_day must not expose legacy four pillars when profile uses onboarding slugs only",
+  );
+  assert(
+    !system.includes("Indian mother, wife, and HYROX athlete"),
+    "generate_day must not use seed HYROX identity copy",
+  );
+  assert(
+    !system.toLowerCase().includes("hyrox athlete"),
+    "generate_day system prompt must not inject HYROX athlete identity",
+  );
+});
 
 function fixtureInput(): GenerationInputSnapshot {
   return {

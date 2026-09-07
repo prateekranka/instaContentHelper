@@ -3,9 +3,12 @@ import {
   makeMockGeneratedWeek,
 } from "./generation.ts";
 import {
+  buildAllowedDayContentPillars,
+  buildParseTimeDayContentPillars,
   coerceGeneratedDayOutputShape,
   parseGeneratedDayJSON,
   parseGeneratedWeekJSON,
+  resolveDayContentPillarForProfile,
   validateGeneratedDayOutput,
   validateGeneratedWeek,
 } from "./generation-validation.ts";
@@ -35,6 +38,40 @@ Deno.test("parseGeneratedDayJSON accepts a valid daily card payload", () => {
   );
   assertEquals(parsed.daily_card.scheduled_date, card.scheduled_date);
   assertEquals(parsed.daily_card.content_pillar, card.content_pillar);
+});
+
+Deno.test("parseGeneratedDayJSON accepts books pillar without legacy enum error", () => {
+  const generated = makeMockGeneratedWeek(fixtureInput());
+  const card = {
+    ...generated.daily_cards[1],
+    scheduled_date: "2026-06-09",
+    content_pillar: "books",
+    title: "The book I reread every rainy weekend",
+    why_today: "Tuesday is my quiet reading night after a busy week.",
+    weekly_brief_anchor: "Books and movies are my wind-down pillars.",
+    brief_alignment: "Uses the books pillar from the saved creator profile.",
+    growth_job: "Share one book recommendation.",
+    post_instructions: "Film the bookshelf and reading nook today.",
+    source_note: "Used weekly brief and day guidance.",
+    script: "This novel is my reset when I do not want a new series.",
+    caption: "Same book, same blanket, no debate.",
+  };
+  const parsed = parseGeneratedDayJSON(
+    JSON.stringify({
+      strategy_note: "Day strategy",
+      warnings: [],
+      assumptions: [],
+      daily_card: card,
+      idea_bank: [],
+      source_summary: "Sources",
+    }),
+    card.scheduled_date,
+    1,
+  );
+  assertEquals(parsed.daily_card.content_pillar, "books");
+  const allowed = buildParseTimeDayContentPillars();
+  assert(allowed.includes("books"));
+  assert(allowed.includes("movies-tv"));
 });
 
 Deno.test("GenerateWeekValidationError identity is preserved through generation re-export", () => {
@@ -211,6 +248,112 @@ Deno.test("day JSON coerce recovers en-dash timestamps and drops incomplete idea
   const validated = validateGeneratedDayOutput(coerced, "2026-06-09", 1);
   assertEquals(validated.daily_card.shot_timeline[0].timestamp, "0:00-0:03");
   assertEquals(validated.idea_bank.length, 0);
+});
+
+Deno.test("generate_day validator accepts saved books pillar outside legacy four", () => {
+  const card = {
+    ...makeMockGeneratedWeek(fixtureInput()).daily_cards[1],
+    scheduled_date: "2026-06-09",
+    content_pillar: "books",
+  };
+  const validated = validateGeneratedDayOutput(
+    { daily_card: card },
+    "2026-06-09",
+    1,
+    {
+      allowedContentPillars: [
+        "books",
+        "movies-tv",
+        "gym",
+        "lifestyle",
+        "eating",
+        "recovery",
+      ],
+    },
+  );
+  assertEquals(validated.daily_card.content_pillar, "books");
+});
+
+Deno.test("buildAllowedDayContentPillars omits legacy four for custom onboarding profile", () => {
+  const allowed = buildAllowedDayContentPillars({
+    content_pillars: ["books", "movies-tv"],
+  });
+  assertEquals(allowed.length, 2);
+  assert(allowed.includes("books"));
+  assert(allowed.includes("movies-tv"));
+  assert(!allowed.includes("lifestyle"));
+});
+
+Deno.test("buildAllowedDayContentPillars keeps legacy four for HYROX profile", () => {
+  const allowed = buildAllowedDayContentPillars({
+    content_pillars: ["gym", "lifestyle", "eating", "recovery"],
+  });
+  assertEquals(allowed.includes("gym"), true);
+  assertEquals(allowed.includes("lifestyle"), true);
+  assertEquals(allowed.includes("eating"), true);
+  assertEquals(allowed.includes("recovery"), true);
+});
+
+Deno.test("generate_day validator remaps legacy lifestyle to matching profile pillar", () => {
+  const card = {
+    ...makeMockGeneratedWeek(fixtureInput()).daily_cards[1],
+    scheduled_date: "2026-06-09",
+    content_pillar: "lifestyle",
+    title: "My evening wind-down order: book first, movie second",
+    script: "Tonight I read a chapter before I put on a film.",
+    caption: "Book first, movie second is my wind-down rule.",
+  };
+  const booksMoviesProfile = {
+    content_pillars: ["books", "movies-tv"],
+  };
+  const validated = validateGeneratedDayOutput(
+    { daily_card: card },
+    "2026-06-09",
+    1,
+    {
+      allowedContentPillars: buildAllowedDayContentPillars(booksMoviesProfile),
+      creatorProfile: booksMoviesProfile,
+    },
+  );
+  assertEquals(validated.daily_card.content_pillar, "books");
+});
+
+Deno.test("generate_day validator keeps lifestyle for legacy HYROX profile", () => {
+  const card = {
+    ...makeMockGeneratedWeek(fixtureInput()).daily_cards[1],
+    scheduled_date: "2026-06-09",
+    content_pillar: "lifestyle",
+    title: "Family rhythm after gym",
+    script: "After training I keep the home routine simple.",
+    caption: "Small habits after the gym keep the week steady.",
+  };
+  const hyroxProfile = {
+    content_pillars: ["gym", "lifestyle", "eating", "recovery"],
+  };
+  const validated = validateGeneratedDayOutput(
+    { daily_card: card },
+    "2026-06-09",
+    1,
+    {
+      allowedContentPillars: buildAllowedDayContentPillars(hyroxProfile),
+      creatorProfile: hyroxProfile,
+    },
+  );
+  assertEquals(validated.daily_card.content_pillar, "lifestyle");
+});
+
+Deno.test("resolveDayContentPillarForProfile maps movie-heavy copy to movies-tv", () => {
+  const card = {
+    title: "The comfort movie I rewatch every rainy weekend",
+    script: "This film is my reset show when I do not want a new series.",
+    caption: "Same movie, same blanket, no debate.",
+  };
+  const resolved = resolveDayContentPillarForProfile(
+    "lifestyle",
+    card,
+    { content_pillars: ["books", "movies-tv"] },
+  );
+  assertEquals(resolved, "movies-tv");
 });
 
 Deno.test("validator rejects malformed AI JSON", () => {

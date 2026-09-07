@@ -67,6 +67,11 @@ Deno.test("first auth user without membership is auto-provisioned as creator", a
   assertEquals(state.memberWrites[0].role, "creator");
   assertEquals(state.memberWrites[0].status, "active");
   assertEquals(state.memberWrites[0].auth_user_id, userID);
+  assertEquals(state.profileWrites.length, 1);
+  assertEquals(state.profileWrites[0].onboarding_state, "new");
+  assertEquals(state.profileWrites[0].status, "active");
+  assertEquals(state.profileWrites[0].content_pillars, []);
+  assertEquals(state.profileWrites[0].positioning, undefined);
   assertEquals(state.installWrites.length, 1);
 });
 
@@ -105,6 +110,7 @@ type ExchangeState = {
   workspaceWrites: Record<string, unknown>[];
   creatorWrites: Record<string, unknown>[];
   memberWrites: Record<string, unknown>[];
+  profileWrites: Record<string, unknown>[];
 };
 
 function exchangeState(
@@ -124,6 +130,7 @@ function exchangeState(
     workspaceWrites: [],
     creatorWrites: [],
     memberWrites: [],
+    profileWrites: [],
     ...overrides,
   };
 }
@@ -228,6 +235,10 @@ class FakeExchangeQuery {
   }
 
   private resolveList(): any[] {
+    if (this.table === "creator_profiles" && this.operation === "insert") {
+      this.state.profileWrites.push(this.values);
+      return [this.values];
+    }
     if (this.table === "members") {
       if (this.filters.status === "active") {
         return this.state.memberships.filter((membership) =>
@@ -285,6 +296,16 @@ class FakeExchangeQuery {
         };
         this.state.memberships = [member];
         return member;
+      }
+      return null;
+    }
+    if (this.table === "creator_profiles") {
+      if (this.operation === "insert") {
+        this.state.profileWrites.push(this.values);
+        return {
+          id: "99999999-9999-4999-8999-999999999999",
+          ...this.values,
+        };
       }
       return null;
     }

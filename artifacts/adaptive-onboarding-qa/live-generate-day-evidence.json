@@ -1,0 +1,36 @@
+{
+  "live_generate_attempted": true,
+  "live_generate_completed": true,
+  "verification_run_at": "2026-09-05T18:45:00Z",
+  "environment": "local-supabase",
+  "functions_serve_restarted": true,
+  "fix_applied": "parseGeneratedDayJSON now uses buildParseTimeDayContentPillars (legacy four + onboarding slugs) before single-day-runner profile-aware coercion",
+  "endpoint": "http://127.0.0.1:54321/functions/v1/generate-week",
+  "action": "generate_day",
+  "response_mode": "sync",
+  "scheduled_date": "2026-09-05",
+  "profile": {
+    "content_pillars": ["books", "movies-tv"],
+    "onboarding_state": "established",
+    "positioning_snippet": "book and movie picks with warm, honest takes",
+    "hyrox_in_positioning": false
+  },
+  "provider_key_source": "/tmp/mco-functions-live-local.env (not committed)",
+  "provider_key_found": true,
+  "local_functions_env": "/tmp/mco-functions-live-local.env",
+  "generate_http_status": 200,
+  "generation_status": "draft",
+  "content_pillar": "movies-tv",
+  "title_snippet": "Saturday is for the story you already love",
+  "card_mentions_books_or_movies": true,
+  "books_movies_card_produced": true,
+  "hyrox_in_response": false,
+  "card_mentions_gym_pillar": false,
+  "deno_tests": {
+    "generation_validation_test": "37 passed (includes parseGeneratedDayJSON accepts books pillar)",
+    "generation_test_books_profile": "1 passed"
+  },
+  "notes": "After parse fix, live smoke returned HTTP 200 with movies-tv pillar and books/movies copy. No HYROX. Card persisted.",
+  "hermetic_prompt_test": "supabase/functions/generate-week/generation_test.ts — generate_day prompt uses profile identity without HYROX default for books profile",
+  "remaining_gap": null
+}

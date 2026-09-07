@@ -329,7 +329,7 @@ async function readCreatorProfile(
   const { data: profile, error } = await admin
     .from("creator_profiles")
     .select(
-      "positioning,voice_rules,content_pillars,caption_style,never_say,recurring_formats",
+      "display_name,positioning,voice_rules,content_pillars,caption_style,never_say,recurring_formats,language_preferences,onboarding_state,onboarding_step,onboarding_version,onboarding_completed_at,starting_point,custom_subjects,taste_example_ids,production_formats,time_to_create,on_camera_restrictions,recent_context,creator_note,first_idea_handoff",
     )
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)

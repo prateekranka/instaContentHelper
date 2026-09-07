@@ -33,6 +33,20 @@ type WriteContentRequest = {
   caption_style?: unknown;
   never_say?: unknown;
   recurring_formats?: unknown;
+  onboarding_state?: unknown;
+  onboarding_step?: unknown;
+  onboarding_version?: unknown;
+  onboarding_completed_at?: unknown;
+  starting_point?: unknown;
+  custom_subjects?: unknown;
+  taste_example_ids?: unknown;
+  production_formats?: unknown;
+  time_to_create?: unknown;
+  on_camera_restrictions?: unknown;
+  recent_context?: unknown;
+  creator_note?: unknown;
+  first_idea_handoff?: unknown;
+  language_preferences?: unknown;
   archive_date?: string;
   decision?: string | {
     status?: string;
@@ -57,7 +71,7 @@ const WEEKLY_SETUP_SELECT =
   "id,location,workout_race_schedule,family_travel_moments,energy_constraints,shooting_constraints,no_go_topics,selected_sources,notes";
 
 const CREATOR_PROFILE_SELECT =
-  "id,positioning,voice_rules,content_pillars,caption_style,never_say,recurring_formats,updated_at";
+  "id,display_name,positioning,voice_rules,content_pillars,caption_style,never_say,recurring_formats,language_preferences,onboarding_state,onboarding_step,onboarding_version,onboarding_completed_at,starting_point,custom_subjects,taste_example_ids,production_formats,time_to_create,on_camera_restrictions,recent_context,creator_note,first_idea_handoff,updated_at";
 
 const WEEKLY_SETUP_TEXT_COLUMNS = new Set(["location", "notes"]);
 const WEEKLY_SETUP_ARRAY_COLUMNS = new Set([
@@ -735,7 +749,32 @@ async function updateCreatorProfile(
   }
 
   if (!activeProfile) {
-    return jsonResponse({ error: "creator_profile_not_found" }, 404);
+    const onboardingState = normalizedOnboardingState(body.onboarding_state) ??
+      "new";
+    const insertPayload: Record<string, unknown> = {
+      workspace_id: session.workspaceID,
+      creator_id: creatorID,
+      status: "active",
+      version: 1,
+      onboarding_state: onboardingState,
+      created_by_member_id: session.memberID,
+      ...update,
+    };
+
+    const { data: insertedProfile, error: insertError } = await admin
+      .from("creator_profiles")
+      .insert(insertPayload)
+      .select(CREATOR_PROFILE_SELECT)
+      .maybeSingle();
+
+    if (insertError || !insertedProfile) {
+      return jsonResponse({ error: "creator_profile_update_failed" }, 500);
+    }
+
+    return jsonResponse({
+      action: "update_creator_profile",
+      creator_profile: insertedProfile,
+    });
   }
 
   const { data: updatedProfile, error: updateError } = await admin
@@ -758,12 +797,12 @@ async function updateCreatorProfile(
   });
 }
 
-function normalizedCreatorProfileUpdate(
+export function normalizedCreatorProfileUpdate(
   body: WriteContentRequest,
 ): Record<string, unknown> | null {
   const update: Record<string, unknown> = {};
 
-  for (const column of ["positioning", "caption_style"] as const) {
+  for (const column of ["positioning", "caption_style", "creator_note"] as const) {
     const value = body[column];
     if (value === undefined) {
       continue;
@@ -782,6 +821,7 @@ function normalizedCreatorProfileUpdate(
       "content_pillars",
       "never_say",
       "recurring_formats",
+      "custom_subjects",
     ] as const
   ) {
     const value = body[column];
@@ -797,12 +837,164 @@ function normalizedCreatorProfileUpdate(
     update[column] = normalized;
   }
 
+  const onboardingState = normalizedOnboardingState(body.onboarding_state);
+  if (body.onboarding_state !== undefined) {
+    if (!onboardingState) {
+      return null;
+    }
+    update.onboarding_state = onboardingState;
+  }
+
+  if (body.onboarding_step !== undefined) {
+    if (
+      body.onboarding_step !== null &&
+      (!Number.isInteger(body.onboarding_step) ||
+        (body.onboarding_step as number) < 0)
+    ) {
+      return null;
+    }
+    update.onboarding_step = body.onboarding_step;
+  }
+
+  if (body.onboarding_version !== undefined) {
+    if (
+      !Number.isInteger(body.onboarding_version) ||
+      (body.onboarding_version as number) < 1
+    ) {
+      return null;
+    }
+    update.onboarding_version = body.onboarding_version;
+  }
+
+  if (body.onboarding_completed_at !== undefined) {
+    if (
+      body.onboarding_completed_at !== null &&
+      typeof body.onboarding_completed_at !== "string"
+    ) {
+      return null;
+    }
+    update.onboarding_completed_at = body.onboarding_completed_at;
+  }
+
+  const startingPoint = normalizedStartingPoint(body.starting_point);
+  if (body.starting_point !== undefined) {
+    if (body.starting_point !== null && !startingPoint) {
+      return null;
+    }
+    update.starting_point = startingPoint;
+  }
+
+  const timeToCreate = normalizedTimeToCreate(body.time_to_create);
+  if (body.time_to_create !== undefined) {
+    if (body.time_to_create !== null && !timeToCreate) {
+      return null;
+    }
+    update.time_to_create = timeToCreate;
+  }
+
+  for (
+    const column of [
+      "taste_example_ids",
+      "production_formats",
+      "recent_context",
+    ] as const
+  ) {
+    const value = body[column];
+    if (value === undefined) {
+      continue;
+    }
+    if (!Array.isArray(value)) {
+      return null;
+    }
+    update[column] = value;
+  }
+
+  if (body.on_camera_restrictions !== undefined) {
+    if (
+      body.on_camera_restrictions !== null &&
+      (typeof body.on_camera_restrictions !== "object" ||
+        Array.isArray(body.on_camera_restrictions))
+    ) {
+      return null;
+    }
+    update.on_camera_restrictions = body.on_camera_restrictions ?? {};
+  }
+
+  if (body.first_idea_handoff !== undefined) {
+    if (
+      body.first_idea_handoff !== null &&
+      (typeof body.first_idea_handoff !== "object" ||
+        Array.isArray(body.first_idea_handoff))
+    ) {
+      return null;
+    }
+    update.first_idea_handoff = body.first_idea_handoff ?? {};
+  }
+
+  if (body.language_preferences !== undefined) {
+    if (
+      body.language_preferences !== null &&
+      (typeof body.language_preferences !== "object" ||
+        Array.isArray(body.language_preferences))
+    ) {
+      return null;
+    }
+    update.language_preferences = body.language_preferences ?? {};
+  }
+
   if (Object.keys(update).length === 0) {
     return null;
   }
 
   update.updated_at = new Date().toISOString();
   return update;
+}
+
+function normalizedOnboardingState(
+  value: unknown,
+): "new" | "partial" | "established" | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "new" || normalized === "partial" ||
+    normalized === "established"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizedStartingPoint(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "just_starting" || normalized === "already_posting") {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizedTimeToCreate(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "five_to_ten" || normalized === "ten_to_thirty" ||
+    normalized === "thirty_plus"
+  ) {
+    return normalized;
+  }
+  return null;
 }
 
 function normalizedTextArray(value: unknown): string[] | null {

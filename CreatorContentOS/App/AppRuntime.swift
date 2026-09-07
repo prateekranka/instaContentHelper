@@ -23,12 +23,23 @@ struct AppRuntime {
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
         notifications: any TodayNotificationScheduling = LocalTodayNotificationScheduler()
     ) -> AppRuntime {
-        AppRuntime(
+        let services = AppServices.fixtureBacked(
+            todayCache: todayCache,
+            notifications: notifications
+        )
+#if DEBUG
+        if !DebugLaunchFlags.forceEmptyToday {
+            // Seed a reviewable draft so Plan can show Approve in fixture UI proofs.
+            // (Kept out of `fixtureBacked` so unit tests start with an empty day store.)
+            var draft = GeneratedDailyCardDraft.storyboardBreakdownFixture
+            draft.scheduledDate = services.currentTodayDateString
+            draft.status = "draft"
+            services.dayBriefGeneratedCards[services.currentTodayDateString] = draft
+        }
+#endif
+        return AppRuntime(
             mode: .fixtures,
-            services: AppServices.fixtureBacked(
-                todayCache: todayCache,
-                notifications: notifications
-            )
+            services: services
         )
     }
 
@@ -40,7 +51,8 @@ struct AppRuntime {
     ) -> AppRuntime {
         let repositories = repositories ?? SupabaseRepositoryBundleFactory().makeRepositories(
             context: session.context,
-            configuration: session.runtimeConfiguration
+            configuration: session.runtimeConfiguration,
+            creatorDisplayName: session.creatorDisplayName ?? "Creator"
         )
         return AppRuntime(
             mode: .live(session),
@@ -160,12 +172,7 @@ private extension IntelligenceHome {
 }
 
 private extension CreatorProfileSummary {
-    static let liveLoadingPlaceholder = CreatorProfileSummary(
-        displayName: "Loading",
-        positioning: "Fetching the creator profile from Supabase.",
-        voiceLine: "",
-        noGoTopics: []
-    )
+    static let liveLoadingPlaceholder = CreatorProfileSummary.emptyLiveFallback(displayName: "Loading")
 }
 
 private extension PairedDeviceSession {
@@ -211,3 +218,37 @@ private extension PairedDeviceSession {
         )
     }
 }
+
+#if DEBUG
+enum DebugLaunchFlags {
+    private static func isEnabled(_ key: String) -> Bool {
+        ProcessInfo.processInfo.environment[key] == "1"
+    }
+
+    /// Start fixture Today empty so first-idea confirm runs generate + makeDayAvailable.
+    static var forceEmptyToday: Bool {
+        isEnabled("MCO_FORCE_EMPTY_TODAY")
+    }
+
+    /// Slow fixture first-idea generation for screenshot capture only.
+    static var slowFirstIdea: Bool {
+        isEnabled("MCO_SLOW_FIRST_IDEA")
+    }
+
+    /// Fail fixture first-idea generation with a recoverable error for QA.
+    static var failFirstIdea: Bool {
+        isEnabled("MCO_FAIL_FIRST_IDEA")
+    }
+
+    static var fixtureFirstIdeaDelayNanoseconds: UInt64 {
+        slowFirstIdea ? 3_500_000_000 : 450_000_000
+    }
+}
+#else
+enum DebugLaunchFlags {
+    static var forceEmptyToday: Bool { false }
+    static var slowFirstIdea: Bool { false }
+    static var failFirstIdea: Bool { false }
+    static var fixtureFirstIdeaDelayNanoseconds: UInt64 { 450_000_000 }
+}
+#endif

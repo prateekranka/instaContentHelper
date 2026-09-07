@@ -1,11 +1,14 @@
 import SwiftUI
 
 struct IntelligenceHomeView: View {
+    @Environment(\.chromePalette) private var chrome
     enum Presentation {
         /// Admin References tab with screen chrome.
         case standalone
         /// Nested under Plan accordion — shelves only.
         case embedded
+        /// Creator You destination — shelves only, no admin chrome.
+        case you
     }
 
     @Environment(\.openURL) private var openURL
@@ -19,7 +22,7 @@ struct IntelligenceHomeView: View {
             switch presentation {
             case .standalone:
                 ZStack {
-                    MCOTheme.Color.paper.ignoresSafeArea()
+                    chrome.paper.ignoresSafeArea()
                     ScrollView {
                         VStack(alignment: .leading, spacing: MCOSpace.l) {
                             header
@@ -31,7 +34,7 @@ struct IntelligenceHomeView: View {
                     }
                 }
                 .navigationBarHidden(true)
-            case .embedded:
+            case .embedded, .you:
                 VStack(alignment: .leading, spacing: MCOSpace.l) {
                     referencesBody
                 }
@@ -98,7 +101,7 @@ struct IntelligenceHomeView: View {
                         .frame(width: 42, height: 42)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(services.isLiveSupabaseRuntime ? MCOTheme.Color.ink : MCOTheme.Color.inkMuted)
+                .foregroundStyle(services.isLiveSupabaseRuntime ? chrome.ink : chrome.inkMuted)
                 .glassEffect(.regular.interactive(), in: .circle)
                 .disabled(!services.isLiveSupabaseRuntime)
                 .accessibilityLabel("Open Reference Import")
@@ -111,7 +114,7 @@ struct IntelligenceHomeView: View {
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
                 Text("References")
                     .font(MCOType.display)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
@@ -127,9 +130,13 @@ struct IntelligenceHomeView: View {
                     inputType: inputType,
                     filename: filename
                 ) else {
-                    throw RepositoryError.notConfigured(
-                        services.lastReferenceImportError ?? "Reference import preview failed."
-                    )
+                    let message = services.lastReferenceImportError ?? "Reference import preview failed."
+                    if message == ReferenceImportVerificationCopy.couldNotVerifyAddAnyway {
+                        // Live check failed or timed out: non-blocking. The
+                        // preview view shows the "add it anyway" fallback.
+                        throw ReferenceImportCheckUnavailableError.serverUnavailable
+                    }
+                    throw RepositoryError.notConfigured(message)
                 }
                 return preview
             },
@@ -197,6 +204,7 @@ struct IntelligenceHomeView: View {
 }
 
 struct ReferenceImportEntryBlock: View {
+    @Environment(\.chromePalette) private var chrome
     let isLiveRuntime: Bool
 
     var body: some View {
@@ -204,16 +212,16 @@ struct ReferenceImportEntryBlock: View {
             HStack(alignment: .center, spacing: MCOSpace.m) {
                 Image(systemName: "bookmark")
                     .font(.system(size: 22, weight: .light))
-                    .foregroundStyle(isLiveRuntime ? MCOTheme.Color.oxblood : MCOTheme.Color.inkMuted)
+                    .foregroundStyle(isLiveRuntime ? chrome.accent : chrome.inkMuted)
                     .frame(width: 34)
 
                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                     Text("Import inspiration")
                         .font(.system(size: 19, weight: .regular, design: .serif))
-                        .foregroundStyle(MCOTheme.Color.ink)
+                        .foregroundStyle(chrome.ink)
                     Text(isLiveRuntime ? "Paste links, handles, notes, or upload CSV." : "Connect live Supabase to import references.")
                         .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .foregroundStyle(chrome.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -221,13 +229,14 @@ struct ReferenceImportEntryBlock: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
             }
         }
     }
 }
 
 struct GrowthReferenceShelf: View {
+    @Environment(\.chromePalette) private var chrome
     let references: [GrowthReference]
 
     var body: some View {
@@ -253,24 +262,25 @@ struct GrowthReferenceShelf: View {
 }
 
 struct GrowthReferenceRow: View {
+    @Environment(\.chromePalette) private var chrome
     let reference: GrowthReference
 
     var body: some View {
         HStack(alignment: .center, spacing: MCOSpace.m) {
             Image(systemName: reference.symbol)
                 .font(.system(size: 20, weight: .light))
-                .foregroundStyle(MCOTheme.Color.oxblood)
+                .foregroundStyle(chrome.accent)
                 .frame(width: 34)
 
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                 Text(reference.title)
                     .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
                 Text(reference.summary)
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                     .lineLimit(2)
             }
 
@@ -279,12 +289,12 @@ struct GrowthReferenceRow: View {
             HStack(spacing: MCOSpace.xs) {
                 Text(reference.relevanceLabel)
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .foregroundStyle(chrome.accent)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
             }
             .frame(width: 104, alignment: .trailing)
         }
@@ -294,11 +304,12 @@ struct GrowthReferenceRow: View {
 }
 
 struct GrowthReferenceDetailView: View {
+    @Environment(\.chromePalette) private var chrome
     @Environment(\.openURL) private var openURL
     let reference: GrowthReference
 
     var body: some View {
-        EditorialScreen(bottomContentPadding: MCOSpace.xl, showsBottomBar: false) {
+        ChromeScreen(bottomContentPadding: MCOSpace.xl, showsBottomBar: false) {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
                 summaryBlock
@@ -317,22 +328,22 @@ struct GrowthReferenceDetailView: View {
             HStack(alignment: .center, spacing: MCOSpace.s) {
                 Image(systemName: reference.symbol)
                     .font(.system(size: 22, weight: .light))
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .foregroundStyle(chrome.accent)
                     .frame(width: 38, height: 38)
-                    .background(MCOTheme.Color.paperRaised.opacity(0.72))
+                    .background(chrome.paperRaised.opacity(0.72))
                     .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                            .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                            .stroke(chrome.hairline, lineWidth: 1)
                     }
 
                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                     Text("Growth Reference")
                         .font(MCOType.tinyLabel)
-                        .foregroundStyle(MCOTheme.Color.oxblood)
+                        .foregroundStyle(chrome.accent)
                     Text(reference.title)
                         .font(MCOType.screenTitle)
-                        .foregroundStyle(MCOTheme.Color.ink)
+                        .foregroundStyle(chrome.ink)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -351,12 +362,12 @@ struct GrowthReferenceDetailView: View {
 
                 Text(reference.summary)
                     .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(reference.whyItWorks)
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -367,7 +378,7 @@ struct GrowthReferenceDetailView: View {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 Text("Hook formulas")
                     .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .foregroundStyle(chrome.accent)
                 VStack(alignment: .leading, spacing: MCOSpace.xs) {
                     ForEach(reference.hookFormulas, id: \.self) { hook in
                         ReferenceDetailLine(title: "Hook", value: hook)
@@ -382,11 +393,11 @@ struct GrowthReferenceDetailView: View {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 Text("When to use")
                     .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .foregroundStyle(chrome.accent)
                 ForEach(reference.useWhen, id: \.self) { line in
                     Text("- \(line)")
                         .font(MCOType.bodySmall)
-                        .foregroundStyle(MCOTheme.Color.ink)
+                        .foregroundStyle(chrome.ink)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 ReferenceDetailLine(title: "Creator idea", value: reference.sampleCreatorIdea)
@@ -399,7 +410,7 @@ struct GrowthReferenceDetailView: View {
             VStack(alignment: .leading, spacing: MCOSpace.m) {
                 Text("Sources")
                     .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .foregroundStyle(chrome.accent)
                 ForEach(reference.sourceURLs, id: \.self) { source in
                     Button {
                         if let url = URL(string: source) {
@@ -409,13 +420,13 @@ struct GrowthReferenceDetailView: View {
                         HStack(spacing: MCOSpace.s) {
                             Text(source)
                                 .font(MCOType.caption)
-                                .foregroundStyle(MCOTheme.Color.inkMuted)
+                                .foregroundStyle(chrome.inkMuted)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                             Spacer(minLength: MCOSpace.s)
                             Image(systemName: "arrow.up.right")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(MCOTheme.Color.oxblood)
+                                .foregroundStyle(chrome.accent)
                         }
                     }
                     .buttonStyle(.plain)
@@ -426,6 +437,7 @@ struct GrowthReferenceDetailView: View {
 }
 
 struct SourcePulseShelf: View {
+    @Environment(\.chromePalette) private var chrome
     let sourcePulse: SourcePulseSummary
 
     var body: some View {
@@ -443,23 +455,24 @@ struct SourcePulseShelf: View {
 }
 
 struct ReferencePulseRow: View {
+    @Environment(\.chromePalette) private var chrome
     let reference: ReferenceSummary
 
     var body: some View {
         HStack(alignment: .center, spacing: MCOSpace.m) {
             Image(systemName: reference.symbol)
                 .font(.system(size: 20, weight: .light))
-                .foregroundStyle(reference.state.accent)
+                .foregroundStyle(reference.state.accentColor(using: chrome))
                 .frame(width: 34)
 
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                 Text(reference.title)
                     .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                     .lineLimit(1)
                 Text("\(reference.sourceType) - \(reference.note)")
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                     .lineLimit(1)
             }
 
@@ -472,6 +485,7 @@ struct ReferencePulseRow: View {
 }
 
 struct NeedsYourCallShelf: View {
+    @Environment(\.chromePalette) private var chrome
     let items: [IntelligenceItem]
     let isReviewing: Bool
     let onApprove: (IntelligenceItem) -> Void
@@ -503,6 +517,7 @@ struct NeedsYourCallShelf: View {
 }
 
 struct NeedsYourCallRow: View {
+    @Environment(\.chromePalette) private var chrome
     let item: IntelligenceItem
     let isReviewing: Bool
     let onApprove: () -> Void
@@ -517,7 +532,7 @@ struct NeedsYourCallRow: View {
                     ReferenceImportTypeChipView(typeChip: item.typeChip ?? .unknown)
                     Image(systemName: item.symbol)
                         .font(.system(size: 18, weight: .light))
-                        .foregroundStyle(item.state.accent)
+                        .foregroundStyle(item.state.accentColor(using: chrome))
                         .frame(width: 34, alignment: .leading)
                 }
                 .frame(width: 66, alignment: .leading)
@@ -525,12 +540,12 @@ struct NeedsYourCallRow: View {
                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                     Text(item.title)
                         .font(.system(size: 17, weight: .regular, design: .serif))
-                        .foregroundStyle(MCOTheme.Color.ink)
+                        .foregroundStyle(chrome.ink)
                         .lineLimit(2)
                         .minimumScaleFactor(0.9)
                     Text(item.subtitle)
                         .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .foregroundStyle(chrome.inkMuted)
                         .lineLimit(2)
                 }
 
@@ -552,6 +567,7 @@ struct NeedsYourCallRow: View {
 }
 
 struct ReviewActionButton: View {
+    @Environment(\.chromePalette) private var chrome
     let title: String
     let symbol: String
     let isDisabled: Bool
@@ -564,11 +580,11 @@ struct ReviewActionButton: View {
                 .frame(width: 32, height: 32)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isDisabled ? MCOTheme.Color.inkMuted : MCOTheme.Color.oxblood)
-        .background(MCOTheme.Color.paperRaised.opacity(isDisabled ? 0.36 : 0.78))
+        .foregroundStyle(isDisabled ? chrome.inkMuted : chrome.accent)
+        .background(chrome.paperRaised.opacity(isDisabled ? 0.36 : 0.78))
         .clipShape(Circle())
         .overlay {
-            Circle().stroke(MCOTheme.Color.hairline, lineWidth: 1)
+            Circle().stroke(chrome.hairline, lineWidth: 1)
         }
         .disabled(isDisabled)
         .accessibilityLabel(title)
@@ -576,6 +592,7 @@ struct ReviewActionButton: View {
 }
 
 struct IntelligenceShelf: View {
+    @Environment(\.chromePalette) private var chrome
     let title: String
     let items: [IntelligenceItem]
 
@@ -602,24 +619,25 @@ struct IntelligenceShelf: View {
 }
 
 struct IntelligenceShelfRow: View {
+    @Environment(\.chromePalette) private var chrome
     let item: IntelligenceItem
 
     var body: some View {
         HStack(alignment: .center, spacing: MCOSpace.m) {
             Image(systemName: item.symbol)
                 .font(.system(size: 20, weight: .light))
-                .foregroundStyle(item.state.accent)
+                .foregroundStyle(item.state.accentColor(using: chrome))
                 .frame(width: 34)
 
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                 Text(item.title)
                     .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
                 Text(item.kind.rawValue)
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
             }
 
             Spacer(minLength: MCOSpace.s)
@@ -627,12 +645,12 @@ struct IntelligenceShelfRow: View {
             HStack(spacing: MCOSpace.xs) {
                 Text(item.trailingNote)
                     .font(MCOType.caption)
-                    .foregroundStyle(item.state.accent)
+                    .foregroundStyle(item.state.accentColor(using: chrome))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
             }
             .frame(width: 92, alignment: .trailing)
         }
@@ -642,6 +660,7 @@ struct IntelligenceShelfRow: View {
 }
 
 struct LibraryNavigationShelf: View {
+    @Environment(\.chromePalette) private var chrome
     let sections: [IntelligenceLibrarySection]
 
     var body: some View {
@@ -665,22 +684,23 @@ struct LibraryNavigationShelf: View {
 }
 
 struct LibraryNavigationRow: View {
+    @Environment(\.chromePalette) private var chrome
     let section: IntelligenceLibrarySection
 
     var body: some View {
         HStack(alignment: .center, spacing: MCOSpace.m) {
             Image(systemName: section.symbol)
                 .font(.system(size: 19, weight: .light))
-                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .foregroundStyle(chrome.inkMuted)
                 .frame(width: 34)
 
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                 Text(section.title)
                     .font(.system(size: 17, weight: .regular, design: .serif))
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                 Text(section.subtitle)
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                     .lineLimit(1)
             }
 
@@ -689,10 +709,10 @@ struct LibraryNavigationRow: View {
             HStack(spacing: MCOSpace.s) {
                 Text("\(section.count)")
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
             }
         }
         .padding(.vertical, MCOSpace.s)
@@ -700,12 +720,13 @@ struct LibraryNavigationRow: View {
 }
 
 struct ReferenceItemDetailView: View {
+    @Environment(\.chromePalette) private var chrome
     @Environment(\.openURL) private var openURL
     @Environment(AppServices.self) private var services
     let item: IntelligenceItem
 
     var body: some View {
-        EditorialScreen(bottomContentPadding: MCOSpace.xl, showsBottomBar: false) {
+        ChromeScreen(bottomContentPadding: MCOSpace.xl, showsBottomBar: false) {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
                 ActionFeedbackBanner(message: services.lastActionMessage, tone: .info)
@@ -724,22 +745,22 @@ struct ReferenceItemDetailView: View {
             HStack(alignment: .center, spacing: MCOSpace.s) {
                 Image(systemName: item.symbol)
                     .font(.system(size: 22, weight: .light))
-                    .foregroundStyle(item.state.accent)
+                    .foregroundStyle(item.state.accentColor(using: chrome))
                     .frame(width: 38, height: 38)
-                    .background(MCOTheme.Color.paperRaised.opacity(0.72))
+                    .background(chrome.paperRaised.opacity(0.72))
                     .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                            .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                            .stroke(chrome.hairline, lineWidth: 1)
                     }
 
                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                     Text(item.kind.rawValue)
                         .font(MCOType.tinyLabel)
-                        .foregroundStyle(MCOTheme.Color.oxblood)
+                        .foregroundStyle(chrome.accent)
                     Text(item.title)
                         .font(MCOType.screenTitle)
-                        .foregroundStyle(MCOTheme.Color.ink)
+                        .foregroundStyle(chrome.ink)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -759,7 +780,7 @@ struct ReferenceItemDetailView: View {
 
                 Text(item.subtitle)
                     .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -770,10 +791,10 @@ struct ReferenceItemDetailView: View {
             VStack(alignment: .leading, spacing: MCOSpace.s) {
                 Text("How this should be used")
                     .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .foregroundStyle(chrome.accent)
                 Text(usageGuidance)
                     .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 if let sortKey = item.sortKey?.nilIfBlank {
                     ReferenceDetailLine(title: "Priority signal", value: sortKey)
@@ -787,18 +808,18 @@ struct ReferenceItemDetailView: View {
             VStack(alignment: .leading, spacing: MCOSpace.m) {
                 Text("Source")
                     .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .foregroundStyle(chrome.accent)
 
                 if let sourceURL = item.sourceURL?.nilIfBlank {
                     Text(sourceURL)
                         .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .foregroundStyle(chrome.inkMuted)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("No source link attached.")
                         .font(MCOType.bodySmall)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .foregroundStyle(chrome.inkMuted)
                 }
 
                 PrimaryActionButton(title: "Open source", systemImage: "arrow.up.right") {
@@ -841,10 +862,11 @@ struct ReferenceItemDetailView: View {
 }
 
 struct ReferenceLibrarySectionDetailView: View {
+    @Environment(\.chromePalette) private var chrome
     let section: IntelligenceLibrarySection
 
     var body: some View {
-        EditorialScreen(bottomContentPadding: MCOSpace.xl, showsBottomBar: false) {
+        ChromeScreen(bottomContentPadding: MCOSpace.xl, showsBottomBar: false) {
             VStack(alignment: .leading, spacing: MCOSpace.l) {
                 header
                 JournalBlock {
@@ -857,10 +879,10 @@ struct ReferenceLibrarySectionDetailView: View {
                     VStack(alignment: .leading, spacing: MCOSpace.s) {
                         Text("What belongs here")
                             .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.oxblood)
+                            .foregroundStyle(chrome.accent)
                         Text("This section groups references that can inform daily content generation. The next useful layer is a filtered list of all saved references in this bucket.")
                             .font(MCOType.bodySmall)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .foregroundStyle(chrome.ink)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -875,22 +897,22 @@ struct ReferenceLibrarySectionDetailView: View {
         HStack(alignment: .center, spacing: MCOSpace.m) {
             Image(systemName: section.symbol)
                 .font(.system(size: 24, weight: .light))
-                .foregroundStyle(MCOTheme.Color.brass)
+                .foregroundStyle(chrome.accentSecondary)
                 .frame(width: 42, height: 42)
-                .background(MCOTheme.Color.paperRaised.opacity(0.72))
+                .background(chrome.paperRaised.opacity(0.72))
                 .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous)
-                        .stroke(MCOTheme.Color.hairline, lineWidth: 1)
+                        .stroke(chrome.hairline, lineWidth: 1)
                 }
 
             VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                 Text("Reference Library")
                     .font(MCOType.tinyLabel)
-                    .foregroundStyle(MCOTheme.Color.oxblood)
+                    .foregroundStyle(chrome.accent)
                 Text(section.title)
                     .font(MCOType.screenTitle)
-                    .foregroundStyle(MCOTheme.Color.ink)
+                    .foregroundStyle(chrome.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -898,6 +920,7 @@ struct ReferenceLibrarySectionDetailView: View {
 }
 
 struct ReferenceDetailLine: View {
+    @Environment(\.chromePalette) private var chrome
     let title: String
     let value: String
 
@@ -905,10 +928,10 @@ struct ReferenceDetailLine: View {
         VStack(alignment: .leading, spacing: MCOSpace.xxs) {
             Text(title)
                 .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .foregroundStyle(chrome.inkMuted)
             Text(value)
                 .font(MCOType.bodySmall)
-                .foregroundStyle(MCOTheme.Color.ink)
+                .foregroundStyle(chrome.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -916,6 +939,7 @@ struct ReferenceDetailLine: View {
 }
 
 struct ShelfHeader: View {
+    @Environment(\.chromePalette) private var chrome
     let title: String
     let trailing: String?
 
@@ -923,12 +947,12 @@ struct ShelfHeader: View {
         HStack(alignment: .firstTextBaseline) {
             Text(title.uppercased())
                 .font(MCOType.tinyLabel)
-                .foregroundStyle(MCOTheme.Color.oxblood)
+                .foregroundStyle(chrome.accent)
             Spacer(minLength: MCOSpace.s)
             if let trailing {
                 Text(trailing)
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                     .lineLimit(1)
             }
         }
@@ -936,14 +960,14 @@ struct ShelfHeader: View {
 }
 
 extension IntelligenceReviewState {
-    var accent: Color {
+    func accentColor(using palette: ChromePalette) -> Color {
         switch self {
         case .ready, .approved:
-            MCOTheme.Color.sageDeep
+            palette.statusPositive
         case .needsReview:
-            MCOTheme.Color.brass
+            palette.accentSecondary
         case .usedThisWeek:
-            MCOTheme.Color.inkMuted
+            palette.inkMuted
         }
     }
 

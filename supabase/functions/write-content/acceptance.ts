@@ -6,6 +6,7 @@ const ids = {
   workspaceB: "22222222-2222-4222-8222-222222222222",
   creatorA: "33333333-3333-4333-8333-333333333333",
   creatorNoProfileA: "33333333-3333-4333-8333-333333333334",
+  creatorInsertOnlyA: "33333333-3333-4333-8333-333333333335",
   creatorB: "44444444-4444-4444-8444-444444444444",
   ownerMember: "55555555-5555-4555-8555-555555555551",
   editorMember: "55555555-5555-4555-8555-555555555552",
@@ -81,6 +82,7 @@ await assertCreatorWriteBoundary();
 await assertCrossWorkspaceIdeaRejection();
 await assertWeeklySetupUpdateBoundary();
 await assertCreatorProfileUpdateBoundary();
+await assertCreatorProfileOmitVsNullSemantics();
 
 console.log("PASS write-content acceptance");
 
@@ -122,6 +124,13 @@ async function seedAcceptanceData() {
         workspace_id: ids.workspaceA,
         display_name: "Creator Without Profile",
         handle: "creator-no-profile",
+        status: "active",
+      },
+      {
+        id: ids.creatorInsertOnlyA,
+        workspace_id: ids.workspaceA,
+        display_name: "Creator Insert Only",
+        handle: "creator-insert-only",
         status: "active",
       },
     ]),
@@ -794,21 +803,136 @@ async function assertCreatorProfileUpdateBoundary() {
     {
       action: "update_creator_profile",
       creator_id: ids.creatorNoProfileA,
-      positioning: "No active profile should fail",
+      positioning: "Upserted active profile",
+      onboarding_state: "new",
     },
   );
   assertEquals(
     missingProfile.status,
-    404,
-    "missing creator profile status",
+    200,
+    "missing creator profile upsert status",
+  );
+  const upsertedProfile = missingProfile.json.creator_profile as
+    | { positioning?: string; onboarding_state?: string }
+    | undefined;
+  assertEquals(
+    upsertedProfile?.positioning,
+    "Upserted active profile",
+    "missing creator profile upsert body",
   );
   assertEquals(
-    missingProfile.json.error,
-    "creator_profile_not_found",
-    "missing creator profile error",
+    upsertedProfile?.onboarding_state,
+    "new",
+    "missing creator profile onboarding state",
   );
 
   console.log("PASS creator profile update boundary");
+}
+
+async function assertCreatorProfileOmitVsNullSemantics() {
+  await must(
+    admin.from("creator_profiles").update({
+      positioning: "Established positioning",
+      caption_style: "Established caption style",
+      voice_rules: ["Keep warm tone"],
+      content_pillars: ["gym", "recovery"],
+      taste_example_ids: ["example-a", "example-b"],
+      production_formats: ["reels", "talking_head"],
+      on_camera_restrictions: { no_full_face: true },
+      onboarding_state: "established",
+      starting_point: "already_posting",
+      custom_subjects: ["fitness"],
+    }).eq("id", ids.creatorProfileA),
+    "seed adaptive profile baseline",
+  );
+
+  const omitResponse = await callWriteContent(
+    tokens.owner,
+    creatorProfileBody({
+      caption_style: "Caption-only edit from old client",
+    }),
+  );
+  assertEquals(omitResponse.status, 200, "omit adaptive fields status");
+  await assertCreatorProfileValue(
+    "caption_style",
+    "Caption-only edit from old client",
+  );
+  await assertCreatorProfileValue("voice_rules", ["Keep warm tone"]);
+  await assertCreatorProfileValue("content_pillars", ["gym", "recovery"]);
+  await assertCreatorProfileValue(
+    "taste_example_ids",
+    ["example-a", "example-b"],
+  );
+  await assertCreatorProfileValue(
+    "production_formats",
+    ["reels", "talking_head"],
+  );
+  await assertCreatorProfileJsonValue(
+    "on_camera_restrictions",
+    { no_full_face: true },
+  );
+  await assertCreatorProfileValue("onboarding_state", "established");
+  await assertCreatorProfileValue("starting_point", "already_posting");
+  await assertCreatorProfileValue("custom_subjects", ["fitness"]);
+
+  const clearArrays = await callWriteContent(
+    tokens.owner,
+    creatorProfileBody({
+      voice_rules: null,
+      content_pillars: [],
+    }),
+  );
+  assertEquals(clearArrays.status, 200, "explicit array clear status");
+  await assertCreatorProfileValue("voice_rules", []);
+  await assertCreatorProfileValue("content_pillars", []);
+  await assertCreatorProfileValue(
+    "taste_example_ids",
+    ["example-a", "example-b"],
+  );
+
+  const clearObject = await callWriteContent(
+    tokens.owner,
+    creatorProfileBody({
+      on_camera_restrictions: null,
+    }),
+  );
+  assertEquals(clearObject.status, 200, "explicit JSON clear status");
+  await assertCreatorProfileJsonValue("on_camera_restrictions", {});
+
+  const insertResponse = await callWriteContent(
+    tokens.owner,
+    {
+      action: "update_creator_profile",
+      creator_id: ids.creatorInsertOnlyA,
+      positioning: "Insert-only positioning",
+    },
+  );
+  assertEquals(insertResponse.status, 200, "insert-only profile status");
+  const insertedProfile = insertResponse.json.creator_profile as
+    | Record<string, unknown>
+    | undefined;
+  assertEquals(
+    insertedProfile?.positioning,
+    "Insert-only positioning",
+    "insert-only positioning",
+  );
+  assertEquals(
+    insertedProfile?.onboarding_state,
+    "new",
+    "insert default onboarding_state",
+  );
+  assertEquals(
+    JSON.stringify(insertedProfile?.taste_example_ids ?? null),
+    JSON.stringify([]),
+    "insert DB default taste_example_ids",
+  );
+  assertEquals(
+    JSON.stringify(insertedProfile?.on_camera_restrictions ?? null),
+    JSON.stringify({}),
+    "insert DB default on_camera_restrictions",
+  );
+
+  console.log("PASS creator profile omit vs explicit-null semantics");
 }
 
 async function upsertArchiveTwice(
@@ -980,6 +1104,25 @@ async function assertCreatorProfileValue(
   } else {
     assertEquals(actualValue, expectedValue, `creator profile ${column}`);
   }
+}
+
+async function assertCreatorProfileJsonValue(
+  column: string,
+  expectedValue: Record<string, unknown>,
+) {
+  const row = await singleRow(
+    admin.from("creator_profiles")
+      .select(column)
+      .eq("id", ids.creatorProfileA)
+      .single(),
+    `creator profile ${column}`,
+  );
+
+  assertEquals(
+    JSON.stringify(row[column]),
+    JSON.stringify(expectedValue),
+    `creator profile ${column}`,
+  );
 }
 
 function dailyCard(

@@ -3,25 +3,87 @@ import XCTest
 
 @MainActor
 final class CreatorShellNavigationTests: XCTestCase {
-    func testCreatorTabsAreOrderedTodayArchiveProfile() {
+    func testCreatorTabsAreOrderedTodayPlanYou() {
         XCTAssertEqual(
             CreatorTab.allCases.map(\.rawValue),
-            ["Today", "Archive", "Profile"]
+            ["Today", "Plan", "You"]
         )
     }
 
-    func testCreatorCanGenerateWithoutOwnerOrEditorRole() {
-        XCTAssertTrue(AppServices.fixtureBacked(memberRole: "creator").canGenerateContent)
-        XCTAssertTrue(AppServices.fixtureBacked(memberRole: "owner").canGenerateContent)
-        XCTAssertTrue(AppServices.fixtureBacked(memberRole: "editor").canGenerateContent)
-        XCTAssertFalse(AppServices.fixtureBacked(memberRole: "scout").canGenerateContent)
+    func testPlanIsCenterCreatorTab() {
+        XCTAssertTrue(CreatorTab.plan.isCenterTab)
+        XCTAssertFalse(CreatorTab.today.isCenterTab)
+        XCTAssertFalse(CreatorTab.you.isCenterTab)
     }
 
-    func testRequestCreatorTabSetsPendingTabForPlanAvailableNavigation() {
+    func testYouRouteIncludesArchiveDestination() {
+        XCTAssertEqual(YouRoute.archive, YouRoute.archive)
+    }
+
+    func testRequestCreatorTabSetsPendingTabForPlanAndTodayNavigation() {
         let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
         XCTAssertNil(state.pendingCreatorTab)
         state.requestCreatorTab(.today)
         XCTAssertEqual(state.pendingCreatorTab, .today)
+        state.pendingCreatorTab = nil
+        state.requestCreatorTab(.plan)
+        XCTAssertEqual(state.pendingCreatorTab, .plan)
+    }
+
+    func testHandoffFirstDayFromOnboardingOpensToday() {
+        let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
+        let handoff = OnboardingFirstDayHandoff(
+            scheduledDate: "2026-08-07",
+            dayBrief: "Content about Food",
+            completedData: OnboardingCompletedData(
+                selectedCategoryIDs: ["food"],
+                categoryOtherText: "",
+                references: [],
+                voiceDeferred: true
+            )
+        )
+
+        state.handoffFirstDayFromOnboarding(handoff)
+
+        XCTAssertEqual(state.pendingCreatorTab, .today)
+        XCTAssertNil(state.planSelectedDate)
+        XCTAssertNil(state.consumeFirstDayHandoff())
+    }
+
+    func testAdaptiveOnboardingHandoffNeverOpensPlanTabEvenWithNilBrief() {
+        let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
+        state.handoffFirstDayFromOnboarding(
+            OnboardingFirstDayHandoff(
+                scheduledDate: "2026-09-05",
+                dayBrief: nil,
+                completedData: OnboardingCompletedData(
+                    selectedCategoryIDs: ["books"],
+                    categoryOtherText: "",
+                    references: [],
+                    voiceDeferred: false
+                )
+            )
+        )
+
+        XCTAssertEqual(state.pendingCreatorTab, .today)
+        XCTAssertNil(state.planSelectedDate)
+    }
+
+    func testConsumePlanSelectedDateReturnsAndClearsPendingDate() {
+        let state = AppState(runtime: .fixtures(), authenticationPhase: .live)
+        state.preparePlan(selecting: "2026-08-07")
+
+        XCTAssertEqual(state.consumePlanSelectedDate(), "2026-08-07")
+        XCTAssertNil(state.consumePlanSelectedDate())
+    }
+
+    func testCanGenerateContentNoLongerDependsOnRole() {
+        // The app is creator-only: roles no longer gate generation.
+        // The fixture profile has voice configured, so every role can generate.
+        XCTAssertTrue(AppServices.fixtureBacked(memberRole: "creator").canGenerateContent)
+        XCTAssertTrue(AppServices.fixtureBacked(memberRole: "owner").canGenerateContent)
+        XCTAssertTrue(AppServices.fixtureBacked(memberRole: "editor").canGenerateContent)
+        XCTAssertTrue(AppServices.fixtureBacked(memberRole: "scout").canGenerateContent)
     }
 
     func testPreparePlanSelectedDateForEditAndOverflowEntries() {

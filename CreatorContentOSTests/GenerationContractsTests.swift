@@ -876,7 +876,8 @@ final class GenerationContractsTests: XCTestCase {
         do {
             _ = try await services.generateDayCard(
                 scheduledDate: targetDate,
-                dayBrief: "Second overlapping request."
+                dayBrief: "Second overlapping request.",
+                confirmOverwrite: true
             )
             XCTFail("Expected generation_already_running rejection instead of stale cached card.")
         } catch RepositoryError.edgeFunction(let message) {
@@ -1916,7 +1917,7 @@ final class GenerationContractsTests: XCTestCase {
                      "Reconciliation should not set repository error on success")
     }
 
-    func testGenerateDayCardSeedsLatestGenerationSummaryFromCanonicalContentWhenNil() async throws {
+    func testGenerateDayCardStoresFreshCardInDayStoreWithoutSeedingWeeklySummary() async throws {
         let targetDate = "2026-06-03"
         var canonicalDraft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-06-01")
         canonicalDraft.weeklyPlanID = WeeklyPlan.raceWeek.id
@@ -1960,30 +1961,23 @@ final class GenerationContractsTests: XCTestCase {
         )
 
         XCTAssertEqual(returnedCard.id, generatedCard.id)
-        XCTAssertEqual(services.latestGenerationSummary?.id, canonicalDraft.id)
-        XCTAssertEqual(services.latestGenerationSummary?.weeklyPlanID, WeeklyPlan.raceWeek.id)
-        let weeklyReviewCard = services.latestGenerationSummary?.dailyCards
-            .first { $0.scheduledDate == targetDate }
-        XCTAssertEqual(weeklyReviewCard?.title, "Canonical persisted Wednesday")
-        XCTAssertEqual(weeklyReviewCard?.caption, "Canonical persisted caption.")
         XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.id, generatedCard.id)
-        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.title, "Canonical persisted Wednesday")
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.title, "Day card: Brand unboxing at home, honest tone.")
+        // Day-only contract: the weekly summary is no longer seeded by day generation.
+        XCTAssertNil(services.latestGenerationSummary)
         XCTAssertNil(services.lastRepositoryError)
     }
 
-    func testGenerateDayCardReconcilesTargetDayWithoutOverwritingEditedCard() async throws {
+    func testGenerateDayCardLeavesOtherDaysUntouched() async throws {
         let targetDate = "2026-06-03"
         let editedDate = "2026-06-04"
-        var localDraft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-06-01")
-        localDraft.weeklyPlanID = WeeklyPlan.raceWeek.id
-        guard let targetIndex = localDraft.dailyCards.firstIndex(where: { $0.scheduledDate == targetDate }),
-              let editedIndex = localDraft.dailyCards.firstIndex(where: { $0.scheduledDate == editedDate })
-        else {
-            XCTFail("Expected draft to include target and edited dates")
+        var canonicalDraft = await TestGeneratedDraftFactory.makeDraft(weekStartDate: "2026-06-01")
+        canonicalDraft.weeklyPlanID = WeeklyPlan.raceWeek.id
+        guard let targetIndex = canonicalDraft.dailyCards.firstIndex(where: { $0.scheduledDate == targetDate }) else {
+            XCTFail("Expected canonical draft to include \(targetDate)")
             return
         }
 
-        var canonicalDraft = localDraft
         var canonicalCard = canonicalDraft.dailyCards[targetIndex]
         canonicalCard.title = "Canonical persisted Wednesday"
         canonicalCard.caption = "Canonical persisted caption."
@@ -2011,33 +2005,84 @@ final class GenerationContractsTests: XCTestCase {
             todayCache: InMemoryTodayCacheStore(),
             todayDate: { "2026-06-01" }
         )
-        services.applyGeneratedDraft(localDraft)
-        localDraft.dailyCards[editedIndex].title = "Locally edited Thursday"
-        localDraft.dailyCards[editedIndex].caption = "User edited this."
-        if var seededDraft = services.latestGenerationSummary {
-            seededDraft.replaceDailyCard(localDraft.dailyCards[editedIndex])
-            services.latestGenerationSummary = seededDraft
-        }
-        if let dayIndex = services.weeklyPlan.days.firstIndex(where: { $0.scheduledDate == editedDate }) {
-            services.weeklyPlan.days[dayIndex].title = "Locally edited Thursday"
-        }
 
-        _ = try await services.generateDayCard(
+        // An edited draft card for another day in the per-day store must stay untouched.
+        var editedCard = generatedCard
+        editedCard.scheduledDate = editedDate
+        editedCard.status = "draft"
+        editedCard.title = "Locally edited Thursday"
+        editedCard.caption = "User edited this."
+        services.dayBriefGeneratedCards[editedDate] = editedCard
+
+        let returnedCard = try await services.generateDayCard(
             scheduledDate: targetDate,
             dayBrief: "Brand unboxing at home, honest tone."
         )
 
-        let reconciledCard = services.latestGenerationSummary?.dailyCards
-            .first { $0.scheduledDate == targetDate }
-        XCTAssertEqual(reconciledCard?.title, "Canonical persisted Wednesday")
-        XCTAssertEqual(reconciledCard?.caption, "Canonical persisted caption.")
+        XCTAssertEqual(returnedCard.id, generatedCard.id)
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.id, generatedCard.id)
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.title, "Day card: Brand unboxing at home, honest tone.")
+        XCTAssertEqual(services.dayBriefGeneratedCards[editedDate]?.title, "Locally edited Thursday")
+        XCTAssertEqual(services.dayBriefGeneratedCards[editedDate]?.caption, "User edited this.")
+        XCTAssertNil(services.latestGenerationSummary)
+    }
 
-        let editedCardAfter = services.latestGenerationSummary?.dailyCards
-            .first { $0.scheduledDate == editedDate }
-        XCTAssertEqual(editedCardAfter?.title, "Locally edited Thursday")
-        XCTAssertEqual(editedCardAfter?.caption, "User edited this.")
-        XCTAssertEqual(services.latestGenerationSummary?.dailyCards.count, 7)
-        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.title, "Canonical persisted Wednesday")
+    func testGenerateDayCardRequiresOverwriteConfirmationForExistingDraft() async throws {
+        let targetDate = "2026-06-03"
+        // Any existing package — including a plain draft — requires explicit
+        // overwrite confirmation before it is replaced.
+        var draftCard = GeneratedDailyCardDraft.storyboardBreakdownFixture
+        draftCard.scheduledDate = targetDate
+        draftCard.status = "ready"
+
+        var freshCard = draftCard
+        freshCard.status = "draft"
+        freshCard.title = "Day card: Brand unboxing at home, honest tone."
+
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: FixtureWeeklyPlanRepository(),
+                references: FixtureReferenceRepository(),
+                referenceImport: FixtureReferenceImportRepository(),
+                dailyGeneration: DeterministicDayGenerationRepository(generatedCard: freshCard),
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayCache: InMemoryTodayCacheStore(),
+            todayDate: { "2026-06-01" }
+        )
+        services.dayBriefGeneratedCards[targetDate] = draftCard
+
+        do {
+            _ = try await services.generateDayCard(
+                scheduledDate: targetDate,
+                dayBrief: "Brand unboxing at home, honest tone."
+            )
+            XCTFail("Expected ready_package_overwrite_required without confirmOverwrite")
+        } catch {
+            XCTAssertTrue(
+                error.localizedDescription.contains("ready_package_overwrite_required"),
+                "Expected ready_package_overwrite_required, got \(error.localizedDescription)"
+            )
+            XCTAssertEqual(services.pendingOverwriteGenerateDate, targetDate)
+            XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.status, "ready",
+                           "The existing draft must not be replaced without confirmation")
+        }
+
+        let overwrittenCard = try await services.generateDayCard(
+            scheduledDate: targetDate,
+            dayBrief: "Brand unboxing at home, honest tone.",
+            confirmOverwrite: true
+        )
+
+        XCTAssertEqual(overwrittenCard.id, freshCard.id)
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.id, freshCard.id)
+        XCTAssertEqual(services.dayBriefGeneratedCards[targetDate]?.status, "draft")
+        XCTAssertNil(services.pendingOverwriteGenerateDate)
+        XCTAssertNil(services.dayBriefGenerationErrors[targetDate])
     }
 
     func testGenerateDayCardSurvivesReconciliationReadFailure() async throws {
@@ -2152,7 +2197,8 @@ final class GenerationContractsTests: XCTestCase {
             do {
                 _ = try await services.generateDayCard(
                     scheduledDate: requestedDate,
-                    dayBrief: "Brand unboxing at home, honest tone."
+                    dayBrief: "Brand unboxing at home, honest tone.",
+                    confirmOverwrite: true
                 )
                 XCTFail("Expected \(mismatch.label) mismatch rejection")
             } catch {
@@ -2219,7 +2265,8 @@ final class GenerationContractsTests: XCTestCase {
 
         let returnedCard = try await services.generateDayCard(
             scheduledDate: targetDate,
-            dayBrief: "Brand unboxing at home, honest tone."
+            dayBrief: "Brand unboxing at home, honest tone.",
+            confirmOverwrite: true
         )
 
         XCTAssertEqual(returnedCard.id, generatedCard.id)

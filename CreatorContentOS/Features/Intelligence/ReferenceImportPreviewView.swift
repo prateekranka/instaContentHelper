@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ReferenceImportPreviewView: View {
+    @Environment(\.chromePalette) private var chrome
     let preview: ReferenceImportPreview
 
     @State private var showsDuplicates = false
@@ -59,7 +60,56 @@ struct ReferenceImportPreviewView: View {
     }
 }
 
+/// Non-blocking fallback shown in the preview slot when the live Instagram
+/// check could not complete (timeout, unreachable, or temporarily
+/// unavailable). The import is NOT blocked: the user can still confirm and
+/// add the reference as-is.
+struct ReferenceImportUnverifiedFallbackView: View {
+    @Environment(\.chromePalette) private var chrome
+
+    var body: some View {
+        JournalBlock {
+            VStack(alignment: .leading, spacing: MCOSpace.m) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                        Text("INSPIRATION")
+                            .font(MCOType.tinyLabel)
+                            .foregroundStyle(chrome.accent)
+                        Text("Preview")
+                            .font(MCOType.cardTitle)
+                            .foregroundStyle(chrome.ink)
+                    }
+
+                    Spacer(minLength: MCOSpace.s)
+
+                    StatusChip(text: "Unverified", tone: .warning)
+                }
+
+                HStack(alignment: .top, spacing: MCOSpace.s) {
+                    Image(systemName: "exclamationmark.icloud")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(chrome.validationAttention)
+                        .frame(width: 26)
+
+                    VStack(alignment: .leading, spacing: MCOSpace.xs) {
+                        Text(ReferenceImportVerificationCopy.couldNotVerifyAddAnyway)
+                            .font(.system(size: 17, weight: .regular, design: .serif))
+                            .foregroundStyle(chrome.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Instagram couldn't be reached, so these references were not verified live. You can still add them — we'll re-check everything when saving.")
+                            .font(MCOType.caption)
+                            .foregroundStyle(chrome.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier("reference.import.unverified.fallback")
+    }
+}
+
 struct ReferenceImportSummaryBlock: View {
+    @Environment(\.chromePalette) private var chrome
     let preview: ReferenceImportPreview
 
     var body: some View {
@@ -69,10 +119,10 @@ struct ReferenceImportSummaryBlock: View {
                     VStack(alignment: .leading, spacing: MCOSpace.xs) {
                         Text("INSPIRATION")
                             .font(MCOType.tinyLabel)
-                            .foregroundStyle(MCOTheme.Color.oxblood)
+                            .foregroundStyle(chrome.accent)
                         Text("Preview")
                             .font(MCOType.cardTitle)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .foregroundStyle(chrome.ink)
                     }
 
                     Spacer(minLength: MCOSpace.s)
@@ -85,7 +135,7 @@ struct ReferenceImportSummaryBlock: View {
 
                 Text("Rows are parsed by the server. Confirming will import clean references and keep ambiguous rows in Needs your call.")
                     .font(MCOType.bodySmall)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
 
                 LazyVGrid(
@@ -110,6 +160,7 @@ struct ReferenceImportSummaryBlock: View {
 }
 
 struct ReferenceImportMetric: View {
+    @Environment(\.chromePalette) private var chrome
     let value: Int
     let label: String
 
@@ -117,10 +168,10 @@ struct ReferenceImportMetric: View {
         VStack(alignment: .leading, spacing: MCOSpace.xxs) {
             Text("\(value)")
                 .font(.system(size: 24, weight: .regular, design: .serif))
-                .foregroundStyle(value == 0 ? MCOTheme.Color.inkMuted : MCOTheme.Color.ink)
+                .foregroundStyle(value == 0 ? chrome.inkMuted : chrome.ink)
             Text(label.uppercased())
                 .font(MCOType.tinyLabel)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .foregroundStyle(chrome.inkMuted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
         }
@@ -129,6 +180,7 @@ struct ReferenceImportMetric: View {
 }
 
 struct ReferenceImportRowSection: View {
+    @Environment(\.chromePalette) private var chrome
     let title: String
     let subtitle: String
     let rows: [ReferenceImportRow]
@@ -138,7 +190,7 @@ struct ReferenceImportRowSection: View {
             ShelfHeader(title: title, trailing: "\(rows.count)")
             Text(subtitle)
                 .font(MCOType.caption)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
+                .foregroundStyle(chrome.inkMuted)
 
             VStack(spacing: 0) {
                 ForEach(rows) { row in
@@ -151,6 +203,7 @@ struct ReferenceImportRowSection: View {
 }
 
 struct ReferenceImportDuplicateSection: View {
+    @Environment(\.chromePalette) private var chrome
     let rows: [ReferenceImportRow]
     @Binding var isExpanded: Bool
 
@@ -168,20 +221,21 @@ struct ReferenceImportDuplicateSection: View {
                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
                     Text("DUPLICATES")
                         .font(MCOType.tinyLabel)
-                        .foregroundStyle(MCOTheme.Color.oxblood)
+                        .foregroundStyle(chrome.accent)
                     Text("\(rows.count) rows skipped unless reviewed later")
                         .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .foregroundStyle(chrome.inkMuted)
                 }
                 Spacer(minLength: MCOSpace.s)
                 StatusChip(text: "\(rows.count)", tone: .quiet)
             }
         }
-        .tint(MCOTheme.Color.oxblood)
+        .tint(chrome.accent)
     }
 }
 
 struct ReferenceImportPreviewRow: View {
+    @Environment(\.chromePalette) private var chrome
     let row: ReferenceImportRow
 
     var body: some View {
@@ -189,7 +243,7 @@ struct ReferenceImportPreviewRow: View {
             VStack(alignment: .leading, spacing: MCOSpace.xs) {
                 Text("\(row.lineNumber)")
                     .font(MCOType.caption)
-                    .foregroundStyle(MCOTheme.Color.inkMuted)
+                    .foregroundStyle(chrome.inkMuted)
                 ReferenceImportTypeChipView(typeChip: row.typeChip)
             }
             .frame(width: 58, alignment: .leading)
@@ -198,7 +252,7 @@ struct ReferenceImportPreviewRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: MCOSpace.s) {
                     Text(row.title)
                         .font(.system(size: 17, weight: .regular, design: .serif))
-                        .foregroundStyle(row.previewState == .invalid ? MCOTheme.Color.clay : MCOTheme.Color.ink)
+                        .foregroundStyle(row.previewState == .invalid ? chrome.validationAttention : chrome.ink)
                         .lineLimit(2)
                         .minimumScaleFactor(0.9)
 
@@ -210,7 +264,7 @@ struct ReferenceImportPreviewRow: View {
                 if let url = row.url, !url.isEmpty {
                     Text(url)
                         .font(MCOType.caption)
-                        .foregroundStyle(MCOTheme.Color.inkMuted)
+                        .foregroundStyle(chrome.inkMuted)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -218,7 +272,7 @@ struct ReferenceImportPreviewRow: View {
                 if let note = rowDisplayNote {
                     Text(note)
                         .font(MCOType.caption)
-                        .foregroundStyle(row.previewState == .invalid ? MCOTheme.Color.clay : MCOTheme.Color.inkMuted)
+                        .foregroundStyle(row.previewState == .invalid ? chrome.validationAttention : chrome.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -245,20 +299,21 @@ struct ReferenceImportPreviewRow: View {
 }
 
 struct ReferenceImportTypeChipView: View {
+    @Environment(\.chromePalette) private var chrome
     let typeChip: ReferenceImportTypeChip
 
     var body: some View {
         Text(typeChip.rawValue)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(typeChip.foreground)
+            .foregroundStyle(typeChip.foreground(using: chrome))
             .lineLimit(1)
             .minimumScaleFactor(0.78)
             .padding(.horizontal, MCOSpace.xs)
             .padding(.vertical, 5)
-            .background(typeChip.foreground.opacity(0.08))
+            .background(typeChip.foreground(using: chrome).opacity(0.08))
             .clipShape(Capsule())
             .overlay {
-                Capsule().stroke(typeChip.foreground.opacity(0.28), lineWidth: 1)
+                Capsule().stroke(typeChip.foreground(using: chrome).opacity(0.28), lineWidth: 1)
             }
     }
 }
@@ -290,23 +345,23 @@ extension ReferenceImportPreviewState {
 }
 
 extension ReferenceImportTypeChip {
-    var foreground: Color {
+    func foreground(using palette: ChromePalette) -> Color {
         switch self {
         case .account:
-            MCOTheme.Color.sageDeep
+            palette.statusPositive
         case .reel:
-            MCOTheme.Color.oxblood
+            palette.accent
         case .audio:
-            MCOTheme.Color.brass
+            palette.accentSecondary
         case .unknown:
-            MCOTheme.Color.inkMuted
+            palette.inkMuted
         }
     }
 }
 
 #Preview {
     ZStack {
-        MCOTheme.Color.paper.ignoresSafeArea()
+        ChromePalette.editorial.paper.ignoresSafeArea()
         ScrollView {
             ReferenceImportPreviewView(preview: .referenceImportFixture)
                 .padding(MCOSpace.l)

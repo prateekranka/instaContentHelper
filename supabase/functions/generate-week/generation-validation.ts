@@ -53,6 +53,29 @@ export const CONTENT_PILLARS = [
 ] as const;
 export type ContentPillar = (typeof CONTENT_PILLARS)[number];
 
+/** Onboarding interest slugs that may appear in generate_day JSON before profile-aware coercion. */
+export const ONBOARDING_CONTENT_PILLARS = [
+  "fitness-wellness",
+  "books",
+  "movies-tv",
+  "fashion-beauty",
+  "food-cooking",
+  "travel",
+  "business-career",
+  "gaming",
+  "art-creativity",
+  "parenting",
+] as const;
+
+/** Parse-time allow-list: legacy four plus onboarding slugs. Profile-aware coercion runs later. */
+export function buildParseTimeDayContentPillars(): string[] {
+  const allowed = new Set<string>(CONTENT_PILLARS);
+  for (const pillar of ONBOARDING_CONTENT_PILLARS) {
+    allowed.add(pillar);
+  }
+  return [...allowed];
+}
+
 /** Maximum gym-primary days in a 7-day week unless the brief explicitly narrows scope. */
 export const GYM_PRIMARY_DAY_CAP = 2;
 
@@ -87,6 +110,181 @@ export function normalizeContentPillar(value: unknown): ContentPillar | null {
     return "recovery";
   }
   return null;
+}
+
+export function extractProfileContentPillars(
+  creatorProfile: Record<string, unknown> | null | undefined,
+): string[] {
+  if (!creatorProfile || !Array.isArray(creatorProfile.content_pillars)) {
+    return [];
+  }
+  return creatorProfile.content_pillars
+    .map((item) => stringValue(item)?.trim().toLowerCase())
+    .filter((item): item is string => Boolean(item));
+}
+
+export function profileHasLegacyContentPillars(savedPillars: string[]): boolean {
+  return savedPillars.some((pillar) =>
+    CONTENT_PILLARS.includes(pillar as ContentPillar)
+  );
+}
+
+/** Keyword hints for mapping legacy model pillars back to saved onboarding slugs. */
+const PILLAR_CONTENT_KEYWORDS: Record<string, string[]> = {
+  books: [
+    "book",
+    "books",
+    "read",
+    "reading",
+    "novel",
+    "chapter",
+    "author",
+    "page",
+    "shelf",
+    "library",
+  ],
+  "movies-tv": [
+    "movie",
+    "movies",
+    "film",
+    "films",
+    "tv",
+    "show",
+    "series",
+    "watch",
+    "binge",
+    "streaming",
+    "episode",
+    "screen",
+  ],
+  "fitness-wellness": [
+    "fitness",
+    "workout",
+    "gym",
+    "training",
+    "wellness",
+    "hyrox",
+  ],
+  "food-cooking": ["food", "cook", "cooking", "meal", "recipe", "kitchen"],
+  "fashion-beauty": ["fashion", "beauty", "outfit", "style", "makeup"],
+  travel: ["travel", "trip", "flight", "hotel", "destination"],
+  gaming: ["game", "gaming", "playthrough", "console"],
+  parenting: ["parent", "parenting", "kids", "child", "family"],
+};
+
+function cardTextForPillarMatch(card: Record<string, unknown>): string {
+  return [
+    card.title,
+    card.hook,
+    card.script,
+    card.caption,
+    card.why_today,
+    card.weekly_brief_anchor,
+    card.growth_job,
+    card.save_share_reason,
+  ]
+    .map((field) => stringValue(field)?.trim())
+    .filter((field): field is string => Boolean(field))
+    .join(" ")
+    .toLowerCase();
+}
+
+export function matchCardContentToProfilePillar(
+  card: Record<string, unknown> | undefined,
+  savedPillars: string[],
+): string | null {
+  if (!card || savedPillars.length === 0) {
+    return null;
+  }
+
+  const text = cardTextForPillarMatch(card);
+  let bestPillar = savedPillars[0];
+  let bestScore = -1;
+
+  for (const pillar of savedPillars) {
+    let score = 0;
+    const slug = pillar.toLowerCase();
+    const slugSpaced = slug.replace(/-/g, " ");
+    if (text.includes(slug) || text.includes(slugSpaced)) {
+      score += 3;
+    }
+    for (const part of slug.split("-")) {
+      if (part.length > 2 && text.includes(part)) {
+        score += 1;
+      }
+    }
+    for (const keyword of PILLAR_CONTENT_KEYWORDS[slug] ?? []) {
+      if (text.includes(keyword)) {
+        score += 1;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestPillar = pillar;
+    }
+  }
+
+  return bestScore > 0 ? bestPillar : savedPillars[0];
+}
+
+/** Remap legacy gym/lifestyle/eating/recovery when the profile uses onboarding slugs only. */
+export function resolveDayContentPillarForProfile(
+  pillar: string,
+  card: Record<string, unknown> | undefined,
+  creatorProfile: Record<string, unknown> | null | undefined,
+): string {
+  const saved = extractProfileContentPillars(creatorProfile);
+  if (saved.length === 0) {
+    return pillar;
+  }
+
+  const savedMatch = saved.find((item) => item.toLowerCase() === pillar.toLowerCase());
+  if (savedMatch) {
+    return savedMatch;
+  }
+
+  const isLegacy = CONTENT_PILLARS.includes(pillar as ContentPillar);
+  if (!isLegacy || profileHasLegacyContentPillars(saved)) {
+    return pillar;
+  }
+
+  return matchCardContentToProfilePillar(card, saved) ?? saved[0];
+}
+
+/** generate_day: saved creator pillars; legacy four only when the profile uses them. */
+export function buildAllowedDayContentPillars(
+  creatorProfile: Record<string, unknown> | null | undefined,
+): string[] {
+  const saved = extractProfileContentPillars(creatorProfile);
+  if (saved.length === 0) {
+    return [...CONTENT_PILLARS];
+  }
+  if (profileHasLegacyContentPillars(saved)) {
+    const allowed = new Set<string>(CONTENT_PILLARS);
+    for (const pillar of saved) {
+      allowed.add(pillar);
+    }
+    return [...allowed];
+  }
+  return saved;
+}
+
+export function normalizeDayContentPillar(
+  value: unknown,
+  allowedPillars: string[],
+): string | null {
+  const legacy = normalizeContentPillar(value);
+  if (legacy) {
+    return legacy;
+  }
+  const normalized = stringValue(value)?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return null;
+  }
+  const match = allowedPillars.find((pillar) =>
+    pillar.toLowerCase() === normalized
+  );
+  return match ?? null;
 }
 export type GenerateWeekValidationCode =
   | "invalid_generation_payload"
@@ -441,6 +639,9 @@ export function parseGeneratedDayJSON(
     coerceGeneratedDayOutputShape(parsed),
     scheduledDate,
     dayIndex,
+    {
+      allowedContentPillars: buildParseTimeDayContentPillars(),
+    },
   );
 }
 
@@ -723,6 +924,7 @@ export function validateGeneratedDayOutput(
   value: unknown,
   scheduledDate: string,
   dayIndex: number,
+  options?: GeneratedDailyCardValidationOptions,
 ): GeneratedDayOutput {
   if (!isRecord(value)) {
     throw invalidWeek("Generated day must be an object.");
@@ -730,7 +932,7 @@ export function validateGeneratedDayOutput(
 
   const cardValue = value.daily_card ??
     (Array.isArray(value.daily_cards) ? value.daily_cards[0] : undefined);
-  const dailyCard = validateGeneratedDailyCard(cardValue, dayIndex);
+  const dailyCard = validateGeneratedDailyCard(cardValue, dayIndex, options);
   if (dailyCard.scheduled_date !== scheduledDate) {
     throw invalidWeek("Generated card date is outside the requested day.");
   }
@@ -944,9 +1146,15 @@ export function isUUID(value: string | undefined): value is string {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     .test(value ?? "");
 }
+type GeneratedDailyCardValidationOptions = {
+  allowedContentPillars?: string[];
+  creatorProfile?: Record<string, unknown> | null;
+};
+
 function validateGeneratedDailyCard(
   value: unknown,
   index: number,
+  options?: GeneratedDailyCardValidationOptions,
 ): GeneratedDailyCard {
   if (!isRecord(value)) {
     throw invalidWeek(`daily_cards[${index}] must be an object.`);
@@ -1037,7 +1245,14 @@ function validateGeneratedDailyCard(
       value.save_share_reason,
       "save_share_reason",
     ),
-    content_pillar: requiredContentPillar(value.content_pillar),
+    content_pillar: options?.allowedContentPillars
+      ? requiredDayContentPillar(
+        value.content_pillar,
+        options.allowedContentPillars,
+        value,
+        options.creatorProfile,
+      )
+      : requiredContentPillar(value.content_pillar),
     shootability: requiredString(value.shootability, "shootability"),
     estimated_shoot_minutes: minutes,
     energy_required: requiredString(value.energy_required, "energy_required"),
@@ -1140,6 +1355,23 @@ function requiredContentPillar(value: unknown): ContentPillar {
     );
   }
   return pillar;
+}
+
+function requiredDayContentPillar(
+  value: unknown,
+  allowedPillars: string[],
+  card?: Record<string, unknown>,
+  creatorProfile?: Record<string, unknown> | null,
+): string {
+  const pillar = normalizeDayContentPillar(value, allowedPillars);
+  if (!pillar) {
+    throw invalidWeek(
+      `content_pillar must match a saved creator pillar or one of: ${
+        CONTENT_PILLARS.join(", ")
+      }.`,
+    );
+  }
+  return resolveDayContentPillarForProfile(pillar, card, creatorProfile);
 }
 
 function requiredDate(value: unknown, field: string): string {

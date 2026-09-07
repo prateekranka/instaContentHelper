@@ -1,9 +1,16 @@
 import SwiftUI
+import BackgroundTasks
 
 @main
 @MainActor
 struct CreatorContentOSApp: App {
     @State private var appState = AppState.makeLaunchState()
+
+    init() {
+        // Register before the app finishes launching so background benchmark
+        // launches can continue the run loop.
+        BenchmarkBackgroundTask.register()
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -33,6 +40,10 @@ struct CreatorContentOSApp: App {
 
 struct CreatorContentOSAppView: View {
     @Environment(AppState.self) private var appState
+    @Environment(AppServices.self) private var services
+    @State private var onboardingModel = OnboardingViewModel(
+        store: UserDefaultsOnboardingStore()
+    )
 
     var body: some View {
         Group {
@@ -40,6 +51,7 @@ struct CreatorContentOSAppView: View {
             if appState.authenticationPhase == .live,
                let forcedScreen = DebugForcedScreen.current {
                 forcedScreen.view
+                    .tint(PocketSheetTheme.Color.ink)
             } else if shouldShowDebugAdminShell {
                 // DEBUG-only: Admin/Manager TabView (Daily / Weekly / References).
                 // Not reachable from the live Creator product path.
@@ -51,7 +63,29 @@ struct CreatorContentOSAppView: View {
             appView
 #endif
         }
-        .tint(MCOTheme.Color.oxblood)
+        .aiConsentSheet()
+        .task(id: workspaceOnboardingScope) {
+            guard appState.authenticationPhase == .live else { return }
+            let scopedStore = WorkspaceScopedOnboardingStore(
+                workspaceID: services.context.workspaceID,
+                creatorID: services.context.creatorID
+            )
+            onboardingModel = OnboardingViewModel(store: scopedStore)
+        }
+    }
+
+    private var workspaceOnboardingScope: String {
+        "\(services.context.workspaceID.uuidString)-\(services.context.creatorID.uuidString)"
+    }
+
+    private var shouldShowLiveOnboarding: Bool {
+        guard appState.authenticationPhase == .live else { return false }
+        if onboardingModel.shouldKeepOnboardingFlowVisible { return true }
+        guard !onboardingModel.onboardingCompletedThisSession else { return false }
+        return OnboardingPresentationPolicy.shouldPresent(
+            presentation: services.creatorOnboardingPresentation,
+            sessionDismissed: onboardingModel.sessionDismissed
+        )
     }
 
     /// Live product always uses the Creator shell. `AppMode.admin` is ignored here.
@@ -62,10 +96,34 @@ struct CreatorContentOSAppView: View {
             case .restoring:
                 AuthenticationRestoringView()
             case .live:
-                CreatorShellView()
+                if shouldShowLiveOnboarding {
+                    OnboardingFlowView(
+                        model: onboardingModel,
+                        onSoftSkip: {},
+                        onHandoffComplete: handleOnboardingHandoff
+                    )
+                    .tint(PocketSheetTheme.Color.ink)
+                    .pocketSheetChromePalette()
+                } else {
+                    CreatorShellView()
+                        .tint(PocketSheetTheme.Color.ink)
+                }
             case .signedOut, .signingIn, .failed:
                 SignInView()
             }
+        }
+    }
+
+    private func handleOnboardingHandoff(
+        _ result: OnboardingFirstIdeaHandoffResult,
+        handoff: OnboardingFirstDayHandoff
+    ) {
+        onboardingModel.sessionDismissed = false
+        switch result {
+        case .completed, .skippedExistingReady:
+            appState.handoffFirstDayFromOnboarding(handoff)
+        case .persistFailed, .generationFailed:
+            break
         }
     }
 
@@ -85,6 +143,10 @@ private extension AppState {
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> AppState {
 #if DEBUG
+        if environment["MCO_RESET_ONBOARDING"] == "1" {
+            UserDefaultsOnboardingStore.resetLegacyGlobalKeys()
+        }
+
         if environment["MCO_FORCE_SIGN_IN"] == "1" {
             return AppState(authenticationPhase: .signedOut)
         }
@@ -141,20 +203,21 @@ private struct DebugStoryboardCardScreen: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                MCOTheme.Color.paper.ignoresSafeArea()
+                PocketSheetTheme.Color.paper.ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: MCOSpace.l) {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
                         Text("Storyboard card preview")
-                            .font(MCOType.screenTitle)
-                            .foregroundStyle(MCOTheme.Color.ink)
+                            .font(PocketSheetType.screenTitle)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
                         GeneratedDayPlannedContent(card: .storyboardBreakdownFixture)
                     }
-                    .padding(.horizontal, MCOSpace.l)
-                    .padding(.top, MCOSpace.l)
-                    .padding(.bottom, MCOSpace.xl)
+                    .padding(.horizontal, PocketSheetSpace.l)
+                    .padding(.top, PocketSheetSpace.l)
+                    .padding(.bottom, PocketSheetSpace.xl)
                 }
             }
         }
+        .pocketSheetChromePalette()
     }
 }
 #endif
@@ -162,11 +225,11 @@ private struct DebugStoryboardCardScreen: View {
 private struct AuthenticationRestoringView: View {
     var body: some View {
         ZStack {
-            MCOTheme.Color.paper.ignoresSafeArea()
+            PocketSheetTheme.Color.paper.ignoresSafeArea()
             ProgressView("Checking your session")
-                .font(MCOType.body)
-                .foregroundStyle(MCOTheme.Color.inkMuted)
-                .tint(MCOTheme.Color.oxblood)
+                .font(PocketSheetType.rowSubtitle)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                .tint(PocketSheetTheme.Color.ink)
         }
         .accessibilityIdentifier("authentication-restoring")
     }

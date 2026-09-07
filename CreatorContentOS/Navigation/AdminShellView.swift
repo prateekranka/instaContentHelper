@@ -375,7 +375,7 @@ struct AIRunwayView: View {
                 runwayGrid
                 if let generationError = services.generationError {
                     AdminSignalBlock(
-                        title: "Generation error",
+                        title: "",
                         value: generationError,
                         systemImage: "exclamationmark.triangle",
                         tone: .warning
@@ -943,9 +943,11 @@ struct AdminSignalBlock: View {
                     .foregroundStyle(tone.foreground)
                     .frame(width: 26)
                 VStack(alignment: .leading, spacing: MCOSpace.xxs) {
-                    Text(title)
-                        .font(MCOType.headline)
-                        .foregroundStyle(MCOTheme.Color.ink)
+                    if !title.isEmpty {
+                        Text(title)
+                            .font(MCOType.headline)
+                            .foregroundStyle(MCOTheme.Color.ink)
+                    }
                     Text(value)
                         .font(MCOType.bodySmall)
                         .foregroundStyle(MCOTheme.Color.inkMuted)

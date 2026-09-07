@@ -42,13 +42,16 @@ final class ManagerAdminUsageTests: XCTestCase {
     func testRegenerateDailyCardAcceptsToday() async throws {
         let services = makeServices()
 
-        do {
-            _ = try await services.regeneratedDailyCard(scheduledDate: "2026-06-01", preserveManualEdits: false)
-            XCTFail("Expected repository error (regeneration not configured), not past-date guard")
-        } catch {
-            XCTAssertFalse(error.localizedDescription.contains("past_generation_date_not_allowed"),
-                           "Should pass the past-date guard and reach repository")
-        }
+        let card = try await services.regeneratedDailyCard(
+            scheduledDate: "2026-06-01",
+            preserveManualEdits: false
+        )
+
+        XCTAssertNotNil(card)
+        XCTAssertEqual(card.scheduledDate, "2026-06-01")
+        XCTAssertEqual(card.status, "draft")
+        XCTAssertNil(services.regenerationDayErrors["2026-06-01"])
+        XCTAssertNil(services.lastRepositoryError)
     }
 
     func testManagerUpdatesCreatorProfileOutsideWeeklySetup() async throws {
@@ -316,13 +319,14 @@ private actor RecordingCreatorProfileRepository: CreatorProfileRepository {
 
         summary = CreatorProfileSummary(
             displayName: summary.displayName,
-            positioning: update.positioning,
-            voiceLine: update.voiceRules.joined(separator: ", "),
-            noGoTopics: update.noGoTopics,
-            voiceRules: update.voiceRules,
-            contentPillars: update.contentPillars,
-            captionStyle: update.captionStyle,
-            recurringFormats: update.recurringFormats
+            positioning: update.positioning ?? summary.positioning,
+            voiceLine: (update.voiceRules ?? summary.voiceRules).joined(separator: ", "),
+            noGoTopics: update.noGoTopics ?? summary.noGoTopics,
+            voiceRules: update.voiceRules ?? summary.voiceRules,
+            contentPillars: update.contentPillars ?? summary.contentPillars,
+            captionStyle: update.captionStyle ?? summary.captionStyle,
+            recurringFormats: update.recurringFormats ?? summary.recurringFormats,
+            onboardingState: update.onboardingState ?? summary.onboardingState
         )
         return summary
     }

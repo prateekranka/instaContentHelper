@@ -95,6 +95,17 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+extension DailyCard {
+    /// The hook shown on the Today card. Prefers the generated `hook`. When missing,
+    /// derives a fallback from the richest available copy.
+    var effectiveHook: String? {
+        if let hook { return hook }
+        return caption?.nilIfBlank
+            ?? script?.nilIfBlank
+            ?? title.nilIfBlank
+    }
+}
+
 struct ShotScene: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let number: Int
@@ -470,10 +481,30 @@ enum PackageSection: String, CaseIterable, Identifiable, Hashable, Sendable {
 
 enum CreatorTab: String, CaseIterable, Identifiable, Hashable, Sendable {
     case today = "Today"
-    case archive = "Archive"
-    case profile = "Profile"
+    case plan = "Plan"
+    case you = "You"
 
     var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .today: "sun.min"
+        case .plan: "calendar"
+        case .you: "person.circle"
+        }
+    }
+
+    var isCenterTab: Bool { self == .plan }
+}
+
+enum YouRoute: Hashable, Sendable {
+    case contentCategories
+    case productionPreferences
+    case currentContext
+    case creatorVoice
+    case references
+    case account
+    case archive
 }
 
 enum CreatorRoute: Hashable, Sendable {
@@ -1000,6 +1031,45 @@ extension GeneratedDailyCardDraft {
             riskNotes: riskNotes,
             assumptions: assumptions,
             storyboardThumbnailAssets: storyboardThumbnailAssets
+        )
+    }
+
+    /// Builds a Plan-style draft model from a published Today card for inline package rendering.
+    init(fromPublishedCard card: DailyCard, status: String = "published") {
+        self.init(
+            id: card.id,
+            scheduledDate: card.scheduledDate ?? "",
+            status: status,
+            title: card.title,
+            whyToday: card.whyToday,
+            growthJob: card.whyToday,
+            contentPillar: card.sourceNote ?? "lifestyle",
+            shootability: "easy",
+            estimatedShootMinutes: 10,
+            energyRequired: "low",
+            languageMode: "English",
+            hook: card.hook,
+            sceneList: card.scenes,
+            shotTimeline: card.shotTimeline ?? [],
+            voiceoverTimeline: card.voiceoverTimeline ?? [],
+            onScreenTextTimeline: card.onScreenTextTimeline ?? [],
+            script: card.script ?? "",
+            noVoiceoverVersion: card.noVoiceoverVersion ?? "",
+            onScreenText: card.onScreenText ?? [],
+            caption: card.caption ?? "",
+            cta: card.cta ?? "",
+            hashtags: card.hashtags ?? [],
+            coverText: card.coverText ?? "",
+            postInstructions: card.postInstructions ?? "",
+            brandEventNotes: card.brandEventNotes ?? "",
+            backupStory: card.backupStory ?? "",
+            backupCaptionOnly: card.backupCaptionOnly ?? "",
+            audioOptionNotes: card.audioOptionNotes ?? "",
+            creatorFitScore: card.creatorFitScore ?? 90,
+            riskNotes: card.riskNotes ?? [],
+            assumptions: card.assumptions ?? [],
+            sourceNote: card.sourceNote ?? "",
+            storyboardThumbnailAssets: card.storyboardThumbnailAssets ?? []
         )
     }
 }

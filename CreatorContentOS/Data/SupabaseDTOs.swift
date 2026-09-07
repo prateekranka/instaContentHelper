@@ -786,6 +786,20 @@ struct SupabaseCreatorProfileRow: Codable, Hashable, Sendable {
     var captionStyle: String?
     var neverSay: [SupabaseJSONValue]
     var recurringFormats: [SupabaseJSONValue]
+    var languagePreferences: SupabaseJSONValue?
+    var onboardingState: String?
+    var onboardingStep: Int?
+    var onboardingVersion: Int?
+    var onboardingCompletedAt: String?
+    var startingPoint: String?
+    var customSubjects: [SupabaseJSONValue]
+    var tasteExampleIDs: [SupabaseJSONValue]
+    var productionFormats: [SupabaseJSONValue]
+    var timeToCreate: String?
+    var onCameraRestrictions: SupabaseJSONValue?
+    var recentContext: [SupabaseJSONValue]
+    var creatorNote: String?
+    var firstIdeaHandoff: SupabaseJSONValue?
 
     enum CodingKeys: String, CodingKey {
         case displayName = "display_name"
@@ -795,6 +809,20 @@ struct SupabaseCreatorProfileRow: Codable, Hashable, Sendable {
         case captionStyle = "caption_style"
         case neverSay = "never_say"
         case recurringFormats = "recurring_formats"
+        case languagePreferences = "language_preferences"
+        case onboardingState = "onboarding_state"
+        case onboardingStep = "onboarding_step"
+        case onboardingVersion = "onboarding_version"
+        case onboardingCompletedAt = "onboarding_completed_at"
+        case startingPoint = "starting_point"
+        case customSubjects = "custom_subjects"
+        case tasteExampleIDs = "taste_example_ids"
+        case productionFormats = "production_formats"
+        case timeToCreate = "time_to_create"
+        case onCameraRestrictions = "on_camera_restrictions"
+        case recentContext = "recent_context"
+        case creatorNote = "creator_note"
+        case firstIdeaHandoff = "first_idea_handoff"
     }
 
     init(from decoder: Decoder) throws {
@@ -806,19 +834,61 @@ struct SupabaseCreatorProfileRow: Codable, Hashable, Sendable {
         captionStyle = try container.decodeIfPresent(String.self, forKey: .captionStyle)
         neverSay = (try? container.decode([SupabaseJSONValue].self, forKey: .neverSay)) ?? []
         recurringFormats = (try? container.decode([SupabaseJSONValue].self, forKey: .recurringFormats)) ?? []
+        languagePreferences = try container.decodeIfPresent(SupabaseJSONValue.self, forKey: .languagePreferences)
+        onboardingState = try container.decodeIfPresent(String.self, forKey: .onboardingState)
+        onboardingStep = try container.decodeIfPresent(Int.self, forKey: .onboardingStep)
+        onboardingVersion = try container.decodeIfPresent(Int.self, forKey: .onboardingVersion)
+        onboardingCompletedAt = try container.decodeIfPresent(String.self, forKey: .onboardingCompletedAt)
+        startingPoint = try container.decodeIfPresent(String.self, forKey: .startingPoint)
+        customSubjects = (try? container.decode([SupabaseJSONValue].self, forKey: .customSubjects)) ?? []
+        tasteExampleIDs = (try? container.decode([SupabaseJSONValue].self, forKey: .tasteExampleIDs)) ?? []
+        productionFormats = (try? container.decode([SupabaseJSONValue].self, forKey: .productionFormats)) ?? []
+        timeToCreate = try container.decodeIfPresent(String.self, forKey: .timeToCreate)
+        onCameraRestrictions = try container.decodeIfPresent(SupabaseJSONValue.self, forKey: .onCameraRestrictions)
+        recentContext = (try? container.decode([SupabaseJSONValue].self, forKey: .recentContext)) ?? []
+        creatorNote = try container.decodeIfPresent(String.self, forKey: .creatorNote)
+        firstIdeaHandoff = try container.decodeIfPresent(SupabaseJSONValue.self, forKey: .firstIdeaHandoff)
     }
 
-    func summary() -> CreatorProfileSummary {
+    func summary(fallbackDisplayName: String = "Creator") -> CreatorProfileSummary {
         let voiceRuleTexts = voiceRules.compactMap(\.displayText)
+        let languagePrimary = languagePreferences?.objectValue?["primary"]?.displayText
+        let cameraRestrictions = onCameraRestrictions?.decoded(OnCameraRestrictionsPayload.self)
+            ?? OnCameraRestrictionsPayload()
+        let handoffObject = firstIdeaHandoff?.objectValue ?? [:]
+        let handoffStrings = handoffObject.reduce(into: [String: String]()) { result, entry in
+            if let text = entry.value.displayText {
+                result[entry.key] = text
+            }
+        }
+
         return CreatorProfileSummary(
-            displayName: displayName ?? "Creator",
-            positioning: positioning ?? "Creator profile active.",
-            voiceLine: voiceRuleTexts.isEmpty ? "Voice rules are ready." : voiceRuleTexts.joined(separator: ", "),
+            displayName: displayName ?? fallbackDisplayName,
+            positioning: positioning ?? "",
+            voiceLine: voiceRuleTexts.isEmpty ? "" : voiceRuleTexts.joined(separator: ", "),
             noGoTopics: neverSay.compactMap(\.displayText),
             voiceRules: voiceRuleTexts,
             contentPillars: contentPillars.compactMap(\.displayText),
             captionStyle: captionStyle,
-            recurringFormats: recurringFormats.compactMap(\.displayText)
+            recurringFormats: recurringFormats.compactMap(\.displayText),
+            onboardingState: CreatorProfileOnboardingState(rawDatabaseValue: onboardingState),
+            onboardingStep: onboardingStep,
+            onboardingVersion: onboardingVersion ?? 1,
+            onboardingCompletedAt: onboardingCompletedAt,
+            startingPoint: startingPoint,
+            customSubjects: customSubjects.compactMap(\.displayText),
+            tasteExampleIDs: tasteExampleIDs.compactMap(\.displayText),
+            productionFormats: productionFormats.compactMap(\.displayText),
+            timeToCreate: timeToCreate,
+            onCameraRestrictions: cameraRestrictions,
+            recentContext: recentContext.compactMap { $0.objectValue?.reduce(into: [String: String]()) { partial, entry in
+                if let text = entry.value.displayText {
+                    partial[entry.key] = text
+                }
+            }},
+            creatorNote: creatorNote,
+            firstIdeaHandoff: handoffStrings,
+            contentLanguage: languagePrimary ?? "English"
         )
     }
 }
@@ -1332,6 +1402,19 @@ enum SupabaseDateFormatting {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: Date())
+    }
+
+    /// `days` after today, formatted `yyyy-MM-dd` (dev benchmark uses a far-future
+    /// date so runs never touch real content).
+    static func dateString(daysAfterToday days: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = Calendar.current.date(byAdding: .day, value: days, to: Date()) else {
+            return todayDateString()
+        }
+        return formatter.string(from: date)
     }
 
     /// Compares normalized yyyy-MM-dd prefixes lexically — valid because ISO-8601 date strings sort correctly.

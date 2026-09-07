@@ -60,7 +60,8 @@ enum SupabaseContentTable: String, CaseIterable, Sendable {
 struct SupabaseRepositoryBundleFactory {
     func makeRepositories(
         context: WorkspaceContext,
-        configuration: SupabaseRuntimeConfiguration
+        configuration: SupabaseRuntimeConfiguration,
+        creatorDisplayName: String = "Creator"
     ) -> AppRepositories {
         let client = SupabaseClientFactory().makeClient(configuration: configuration)
         let sourcePulse = SupabaseReferenceRepository(client: client)
@@ -77,9 +78,13 @@ struct SupabaseRepositoryBundleFactory {
             references: sourcePulse,
             referenceImport: SupabaseReferenceImportRepository(client: client),
             dailyGeneration: dayGeneration,
+            planDayIdeas: SupabasePlanDayIdeaRepository(client: client),
             storyboardThumbnails: dayGeneration,
             intelligence: SupabaseIntelligenceRepository(client: client, references: sourcePulse),
-            creatorProfile: SupabaseCreatorProfileRepository(client: client),
+            creatorProfile: SupabaseCreatorProfileRepository(
+                client: client,
+                fallbackDisplayName: creatorDisplayName
+            ),
             archive: SupabaseArchiveRepository(client: client),
             testerAccess: SupabaseTesterAccessRepository(client: client),
             runtimeHealth: SupabaseRuntimeHealthRepository(client: client)
