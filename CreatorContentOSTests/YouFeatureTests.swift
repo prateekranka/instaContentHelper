@@ -184,6 +184,100 @@ final class YouFeatureTests: XCTestCase {
             )
         )
     }
+
+    func testPrivacyPolicyLinkStaysUnpublished() {
+        XCTAssertNil(PrivacyPolicyLinks.privacyPolicyURL)
+        XCTAssertEqual(PrivacyPolicyLinks.rowTitle, "Privacy policy")
+        XCTAssertEqual(PrivacyPolicyLinks.unpublishedSubtitle, "Policy page not published yet")
+        XCTAssertFalse(PrivacyPolicyLinks.unpublishedSubtitle.localizedCaseInsensitiveContains("pipcount"))
+        XCTAssertFalse(
+            (PrivacyPolicyLinks.privacyPolicyURL?.absoluteString ?? "")
+                .localizedCaseInsensitiveContains("privacy.contenthelper.in")
+        )
+    }
+
+    func testAIConsentVersionAndCopyCoverPartnersWithoutBackendJargon() {
+        XCTAssertEqual(AIConsentPolicy.currentVersion, "contenthelper-ai-consent-v1")
+        XCTAssertEqual(AIConsentPolicy.destinations, ["deepseek", "openai", "gemini"])
+        XCTAssertTrue(AIConsentCopy.purposeAndDestinations.contains("DeepSeek"))
+        XCTAssertTrue(AIConsentCopy.purposeAndDestinations.contains("OpenAI"))
+        XCTAssertTrue(AIConsentCopy.purposeAndDestinations.contains("Google Gemini"))
+        XCTAssertTrue(AIConsentCopy.purposeAndDestinations.contains("plan ideas"))
+        XCTAssertTrue(AIConsentCopy.purposeAndDestinations.contains("storyboard"))
+        XCTAssertFalse(AIConsentCopy.purposeAndDestinations.localizedCaseInsensitiveContains("edge function"))
+        XCTAssertFalse(AIConsentCopy.purposeAndDestinations.localizedCaseInsensitiveContains("generate_day"))
+    }
+
+    func testAIConsentStoreScopesByWorkspaceAndCreator() {
+        let suite = "YouFeatureAIConsentStoreTests"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+
+        let workspaceA = UUID()
+        let creatorA = UUID()
+        let storeA = UserDefaultsAIConsentStore(
+            workspaceID: workspaceA,
+            creatorID: creatorA,
+            defaults: defaults
+        )
+        let storeB = UserDefaultsAIConsentStore(
+            workspaceID: UUID(),
+            creatorID: creatorA,
+            defaults: defaults
+        )
+        storeA.save(
+            AIConsentRecord(
+                consentVersion: AIConsentPolicy.currentVersion,
+                decision: .accepted,
+                decidedAt: "2026-09-07T12:00:00Z",
+                destinationsAcknowledged: AIConsentPolicy.destinations
+            )
+        )
+
+        XCTAssertEqual(storeA.load()?.decision, .accepted)
+        XCTAssertNil(storeB.load())
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    func testAIConsentRecordsAcceptedAndDeclinedForCurrentVersion() {
+        let store = InMemoryAIConsentStore()
+        XCTAssertFalse(AIConsentPolicy.allowsOutbound(store.load()))
+
+        store.save(
+            AIConsentRecord(
+                consentVersion: AIConsentPolicy.currentVersion,
+                decision: .declined,
+                decidedAt: "2026-09-07T12:00:00Z",
+                destinationsAcknowledged: AIConsentPolicy.destinations
+            )
+        )
+        XCTAssertTrue(AIConsentPolicy.hasDeclinedCurrent(store.load()))
+        XCTAssertFalse(AIConsentPolicy.allowsOutbound(store.load()))
+
+        store.save(
+            AIConsentRecord(
+                consentVersion: AIConsentPolicy.currentVersion,
+                decision: .accepted,
+                decidedAt: "2026-09-07T12:01:00Z",
+                destinationsAcknowledged: AIConsentPolicy.destinations
+            )
+        )
+        XCTAssertTrue(AIConsentPolicy.allowsOutbound(store.load()))
+        XCTAssertFalse(AIConsentPolicy.hasDeclinedCurrent(store.load()))
+    }
+
+    func testAIConsentOldVersionDoesNotAllowOutbound() {
+        let store = InMemoryAIConsentStore(
+            record: AIConsentRecord(
+                consentVersion: "contenthelper-ai-consent-v0",
+                decision: .accepted,
+                decidedAt: "2026-08-01T00:00:00Z",
+                destinationsAcknowledged: ["openai"]
+            )
+        )
+        XCTAssertFalse(AIConsentPolicy.allowsOutbound(store.load()))
+        XCTAssertFalse(AIConsentPolicy.hasDeclinedCurrent(store.load()))
+    }
 }
 
 private struct YouFeaturePreviewRepository: ReferenceImportRepository {

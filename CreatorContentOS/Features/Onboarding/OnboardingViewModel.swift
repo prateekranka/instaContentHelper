@@ -112,12 +112,21 @@ final class OnboardingViewModel {
 
     // MARK: - Step validation
 
-    var interestsContinueEnabled: Bool {
-        OnboardingValidation.interestsStepIsValid(
+    /// Launch-A one-screen: always allowed (zero fields OK).
+    var launchContinueEnabled: Bool {
+        OnboardingValidation.launchChoiceIsValid(
             interestIDs: interestIDs,
-            customSubjects: customSubjects,
-            startingPoint: startingPoint
+            customSubjects: customSubjects
         )
+    }
+
+    var interestsContinueEnabled: Bool {
+        launchContinueEnabled
+            && OnboardingValidation.interestsAreValid(
+                interestIDs: interestIDs,
+                customSubjects: customSubjects
+            )
+            && OnboardingValidation.startingPointIsValid(startingPoint)
     }
 
     var interestsAreValid: Bool { interestsContinueEnabled }
@@ -195,7 +204,7 @@ final class OnboardingViewModel {
 
     func restoreProgressIfNeeded() {
         guard let progress = store.loadProgress() else { return }
-        step = progress.step
+        step = OnboardingLaunchPresentation.normalizedStep(from: progress.step)
         interestIDs = progress.interestIDs
         customSubjects = progress.customSubjects
         startingPoint = progress.startingPoint
@@ -427,14 +436,23 @@ final class OnboardingViewModel {
     }
 
     func goBack() {
-        guard let previous = OnboardingStep(rawValue: step.rawValue - 1) else { return }
-        goToStep(previous)
+        cancelSetup()
     }
 
-    func softSkip() {
+    /// Recoverable dismiss for this session — does not generate or mark established.
+    func cancelSetup() {
         persistProgress()
         sessionDismissed = true
-        toastMessage = "Set up later — we'll ask again next launch"
+    }
+
+    /// Legacy alias; Launch-A skip runs first-idea handoff instead of session-only dismiss.
+    func softSkip() {
+        cancelSetup()
+        toastMessage = "You can finish setup in You."
+    }
+
+    func noteSkippedSetup() {
+        persistProgress()
     }
 
     // MARK: - Confirm / first idea
@@ -455,8 +473,8 @@ final class OnboardingViewModel {
             contextAnswers: contextAnswers,
             creatorNote: creatorNote.nilIfBlank,
             references: references,
-            voiceDeferred: false,
-            voicePrefilled: true
+            voiceDeferred: true,
+            voicePrefilled: nil
         )
     }
 

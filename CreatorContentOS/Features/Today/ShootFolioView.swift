@@ -44,7 +44,7 @@ struct ShootFolioView: View {
                             draftScript: $draftScript
                         )
                     case .caption:
-                        CopyBlock(title: "Caption", bodyText: services.todayCard.caption ?? "No caption recorded for today.")
+                        CopyBlock(title: "Caption", bodyText: PackageCopyText.caption(for: services.todayCard))
                     case .audio:
                         CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "No audio notes recorded for today.")
                     }
@@ -294,7 +294,7 @@ private struct ShootFolioEmptyState: View {
         case .loading:
             "The app is checking live Supabase content."
         case .ready:
-            "Today's published card does not include shoot scenes."
+            "Today's ready card does not include shoot scenes."
         case .missingPublishedCard(let date):
             "There is no published daily card for \(date), so there are no scenes to shoot yet."
         }
@@ -529,19 +529,8 @@ private enum SceneGuidance {
         // shows nothing rather than borrowing another scene's text.
     }
 
-    static func contextExample(for scene: ShotScene, in card: DailyCard) -> String {
-        let context = [
-            card.context,
-            card.whyToday,
-            card.sourceNote,
-            card.postInstructions
-        ]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
-        let location = context.contains("bombay") || context.contains("mumbai")
-            ? "In Bombay, the creator can shoot this at home, in the society garden, or in the gym"
-            : "The creator can shoot this at home, in the society garden, or in the gym"
-        return "\(location), choosing the place that makes \(scene.title.lowercased()) easiest to capture clearly and safely."
+    static func contextExample(for _: ShotScene, in _: DailyCard) -> String {
+        "You can shoot this at home or wherever makes the scene easiest to capture clearly and safely."
     }
 }
 
@@ -673,10 +662,7 @@ struct ScriptTimelineCopyBlock: View {
     }
 
     private var copyableScript: String {
-        if let script = card.script?.nilIfBlank {
-            return script
-        }
-        return rows.map(\.audioDialogue).joined(separator: "\n")
+        PackageCopyText.script(for: card)
     }
 }
 

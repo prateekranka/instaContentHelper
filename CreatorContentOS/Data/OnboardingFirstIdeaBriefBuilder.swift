@@ -2,7 +2,17 @@ import Foundation
 import CryptoKit
 
 enum OnboardingFirstIdeaBriefBuilder {
+    /// Honest starter copy when the creator skipped or continued with no preferences.
+    static let genericStarterBrief =
+        "Starter idea for today: one honest, shootable reel the creator can film without extra setup. "
+        + "This is a generic starter brief — not learned taste or voice. "
+        + "First idea after onboarding. One shootable reel for today."
+
     static func buildDayBrief(from record: OnboardingRecord) -> String {
+        guard record.hasLaunchPreferences else {
+            return genericStarterBrief
+        }
+
         var sections: [String] = []
 
         let interests = record.interestLabels

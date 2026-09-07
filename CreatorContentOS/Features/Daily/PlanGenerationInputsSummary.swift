@@ -8,7 +8,7 @@ struct PlanGenerationInputsSummary: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-            Text("Generation inputs")
+            Text("Idea settings")
                 .font(PocketSheetType.sectionLabel)
                 .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                 .tracking(0.44)

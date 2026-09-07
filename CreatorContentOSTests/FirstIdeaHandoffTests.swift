@@ -271,6 +271,47 @@ final class FirstIdeaHandoffTests: XCTestCase {
         XCTAssertEqual(repository.updateAttempts, 2)
     }
 
+    func testConfirmOnboardingGeneratesWhenVoiceDeferredAndTodayEmpty() async {
+        let today = "2026-09-05"
+        let trackingGeneration = TrackingDayGenerationRepository()
+        let trackingWeekly = TrackingMakeDayAvailableWeeklyRepository()
+        let services = AppServices.fixtureBacked(
+            repositories: AppRepositories(
+                context: .creatorFixture,
+                today: FixtureTodayCardRepository(),
+                weeklyPlans: trackingWeekly,
+                references: FixtureReferenceRepository(),
+                dailyGeneration: trackingGeneration,
+                intelligence: FixtureIntelligenceRepository(),
+                creatorProfile: FixtureCreatorProfileRepository(),
+                archive: FixtureArchiveRepository()
+            ),
+            todayDate: { today }
+        )
+        services.todayCard = .emptyTodayPlaceholder
+
+        let result = await services.confirmOnboardingAndPrepareFirstIdea(
+            completedData: OnboardingCompletedData(
+                selectedCategoryIDs: ["books"],
+                categoryOtherText: "",
+                references: [],
+                voiceDeferred: true
+            ),
+            scheduledDate: today
+        )
+
+        guard case .completed = result else {
+            return XCTFail("Expected completed handoff, got \(result)")
+        }
+        let generateCalls = await trackingGeneration.generateCallCount
+        let makeAvailableCalls = await trackingWeekly.makeDayAvailableCallCount
+        XCTAssertEqual(generateCalls, 1)
+        XCTAssertEqual(makeAvailableCalls, 1)
+        XCTAssertFalse(services.voiceIsConfigured)
+        XCTAssertFalse(services.canGenerateContent)
+        XCTAssertNotEqual(services.dayBriefGenerationErrors[today], "creator_voice_required")
+    }
+
     func testConfirmOnboardingGeneratesBooksMoviesWhenTodayEmpty() async {
         let today = "2026-09-05"
         let trackingGeneration = TrackingDayGenerationRepository()

@@ -96,7 +96,7 @@ struct ReferenceImportUnverifiedFallbackView: View {
                             .font(.system(size: 17, weight: .regular, design: .serif))
                             .foregroundStyle(chrome.ink)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text("Instagram couldn't be reached, so these references were not verified live. You can still add them — the server re-checks everything when saving.")
+                        Text("Instagram couldn't be reached, so these references were not verified live. You can still add them — we'll re-check everything when saving.")
                             .font(MCOType.caption)
                             .foregroundStyle(chrome.inkMuted)
                             .fixedSize(horizontal: false, vertical: true)

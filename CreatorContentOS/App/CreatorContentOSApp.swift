@@ -63,6 +63,7 @@ struct CreatorContentOSAppView: View {
             appView
 #endif
         }
+        .aiConsentSheet()
         .task(id: workspaceOnboardingScope) {
             guard appState.authenticationPhase == .live else { return }
             let scopedStore = WorkspaceScopedOnboardingStore(

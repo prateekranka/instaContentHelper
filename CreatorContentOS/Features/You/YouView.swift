@@ -83,7 +83,7 @@ struct YouView: View {
     }
 
     private var generationInputsBlock: some View {
-        PocketSheetBlock(header: "Generation inputs") {
+        PocketSheetBlock(header: "Idea settings") {
             VStack(spacing: 0) {
                 setupRow(.contentCategories, title: "Interests & style", subtitle: interestsSubtitle)
                 PocketSheetDivider()

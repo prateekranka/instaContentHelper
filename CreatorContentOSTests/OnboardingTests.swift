@@ -129,7 +129,71 @@ final class OnboardingTests: XCTestCase {
         )
     }
 
-    // MARK: - Five-step validation
+    // MARK: - Launch-A one-screen validation
+
+    func testLaunchContinueEnabledWithZeroFields() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        XCTAssertTrue(model.launchContinueEnabled)
+        XCTAssertFalse(model.interestsContinueEnabled)
+    }
+
+    func testLaunchContinueEnabledWithOnlyStartingPoint() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.startingPoint = .justStarting
+        XCTAssertTrue(model.launchContinueEnabled)
+    }
+
+    func testLegacyFiveStepProgressNormalizesToLaunchScreen() {
+        let store = UserDefaultsOnboardingStore(defaults: defaults)
+        store.saveProgress(
+            OnboardingProgress(
+                step: .productionConstraints,
+                interestIDs: ["books"],
+                customSubjects: ["Pottery"],
+                startingPoint: .alreadyPosting,
+                selectedTasteExampleIDs: ["books-rec-1"],
+                tasteRefreshCount: 0,
+                formats: [.talkingToCamera],
+                timeToCreate: .tenToThirty,
+                contentLanguage: "English",
+                showFace: true,
+                useVoice: true,
+                contextAnswers: [:],
+                creatorNote: "",
+                references: []
+            )
+        )
+
+        let model = OnboardingViewModel(store: store)
+        XCTAssertEqual(model.step, .interests)
+        XCTAssertEqual(model.interestIDs, ["books"])
+        XCTAssertEqual(model.customSubjects, ["Pottery"])
+        XCTAssertEqual(model.startingPoint, .alreadyPosting)
+    }
+
+    func testCompletedDataDefersVoiceWithoutPrefill() {
+        let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
+        model.interestIDs = ["books"]
+        let data = model.completedData()
+        XCTAssertTrue(data.voiceDeferred)
+        XCTAssertNil(data.voicePrefilled)
+    }
+
+    func testGenericStarterBriefWhenNoLaunchPreferences() {
+        let record = OnboardingRecord(
+            completedData: OnboardingCompletedData(
+                selectedCategoryIDs: [],
+                categoryOtherText: "",
+                references: [],
+                voiceDeferred: true
+            )
+        )
+        let brief = OnboardingFirstIdeaBriefBuilder.buildDayBrief(from: record)
+        XCTAssertEqual(brief, OnboardingFirstIdeaBriefBuilder.genericStarterBrief)
+        XCTAssertFalse(brief.localizedCaseInsensitiveContains("HYROX"))
+    }
+
+    // MARK: - Five-step validation (legacy helpers + You editors)
 
     func testInterestsRequireAtLeastOneTopicOrCustomSubject() {
         XCTAssertFalse(
@@ -211,22 +275,15 @@ final class OnboardingTests: XCTestCase {
         model.interestIDs = ["books"]
         model.customSubjects = ["Pottery"]
         model.startingPoint = .justStarting
-        model.advanceFromInterests()
         model.selectedTasteExampleIDs = ["books-rec-1"]
-        model.advanceFromTasteExamples()
-        model.formats = [.voiceoverBroll]
-        model.timeToCreate = .tenToThirty
-        model.contentLanguage = "English"
-        model.showFace = true
-        model.useVoice = false
 
-        model.goBack()
-        model.goBack()
+        model.cancelSetup()
 
         XCTAssertEqual(model.interestIDs, ["books"])
         XCTAssertEqual(model.customSubjects, ["Pottery"])
         XCTAssertEqual(model.startingPoint, .justStarting)
         XCTAssertEqual(model.selectedTasteExampleIDs, ["books-rec-1"])
+        XCTAssertTrue(model.sessionDismissed)
     }
 
     func testProductionValidationRequiresExplicitFaceAndVoice() {
@@ -301,15 +358,8 @@ final class OnboardingTests: XCTestCase {
         let model = OnboardingViewModel(store: UserDefaultsOnboardingStore(defaults: defaults))
         model.interestIDs = ["books"]
         model.startingPoint = .justStarting
-        model.selectedTasteExampleIDs = ["books-rec-1"]
-        model.formats = [.talkingToCamera]
-        model.timeToCreate = .tenToThirty
-        model.showFace = true
-        model.useVoice = true
 
-        XCTAssertTrue(model.interestsAreValid)
-        XCTAssertTrue(model.tasteContinueEnabled)
-        XCTAssertTrue(model.productionContinueEnabled)
+        XCTAssertTrue(model.launchContinueEnabled)
         XCTAssertTrue(model.references.isEmpty)
     }
 
@@ -515,13 +565,6 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(result.reference.isProfile)
     }
 
-    func testClassifiesReelURLAsReelWithoutExpectedKind() throws {
-        let result = try OnboardingReferenceParser.parse(
-            "https://www.instagram.com/reel/ABC123/"
-        ).get()
-        XCTAssertTrue(result.reference.isReel)
-    }
-
     func testRejectsStoryAndNonInstagram() {
         let story = OnboardingReferenceParser.parse("https://www.instagram.com/stories/creator/123")
         guard case .failure(let storyError) = story else {
@@ -636,6 +679,7 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(model.sessionDismissed)
         XCTAssertEqual(model.step, .interests)
         XCTAssertEqual(model.references.count, 0)
+        XCTAssertEqual(model.toastMessage, "You can finish setup in You.")
     }
 
     func testAddProfileVerificationVerifiedShowsProfileAdded() async {

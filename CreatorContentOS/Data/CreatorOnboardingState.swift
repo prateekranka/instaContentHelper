@@ -94,6 +94,20 @@ struct OnboardingRecord: Hashable, Sendable {
             customSubjects: customSubjects
         )
     }
+
+    /// True when the creator chose at least one launch-A preference on the one-screen flow.
+    var hasLaunchPreferences: Bool {
+        !interestIDs.isEmpty
+            || !customSubjects.isEmpty
+            || startingPoint?.nilIfBlank != nil
+            || !selectedTasteExampleIDs.isEmpty
+            || !formats.isEmpty
+            || timeToCreate != nil
+            || showFace != nil
+            || useVoice != nil
+            || contextAnswers.values.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+            || creatorNote?.nilIfBlank != nil
+    }
 }
 
 enum OnboardingProfileMapper {
@@ -105,15 +119,17 @@ enum OnboardingProfileMapper {
         firstIdeaHandoff: [String: String]? = nil
     ) -> CreatorProfileUpdate {
         let pillars = record.interestLabels
-        let positioning = synthesizedPositioning(pillars: pillars, record: record)
-        let voiceRules = synthesizedVoiceRules(record: record)
-        let recurringFormats = VoicePrefill.recurringFormats(pillars: pillars)
+        let deferVoice = record.voiceDeferred
+        let positioning = deferVoice ? "" : synthesizedPositioning(pillars: pillars, record: record)
+        let voiceRules = deferVoice ? [] : synthesizedVoiceRules(record: record)
+        let recurringFormats = deferVoice ? [] : VoicePrefill.recurringFormats(pillars: pillars)
+        let captionStyle = deferVoice ? nil : VoicePrefill.captionStyle
 
         return CreatorProfileUpdate(
             positioning: positioning,
             voiceRules: voiceRules,
             contentPillars: pillars,
-            captionStyle: VoicePrefill.captionStyle,
+            captionStyle: captionStyle ?? "",
             noGoTopics: [],
             recurringFormats: recurringFormats,
             onboardingState: onboardingState,

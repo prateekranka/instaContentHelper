@@ -190,7 +190,7 @@ struct ReferenceImportView: View {
                     .foregroundStyle(chrome.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Text("Paste handles, reel links, audio links, or a CSV. The server decides what is clean and what needs your call.")
+                Text("Paste handles, reel links, audio links, or a CSV. We'll sort what's usable and flag anything that needs your review.")
                     .font(.system(size: 16, weight: .regular, design: .serif))
                     .foregroundStyle(chrome.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)

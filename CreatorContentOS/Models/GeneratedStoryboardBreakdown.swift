@@ -161,6 +161,34 @@ enum GeneratedStoryboardBreakdown {
     }
 }
 
+/// Shared pasteboard text for Today inline and Shoot Folio copy actions.
+enum PackageCopyText {
+    static func script(for card: DailyCard) -> String {
+        script(fromStored: card.script?.nilIfBlank, rows: GeneratedStoryboardBreakdown.rows(for: card))
+    }
+
+    static func script(for card: GeneratedDailyCardDraft) -> String {
+        script(fromStored: card.script.nilIfBlank, rows: GeneratedStoryboardBreakdown.rows(for: card))
+    }
+
+    static func caption(for card: DailyCard) -> String {
+        card.caption?.nilIfBlank ?? missingCaptionFallback
+    }
+
+    static func caption(for card: GeneratedDailyCardDraft) -> String {
+        card.caption.nilIfBlank ?? missingCaptionFallback
+    }
+
+    private static let missingCaptionFallback = "No caption recorded for today."
+
+    private static func script(fromStored stored: String?, rows: [GeneratedStoryboardBreakdownRow]) -> String {
+        if let script = stored {
+            return script
+        }
+        return rows.map(\.audioDialogue).joined(separator: "\n")
+    }
+}
+
 #if DEBUG
 extension GeneratedDailyCardDraft {
     static var storyboardBreakdownFixture: GeneratedDailyCardDraft {

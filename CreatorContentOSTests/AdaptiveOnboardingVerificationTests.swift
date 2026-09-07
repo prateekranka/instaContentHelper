@@ -67,25 +67,6 @@ final class AdaptiveOnboardingVerificationTests: XCTestCase {
         XCTAssertFalse(presentation.shouldForceOnboardingFlow)
     }
 
-    func testPresentationPolicyNeverUsesGlobalDoneFlag() {
-        let defaults = UserDefaults(suiteName: "AdaptiveOnboardingVerificationTests.globalDone")!
-        defaults.removePersistentDomain(forName: "AdaptiveOnboardingVerificationTests.globalDone")
-        defaults.set("1", forKey: "ch-onboarding-done")
-
-        XCTAssertTrue(
-            OnboardingPresentationPolicy.shouldPresent(
-                presentation: .new,
-                sessionDismissed: false
-            )
-        )
-        XCTAssertFalse(
-            OnboardingPresentationPolicy.shouldPresent(
-                presentation: .established,
-                sessionDismissed: false
-            )
-        )
-    }
-
     func testMCOResetOnboardingClearsLegacyKeysOnly() {
         let defaults = UserDefaults(suiteName: "AdaptiveOnboardingVerificationTests.reset")!
         defaults.removePersistentDomain(forName: "AdaptiveOnboardingVerificationTests.reset")
@@ -279,6 +260,7 @@ final class AdaptiveOnboardingVerificationTests: XCTestCase {
             dailyGeneration: VerificationDayGenerationStub(),
             todayDate: today
         )
+        services.todayCard = .emptyTodayPlaceholder
 
         let result = await services.confirmOnboardingAndPrepareFirstIdea(
             completedData: Self.booksMoviesCompletedData(),

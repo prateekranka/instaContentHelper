@@ -36,7 +36,7 @@ struct TodayView: View {
                 PocketSheetCommandBar {
                     if services.canMarkPosted {
                         PocketSheetPrimaryAction(
-                            title: "Mark posted",
+                            title: "Mark as posted",
                             systemImage: "paperplane.fill"
                         ) {
                             services.markPosted()
@@ -92,9 +92,13 @@ struct TodayView: View {
         .accessibilityIdentifier("today.header")
     }
 
-    /// Plan remains reachable from overflow; Shoot Folio is no longer the primary path.
+    /// Plan and narrow scene/script edit remain reachable from overflow; Shoot Folio is not the primary path.
     private var readyPlanEntries: some View {
         Menu {
+            NavigationLink(value: CreatorRoute.shootFolio(editing: true)) {
+                Label("Edit scenes & script", systemImage: "pencil")
+            }
+            .accessibilityIdentifier("today.editScenesScript")
             NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
                 Label("Plan", systemImage: "calendar")
             }
@@ -193,7 +197,7 @@ private struct TodayLoadingCard: View {
                 Text("Checking today's plan")
                     .font(PocketSheetType.rowTitle)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
-                Text("The app is loading the latest published card.")
+                Text("Getting your latest card…")
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }

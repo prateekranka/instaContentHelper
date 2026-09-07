@@ -57,6 +57,13 @@ struct PlanHubView: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .accessibilityIdentifier("plan.voiceGate.hint")
                     }
+                    if services.isLiveSupabaseRuntime && !services.aiConsentAllowsOutbound {
+                        Text(AIConsentCopy.blockedMessage)
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("plan.aiConsent.hint")
+                    }
                 }
                 if isGeneratingSelectedDay || (hasDispatchedGeneration && displayedCard == nil) {
                     generationProgressBlock
@@ -64,7 +71,7 @@ struct PlanHubView: View {
                 if let error = surfacedGenerationError {
                     let cancelled = Self.isCancellationMessage(error)
                     AdminSignalBlock(
-                        title: cancelled ? "Generation stopped" : "Generation error",
+                        title: "",
                         value: error,
                         systemImage: cancelled ? "xmark.circle" : "exclamationmark.triangle",
                         tone: .warning
@@ -72,7 +79,7 @@ struct PlanHubView: View {
                 }
                 if let error = services.lastMakeDayAvailableError?.nilIfBlank {
                     AdminSignalBlock(
-                        title: "Approve",
+                        title: "",
                         value: error,
                         systemImage: "exclamationmark.triangle",
                         tone: .warning
@@ -80,7 +87,7 @@ struct PlanHubView: View {
                 }
                 if let error = services.lastUnpublishDayError?.nilIfBlank {
                     AdminSignalBlock(
-                        title: "Unpublish",
+                        title: "",
                         value: error,
                         systemImage: "exclamationmark.triangle",
                         tone: .warning
@@ -88,7 +95,7 @@ struct PlanHubView: View {
                 }
                 if let error = services.lastReadyDayPackageEditError?.nilIfBlank {
                     AdminSignalBlock(
-                        title: "Save edits",
+                        title: "",
                         value: error,
                         systemImage: "exclamationmark.triangle",
                         tone: .warning
@@ -170,6 +177,9 @@ struct PlanHubView: View {
         }
         .onChange(of: appState.planSelectedDate) { _, _ in
             applyPendingPlanDateSelection()
+        }
+        .onChange(of: services.aiConsentEpoch) { _, _ in
+            refreshDayIdeasIfNeeded()
         }
     }
 
@@ -400,7 +410,7 @@ struct PlanHubView: View {
                     Text("Drafting \(shortLabel(for: scheduledDateString))")
                         .font(PocketSheetType.rowTitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
-                    Text("Deep reasoning takes a couple of minutes. Validation may retry once or twice.")
+                    Text("Preparing your idea…")
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 }
@@ -484,7 +494,7 @@ struct PlanHubView: View {
     private var approveDock: some View {
         VStack(alignment: .center, spacing: PocketSheetSpace.xs) {
             PocketSheetPrimaryAction(
-                title: services.isMakingDayAvailable ? "Approving…" : "Approve",
+                title: services.isMakingDayAvailable ? "Making ready…" : "Make ready",
                 systemImage: "checkmark.circle"
             ) {
                 makeAvailableOnToday()
@@ -493,13 +503,6 @@ struct PlanHubView: View {
             .opacity(canMakeAvailable ? 1 : 0.48)
             .accessibilityIdentifier("daily.availableOnToday")
 
-            Text("Clicking this will add the card to the Today page.")
-                .font(PocketSheetType.rowSubtitle)
-                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("daily.approve.hint")
         }
         .padding(.horizontal, PocketSheetSpace.l)
         .padding(.top, PocketSheetSpace.s)

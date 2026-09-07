@@ -66,13 +66,11 @@ struct NotTodaySheet: View {
     }
 
     private var backupStorySubtitle: String {
-        services.todayCard.backupStory?.nilIfBlank.map { _ in "Keep the streak alive." }
-            ?? "Keep the streak alive."
+        services.todayCard.backupStory?.nilIfBlank ?? ""
     }
 
     private var backupCaptionSubtitle: String {
-        services.todayCard.backupCaptionOnly?.nilIfBlank.map { _ in "Share the thought." }
-            ?? "Share the thought."
+        services.todayCard.backupCaptionOnly?.nilIfBlank ?? ""
     }
 
     private func complete(_ decision: DailyDecision) {
@@ -264,9 +262,11 @@ struct BackupOptionRow: View {
                         Text(title)
                             .font(PocketSheetType.rowTitle)
                             .foregroundStyle(PocketSheetTheme.Color.ink)
-                        Text(subtitle)
-                            .font(PocketSheetType.rowSubtitle)
-                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        if !subtitle.isEmpty {
+                            Text(subtitle)
+                                .font(PocketSheetType.rowSubtitle)
+                                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        }
                     }
                     Spacer()
                     Image(systemName: "chevron.right")

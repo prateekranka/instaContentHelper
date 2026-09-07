@@ -121,7 +121,7 @@ struct PlanDayIdeaLauncher: View {
 
             ZStack(alignment: .topLeading) {
                 if otherText.isEmpty {
-                    Text("e.g. A quiet pre-race check-in before the first mile…")
+                    Text("e.g. A low-key check-in about what I'm working on this week…")
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .allowsHitTesting(false)

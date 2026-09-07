@@ -797,7 +797,7 @@ async function updateCreatorProfile(
   });
 }
 
-function normalizedCreatorProfileUpdate(
+export function normalizedCreatorProfileUpdate(
   body: WriteContentRequest,
 ): Record<string, unknown> | null {
   const update: Record<string, unknown> = {};

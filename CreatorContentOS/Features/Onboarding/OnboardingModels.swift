@@ -1,6 +1,22 @@
 import Foundation
 import SwiftUI
 
+enum OnboardingLaunchPresentation {
+    /// Single skippable first-use screen under Launch-A (`dec-20260907-002`).
+    static let stepCount = 1
+    static let stepIndex = 0
+
+    /// Map legacy five-step persisted progress onto the one-screen launch flow.
+    static func normalizedStep(from persisted: OnboardingStep) -> OnboardingStep {
+        switch persisted {
+        case .interests:
+            return .interests
+        case .tasteExamples, .productionConstraints, .interestContext, .review:
+            return .interests
+        }
+    }
+}
+
 // MARK: - Steps
 
 enum OnboardingStep: Int, Codable, Hashable, Sendable, CaseIterable {
@@ -565,6 +581,19 @@ enum VoicePrefill {
 enum OnboardingValidation {
     static let maxTotalInterests = 8
     static let maxReferences = 10
+
+    /// Launch-A one-screen: interests are optional; when present, respect the cap.
+    static func launchInterestsAreValid(interestIDs: [String], customSubjects: [String]) -> Bool {
+        let trimmedCustoms = customSubjects
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return interestIDs.count + trimmedCustoms.count <= maxTotalInterests
+    }
+
+    /// Launch-A one-screen continue/skip: zero fields allowed.
+    static func launchChoiceIsValid(interestIDs: [String], customSubjects: [String]) -> Bool {
+        launchInterestsAreValid(interestIDs: interestIDs, customSubjects: customSubjects)
+    }
 
     static func interestsAreValid(interestIDs: [String], customSubjects: [String]) -> Bool {
         let trimmedCustoms = customSubjects

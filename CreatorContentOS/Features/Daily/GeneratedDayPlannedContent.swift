@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct GeneratedReadOnlyField: View {
     let title: String
@@ -81,6 +84,7 @@ struct GeneratedDayPlannedContent: View {
     var onStoryboardAssetsChanged: (([StoryboardThumbnailAsset]) -> Void)?
     /// When true, Storyboard / Script / Caption use folder tabs (Plan + Today).
     var usesFolderTabs: Bool = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedFolderTab: PackageFolderTab = .storyboard
 
     var body: some View {
@@ -101,7 +105,7 @@ struct GeneratedDayPlannedContent: View {
                 InstagramCaptionPostBlock(card: card)
             }
         }
-        .animation(.snappy(duration: 0.22), value: selectedFolderTab)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: selectedFolderTab)
         .onChange(of: card.id) { _, _ in
             selectedFolderTab = .storyboard
         }
@@ -157,8 +161,8 @@ struct GeneratedStoryboardBreakdownContent: View {
                 if let filmingTip = effectiveCard.postInstructions.nilIfBlank {
                     GeneratedStoryboardTip(text: filmingTip)
                 }
-                if let thumbnailError {
-                    Text(thumbnailError)
+                if let displayedThumbnailError {
+                    Text(displayedThumbnailError)
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.validationAttention)
                         .fixedSize(horizontal: false, vertical: true)
@@ -225,8 +229,12 @@ struct GeneratedStoryboardBreakdownContent: View {
         services.generatedDailyCard(for: card.id) ?? card
     }
 
+    private var displayedThumbnailError: String? {
+        services.storyboardThumbnailErrors[card.id] ?? thumbnailError
+    }
+
     private var storyboardPreparationTaskID: String {
-        "\(card.id.uuidString)-\(missingThumbnailCount)"
+        "\(card.id.uuidString)-\(missingThumbnailCount)-\(services.aiConsentEpoch)"
     }
 
     private var visualsButtonLabel: String {
@@ -250,7 +258,10 @@ struct GeneratedStoryboardBreakdownContent: View {
                 )
                 onStoryboardAssetsChanged?(assets)
             } catch {
-                thumbnailError = error.localizedDescription
+                let description = error.localizedDescription
+                thumbnailError = description == AIConsentCopy.errorCode
+                    ? AIConsentCopy.blockedMessage
+                    : description
             }
         }
     }
@@ -689,6 +700,11 @@ struct InstagramCaptionPostContent: View {
             GeneratedReadOnlyField(title: "Cover text", value: card.coverText)
             GeneratedReadOnlyField(title: "Post instructions", value: card.postInstructions)
             GeneratedReadOnlyField(title: "Hashtags", value: hashtagSummary)
+            PackageCopyButton(
+                title: "Copy caption",
+                text: PackageCopyText.caption(for: card)
+            )
+            .accessibilityIdentifier("plan.package.copyCaption")
         }
     }
 
@@ -718,6 +734,10 @@ struct GeneratedScriptTimelineContent: View {
 
     private var rows: [GeneratedStoryboardBreakdownRow] {
         GeneratedStoryboardBreakdown.rows(for: card)
+    }
+
+    private var copyableScript: String {
+        PackageCopyText.script(for: card)
     }
 
     var body: some View {
@@ -769,12 +789,37 @@ struct GeneratedScriptTimelineContent: View {
                     .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
                     .accessibilityIdentifier("plan.script.line.\(row.sceneNumber)")
                 }
+
+                PackageCopyButton(title: "Copy full script", text: copyableScript)
+                    .accessibilityIdentifier("plan.package.copyScript")
             }
             .accessibilityIdentifier("plan.script.timeline")
         } else {
-            Text("No script lines yet.")
-                .font(PocketSheetType.rowSubtitle)
-                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                Text("No script lines yet.")
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                PackageCopyButton(title: "Copy full script", text: copyableScript)
+                    .accessibilityIdentifier("plan.package.copyScript")
+            }
+        }
+    }
+}
+
+struct PackageCopyButton: View {
+    let title: String
+    let text: String
+    @State private var didCopy = false
+
+    var body: some View {
+        PocketSheetSecondaryAction(title: didCopy ? "Copied" : title) {
+            #if canImport(UIKit)
+            UIPasteboard.general.string = text
+            #endif
+            didCopy = true
+        }
+        .onChange(of: text) {
+            didCopy = false
         }
     }
 }

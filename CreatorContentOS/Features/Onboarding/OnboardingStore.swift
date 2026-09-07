@@ -99,7 +99,7 @@ struct WorkspaceScopedOnboardingStore: OnboardingStoring, @unchecked Sendable {
 
 enum OnboardingPresentationPolicy {
 #if DEBUG
-    /// When `MCO_FORCE_ONBOARDING=1`, keep the five-step flow visible for QA even if the
+    /// When `MCO_FORCE_ONBOARDING=1`, keep the launch one-screen visible for QA even if the
     /// loaded profile is `established` (e.g. fixture HYROX). Does not mutate the profile.
     static var forceOnboardingForQA: Bool {
         ProcessInfo.processInfo.environment["MCO_FORCE_ONBOARDING"] == "1"

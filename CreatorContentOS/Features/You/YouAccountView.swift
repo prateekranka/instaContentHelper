@@ -14,6 +14,7 @@ struct YouAccountView: View {
             VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
                 YouAccountIdentityBlock()
                 YouAccountRuntimeStatusBlock()
+                YouAccountPrivacyBlock()
 #if DEBUG
                 YouAccountDebugOnboardingResetBlock()
 #endif

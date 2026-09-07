@@ -58,7 +58,7 @@ struct ArchiveSection: View {
 
 private enum ArchiveFilter: String, CaseIterable, Identifiable {
     case all = "All"
-    case posted = "Completed"
+    case posted = "Shot & posted"
     case backup = "Backups"
     case skipped = "Skipped"
 

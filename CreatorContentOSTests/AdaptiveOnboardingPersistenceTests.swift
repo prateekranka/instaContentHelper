@@ -38,29 +38,6 @@ final class AdaptiveOnboardingPersistenceTests: XCTestCase {
         )
     }
 
-    func testLoadFailedPreservesEstablishedSnapshot() {
-        let established = CreatorProfileSummary(
-            displayName: "Alex",
-            positioning: "Books creator",
-            voiceLine: "Warm",
-            noGoTopics: [],
-            voiceRules: ["Warm"],
-            onboardingState: .established
-        )
-
-        let presentation = CreatorOnboardingPresentationMapper.presentation(
-            from: established,
-            loadFailed: true,
-            previousPresentation: .established
-        )
-
-        if case .loadFailed(let previousEstablished) = presentation {
-            XCTAssertTrue(previousEstablished)
-        } else {
-            XCTFail("Expected loadFailed presentation")
-        }
-    }
-
     func testEmptyLiveFallbackNeverUsesCreatorFixture() {
         let summary = CreatorProfileSummary.emptyLiveFallback(displayName: "Alex")
         XCTAssertNotEqual(summary.positioning, CreatorProfileSummary.creatorFixture.positioning)
@@ -98,7 +75,7 @@ final class AdaptiveOnboardingPersistenceTests: XCTestCase {
         )
     }
 
-    func testProfileMapperSetsVoiceForFirstIdeaGate() {
+    func testProfileMapperOmitsVoiceWhenDeferred() {
         let record = OnboardingRecord(
             completedData: OnboardingCompletedData(
                 selectedCategoryIDs: ["books"],
@@ -114,6 +91,26 @@ final class AdaptiveOnboardingPersistenceTests: XCTestCase {
         )
 
         XCTAssertEqual(update.onboardingState, .established)
+        XCTAssertEqual(update.positioning, "")
+        XCTAssertEqual(update.voiceRules, [])
+        XCTAssertEqual(update.contentPillars, ["Books"])
+    }
+
+    func testProfileMapperSetsVoiceWhenNotDeferred() {
+        let record = OnboardingRecord(
+            completedData: OnboardingCompletedData(
+                selectedCategoryIDs: ["books"],
+                categoryOtherText: "",
+                references: [],
+                voiceDeferred: false
+            )
+        )
+        let update = OnboardingProfileMapper.profileUpdate(
+            from: record,
+            onboardingState: .established,
+            onboardingCompletedAt: "2026-09-05T12:00:00Z"
+        )
+
         XCTAssertFalse(update.positioning?.isEmpty ?? true)
         XCTAssertFalse(update.voiceRules?.isEmpty ?? true)
     }

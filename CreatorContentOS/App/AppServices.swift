@@ -85,6 +85,10 @@ final class AppServices {
     var lastActionMessage: String?
     private let todayDate: TodayDateProvider
     private let acceptedGenerationStore: any AcceptedDayGenerationStoring
+    let aiConsentStore: any AIConsentStoring
+    var isAIConsentSheetPresented = false
+    var aiConsentAllowsOutbound = false
+    var aiConsentEpoch = 0
     private var recoveringAcceptedGenerationDates: Set<String> = []
 
     /// Resolves the Plan package for a date from session cards or the latest draft summary.
@@ -192,7 +196,8 @@ final class AppServices {
         creatorProfileSummary: CreatorProfileSummary,
         weekCards: [DailyCard],
         todayContentState: TodayContentState = .ready,
-        acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared
+        acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared,
+        aiConsentStore: (any AIConsentStoring)? = nil
     ) {
         self.context = repositories.context
         self.isLiveSupabaseRuntime = isLiveSupabaseRuntime
@@ -202,6 +207,11 @@ final class AppServices {
         self.notifications = notifications
         self.todayDate = todayDate
         self.acceptedGenerationStore = acceptedGenerationStore
+        self.aiConsentStore = aiConsentStore ?? UserDefaultsAIConsentStore(
+            workspaceID: repositories.context.workspaceID,
+            creatorID: repositories.context.creatorID
+        )
+        self.aiConsentAllowsOutbound = AIConsentPolicy.allowsOutbound(self.aiConsentStore.load())
         self.todayCard = todayCard
         shotSceneIDs = todayCard.completionState == .shot || todayCard.completionState == .posted
             ? Set(todayCard.scenes.map(\.id))
@@ -235,9 +245,16 @@ final class AppServices {
         return !positioning.isEmpty && hasRules
     }
 
-    /// True when the creator explicitly deferred voice setup in legacy onboarding cache.
+    /// Plan / global generation still ignores Launch-A deferral (VG-6).
+    /// First-idea skip/continue passes `allowDeferredVoice` on `generateDayCard` instead.
+    /// A global `established && !voiceIsConfigured` getter was rejected: it would open Plan generate_day.
     var voiceDeferred: Bool {
         false
+    }
+
+    /// Honest Launch-A deferral after persist: established profile, empty voice, no fabricated rules.
+    private var isHonestDeferredVoice: Bool {
+        creatorProfileSummary.onboardingState == .established && !voiceIsConfigured
     }
 
     /// True while the post-onboarding Creator Voice prefill draft is active.
@@ -251,7 +268,7 @@ final class AppServices {
         !voiceIsConfigured && !voiceDeferred
     }
 
-    /// Generation is available once creator voice is set up or explicitly deferred.
+    /// Plan generation requires configured voice (VG-6). First-idea may pass `allowDeferredVoice`.
     /// The app is creator-only — no role check applies anymore.
     var canGenerateContent: Bool {
         !voiceGateOpen
@@ -272,7 +289,8 @@ final class AppServices {
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
         notifications: any TodayNotificationScheduling = NoopTodayNotificationScheduler(),
         todayDate: @escaping TodayDateProvider = { SupabaseDateFormatting.todayDateString() },
-        acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared
+        acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared,
+        aiConsentStore: (any AIConsentStoring)? = nil
     ) -> AppServices {
         let services = AppServices(
             repositories: repositories,
@@ -288,7 +306,8 @@ final class AppServices {
             intelligenceHome: .raceWeekLibrary,
             creatorProfileSummary: .creatorFixture,
             weekCards: DailyCard.weekFixtures,
-            acceptedGenerationStore: acceptedGenerationStore
+            acceptedGenerationStore: acceptedGenerationStore,
+            aiConsentStore: aiConsentStore
         )
         return services
     }
@@ -735,6 +754,8 @@ final class AppServices {
             throw RepositoryError.edgeFunction(error)
         }
 
+        try requireAIConsent(for: .regenerateDay(scheduledDate: scheduledDate))
+
         guard !weeklyPlan.isSoftLocked else {
             let error = "published_week_locked"
             regenerationDayErrors[scheduledDate] = error
@@ -821,6 +842,18 @@ final class AppServices {
         defer { loadingPlanDayIdeaDates.remove(scheduledDate) }
 
         do {
+            try requireAIConsent(for: .planIdeas)
+        } catch {
+            if planDayIdeasByDate[scheduledDate]?.setupFingerprint != setup.cacheFingerprint {
+                planDayIdeasByDate[scheduledDate] = PlanDayIdeasCacheEntry(
+                    setupFingerprint: setup.cacheFingerprint,
+                    ideas: PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+                )
+            }
+            return
+        }
+
+        do {
             let ideas = try await fetchPlanDayIdeasWithTimeout(
                 scheduledDate: scheduledDate,
                 setup: setup
@@ -887,7 +920,8 @@ final class AppServices {
     func generateDayCard(
         scheduledDate: String,
         dayBrief: String,
-        confirmOverwrite: Bool = false
+        confirmOverwrite: Bool = false,
+        allowDeferredVoice: Bool = false
     ) async throws -> GeneratedDailyCardDraft {
         let brief = dayBrief.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !brief.isEmpty else {
@@ -903,12 +937,15 @@ final class AppServices {
             throw RepositoryError.edgeFunction(error)
         }
 
-        guard canGenerateContent else {
+        let firstIdeaDeferredVoiceAllowed = allowDeferredVoice && isHonestDeferredVoice
+        guard canGenerateContent || firstIdeaDeferredVoiceAllowed else {
             let error = "creator_voice_required"
             dayBriefGenerationErrors[scheduledDate] = error
             logGeneration("generate_day rejected creator_voice_required scheduled_date=\(scheduledDate)")
             throw RepositoryError.edgeFunction(error)
         }
+
+        try requireAIConsent(for: .generateDay(scheduledDate: scheduledDate))
 
         let existingStatus = dayBriefGeneratedCards[scheduledDate]?.status
             ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })?.status
@@ -1065,6 +1102,8 @@ final class AppServices {
             throw RepositoryError.edgeFunction(error)
         }
 
+        try requireAIConsent(for: .storyboardThumbnails(cardID: card.id, promptIfDeclined: true))
+
         if generatingStoryboardThumbnailCardIDs.contains(card.id) {
             return card.storyboardThumbnailAssets
         }
@@ -1103,6 +1142,12 @@ final class AppServices {
                Self.hasMissingStoryboardThumbnails(for: summaryCard) {
                 applyStoryboardThumbnailAssets(card.storyboardThumbnailAssets, toDailyCardID: dailyCardID)
             }
+            return
+        }
+
+        do {
+            try requireAIConsent(for: .storyboardThumbnails(cardID: card.id, promptIfDeclined: false))
+        } catch {
             return
         }
 
@@ -1439,7 +1484,8 @@ final class AppServices {
             _ = try await generateDayCard(
                 scheduledDate: scheduledDate,
                 dayBrief: plan.dayBrief,
-                confirmOverwrite: plan.confirmOverwrite
+                confirmOverwrite: plan.confirmOverwrite,
+                allowDeferredVoice: completedData.voiceDeferred
             )
             let navigatedToday = try await makeDayAvailable(scheduledDate: scheduledDate)
             return await completeFirstIdeaHandoff(
@@ -2529,7 +2575,7 @@ private enum DayAvailabilityErrorDisplay {
         "daily_card_not_found": "No draft was found for that day. Generate a draft first.",
         "daily_card_not_draft": "That day is already a ready package.",
         "daily_card_incomplete": "That draft is incomplete. Generate again, then approve.",
-        "invalid_make_day_available_payload": "Approve could not accept that request. Refresh and try again.",
+        "invalid_make_day_available_payload": "Make ready could not accept that request. Refresh and try again.",
         "make_day_available_failed": "Could not approve this day. Try again.",
         "make_day_available_already_running": "Approve is already running. Wait a moment.",
         "role_not_allowed": "This session cannot make a day available.",
@@ -2620,6 +2666,7 @@ private enum DayGenerationErrorDisplay {
         "generation_cancelled": "This day’s draft stopped before it finished. You can try Generate again.",
         "generation_already_running": "A generation is already in progress for this day. Wait for it to finish, then try again.",
         "creator_voice_required": "Set up your creator voice first — or defer voice in You.",
+        "ai_consent_required": AIConsentCopy.blockedMessage,
         "accepted_run_not_found": "Generation status is still syncing. Refresh and try Generate again.",
         "cancelled": "This day’s draft stopped before it finished. You can try Generate again."
     ]
@@ -2643,6 +2690,7 @@ private enum DayGenerationErrorDisplay {
         "generation_cancelled",
         "generation_already_running",
         "creator_voice_required",
+        "ai_consent_required",
         "accepted_run_not_found",
         "cancelled"
     ]
