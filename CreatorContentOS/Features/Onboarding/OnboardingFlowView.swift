@@ -4,7 +4,8 @@ struct OnboardingFlowView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @Bindable var model: OnboardingViewModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.pocketReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var onSoftSkip: () -> Void
     var onHandoffComplete: (OnboardingFirstIdeaHandoffResult, OnboardingFirstDayHandoff) -> Void
@@ -41,6 +42,7 @@ struct OnboardingFlowView: View {
             }
         }
         .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: model.toastMessage)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("onboarding.flow")
     }
 
@@ -61,8 +63,8 @@ struct OnboardingFlowView: View {
                     .foregroundStyle(PocketSheetTheme.Color.ink)
                     .accessibilityAddTraits(.isHeader)
 
-                Text("Pick a starting point or a few topics — or skip and finish later in You.")
-                    .font(.system(size: 15))
+                Text("Pick a starting point or a few topics. Every choice is optional, and you can finish setup later in You.")
+                    .font(.body)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .multilineTextAlignment(.leading)
             }
@@ -79,10 +81,12 @@ struct OnboardingFlowView: View {
                     ProgressView()
                         .tint(PocketSheetTheme.Color.ink)
                     Text("Preparing your first idea…")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 }
                 .frame(maxWidth: .infinity, minHeight: 44)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Preparing your first idea…")
                 .accessibilityIdentifier("onboarding.preparing")
             }
 
@@ -90,10 +94,10 @@ struct OnboardingFlowView: View {
 
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 Text("Where are you starting from?")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(PocketSheetTheme.Color.ink)
 
-                HStack(spacing: PocketSheetSpace.xs) {
+                startingPointLayout {
                     ForEach(OnboardingStartingPoint.allCases, id: \.self) { point in
                         OnboardingStartingPointChip(
                             point: point,
@@ -108,11 +112,13 @@ struct OnboardingFlowView: View {
 
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 Text("What would you enjoy making content about?")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(PocketSheetTheme.Color.ink)
 
                 LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 120), spacing: PocketSheetSpace.xs)],
+                    columns: dynamicTypeSize.isAccessibilitySize
+                        ? [GridItem(.flexible())]
+                        : [GridItem(.adaptive(minimum: 120), spacing: PocketSheetSpace.xs)],
                     spacing: PocketSheetSpace.xs
                 ) {
                     ForEach(OnboardingInterestCatalog.starter) { interest in
@@ -128,24 +134,35 @@ struct OnboardingFlowView: View {
             }
 
             Text("You can add taste, production prefs, and voice anytime under You.")
-                .font(.system(size: 13))
-                .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
+                .font(.footnote)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
         }
     }
 
     // MARK: - Dock
 
+    private var startingPointLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: PocketSheetSpace.xs))
+            : AnyLayout(HStackLayout(spacing: PocketSheetSpace.xs))
+    }
+
     @ViewBuilder
     private var launchDock: some View {
         VStack(spacing: PocketSheetSpace.s) {
-            Button("Set up later") {
+            Button {
                 Task { await skipAndPrepareFirstIdea() }
+            } label: {
+                Text("Set up later")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
             }
-            .font(.system(size: 14, weight: .medium))
+            .font(.subheadline.weight(.medium))
             .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-            .frame(minHeight: 44)
+            .buttonStyle(PocketSheetPressFeedbackStyle())
             .disabled(model.isConfirmingFirstIdea)
             .accessibilityIdentifier("onboarding.setUpLater")
+            .accessibilityHint("Skip preferences and prepare your first idea for Today")
 
             if case .generationFailed = model.confirmState {
                 PocketSheetPrimaryAction(title: "Retry") {
@@ -161,12 +178,6 @@ struct OnboardingFlowView: View {
                 .accessibilityIdentifier("onboarding.generateFirstDay")
             }
 
-            PocketSheetSecondaryAction(title: "Not now") {
-                model.cancelSetup()
-                onSoftSkip()
-            }
-            .disabled(model.isConfirmingFirstIdea)
-            .accessibilityIdentifier("onboarding.cancel")
         }
         .padding(.horizontal, PocketSheetSpace.l)
         .padding(.bottom, PocketSheetSpace.l)

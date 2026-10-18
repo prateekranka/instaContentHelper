@@ -59,10 +59,10 @@ enum OnboardingLanguageDefaults {
 // MARK: - Onboarding theme (scoped tokens)
 
 enum OnboardingTheme {
-    static let selectionFill = SwiftUI.Color(hex: 0xE8DEFF)
-    static let selectionStroke = SwiftUI.Color(hex: 0xD4C4F0)
-    static let startingPointFill = SwiftUI.Color(hex: 0xF0EBFF)
-    static let startingPointStroke = SwiftUI.Color(hex: 0xB8A4E8)
+    static let selectionFill = PocketSheetTheme.Color.fillMuted
+    static let selectionStroke = PocketSheetTheme.Color.ink
+    static let startingPointFill = PocketSheetTheme.Color.fillMuted
+    static let startingPointStroke = PocketSheetTheme.Color.ink
     static let progressFill = PocketSheetTheme.Color.ink
     static let progressTrack = PocketSheetTheme.Color.hairline
 }

@@ -5,6 +5,8 @@ struct PlanHubView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
+    @Environment(\.pocketReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedDate = Date()
     @State private var visibleMonth = Date()
     @State private var generationStartTime: Date?
@@ -34,6 +36,7 @@ struct PlanHubView: View {
             VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
                 header
                 selectedDateHeader
+                sevenDaySelector
                 if let otherLabel = otherDayGeneratingLabel {
                     Text("Still drafting \(otherLabel) in the background — you can keep planning other days.")
                         .font(PocketSheetType.rowSubtitle)
@@ -41,6 +44,17 @@ struct PlanHubView: View {
                         .accessibilityIdentifier("plan.generation.backgroundHint")
                 }
                 if shouldShowIdeaLauncher {
+                    if services.voiceGateOpen {
+                        Text("Set up Creator voice before generating more ideas.")
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("plan.voiceGate.hint")
+                        PocketSheetSecondaryAction(title: "Set up Creator voice") {
+                            appState.requestYouDestination(.creatorVoice, from: .plan(selectedDate: scheduledDateString))
+                        }
+                        .accessibilityIdentifier("plan.voiceGate.setup")
+                    }
                     PlanDayIdeaLauncher(
                         ideas: dayIdeas,
                         isBusy: isGeneratingSelectedDay || hasDispatchedGeneration,
@@ -50,13 +64,6 @@ struct PlanHubView: View {
                         onSelectIdea: { requestGeneration(brief: $0.dayBrief) },
                         onSubmitOther: submitOtherIdea
                     )
-                    if services.voiceGateOpen {
-                        Text("Personalize your Creator Voice or use the one we have prefilled based on your references and domain")
-                            .font(PocketSheetType.rowSubtitle)
-                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("plan.voiceGate.hint")
-                    }
                     if services.isLiveSupabaseRuntime && !services.aiConsentAllowsOutbound {
                         Text(AIConsentCopy.blockedMessage)
                             .font(PocketSheetType.rowSubtitle)
@@ -104,7 +111,7 @@ struct PlanHubView: View {
                 resultBlock
                 PlanGenerationInputsSummary(setup: setupSummary, selectedDate: scheduledDateString)
             }
-            .animation(.easeInOut(duration: 0.28), value: isGeneratingSelectedDay)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isGeneratingSelectedDay)
         } bottomBar: {
             EmptyView()
         }
@@ -346,7 +353,7 @@ struct PlanHubView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                     .accessibilityIdentifier("plan.title")
-                Text("Pick a day, choose an idea, then approve the draft for Today.")
+                Text("Plan the next seven days, then make a ready package for Today.")
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -368,7 +375,7 @@ struct PlanHubView: View {
             showCalendarSheet = true
         } label: {
             HStack(alignment: .center, spacing: PocketSheetSpace.s) {
-                HStack(alignment: .firstTextBaseline, spacing: PocketSheetSpace.xs) {
+                dateHeaderLayout {
                     if let formatted = PlanDayDateFormatting.formattedDate(for: scheduledDateString) {
                         Text(formatted.weekday)
                             .font(PocketSheetType.sectionLabel)
@@ -399,6 +406,25 @@ struct PlanHubView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Change selected day")
         .accessibilityIdentifier("plan.date.header")
+    }
+
+    private var sevenDaySelector: some View {
+        PlanSevenDaySelector(
+            selectedDate: selectedDate,
+            today: planTodayDate,
+            packageStatusForDate: { services.dayPackage(for: $0)?.status },
+            onSelectDate: { selectedDate = $0 }
+        )
+    }
+
+    private var dateHeaderLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: PocketSheetSpace.xxs))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: PocketSheetSpace.xs))
+    }
+
+    private var planTodayDate: Date {
+        Self.parseLocalDate(services.currentTodayDateString) ?? Self.startOfToday()
     }
 
     private var generationProgressBlock: some View {
@@ -433,6 +459,12 @@ struct PlanHubView: View {
     private var resultBlock: some View {
         if let card = displayedCard, !isGeneratingSelectedDay {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                Text(card.title)
+                    .font(PocketSheetType.screenTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("plan.package.title")
                 GeneratedDayPlannedContent(card: card) { assets in
                     services.applyStoryboardThumbnailAssets(assets, toDailyCardID: card.id)
                 }
@@ -494,7 +526,7 @@ struct PlanHubView: View {
     private var approveDock: some View {
         VStack(alignment: .center, spacing: PocketSheetSpace.xs) {
             PocketSheetPrimaryAction(
-                title: services.isMakingDayAvailable ? "Making ready…" : "Make ready",
+                title: services.isMakingDayAvailable ? "Saving…" : readyActionTitle,
                 systemImage: "checkmark.circle"
             ) {
                 makeAvailableOnToday()
@@ -514,6 +546,16 @@ struct PlanHubView: View {
                 .fill(PocketSheetTheme.Color.hairline)
                 .frame(height: 1)
         }
+    }
+
+    private var readyActionTitle: String {
+        if scheduledDateString == services.currentTodayDateString {
+            return "Make ready for Today"
+        }
+        if let formatted = PlanDayDateFormatting.formattedDate(for: scheduledDateString) {
+            return "Save for \(formatted.weekday)"
+        }
+        return "Save for this day"
     }
 
     @ViewBuilder
@@ -695,5 +737,229 @@ extension PlanHubView {
         let lowered = message.lowercased()
         return lowered.contains("cancel")
             || lowered.contains("stopped before it finished")
+    }
+}
+
+/// Compact seven-day view for the common Plan path. The calendar remains available
+/// from the date header for dates outside this short planning window.
+private struct PlanSevenDaySelector: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    let selectedDate: Date
+    let today: Date
+    let packageStatusForDate: (String) -> String?
+    let onSelectDate: (Date) -> Void
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                LazyVStack(spacing: PocketSheetSpace.xs) {
+                    ForEach(sevenDayDates, id: \.self) { date in
+                        accessibilityDayButton(for: date)
+                    }
+                }
+            } else if dynamicTypeSize >= .xxLarge {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: PocketSheetSpace.xs) {
+                        ForEach(sevenDayDates, id: \.self) { date in
+                            compactDayButton(for: date)
+                                .frame(width: 64)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+                .scrollClipDisabled()
+            } else {
+                GeometryReader { proxy in
+                    let spacing = PocketSheetSpace.xs
+                    let tileWidth = max(44, (proxy.size.width - spacing * 6) / 7)
+                    HStack(spacing: PocketSheetSpace.xs) {
+                        ForEach(sevenDayDates, id: \.self) { date in
+                            compactDayButton(for: date)
+                                .frame(width: tileWidth)
+                        }
+                    }
+                }
+                .frame(height: 72)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("plan.sevenDaySelector")
+    }
+
+    private var sevenDayDates: [Date] {
+        let calendar = Calendar(identifier: .gregorian)
+        return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: today) }
+    }
+
+    private func compactDayButton(for date: Date) -> some View {
+        let dateString = Self.dateString(from: date)
+        let state = PlanCalendarDayState.from(packageStatus: packageStatusForDate(dateString))
+        let isSelected = dateString == Self.dateString(from: selectedDate)
+        let isToday = dateString == Self.dateString(from: today)
+        let calendar = Calendar(identifier: .gregorian)
+        let dayNumber = calendar.component(.day, from: date)
+        let month = monthLabel(for: date)
+        let weekday = weekdayLabel(for: date)
+
+        return Button {
+            onSelectDate(date)
+        } label: {
+            VStack(spacing: 2) {
+                Text(isToday ? "Today" : weekday)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(isSelected ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.inkMuted)
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text("\(dayNumber)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                Text(month)
+                    .font(.caption2)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                statusIcon(state)
+            }
+            .frame(maxWidth: .infinity, minHeight: 68)
+            .padding(.horizontal, 2)
+            .background(isSelected ? PocketSheetTheme.Color.fillMuted : PocketSheetTheme.Color.paperRaised)
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                    .stroke(isSelected ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.hairline, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel(for: dateString, weekday: weekday, dayNumber: dayNumber, month: month, state: state))
+        .accessibilityIdentifier("plan.sevenDaySelector.day.\(dateString)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func accessibilityDayButton(for date: Date) -> some View {
+        let dateString = Self.dateString(from: date)
+        let state = PlanCalendarDayState.from(packageStatus: packageStatusForDate(dateString))
+        let isSelected = dateString == Self.dateString(from: selectedDate)
+        let isToday = dateString == Self.dateString(from: today)
+        let calendar = Calendar(identifier: .gregorian)
+        let dayNumber = calendar.component(.day, from: date)
+        let month = monthLabel(for: date)
+        let weekday = weekdayLabel(for: date)
+
+        return Button {
+            onSelectDate(date)
+        } label: {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
+                    Text(isToday ? "Today" : weekday)
+                        .font(.body.weight(.semibold))
+                    Text("\(dayNumber) \(month)")
+                        .font(.body)
+                }
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+                statusView(state)
+            }
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+            .padding(.horizontal, PocketSheetSpace.m)
+            .padding(.vertical, PocketSheetSpace.s)
+            .background(isSelected ? PocketSheetTheme.Color.fillMuted : PocketSheetTheme.Color.paperRaised)
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                    .stroke(isSelected ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.hairline, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel(for: dateString, weekday: weekday, dayNumber: dayNumber, month: month, state: state))
+        .accessibilityIdentifier("plan.sevenDaySelector.day.\(dateString)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func statusIcon(_ state: PlanCalendarDayState) -> some View {
+        let label: String
+        let symbol: String
+        switch state {
+        case .ready:
+            label = "Ready"
+            symbol = "checkmark.circle.fill"
+        case .draft:
+            label = "Draft"
+            symbol = "doc.text"
+        case .empty:
+            label = "Open"
+            symbol = "circle"
+        }
+
+        return Image(systemName: symbol)
+            .font(.caption.weight(.semibold))
+            .frame(minWidth: 20, minHeight: 20)
+            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+            .accessibilityLabel(label)
+    }
+
+    private func statusView(_ state: PlanCalendarDayState) -> some View {
+        let label: String
+        let symbol: String
+        switch state {
+        case .ready:
+            label = "Ready"
+            symbol = "checkmark.circle.fill"
+        case .draft:
+            label = "Draft"
+            symbol = "doc.text"
+        case .empty:
+            label = "Open"
+            symbol = "circle"
+        }
+
+        return HStack(spacing: PocketSheetSpace.xs) {
+            Image(systemName: symbol)
+                .font(.body.weight(.semibold))
+            Text(label)
+                .font(.body.weight(.semibold))
+        }
+        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label)
+    }
+
+    private func accessibilityLabel(
+        for dateString: String,
+        weekday: String,
+        dayNumber: Int,
+        month: String,
+        state: PlanCalendarDayState
+    ) -> String {
+        let status: String
+        switch state {
+        case .ready: status = "ready"
+        case .draft: status = "draft"
+        case .empty: status = "open"
+        }
+        return "\(weekday) \(dayNumber) \(month), \(status), \(dateString)"
+    }
+
+    private func weekdayLabel(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.dateFormat = "EEE"
+        return formatter.string(from: date)
+    }
+
+    private func monthLabel(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.dateFormat = "MMM"
+        return formatter.string(from: date)
+    }
+
+    private static func dateString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
     }
 }

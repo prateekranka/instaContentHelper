@@ -1,5 +1,133 @@
 import Foundation
 
+#if DEBUG
+/// Realistic edge cases supplied at the fixture boundary, as required by break-ui.
+enum PocketUIFixtureData: String, CaseIterable, Identifiable {
+    case demo, worst, empty, one, huge
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .demo: "Demo data"
+        case .worst: "Worst case"
+        case .empty: "Empty"
+        case .one: "One"
+        case .huge: "1,284"
+        }
+    }
+
+    func applying(to original: GeneratedDailyCardDraft) -> GeneratedDailyCardDraft {
+        guard self != .demo else { return original }
+        var copy = original
+        copy.shotTimeline = []
+        copy.voiceoverTimeline = []
+        copy.silentVersionTimeline = []
+        copy.onScreenTextTimeline = []
+        copy.storyboardThumbnailAssets = []
+        switch self {
+        case .demo: break
+        case .worst:
+            copy.title = "Đặng Thị Ngọc Hân — the small creative routine that helped me finish a difficult week without burning out"
+            copy.hook = "👩🏽‍💻 One calm minute before the day starts: what would you make if it did not need to be perfect?"
+            copy.whyToday = Array(repeating: "A realistic, detailed note about the moment, the audience, and why this small daily routine is worth sharing.", count: 18).joined(separator: " ")
+            copy.shootability = "Moderate effort, with a quiet setup and time to repeat each take"
+            copy.sourceNote = "https://example.com/workspaces/creative-routines/projects/a-small-moment-worth-sharing/notes/9f8e7d6c5b4a"
+            copy.sceneList = [
+                ShotScene(number: 1, title: "Aleksandra Wiśniewska-Kowalczyk opens her marked journal and finds the line that stayed", duration: "3 sec", symbol: "book.closed"),
+                ShotScene(number: 2, title: "Benachrichtigungseinstellungen", duration: "4 sec", symbol: "text.bubble"),
+                ShotScene(number: 3, title: "نور الهدى عبد الرحمن · One honest thought", duration: "3 sec", symbol: "person.crop.rectangle"),
+                ShotScene(number: 4, title: "J", duration: "2 sec", symbol: "bookmark")
+            ]
+            copy.durationSeconds = 12
+            copy.script = "Đặng Thị Ngọc Hân · 王秀英 · 👩🏽‍💻 Priya\nA short note can carry a full thought.\n<script>alert(1)</script> &amp; **bold** are literal text here."
+            copy.caption = "Small moments count.\n\nA slow morning. A marked page. One honest line, with enough space to read it.\n\nWhat is one small thing you are glad you did today?"
+            copy.onScreenText = ["Đặng Thị Ngọc Hân", "王秀英", "👩🏽‍💻 Priya", "J"]
+            copy.hashtags = ["creative-routines-and-small-moments-worth-sharing", "SmallMoments"]
+        case .empty:
+            copy.title = "A thought for today"
+            copy.format = "Post"
+            copy.durationSeconds = nil
+            copy.sceneList = []
+            copy.hook = nil
+            copy.script = ""
+            copy.sourceNote = ""
+            copy.onScreenText = []
+            copy.hashtags = []
+            copy.caption = "You do not need a big update to have something worth sharing."
+        case .one:
+            copy.title = "One small moment"
+            copy.format = "Story"
+            copy.durationSeconds = 10
+            copy.sceneList = [ShotScene(number: 1, title: "One small moment", duration: "10 sec", symbol: "camera")]
+            copy.hook = nil
+            copy.onScreenText = ["One small moment"]
+        case .huge:
+            copy.title = "An imported archive of daily moments"
+            copy.durationSeconds = 3_852
+            copy.sceneList = (1...1_284).map { number in
+                ShotScene(number: number, title: "Daily moment \(number)", duration: "3 sec", symbol: "camera")
+            }
+            copy.onScreenText = []
+        }
+        return copy
+    }
+}
+
+extension GeneratedDailyCardDraft {
+    /// Returns the real storyboard fixture with deliberately long copy for
+    /// Dynamic Type and narrow-screen e2e checks.
+    var withLongContent: GeneratedDailyCardDraft {
+        var copy = self
+        copy.title = "The biggest lie women are told after 40 is that getting stronger is no longer for them"
+        copy.whyToday = "This deliberately long fixture explains the idea, the creator fit, and the reason to publish today in enough detail to exercise wrapping and scrolling."
+        copy.growthJob = "Build trust through a clear, personal strength story that stays useful when the viewer saves it for a later training day."
+        copy.contentPillar = "Strength, confidence, and practical training after 40"
+        copy.shootability = "Moderate, with ten simple shots and clear substitutions"
+        copy.energyRequired = "Medium energy with a calm pace and short recovery between takes"
+        copy.hook = "The biggest lie women are told after 40? That getting stronger is not for them anymore."
+        copy.saveShareReason = "Save this when you need a direct reminder that strength training remains available, useful, and worth starting at any age."
+        copy.sceneList = copy.sceneList.map { scene in
+            var scene = scene
+            scene.title += " — show the detail clearly before moving to the next part"
+            scene.duration = "3 sec, with a steady pause for the viewer to follow"
+            return scene
+        }
+        copy.shotTimeline = copy.shotTimeline.map { item in
+            var item = item
+            item.detail += " Keep the frame stable, leave space around the subject, and repeat the take if the action is hard to read."
+            item.videoPortion = (item.videoPortion ?? "") + " Use a clean background and keep the movement easy to understand."
+            return item
+        }
+        copy.voiceoverTimeline = copy.voiceoverTimeline.map { item in
+            var item = item
+            item.voiceover = (item.voiceover ?? "") + " Take one calm breath before the next line so the message remains clear."
+            return item
+        }
+        copy.onScreenTextTimeline = copy.onScreenTextTimeline.map { item in
+            var item = item
+            item.onScreenText = (item.onScreenText ?? "") + " — strength is still available to you"
+            return item
+        }
+        copy.script = copy.script
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { "\($0) Keep the language direct, personal, and easy to follow." }
+            .joined(separator: "\n")
+        copy.noVoiceoverVersion = "Use the same shots with bold captions, generous timing, and enough contrast for a viewer who needs to pause and read each line."
+        copy.onScreenText = copy.onScreenText.map { "\($0) — start small and stay consistent" }
+        copy.caption = "Strength after 40 is not about proving anything. It is about giving your body more chances to surprise you, one practical and repeatable choice at a time."
+        copy.cta = "Save this for the day you need the reminder, then send it to someone who is waiting for permission to begin."
+        copy.coverText = "The biggest lie after 40: strength is not for you"
+        copy.postInstructions = "Keep the delivery natural and personal. Mix present-day shots with older clips, leave enough time for captions, and choose a cover that remains readable at a small size."
+        copy.backupStory = "Post one mirror selfie or gym clip with a short line about starting small, then add the longer explanation in the caption for viewers who want the full context."
+        copy.backupCaptionOnly = "Your age is not the limit. The story you keep repeating might be, and you can change that story with one small action today."
+        copy.audioOptionNotes = "Use a calm but driving audio bed under the voiceover, and keep it quiet enough that every spoken line remains easy to understand."
+        copy.riskNotes = ["Long fixture copy is intentional. Verify scrolling, wrapping, and action visibility before using this route as a UI proof."]
+        copy.assumptions = copy.assumptions + ["The e2e launch uses MCO_LONG_CONTENT=1 for accessibility stress coverage."]
+        return copy
+    }
+}
+#endif
+
 extension DailyCard {
     /// Placeholder Today card with no scenes — used when `MCO_FORCE_EMPTY_TODAY=1`.
     static let emptyTodayPlaceholder = DailyCard(

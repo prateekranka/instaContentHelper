@@ -14,8 +14,8 @@ enum PocketSheetTheme {
         static let fillMuted = SwiftUI.Color(hex: 0xF5F5F5)
         static let inversePaper = SwiftUI.Color(hex: 0xFFFFFF)
         static let inverseInk = SwiftUI.Color(hex: 0x111111)
-        /// Onboarding reference validation attention (prototype `data-attn` red).
-        static let validationAttention = SwiftUI.Color(hex: 0xDC2626)
+        /// Creator validation attention stays in the monochrome semantic palette.
+        static let validationAttention = ink
         /// Monochrome calendar / status dots (ready).
         static let statusReady = SwiftUI.Color(hex: 0x111111)
         /// Monochrome calendar / status dots (draft).
@@ -95,15 +95,23 @@ extension View {
     }
 }
 
+extension EnvironmentValues {
+    /// Real system preference, plus a DEBUG-only deterministic test override.
+    var pocketReduceMotion: Bool {
+        accessibilityReduceMotion || DebugLaunchFlags.forceReducedMotion
+    }
+}
+
 enum PocketSheetType {
-    static let screenTitle = Font.system(size: 28, weight: .semibold)
-    static let sectionLabel = Font.system(size: 11, weight: .bold)
-    static let rowTitle = Font.system(size: 14, weight: .semibold)
-    static let rowSubtitle = Font.system(size: 12, weight: .regular)
-    static let chip = Font.system(size: 11, weight: .semibold)
-    static let actionPrimary = Font.system(size: 16, weight: .semibold)
-    static let actionSecondary = Font.system(size: 16, weight: .medium)
-    static let status = Font.system(size: 11, weight: .semibold)
+    // Use semantic system styles so every shared Creator view responds to Dynamic Type.
+    static let screenTitle = Font.system(.title2, design: .default, weight: .semibold)
+    static let sectionLabel = Font.system(.caption2, design: .default, weight: .bold)
+    static let rowTitle = Font.system(.subheadline, design: .default, weight: .semibold)
+    static let rowSubtitle = Font.system(.footnote, design: .default, weight: .regular)
+    static let chip = Font.system(.caption2, design: .default, weight: .semibold)
+    static let actionPrimary = Font.system(.body, design: .default, weight: .semibold)
+    static let actionSecondary = Font.system(.body, design: .default, weight: .medium)
+    static let status = Font.system(.caption2, design: .default, weight: .semibold)
 }
 
 enum PocketSheetSpace {
@@ -124,6 +132,7 @@ enum PocketSheetShape {
 // MARK: - Tab bar
 
 /// Monochrome Creator tab bar styling (prototype `.tabs` / `.tab`).
+@MainActor
 enum PocketSheetTabBarAppearance {
     static func makeAppearance() -> UITabBarAppearance {
         let appearance = UITabBarAppearance()
@@ -136,9 +145,9 @@ enum PocketSheetTabBarAppearance {
         appearance.selectionIndicatorImage = UIImage()
 
         let itemAppearance = UITabBarItemAppearance()
-        itemAppearance.normal.iconColor = UIColor(PocketSheetTheme.Color.inkQuiet)
+        itemAppearance.normal.iconColor = UIColor(PocketSheetTheme.Color.inkMuted)
         itemAppearance.normal.titleTextAttributes = tabTitleAttributes(
-            color: PocketSheetTheme.Color.inkQuiet,
+            color: PocketSheetTheme.Color.inkMuted,
             weight: .semibold
         )
         itemAppearance.selected.iconColor = UIColor(PocketSheetTheme.Color.ink)
@@ -158,7 +167,7 @@ enum PocketSheetTabBarAppearance {
         tabBar.standardAppearance = appearance
         tabBar.scrollEdgeAppearance = appearance
         tabBar.tintColor = UIColor(PocketSheetTheme.Color.ink)
-        tabBar.unselectedItemTintColor = UIColor(PocketSheetTheme.Color.inkQuiet)
+        tabBar.unselectedItemTintColor = UIColor(PocketSheetTheme.Color.inkMuted)
         tabBar.isTranslucent = false
         tabBar.barTintColor = UIColor(PocketSheetTheme.Color.paper)
     }
@@ -169,7 +178,8 @@ enum PocketSheetTabBarAppearance {
     ) -> [NSAttributedString.Key: Any] {
         [
             .foregroundColor: UIColor(color),
-            .font: UIFont.systemFont(ofSize: 11, weight: weight),
+            .font: UIFontMetrics(forTextStyle: .caption2)
+                .scaledFont(for: UIFont.systemFont(ofSize: 11, weight: weight)),
         ]
     }
 }

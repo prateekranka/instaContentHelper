@@ -1,21 +1,59 @@
-# instaContentHelper
+# ContentHelper
 
-Native iPhone-only SwiftUI app for Creator Content OS V2.
+ContentHelper is a native iPhone app built with SwiftUI. The Xcode target and scheme are `CreatorContentOS`. The app bundle is `ContentHelper.app`.
 
-The app is fixture-safe by default for local development, with live Supabase runtime, approved-email OTP sign-in, manager tooling, and Edge Functions for the TestFlight path.
+The creator workflow is Today → Plan → Shoot Folio. Today shows the daily idea. Plan prepares ideas for selected dates. Shoot Folio contains the filming steps and post text. “Mark as posted” records local completion; it does not publish to Instagram.
 
-## Local iOS
+Read [the current project state and collaborator handoff](docs/project-state-2026-10-18.md) before starting work. The latest source includes the Pocket interface, adaptive onboarding, AI consent, editable post text, and package restoration work.
+
+## iPhone development
+
+Use a Mac with Xcode and the iOS 26 SDK or later. The deployment target is iOS 26.0. The project is checked in, so open it directly:
 
 ```sh
-xcodegen generate
 open CreatorContentOS.xcodeproj
 ```
 
-The app target is `CreatorContentOS`, iOS 26.0+.
+Build an unsigned Debug simulator app:
 
-## Local Supabase
+```sh
+xcodebuild -project CreatorContentOS.xcodeproj -scheme CreatorContentOS \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath work/DerivedData CODE_SIGNING_ALLOWED=NO build
+```
 
-Docker is run locally through Colima. Start the local stack without the vector log collector:
+If you change `project.yml`, regenerate the project with `xcodegen generate`. Select your development team for a physical device build.
+
+Runtime overrides belong in `CreatorContentOS/Config/LocalRuntime.xcconfig`, which is ignored by Git. Use `CreatorContentOS/Config/LocalRuntime.sample.xcconfig` as the template. Obtain the Supabase URL and publishable key through a private channel. Keep provider and service-role secrets on the backend.
+
+## Native app checks
+
+Install the locked Node dependencies with `npm ci`. Use TesterArmy e2e for app behavior and UI checks. Set the exact ID of an idle, booted simulator and the path of the app you just built:
+
+```sh
+export POCKET_E2E_DEVICE='<idle-booted-simulator-UDID>'
+export POCKET_E2E_APP="$PWD/work/DerivedData/Build/Products/Debug-iphonesimulator/ContentHelper.app"
+export POCKET_E2E_OUTPUT="$PWD/work/evidence/pocket-install"
+POCKET_E2E_INSTALL=1 npx e2e run --grep 'Pocket opens'
+
+POCKET_E2E_SCENARIO=plan POCKET_E2E_OUTPUT="$PWD/work/evidence/pocket-plan" npx e2e run
+```
+
+Always set these variables; the recovered configuration retains paths from earlier development sessions. Read [the native QA guide](docs/pocket-native-qa.md) for scenarios and proof limits. Read [the current handoff](docs/project-state-2026-10-18.md) for the latest verification status.
+
+## Backend development
+
+The backend uses Supabase Edge Functions and SQL migrations. Linux can run backend checks and web prototypes. It cannot build the native iPhone app.
+
+Run the existing backend checks with Deno:
+
+```sh
+deno task ci:backend
+```
+
+The tests permit only the local listener used by the Edge Function harness. They do not call provider endpoints.
+
+For a local Supabase stack, start Docker through Colima on macOS:
 
 ```sh
 colima start --cpu 4 --memory 8 --disk 60
@@ -29,14 +67,8 @@ supabase stop --no-backup
 colima stop
 ```
 
-Runtime Supabase URL/key overrides should go in `CreatorContentOS/Config/LocalRuntime.xcconfig`, which is gitignored. Use `CreatorContentOS/Config/LocalRuntime.sample.xcconfig` as the template.
+This source update does not deploy Supabase functions, change the database, or publish a TestFlight build.
 
-## Backend verification
+## Prototypes
 
-Run the same type-check and hermetic contract suite used by pull requests:
-
-```sh
-deno task ci:backend
-```
-
-The test task permits only the local listener used by the Edge Function harness. Provider endpoints are not reachable from this suite.
+`prototypes/today-ui` contains the earlier Pocket shell. `prototypes/creator-directions-2026-10-02` contains the later interface directions and its own preview instructions. These prototypes are separate from the native app.

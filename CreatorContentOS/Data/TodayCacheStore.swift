@@ -5,6 +5,8 @@ struct CachedTodaySnapshot: Codable, Hashable, Sendable {
     var weekCards: [DailyCard]
     var cachedAt: Date
     var source: String
+    /// Optional for compatibility with snapshots created before per-shot progress.
+    var shotSceneIDs: Set<UUID>? = nil
 }
 
 protocol TodayCacheStoring {

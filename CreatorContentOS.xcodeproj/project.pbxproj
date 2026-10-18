@@ -21,6 +21,7 @@
 		1984D05AB45F72C738D2E524 /* OnboardingProductionForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D9AF081E95A6E13E1BED07C /* OnboardingProductionForm.swift */; };
 		19F5DD375DB072EDD8B0CC75 /* PrivacyPolicyLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FC7B20936E6FBC72BF0B5C8 /* PrivacyPolicyLinks.swift */; };
 		1AA6D4F3E2906C14EF8551DE /* RuntimeConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79C80E2B2E609414F002A71F /* RuntimeConfigurationTests.swift */; };
+		1B9825EB665C2368825C5FC1 /* DebugLaunchConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBB256238D1CEBE7FAF50927 /* DebugLaunchConfiguration.swift */; };
 		25F18B36904AF25326D8BE58 /* PackageFolderTabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D666FF53604015635072B11 /* PackageFolderTabs.swift */; };
 		263C1FC782268B6C4E960F22 /* DevicePairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A61B6CE9B5742E20AC4A57E /* DevicePairingService.swift */; };
 		26F56EF8F6C7F5F1EB91404F /* OnboardingSelectionComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28E3B80FE778513A5770539C /* OnboardingSelectionComponents.swift */; };
@@ -88,6 +89,7 @@
 		A92C96F91BEB188D6E8466D2 /* DayAvailabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8D078BD0A001D827EA27264 /* DayAvailabilityTests.swift */; };
 		AF6EF6AC37C57052ED1A2423 /* PlanSelectedDateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0311051E97D891CD6A4FC060 /* PlanSelectedDateStore.swift */; };
 		B08008609B240EAB892F2007 /* AppRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 901CA42E68495333D010A290 /* AppRepositories.swift */; };
+		B2553559AF846621F73CC76C /* TodayPocketPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FE399DCDEF2149F42AD4F36 /* TodayPocketPresentation.swift */; };
 		B3BC133C4E17918A8B4DA2B4 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11ADF2B693A8CFF7257A50E4 /* AppState.swift */; };
 		B3DBB45B539A6F7ADE32F43A /* PlanDayGenerationDispatchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E69E5E83C9982C96E0C7B3D4 /* PlanDayGenerationDispatchTests.swift */; };
 		B7A192F24C2D3A8BD381CFB7 /* TodayInlineExecutionPackage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57A1C00F109D35FF5CED35F2 /* TodayInlineExecutionPackage.swift */; };
@@ -201,6 +203,7 @@
 		79C80E2B2E609414F002A71F /* RuntimeConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfigurationTests.swift; sourceTree = "<group>"; };
 		7CA513EE516274570D68E102 /* NotTodaySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotTodaySheet.swift; sourceTree = "<group>"; };
 		7E32D034AD676323CB6460BB /* FirstIdeaHandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstIdeaHandoffTests.swift; sourceTree = "<group>"; };
+		7FE399DCDEF2149F42AD4F36 /* TodayPocketPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayPocketPresentation.swift; sourceTree = "<group>"; };
 		83726BC8D9281D4247355E7E /* RuntimeHealthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeHealthTests.swift; sourceTree = "<group>"; };
 		841DF7EDB29CDAA19966D24A /* YouView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouView.swift; sourceTree = "<group>"; };
 		843D5A526CCBA04114C4A72A /* TodayCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayCacheStore.swift; sourceTree = "<group>"; };
@@ -249,6 +252,7 @@
 		E8D078BD0A001D827EA27264 /* DayAvailabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayAvailabilityTests.swift; sourceTree = "<group>"; };
 		EA13D115B3CC70D6C5F6D7BA /* ContentConsistencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentConsistencyTests.swift; sourceTree = "<group>"; };
 		EB9CFA44B8E7990294C9CE67 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
+		EBB256238D1CEBE7FAF50927 /* DebugLaunchConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLaunchConfiguration.swift; sourceTree = "<group>"; };
 		EBEB4BBCF7E55C0E4D50A54D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F3481C5F98AB57A7828A5523 /* AdminShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminShellView.swift; sourceTree = "<group>"; };
 		F4B7F700473CAF447E171AD2 /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
@@ -336,6 +340,7 @@
 				B82B8C51789A80CE5C4FD227 /* AppServices+AIConsent.swift */,
 				11ADF2B693A8CFF7257A50E4 /* AppState.swift */,
 				D54E107AF78B3000D2A9C264 /* CreatorContentOSApp.swift */,
+				EBB256238D1CEBE7FAF50927 /* DebugLaunchConfiguration.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -398,6 +403,7 @@
 				7CA513EE516274570D68E102 /* NotTodaySheet.swift */,
 				C0B6EA6B62471E956EAABAEB /* ShootFolioView.swift */,
 				57A1C00F109D35FF5CED35F2 /* TodayInlineExecutionPackage.swift */,
+				7FE399DCDEF2149F42AD4F36 /* TodayPocketPresentation.swift */,
 				8E7EEA64764CBFE7F1C70689 /* TodayView.swift */,
 			);
 			path = Today;
@@ -741,6 +747,7 @@
 				08376C9CF061645ED047B09D /* DayGenerationBenchmarkCoordinator.swift in Sources */,
 				32222929DA898CB433368F32 /* DayGenerationBenchmarkView.swift in Sources */,
 				85E701A764BFF286FB6EAAB2 /* DayGenerationView.swift in Sources */,
+				1B9825EB665C2368825C5FC1 /* DebugLaunchConfiguration.swift in Sources */,
 				52E6243CEDF556777DE10152 /* DesignSystem.swift in Sources */,
 				263C1FC782268B6C4E960F22 /* DevicePairingService.swift in Sources */,
 				DC744D8BDFF1C05E194D88F8 /* DeviceReadDTOs.swift in Sources */,
@@ -790,6 +797,7 @@
 				D6FA5625DF2179CB5D127FDD /* TodayCacheStore.swift in Sources */,
 				B7A192F24C2D3A8BD381CFB7 /* TodayInlineExecutionPackage.swift in Sources */,
 				88C182864E867EB5D142FB09 /* TodayNotificationScheduler.swift in Sources */,
+				B2553559AF846621F73CC76C /* TodayPocketPresentation.swift in Sources */,
 				84507BFC8C21EAF5D1D07C40 /* TodayView.swift in Sources */,
 				68EF9C0F94D2447AF4A1E0DD /* WeeklyPublishingModels.swift in Sources */,
 				45CD8BDB68F53E5B36BCC233 /* WriteContentDTOs.swift in Sources */,

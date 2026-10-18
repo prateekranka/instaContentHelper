@@ -34,6 +34,7 @@ struct YouCreatorVoiceView: View {
     @State private var captionStyle = ""
     @State private var noGoTopicsText = ""
     @State private var didLoadDraft = false
+    @FocusState private var focusedField: String?
 
     var body: some View {
         YouDestinationScaffold(
@@ -114,14 +115,22 @@ struct YouCreatorVoiceView: View {
                 .accessibilityIdentifier("you.voice.save")
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("you.screen.voice")
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedField = nil }
+                    .accessibilityIdentifier("you.voice.keyboardDone")
+            }
+        }
         .onAppear {
             guard !didLoadDraft else { return }
             loadDraft(from: services.creatorProfileSummary)
             didLoadDraft = true
         }
         .onChange(of: services.creatorProfileSummary) { oldProfile, profile in
-            if normalizedUpdate == CreatorProfileUpdate(summary: oldProfile) {
+            if normalizedUpdate == CreatorProfileUpdate(youEditorFields: oldProfile) {
                 loadDraft(from: profile)
             }
         }
@@ -155,7 +164,7 @@ struct YouCreatorVoiceView: View {
     }
 
     private var isDirty: Bool {
-        normalizedUpdate != CreatorProfileUpdate(summary: services.creatorProfileSummary)
+        normalizedUpdate != CreatorProfileUpdate(youEditorFields: services.creatorProfileSummary)
     }
 
     private var normalizedUpdate: CreatorProfileUpdate {
@@ -185,6 +194,7 @@ struct YouCreatorVoiceView: View {
                 .font(PocketSheetType.rowSubtitle)
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             TextField("", text: text, axis: .vertical)
+                .focused($focusedField, equals: identifier)
                 .font(PocketSheetType.rowTitle)
                 .foregroundStyle(PocketSheetTheme.Color.ink)
                 .lineLimit(4...12)

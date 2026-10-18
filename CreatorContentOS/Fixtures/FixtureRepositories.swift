@@ -1,9 +1,77 @@
 import Foundation
 
-/// Keeps the fixture today and weekly repositories on the same published content.
+#if DEBUG
+/// Process-local one-shot failures used by native e2e recovery checks.
+actor FixtureFailureState {
+    static let shared = FixtureFailureState()
+    private var consumed: Set<String> = []
+
+    func consume(_ key: String) -> Bool {
+        guard !consumed.contains(key) else { return false }
+        consumed.insert(key)
+        return true
+    }
+}
+#endif
+
+private struct FixturePublishedContentSnapshot: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case weekCards
+        case todayCard
+        case generatedDrafts
+    }
+
+    var weekCards: [DailyCard]
+    var todayCard: DailyCard?
+    var generatedDrafts: [String: DailyCard]
+
+    init(
+        weekCards: [DailyCard],
+        todayCard: DailyCard?,
+        generatedDrafts: [String: DailyCard] = [:]
+    ) {
+        self.weekCards = weekCards
+        self.todayCard = todayCard
+        self.generatedDrafts = generatedDrafts
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        weekCards = try container.decode([DailyCard].self, forKey: .weekCards)
+        todayCard = try container.decodeIfPresent(DailyCard.self, forKey: .todayCard)
+        generatedDrafts = try container.decodeIfPresent(
+            [String: DailyCard].self,
+            forKey: .generatedDrafts
+        ) ?? [:]
+    }
+}
+
+/// Keeps the fixture Today and weekly repositories on the same published content.
+/// A QA session persists this state in its own defaults suite for relaunch proof.
 actor FixturePublishedContentStore {
     private var weekCards: [DailyCard] = []
     private var todayCard: DailyCard?
+    private var generatedDrafts: [String: DailyCard] = [:]
+    private let defaults: UserDefaults?
+    private let persistenceKey = "published-content"
+
+    init() {
+        if DebugLaunchConfiguration.fixtureSession != nil {
+            let defaults = DebugLaunchConfiguration.fixtureDefaults
+            self.defaults = defaults
+            if let data = defaults.data(forKey: persistenceKey),
+               let snapshot = try? JSONDecoder().decode(
+                   FixturePublishedContentSnapshot.self,
+                   from: data
+               ) {
+                weekCards = snapshot.weekCards
+                todayCard = snapshot.todayCard
+                generatedDrafts = snapshot.generatedDrafts
+            }
+        } else {
+            defaults = nil
+        }
+    }
 
     func readWeekCards() -> [DailyCard] {
         weekCards
@@ -13,9 +81,63 @@ actor FixturePublishedContentStore {
         todayCard
     }
 
+    func readGeneratedDraft(for scheduledDate: String) -> DailyCard? {
+        generatedDrafts[scheduledDate]
+    }
+
+    func readGeneratedDrafts() -> [GeneratedDailyCardDraft] {
+        generatedDrafts.values
+            .sorted { ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "") }
+            .map { card in
+                let isPublished = weekCards.contains { $0.id == card.id }
+                return GeneratedDailyCardDraft(
+                    fromPublishedCard: card,
+                    status: isPublished ? "published" : "draft"
+                )
+            }
+    }
+
+    func saveGeneratedDraft(_ draft: GeneratedDailyCardDraft) {
+        generatedDrafts[draft.scheduledDate] = draft.dailyCard(completionState: nil)
+        persist()
+    }
+
     func savePublishedContent(cards: [DailyCard], todayCard: DailyCard?) {
         self.weekCards = cards
         self.todayCard = todayCard
+        persist()
+    }
+
+    func saveDecisionCard(_ card: DailyCard) {
+        var cards = weekCards
+        if let index = cards.firstIndex(where: { $0.id == card.id }) {
+            cards[index] = card
+        } else if card.scheduledDate != nil {
+            cards.removeAll { $0.scheduledDate == card.scheduledDate }
+            cards.append(card)
+            cards.sort { ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "") }
+        }
+        weekCards = cards
+        if card.scheduledDate == SupabaseDateFormatting.todayDateString()
+            || todayCard?.id == card.id {
+            todayCard = card
+        }
+        persist()
+    }
+
+    private func persist() {
+        guard let defaults,
+              let data = try? JSONEncoder().encode(
+                  FixturePublishedContentSnapshot(
+                      weekCards: weekCards,
+                      todayCard: todayCard,
+                      generatedDrafts: generatedDrafts
+                  )
+              )
+        else {
+            return
+        }
+        defaults.set(data, forKey: persistenceKey)
     }
 }
 
@@ -31,7 +153,22 @@ struct FixtureTodayCardRepository: TodayCardRepository {
             return publishedCard
         }
         if DebugLaunchFlags.forceEmptyToday {
-            return .emptyTodayPlaceholder
+            throw RepositoryError.noPublishedTodayCard(
+                date: SupabaseDateFormatting.todayDateString()
+            )
+        }
+#if DEBUG
+        if DebugLaunchFlags.forceFixtureUI {
+            var draft = DebugLaunchFlags.fixtureDailyCardDraft
+            draft.scheduledDate = SupabaseDateFormatting.todayDateString()
+            draft.status = "ready"
+            return draft.dailyCard(completionState: nil)
+        }
+#endif
+        if let generatedDraft = await publishedStore?.readGeneratedDraft(
+            for: SupabaseDateFormatting.todayDateString()
+        ) {
+            return generatedDraft
         }
         return DailyCard.raceWeekToday
     }
@@ -43,6 +180,19 @@ struct FixtureTodayCardRepository: TodayCardRepository {
                 return publishedCards
             }
         }
+#if DEBUG
+        if DebugLaunchFlags.forceFixtureUI {
+            var cards = DailyCard.weekFixtures
+            var draft = DebugLaunchFlags.fixtureDailyCardDraft
+            draft.scheduledDate = SupabaseDateFormatting.todayDateString()
+            draft.status = "ready"
+            let today = draft.dailyCard(completionState: nil)
+            cards.removeAll { $0.scheduledDate == today.scheduledDate }
+            cards.append(today)
+            cards.sort { ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "") }
+            return cards
+        }
+#endif
         return DailyCard.weekFixtures
     }
 
@@ -51,6 +201,13 @@ struct FixtureTodayCardRepository: TodayCardRepository {
         decision: DailyDecision,
         context: WorkspaceContext
     ) async throws -> ArchiveEntry {
+#if DEBUG
+        if DebugLaunchFlags.failTodayDecisionSyncOnce,
+           await FixtureFailureState.shared.consume("today-decision-sync") {
+            throw RepositoryError.edgeFunction("fixture_today_decision_sync_failed")
+        }
+#endif
+        await publishedStore?.saveDecisionCard(card)
         let archiveDate = card.scheduledDate ?? SupabaseDateFormatting.todayDateString()
         return ArchiveEntry(
             dailyCardID: card.id,
@@ -200,20 +357,27 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         dailyCardID: UUID?,
         context: WorkspaceContext
     ) async throws -> DayAvailabilityResult {
-        let cardID = dailyCardID ?? UUID()
-        let readyCard = DailyCard(
-            id: cardID,
-            title: "Ready package \(scheduledDate)",
-            context: SupabaseDateFormatting.contextLine(for: scheduledDate),
-            effortLabel: "Easy - 12 min",
-            whyToday: "Available on Today from draft.",
-            scheduledDate: scheduledDate,
-            scenes: [
-                ShotScene(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
-                ShotScene(number: 2, title: "One steady movement", duration: "5 sec", symbol: "figure.run"),
-                ShotScene(number: 3, title: "Useful close", duration: "4 sec", symbol: "text.quote")
-            ]
-        )
+        let generatedDraft = await publishedStore?.readGeneratedDraft(for: scheduledDate)
+        let generatedCard = generatedDraft
+        let cardID = dailyCardID ?? generatedCard?.id ?? UUID()
+        let readyCard = if let generatedCard,
+                            generatedCard.id == cardID || dailyCardID == nil {
+            generatedCard
+        } else {
+            DailyCard(
+                id: cardID,
+                title: "Ready package \(scheduledDate)",
+                context: SupabaseDateFormatting.contextLine(for: scheduledDate),
+                effortLabel: "Easy - 12 min",
+                whyToday: "Available on Today from draft.",
+                scheduledDate: scheduledDate,
+                scenes: [
+                    ShotScene(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
+                    ShotScene(number: 2, title: "One steady movement", duration: "5 sec", symbol: "figure.run"),
+                    ShotScene(number: 3, title: "Useful close", duration: "4 sec", symbol: "text.quote")
+                ]
+            )
+        }
 
         var cards = await publishedStore?.readWeekCards() ?? []
         cards.removeAll { $0.scheduledDate == scheduledDate }
@@ -315,7 +479,21 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
 /// without a live edge function.
 struct FixtureDayGenerationRepository: DayGenerationRepository {
     /// Brief artificial delay so Plan can show in-progress chrome before the draft lands.
-    var artificialDelayNanoseconds: UInt64 = DebugLaunchFlags.fixtureFirstIdeaDelayNanoseconds
+    var artificialDelayNanoseconds: UInt64
+    let publishedStore: FixturePublishedContentStore?
+
+    init(
+        artificialDelayNanoseconds: UInt64 = DebugLaunchFlags.fixtureFirstIdeaDelayNanoseconds,
+        publishedStore: FixturePublishedContentStore? = nil
+    ) {
+        self.artificialDelayNanoseconds = artificialDelayNanoseconds
+        self.publishedStore = publishedStore
+    }
+
+    func persistedDayPackages(context: WorkspaceContext) async -> [GeneratedDailyCardDraft] {
+        _ = context
+        return await publishedStore?.readGeneratedDrafts() ?? []
+    }
 
     func generateDay(
         creatorID: UUID,
@@ -329,9 +507,15 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
         if DebugLaunchFlags.failFirstIdea {
             throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed")
         }
+        if DebugLaunchFlags.failFirstIdeaOnce,
+           await FixtureFailureState.shared.consume("first-idea-generation") {
+            throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed_once")
+        }
 #endif
         try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
-        return makeResult(scheduledDate: scheduledDate, dayBrief: dayBrief)
+        let result = makeResult(scheduledDate: scheduledDate, dayBrief: dayBrief)
+        await publishedStore?.saveGeneratedDraft(result.dailyCard)
+        return result
     }
 
     func regenerateDay(
@@ -356,7 +540,9 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
         let brief = guidance.isEmpty
             ? "Regenerated fixture day for \(scheduledDate)."
             : guidance
-        return makeResult(scheduledDate: scheduledDate, dayBrief: brief)
+        let result = makeResult(scheduledDate: scheduledDate, dayBrief: brief)
+        await publishedStore?.saveGeneratedDraft(result.dailyCard)
+        return result
     }
 
     func resumeAcceptedDayGeneration(
@@ -367,10 +553,12 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
         _ = creatorID
         _ = context
         try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
-        return makeResult(
+        let result = makeResult(
             scheduledDate: SupabaseDateFormatting.todayDateString(),
             dayBrief: "Resumed fixture generation \(generationID.uuidString.prefix(8))."
         )
+        await publishedStore?.saveGeneratedDraft(result.dailyCard)
+        return result
     }
 
     private func makeResult(scheduledDate: String, dayBrief: String) -> DailyGenerationResult {
@@ -378,54 +566,93 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
         let pillar = inferredContentPillar(from: trimmedBrief)
         let title = synthesizedTitle(from: trimmedBrief, pillar: pillar)
         let script = synthesizedScript(from: trimmedBrief, pillar: pillar)
-        let scenes = synthesizedScenes(for: pillar)
+        let format = fixtureFormat(from: trimmedBrief)
+        let duration = format == "Post" ? nil : requestedDuration(from: trimmedBrief) ?? (format == "Story" ? 10 : 12)
+        let scenes = fixtureScenes(for: pillar, format: format, duration: duration)
+        var dailyCard = GeneratedDailyCardDraft(
+            id: UUID(),
+            scheduledDate: scheduledDate,
+            status: "draft",
+            title: title,
+            whyToday: trimmedBrief.isEmpty
+                ? "Fixture day generation for \(scheduledDate)."
+                : trimmedBrief,
+            growthJob: "Consistency.",
+            contentPillar: pillar,
+            shootability: "easy",
+            estimatedShootMinutes: format == "Reel" ? 12 : 2,
+            energyRequired: "low",
+            languageMode: "English",
+            format: format,
+            primarySurface: format == "Story" ? "instagram_stories" : format == "Post" ? "instagram_feed" : "instagram_reels",
+            durationSeconds: duration,
+            hook: title,
+            saveShareReason: "Save this as a reminder to shoot the day as planned.",
+            sceneList: scenes,
+            script: script,
+            noVoiceoverVersion: format == "Post" ? "Use a photo you already have. No filming needed." : "Use bold captions over the same shots.",
+            onScreenText: sceneOnScreenText(for: pillar),
+            caption: script,
+            cta: "Save this for later.",
+            hashtags: hashtags(for: pillar),
+            coverText: String(title.prefix(40)),
+            postInstructions: "Keep it real, natural, and personal.",
+            brandEventNotes: "",
+            backupStory: "Post one phone clip with the same hook.",
+            backupCaptionOnly: "Same angle, shorter cut.",
+            audioOptionNotes: "",
+            creatorFitScore: 90,
+            riskNotes: [],
+            assumptions: ["Fixture UI generation — no live model call."],
+            sourceNote: "Based on your idea."
+        )
+#if DEBUG
+        if DebugLaunchFlags.longContent {
+            dailyCard = dailyCard.withLongContent
+            dailyCard.scheduledDate = scheduledDate
+            dailyCard.status = "draft"
+        }
+        dailyCard = DebugLaunchFlags.uiFixtureData.applying(to: dailyCard)
+#endif
         return DailyGenerationResult(
             generationID: UUID(),
             weeklyPlanID: WeeklyPlan.raceWeek.id,
             status: "draft",
             targetScheduledDate: scheduledDate,
-            dailyCard: GeneratedDailyCardDraft(
-                id: UUID(),
-                scheduledDate: scheduledDate,
-                status: "draft",
-                title: title,
-                whyToday: trimmedBrief.isEmpty
-                    ? "Fixture day generation for \(scheduledDate)."
-                    : trimmedBrief,
-                growthJob: "Consistency.",
-                contentPillar: pillar,
-                shootability: "easy",
-                estimatedShootMinutes: 12,
-                energyRequired: "low",
-                languageMode: "English",
-                format: "Reel",
-                primarySurface: "instagram_reels",
-                durationSeconds: 30,
-                hook: title,
-                saveShareReason: "Save this as a reminder to shoot the day as planned.",
-                sceneList: scenes,
-                script: script,
-                noVoiceoverVersion: "Use bold captions over the same shots.",
-                onScreenText: sceneOnScreenText(for: pillar),
-                caption: script,
-                cta: "Save this for later.",
-                hashtags: hashtags(for: pillar),
-                coverText: String(title.prefix(40)),
-                postInstructions: "Keep it real, natural, and personal.",
-                brandEventNotes: "",
-                backupStory: "Post one phone clip with the same hook.",
-                backupCaptionOnly: "Same angle, shorter cut.",
-                audioOptionNotes: "",
-                creatorFitScore: 90,
-                riskNotes: [],
-                assumptions: ["Fixture UI generation — no live model call."],
-                sourceNote: "FixtureDayGenerationRepository"
-            ),
+            dailyCard: dailyCard,
             warnings: [],
             assumptions: ["Fixture UI generation — no live model call."],
             sourceSummary: "Fixture day brief only.",
             generatedAt: ISO8601DateFormatter().string(from: Date())
         )
+    }
+
+    /// Keep simulated output consistent with the explicit brief used by e2e.
+    /// These methods never run against the live generation repository.
+    private func fixtureFormat(from brief: String) -> String {
+        let lower = brief.lowercased()
+        if lower.contains("photo") || lower.contains("carousel") || lower.contains("caption-only") { return "Post" }
+        if lower.range(of: #"\bstory\b"#, options: .regularExpression) != nil { return "Story" }
+        return "Reel"
+    }
+
+    private func requestedDuration(from brief: String) -> Int? {
+        guard let expression = try? NSRegularExpression(pattern: #"(\d+)\s*(?:[-–]\s*)?(?:seconds?|secs?|s)\b"#, options: .caseInsensitive),
+              let match = expression.firstMatch(in: brief, range: NSRange(brief.startIndex..., in: brief)),
+              let range = Range(match.range(at: 1), in: brief),
+              let seconds = Int(brief[range]), seconds > 0 else { return nil }
+        return seconds
+    }
+
+    private func fixtureScenes(for pillar: String, format: String, duration: Int?) -> [ShotScene] {
+        guard let duration else { return [] }
+        let original = synthesizedScenes(for: pillar)
+        let count = format == "Story" ? 1 : min(original.count, duration)
+        return original.prefix(count).enumerated().map { index, scene in
+            // Quotient and remainder preserve the requested total without zero-length shots.
+            let seconds = duration / count + (index < duration % count ? 1 : 0)
+            return ShotScene(number: index + 1, title: scene.title, duration: "\(seconds) sec", symbol: scene.symbol)
+        }
     }
 
     private func inferredContentPillar(from brief: String) -> String {
@@ -668,9 +895,53 @@ actor FixtureCreatorProfileStore {
     }
 }
 
+actor FixtureArchiveStore {
+    private let defaults: UserDefaults
+    private let key = "archive"
+
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
+    }
+
+    func entries() -> [ArchiveEntry]? {
+        guard let data = defaults.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode([ArchiveEntry].self, from: data)
+    }
+
+    func save(_ entries: [ArchiveEntry]) {
+        guard let data = try? JSONEncoder().encode(entries) else { return }
+        defaults.set(data, forKey: key)
+    }
+}
+
 struct FixtureArchiveRepository: ArchiveRepository {
+    private let store: FixtureArchiveStore?
+
+    init(store: FixtureArchiveStore? = nil) {
+        self.store = store ?? DebugLaunchConfiguration.fixtureSession.map {
+            _ in FixtureArchiveStore(defaults: DebugLaunchConfiguration.fixtureDefaults)
+        }
+    }
+
     func entries(for context: WorkspaceContext) async throws -> [ArchiveEntry] {
-        ArchiveEntry.fixtures
+        if let stored = await store?.entries() { return stored }
+#if DEBUG
+        switch DebugLaunchFlags.uiFixtureData {
+        case .empty: return []
+        case .one: return Array(ArchiveEntry.fixtures.prefix(1))
+        case .worst, .huge:
+            let count = DebugLaunchFlags.uiFixtureData == .huge ? 1_284 : 6
+            return (0..<count).map { index in
+                ArchiveEntry(day: "TUE", date: "6 OCT",
+                    cardTitle: index == 0
+                        ? "Đặng Thị Ngọc Hân — a small creative routine that helped me finish a difficult week"
+                        : "Daily moment \(index + 1)",
+                    decision: .posted, outputLine: "Posted", hasPostThumbnail: false)
+            }
+        case .demo: break
+        }
+#endif
+        return ArchiveEntry.fixtures
     }
 
     func persistDecision(
@@ -678,9 +949,18 @@ struct FixtureArchiveRepository: ArchiveRepository {
         for card: DailyCard,
         context: WorkspaceContext
     ) async throws {
-        _ = entry
         _ = card
         _ = context
+        guard let store else { return }
+        var entries = await store.entries() ?? ArchiveEntry.fixtures
+        if let index = entries.firstIndex(where: { archiveEntry in
+            archiveEntry.dailyCardID == card.id || archiveEntry.cardTitle == card.title
+        }) {
+            entries[index] = entry
+        } else {
+            entries.insert(entry, at: 0)
+        }
+        await store.save(entries)
     }
 
     func upsertDecision(
@@ -689,7 +969,7 @@ struct FixtureArchiveRepository: ArchiveRepository {
         context: WorkspaceContext
     ) async throws -> [ArchiveEntry] {
         try await persistDecision(entry, for: card, context: context)
-        var entries = ArchiveEntry.fixtures
+        var entries = try await self.entries(for: context)
         if let index = entries.firstIndex(where: { archiveEntry in
             archiveEntry.dailyCardID == card.id || archiveEntry.cardTitle == card.title
         }) {

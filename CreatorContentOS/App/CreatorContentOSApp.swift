@@ -42,7 +42,9 @@ struct CreatorContentOSAppView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @State private var onboardingModel = OnboardingViewModel(
-        store: UserDefaultsOnboardingStore()
+        store: UserDefaultsOnboardingStore(
+            defaults: DebugLaunchConfiguration.onboardingDefaults
+        )
     )
 
     var body: some View {
@@ -68,10 +70,12 @@ struct CreatorContentOSAppView: View {
             guard appState.authenticationPhase == .live else { return }
             let scopedStore = WorkspaceScopedOnboardingStore(
                 workspaceID: services.context.workspaceID,
-                creatorID: services.context.creatorID
+                creatorID: services.context.creatorID,
+                defaults: DebugLaunchConfiguration.onboardingDefaults
             )
             onboardingModel = OnboardingViewModel(store: scopedStore)
         }
+        .modifier(DebugLaunchEnvironmentModifier())
     }
 
     private var workspaceOnboardingScope: String {
@@ -112,6 +116,9 @@ struct CreatorContentOSAppView: View {
                 SignInView()
             }
         }
+        // Pocket uses fixed paper surfaces. Keep system controls in the same
+        // appearance so toolbar text does not turn white on these surfaces.
+        .preferredColorScheme(.light)
     }
 
     private func handleOnboardingHandoff(
@@ -131,8 +138,8 @@ struct CreatorContentOSAppView: View {
     /// Fixture-only Manager shell when `MCO_FORCE_FIXTURE_UI=1` and `MCO_FORCE_APP_MODE=admin`.
     /// Setting `activeMode = .creator` (Admin chrome “Creator mode”) exits back to CreatorShellView.
     private var shouldShowDebugAdminShell: Bool {
-        ProcessInfo.processInfo.environment["MCO_FORCE_FIXTURE_UI"] == "1"
-            && ProcessInfo.processInfo.environment["MCO_FORCE_APP_MODE"] == "admin"
+        DebugLaunchFlags.forceFixtureUI
+            && DebugLaunchFlags.forceAppMode == "admin"
             && appState.activeMode == .admin
     }
 #endif
@@ -140,20 +147,42 @@ struct CreatorContentOSAppView: View {
 
 private extension AppState {
     static func makeLaunchState(
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> AppState {
 #if DEBUG
-        if environment["MCO_RESET_ONBOARDING"] == "1" {
-            UserDefaultsOnboardingStore.resetLegacyGlobalKeys()
+        if DebugLaunchConfiguration.isEnabled(
+            "MCO_RESET_ONBOARDING",
+            environment: environment,
+            arguments: arguments
+        ) {
+            WorkspaceScopedOnboardingStore.resetFixtureScopedKeys(
+                defaults: DebugLaunchConfiguration.onboardingDefaults
+            )
+            UserDefaultsOnboardingStore.resetLegacyGlobalKeys(
+                defaults: DebugLaunchConfiguration.onboardingDefaults
+            )
         }
 
-        if environment["MCO_FORCE_SIGN_IN"] == "1" {
+        if DebugLaunchConfiguration.isEnabled(
+            "MCO_FORCE_SIGN_IN",
+            environment: environment,
+            arguments: arguments
+        ) {
             return AppState(authenticationPhase: .signedOut)
         }
 
-        if environment["MCO_FORCE_FIXTURE_UI"] == "1" {
+        if DebugLaunchConfiguration.isEnabled(
+            "MCO_FORCE_FIXTURE_UI",
+            environment: environment,
+            arguments: arguments
+        ) {
             // `.admin` only affects DEBUG AdminShellView routing above — never the Release live path.
-            let mode: AppMode = environment["MCO_FORCE_APP_MODE"] == "admin" ? .admin : .creator
+            let mode: AppMode = DebugLaunchConfiguration.value(
+                for: "MCO_FORCE_APP_MODE",
+                environment: environment,
+                arguments: arguments
+            ) == "admin" ? .admin : .creator
             return AppState(
                 activeMode: mode,
                 runtime: .fixtures(),
@@ -175,8 +204,8 @@ private enum DebugForcedScreen: String {
     case adminShell = "admin"
 
     static var current: DebugForcedScreen? {
-        guard ProcessInfo.processInfo.environment["MCO_FORCE_FIXTURE_UI"] == "1",
-              let rawValue = ProcessInfo.processInfo.environment["MCO_FORCE_SCREEN"]
+        guard DebugLaunchFlags.forceFixtureUI,
+              let rawValue = DebugLaunchFlags.forceScreen
         else {
             return nil
         }
@@ -209,7 +238,11 @@ private struct DebugStoryboardCardScreen: View {
                         Text("Storyboard card preview")
                             .font(PocketSheetType.screenTitle)
                             .foregroundStyle(PocketSheetTheme.Color.ink)
-                        GeneratedDayPlannedContent(card: .storyboardBreakdownFixture)
+                        GeneratedDayPlannedContent(
+                            card: DebugLaunchFlags.longContent
+                                ? GeneratedDailyCardDraft.storyboardBreakdownFixture.withLongContent
+                                : .storyboardBreakdownFixture
+                        )
                     }
                     .padding(.horizontal, PocketSheetSpace.l)
                     .padding(.top, PocketSheetSpace.l)
@@ -219,6 +252,33 @@ private struct DebugStoryboardCardScreen: View {
         }
         .pocketSheetChromePalette()
     }
+}
+#endif
+
+#if DEBUG
+private struct DebugLaunchEnvironmentModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if DebugLaunchFlags.forceNarrowFixtureContainer {
+            configuredContent(content)
+                .frame(width: 320)
+                .frame(maxWidth: .infinity)
+        } else {
+            configuredContent(content)
+        }
+    }
+
+    @ViewBuilder
+    private func configuredContent(_ content: Content) -> some View {
+        if DebugLaunchFlags.forceAccessibility5 {
+            content.environment(\.dynamicTypeSize, .accessibility5)
+        } else {
+            content
+        }
+    }
+}
+#else
+private struct DebugLaunchEnvironmentModifier: ViewModifier {
+    func body(content: Content) -> some View { content }
 }
 #endif
 

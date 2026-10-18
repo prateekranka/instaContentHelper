@@ -101,17 +101,17 @@ struct ShootFolioView: View {
                     .frame(width: 34)
 
                 VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                    Text(services.areAllScenesShot ? "All scenes shot" : "\(services.shotSceneCount) of \(services.todayCard.scenes.count) scenes shot")
+                    Text(services.areAllScenesShot ? "All scenes shot" : "\(services.shotSceneCount.formatted()) of \(services.todayCard.scenes.count.formatted()) \(services.todayCard.scenes.count == 1 ? "scene" : "scenes") shot")
                         .font(PocketSheetType.rowTitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
-                    Text(services.areAllScenesShot ? "Ready for post assembly." : "\(services.unshotSceneCount) remaining before the shoot is complete.")
+                    Text(services.areAllScenesShot ? "Ready for post assembly." : "\(services.unshotSceneCount.formatted()) remaining before the shoot is complete.")
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 }
 
                 Spacer(minLength: PocketSheetSpace.s)
                 PocketSheetStatus(
-                    text: services.areAllScenesShot ? "Complete" : "\(services.unshotSceneCount) left",
+                    text: services.areAllScenesShot ? "Complete" : "\(services.unshotSceneCount.formatted()) left",
                     kind: services.areAllScenesShot ? .ready : .pending
                 )
             }

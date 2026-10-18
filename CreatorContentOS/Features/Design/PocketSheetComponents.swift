@@ -1,5 +1,16 @@
 import SwiftUI
 
+/// Short press feedback for Pocket controls. Repeated reading surfaces stay still.
+struct PocketSheetPressFeedbackStyle: ButtonStyle {
+    @Environment(\.pocketReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Chrome-aware screen
 
 /// Scroll shell that follows the active `chromePalette` (Creator Pocket Sheet vs Admin editorial).
@@ -295,7 +306,7 @@ struct PocketSheetPrimaryAction: View {
             .background(PocketSheetTheme.Color.inverseInk)
             .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PocketSheetPressFeedbackStyle())
     }
 }
 
@@ -317,7 +328,7 @@ struct PocketSheetSecondaryAction: View {
                         .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PocketSheetPressFeedbackStyle())
     }
 }
 

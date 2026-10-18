@@ -6,8 +6,11 @@ struct YouView: View {
     @Environment(AppServices.self) private var services
     @State private var navigationPath = NavigationPath()
     @State private var isSigningOut = false
+    @State private var isPreferencesExpanded = false
+    @Environment(\.pocketReduceMotion) private var reduceMotion
 #if DEBUG
     @State private var showBenchmark = false
+    @State private var uiFixtureData = DebugLaunchFlags.uiFixtureData
 #endif
 
     var body: some View {
@@ -51,6 +54,32 @@ struct YouView: View {
 #if DEBUG
     private var devBlock: some View {
         PocketSheetBlock(header: "Dev") {
+            if DebugLaunchFlags.forceFixtureUI {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
+                    Text("UI test data")
+                        .font(PocketSheetType.rowTitle)
+                    Picker("UI test data", selection: $uiFixtureData) {
+                        ForEach(PocketUIFixtureData.allCases) { data in
+                            Text(data.label).tag(data)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("you.dev.fixtureData")
+                    Text("Demo data / Worst case, plus empty, one, and large collections. Changes the sample Today package.")
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                }
+                .padding(PocketSheetSpace.m)
+                .onChange(of: uiFixtureData) { _, data in
+                    DebugLaunchConfiguration.fixtureDefaults.set(data.rawValue, forKey: "break-ui-data")
+                    var draft = data.applying(to: GeneratedDailyCardDraft.storyboardBreakdownFixture)
+                    draft.scheduledDate = services.currentTodayDateString
+                    draft.status = "ready"
+                    services.dayBriefGeneratedCards[services.currentTodayDateString] = draft
+                    services.todayCard = draft.dailyCard(completionState: nil)
+                    services.todayContentState = .ready
+                }
+            }
             Button {
                 showBenchmark = true
             } label: {
@@ -83,17 +112,53 @@ struct YouView: View {
     }
 
     private var generationInputsBlock: some View {
-        PocketSheetBlock(header: "Idea settings") {
+        PocketSheetBlock {
             VStack(spacing: 0) {
-                setupRow(.contentCategories, title: "Interests & style", subtitle: interestsSubtitle)
-                PocketSheetDivider()
-                setupRow(.productionPreferences, title: "Content preferences", subtitle: productionSubtitle)
-                PocketSheetDivider()
-                setupRow(.currentContext, title: "Current reads & watches", subtitle: contextSubtitle)
-                PocketSheetDivider()
-                setupRow(.creatorVoice, title: "Creator voice", subtitle: voiceSubtitle)
-                PocketSheetDivider()
-                setupRow(.references, title: "References", subtitle: referencesSubtitle)
+                Button {
+                    if reduceMotion {
+                        isPreferencesExpanded.toggle()
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isPreferencesExpanded.toggle()
+                        }
+                    }
+                } label: {
+                    HStack(alignment: .center, spacing: PocketSheetSpace.s) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Idea settings")
+                                .font(PocketSheetType.rowTitle)
+                                .foregroundStyle(PocketSheetTheme.Color.ink)
+                            Text(isPreferencesExpanded ? "Edit how your ideas are shaped" : "Optional preferences for future ideas")
+                                .font(PocketSheetType.rowSubtitle)
+                                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        }
+                        Spacer(minLength: PocketSheetSpace.s)
+                        Image(systemName: isPreferencesExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+                    .padding(.horizontal, PocketSheetSpace.m)
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(isPreferencesExpanded ? "Expanded" : "Collapsed")
+                .accessibilityIdentifier("you.preferences.toggle")
+
+                if isPreferencesExpanded {
+                    PocketSheetDivider()
+                    VStack(spacing: 0) {
+                        setupRow(.contentCategories, title: "Interests & style", subtitle: interestsSubtitle)
+                        PocketSheetDivider()
+                        setupRow(.productionPreferences, title: "Content preferences", subtitle: productionSubtitle)
+                        PocketSheetDivider()
+                        setupRow(.currentContext, title: "Current reads & watches", subtitle: contextSubtitle)
+                        PocketSheetDivider()
+                        setupRow(.creatorVoice, title: "Creator voice", subtitle: voiceSubtitle)
+                        PocketSheetDivider()
+                        setupRow(.references, title: "References", subtitle: referencesSubtitle)
+                    }
+                    .transition(.opacity)
+                }
             }
         }
         .padding(.horizontal, PocketSheetSpace.l)

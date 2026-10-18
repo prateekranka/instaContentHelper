@@ -19,7 +19,33 @@ final class AppServices {
     private let todayCache: any TodayCacheStoring
     private let notifications: any TodayNotificationScheduling
 
-    var todayCard: DailyCard
+    var todayCard: DailyCard {
+        didSet {
+            let currentIDs = Set(todayCard.scenes.map(\.id))
+            if oldValue.id != todayCard.id {
+                shotSceneIDs.removeAll()
+            } else {
+                let previousShotKeys = oldValue.scenes
+                    .filter { shotSceneIDs.contains($0.id) }
+                    .map(Self.sceneProgressKey)
+                let currentScenesByKey = Dictionary(
+                    grouping: todayCard.scenes,
+                    by: Self.sceneProgressKey
+                )
+                shotSceneIDs = Set(
+                    previousShotKeys.compactMap { key in
+                        guard let matches = currentScenesByKey[key], matches.count == 1 else {
+                            return nil
+                        }
+                        return matches[0].id
+                    }
+                )
+            }
+            if todayCard.completionState == .shot || todayCard.completionState == .posted {
+                shotSceneIDs.formUnion(currentIDs)
+            }
+        }
+    }
     var shotSceneIDs: Set<UUID>
     var archiveEntries: [ArchiveEntry]
     var weeklyPlan: WeeklyPlan
@@ -172,7 +198,7 @@ final class AppServices {
     }
 
     private var latestTodayDecisionSyncID = 0
-    private var todayDecisionSyncTask: Task<Void, Never>?
+    private var todayDecisionSyncTask: Task<ArchiveEntry, Never>?
 
     private struct PendingTodayDecisionSync {
         let id: Int
@@ -381,11 +407,26 @@ final class AppServices {
         shotSceneIDs.contains(scene.id)
     }
 
+    private static func sceneProgressKey(_ scene: ShotScene) -> String {
+        let normalizedTitle = scene.title
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+            .split { !$0.isLetter && !$0.isNumber }
+            .joined(separator: " ")
+        return "\(scene.number)|\(normalizedTitle)"
+    }
+
     func markSceneShot(_ scene: ShotScene) {
+        guard todayCard.scenes.contains(where: { $0.id == scene.id }),
+              !shotSceneIDs.contains(scene.id) else { return }
         shotSceneIDs.insert(scene.id)
         lastActionMessage = "Scene \(scene.number) marked shot."
         if areAllScenesShot, todayCard.completionState == nil {
             completeToday(with: DailyDecision.shot)
+        } else {
+            saveTodaySnapshot(source: "shot-progress")
         }
     }
 
@@ -401,29 +442,51 @@ final class AppServices {
     /// success toast the creator sees after shipping. The Shoot Folio only
     /// reveals this action after every scene is marked shot.
     func markPosted() {
-        guard areAllScenesShot else { return }
+        guard canMarkPosted else { return }
         lastActionMessage = "Content marked as posted."
         completeToday(with: DailyDecision.posted)
     }
 
+    /// Replaces a posted decision with the existing shot decision while keeping
+    /// every completed scene. The archive upsert uses the daily card ID, so this
+    /// updates the current decision instead of creating a second archive row.
+    func undoPosted() {
+        guard todayCard.completionState == .posted else { return }
+        lastActionMessage = todayCard.isNonFilmingPost
+            ? "Posted status removed."
+            : "Posted status removed. Scenes stay marked shot."
+        completeToday(with: DailyDecision.shot)
+    }
+
     var canMarkPosted: Bool {
-        areAllScenesShot && todayCard.completionState != .posted
+        guard case .ready = todayContentState else { return false }
+        return (areAllScenesShot || todayCard.isNonFilmingPost) && todayCard.completionState != .posted
     }
 
     func completeToday(with decision: DailyDecision) {
         let pendingSync = prepareTodayDecisionSync(decision)
-        todayDecisionSyncTask?.cancel()
-        todayDecisionSyncTask = Task { [weak self, pendingSync] in
-            guard let self else { return }
-            _ = await self.syncTodayDecision(pendingSync)
-        }
+        _ = enqueueTodayDecisionSync(pendingSync)
     }
 
     @discardableResult
     func completeTodayImmediately(with decision: DailyDecision) async -> ArchiveEntry {
         let pendingSync = prepareTodayDecisionSync(decision)
-        todayDecisionSyncTask?.cancel()
-        return await syncTodayDecision(pendingSync)
+        return await enqueueTodayDecisionSync(pendingSync).value
+    }
+
+    private func enqueueTodayDecisionSync(
+        _ pendingSync: PendingTodayDecisionSync
+    ) -> Task<ArchiveEntry, Never> {
+        let previousTask = todayDecisionSyncTask
+        let task = Task { [weak self, previousTask, pendingSync] in
+            if let previousTask {
+                _ = await previousTask.value
+            }
+            guard let self else { return pendingSync.localEntry }
+            return await self.syncTodayDecision(pendingSync)
+        }
+        todayDecisionSyncTask = task
+        return task
     }
 
     @discardableResult
@@ -2228,6 +2291,11 @@ final class AppServices {
             refreshError = refreshError ?? error
         }
 
+        for package in await repositories.dailyGeneration.persistedDayPackages(context: context)
+        where dayBriefGeneratedCards[package.scheduledDate] == nil {
+            dayBriefGeneratedCards[package.scheduledDate] = package
+        }
+
         do {
             intelligenceHome = try await repositories.intelligence.home(for: context)
         } catch {
@@ -2489,6 +2557,9 @@ final class AppServices {
     private func apply(snapshot: CachedTodaySnapshot) {
         todayCard = snapshot.todayCard
         weekCards = snapshot.weekCards
+        if let savedIDs = snapshot.shotSceneIDs {
+            shotSceneIDs.formUnion(savedIDs.intersection(Set(todayCard.scenes.map(\.id))))
+        }
     }
 
     private func saveTodaySnapshot(source: String) {
@@ -2496,7 +2567,8 @@ final class AppServices {
             todayCard: todayCard,
             weekCards: weekCards,
             cachedAt: Date(),
-            source: source
+            source: source,
+            shotSceneIDs: shotSceneIDs
         )
 
         do {
@@ -2523,8 +2595,13 @@ final class AppServices {
     }
 
     private func upsertLocalArchiveEntry(_ entry: ArchiveEntry, for card: DailyCard) {
+        let archiveDate = card.scheduledDate ?? currentTodayDateString
         if let index = archiveEntries.firstIndex(where: { archiveEntry in
-            archiveEntry.dailyCardID == card.id || archiveEntry.cardTitle == card.title
+            if let dailyCardID = archiveEntry.dailyCardID {
+                return dailyCardID == card.id
+            }
+            return archiveEntry.cardTitle == card.title
+                && archiveEntry.date == SupabaseDateFormatting.shortDate(for: archiveDate)
         }) {
             archiveEntries[index] = entry
         } else {

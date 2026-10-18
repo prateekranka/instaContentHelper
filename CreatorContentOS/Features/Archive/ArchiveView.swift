@@ -31,7 +31,7 @@ struct ArchiveSection: View {
 
             ArchiveFilterBar(selectedFilter: $selectedFilter)
 
-            VStack(spacing: 0) {
+            LazyVStack(spacing: 0) {
                 ForEach(filteredEntries) { entry in
                     Button {
                         selectedEntry = entry

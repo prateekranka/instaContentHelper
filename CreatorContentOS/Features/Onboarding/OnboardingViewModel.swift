@@ -498,8 +498,8 @@ final class OnboardingViewModel {
             confirmState = .persistFailed
         case .generationFailed(let message):
             confirmState = .generationFailed(message: message)
-            store.clearProgress()
-            onboardingCompletedThisSession = true
+            persistProgress()
+            onboardingCompletedThisSession = false
         }
         return result
     }

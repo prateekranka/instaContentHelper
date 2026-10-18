@@ -20,21 +20,37 @@ struct AppRuntime {
     let services: AppServices
 
     static func fixtures(
-        todayCache: any TodayCacheStoring = FileTodayCacheStore(),
+        todayCache: any TodayCacheStoring = DebugLaunchConfiguration.fixtureTodayCache,
         notifications: any TodayNotificationScheduling = LocalTodayNotificationScheduler()
     ) -> AppRuntime {
         let services = AppServices.fixtureBacked(
             todayCache: todayCache,
-            notifications: notifications
+            notifications: notifications,
+            acceptedGenerationStore: UserDefaultsAcceptedDayGenerationStore(defaults: DebugLaunchConfiguration.fixtureDefaults),
+            aiConsentStore: UserDefaultsAIConsentStore(
+                workspaceID: WorkspaceContext.creatorFixture.workspaceID,
+                creatorID: WorkspaceContext.creatorFixture.creatorID,
+                defaults: DebugLaunchConfiguration.fixtureDefaults
+            )
         )
 #if DEBUG
         if !DebugLaunchFlags.forceEmptyToday {
-            // Seed a reviewable draft so Plan can show Approve in fixture UI proofs.
-            // (Kept out of `fixtureBacked` so unit tests start with an empty day store.)
-            var draft = GeneratedDailyCardDraft.storyboardBreakdownFixture
+            // Seed the same generated package used by Plan into Today. The
+            // package keeps one ID and one date across the native e2e relaunch.
+            var draft = services.loadTodayFromCache()
+                ? GeneratedDailyCardDraft(fromPublishedCard: services.todayCard)
+                : DebugLaunchFlags.fixtureDailyCardDraft
+            if DebugLaunchFlags.uiFixtureData != .demo {
+                draft = DebugLaunchFlags.uiFixtureData.applying(to: draft)
+            }
             draft.scheduledDate = services.currentTodayDateString
-            draft.status = "draft"
+            draft.status = "ready"
             services.dayBriefGeneratedCards[services.currentTodayDateString] = draft
+            services.todayCard = draft.dailyCard(completionState: services.todayCard.completionState)
+            services.weekCards = services.weekCards.map { card in
+                guard card.scheduledDate == services.currentTodayDateString else { return card }
+                return services.todayCard
+            }
         }
 #endif
         return AppRuntime(
@@ -221,8 +237,20 @@ private extension PairedDeviceSession {
 
 #if DEBUG
 enum DebugLaunchFlags {
+    static var forceFixtureUI: Bool {
+        DebugLaunchConfiguration.isEnabled("MCO_FORCE_FIXTURE_UI")
+    }
+
+    static var forceAppMode: String? {
+        DebugLaunchConfiguration.value(for: "MCO_FORCE_APP_MODE")
+    }
+
+    static var forceScreen: String? {
+        DebugLaunchConfiguration.value(for: "MCO_FORCE_SCREEN")
+    }
+
     private static func isEnabled(_ key: String) -> Bool {
-        ProcessInfo.processInfo.environment[key] == "1"
+        DebugLaunchConfiguration.isEnabled(key)
     }
 
     /// Start fixture Today empty so first-idea confirm runs generate + makeDayAvailable.
@@ -240,15 +268,75 @@ enum DebugLaunchFlags {
         isEnabled("MCO_FAIL_FIRST_IDEA")
     }
 
+    /// Fail the first fixture generation call, then allow the retry.
+    static var failFirstIdeaOnce: Bool {
+        isEnabled("MCO_FAIL_FIRST_IDEA_ONCE")
+    }
+
+    /// Fail the first fixture Today decision sync call, then allow the retry.
+    static var failTodayDecisionSyncOnce: Bool {
+        isEnabled("MCO_FAIL_TODAY_DECISION_SYNC_ONCE")
+    }
+
+    static var longContent: Bool {
+        isEnabled("MCO_LONG_CONTENT")
+    }
+
+    static var uiFixtureData: PocketUIFixtureData {
+        PocketUIFixtureData(rawValue: DebugLaunchConfiguration.fixtureDefaults.string(forKey: "break-ui-data")
+            ?? DebugLaunchConfiguration.value(for: "MCO_BREAK_UI_DATA") ?? "demo") ?? .demo
+    }
+
+    static var forceAccessibility5: Bool {
+        isEnabled("MCO_DYNAMIC_TYPE_ACCESSIBILITY5")
+    }
+
+    static var forceNarrowFixtureContainer: Bool {
+        forceFixtureUI && isEnabled("MCO_BREAK_UI_320")
+    }
+
+    static var forceReducedMotion: Bool {
+        isEnabled("MCO_REDUCED_MOTION")
+    }
+
+    static var fixtureDailyCardDraft: GeneratedDailyCardDraft {
+        var draft = GeneratedDailyCardDraft.storyboardBreakdownFixture
+        draft.sceneList = draft.sceneList.enumerated().map { index, scene in
+            ShotScene(
+                id: UUID(uuidString: String(format: "1407E44A-1F70-4B96-8EE2-%012d", index + 1))!,
+                number: scene.number, title: scene.title, duration: scene.duration, symbol: scene.symbol
+            )
+        }
+        return uiFixtureData.applying(to: longContent ? draft.withLongContent : draft)
+    }
+
     static var fixtureFirstIdeaDelayNanoseconds: UInt64 {
-        slowFirstIdea ? 3_500_000_000 : 450_000_000
+        slowFirstIdea ? 20_000_000_000 : 450_000_000
     }
 }
 #else
 enum DebugLaunchFlags {
+    static var forceFixtureUI: Bool { false }
+    static var forceAppMode: String? { nil }
+    static var forceScreen: String? { nil }
     static var forceEmptyToday: Bool { false }
     static var slowFirstIdea: Bool { false }
     static var failFirstIdea: Bool { false }
+    static var failFirstIdeaOnce: Bool { false }
+    static var failTodayDecisionSyncOnce: Bool { false }
+    static var longContent: Bool { false }
+    static var forceAccessibility5: Bool { false }
+    static var forceReducedMotion: Bool { false }
     static var fixtureFirstIdeaDelayNanoseconds: UInt64 { 450_000_000 }
 }
 #endif
+
+private extension DebugLaunchConfiguration {
+    static var fixtureTodayCache: any TodayCacheStoring {
+#if DEBUG
+        FileTodayCacheStore(baseDirectory: fixtureCacheDirectory)
+#else
+        FileTodayCacheStore()
+#endif
+    }
+}

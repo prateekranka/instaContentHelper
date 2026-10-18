@@ -84,7 +84,6 @@ struct GeneratedDayPlannedContent: View {
     var onStoryboardAssetsChanged: (([StoryboardThumbnailAsset]) -> Void)?
     /// When true, Storyboard / Script / Caption use folder tabs (Plan + Today).
     var usesFolderTabs: Bool = true
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedFolderTab: PackageFolderTab = .storyboard
 
     var body: some View {
@@ -94,7 +93,6 @@ struct GeneratedDayPlannedContent: View {
                 PackageFolderTabs(selection: $selectedFolderTab) { tab in
                     folderPanel(for: tab)
                         .id(tab)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             } else {
                 GeneratedStoryboardBreakdownBlock(
@@ -105,7 +103,6 @@ struct GeneratedDayPlannedContent: View {
                 InstagramCaptionPostBlock(card: card)
             }
         }
-        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: selectedFolderTab)
         .onChange(of: card.id) { _, _ in
             selectedFolderTab = .storyboard
         }
@@ -164,7 +161,7 @@ struct GeneratedStoryboardBreakdownContent: View {
                 if let displayedThumbnailError {
                     Text(displayedThumbnailError)
                         .font(PocketSheetType.rowSubtitle)
-                        .foregroundStyle(PocketSheetTheme.Color.validationAttention)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -202,10 +199,10 @@ struct GeneratedStoryboardBreakdownContent: View {
                     .font(PocketSheetType.status)
             }
             .padding(.horizontal, PocketSheetSpace.xs)
-            .frame(minHeight: 28)
+            .frame(minHeight: 44)
             .background(PocketSheetTheme.Color.paperRaised, in: Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PocketSheetPressFeedbackStyle())
         // Keep label ink-on-paper; do not inherit inversePaper from the ink storyboard chrome.
         .foregroundStyle(PocketSheetTheme.Color.ink)
         .disabled(isGeneratingThumbnails)
@@ -267,169 +264,97 @@ struct GeneratedStoryboardBreakdownContent: View {
     }
 }
 
+/// Phone-first storyboard presentation. Each shot keeps its source thumbnail,
+/// timing, and production copy together so long content wraps without clipping.
 struct GeneratedStoryboardTable: View {
     let rows: [GeneratedStoryboardBreakdownRow]
-    private let headerHeight: CGFloat = 38
-    private let rowHeight: CGFloat = 168
-    @State private var sceneColumnWidth: CGFloat = 220
-    @State private var sceneColumnWidthAtDragStart: CGFloat = 220
-    private let sceneColumnMinWidth: CGFloat = 140
-    private let sceneColumnMaxWidth: CGFloat = 360
-    private let whatColumnWidth: CGFloat = 182
-    private let audioColumnWidth: CGFloat = 194
-    private let textColumnWidth: CGFloat = 184
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                GeneratedStoryboardHeaderCell(
-                    title: "SCENE / VISUAL",
-                    width: sceneColumnWidth,
-                    height: headerHeight
-                )
-                ForEach(rows) { row in
-                    GeneratedStoryboardSceneCell(
-                        row: row,
-                        width: sceneColumnWidth,
-                        height: rowHeight
-                    )
-                }
+        LazyVStack(alignment: .leading, spacing: PocketSheetSpace.m) {
+            ForEach(rows) { row in
+                GeneratedStoryboardShotCard(row: row)
+            }
+        }
+    }
+}
+
+struct GeneratedStoryboardShotCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let row: GeneratedStoryboardBreakdownRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
+            headerLayout {
+                Text("SHOT \(String(format: "%02d", row.sceneNumber))")
+                    .font(PocketSheetType.sectionLabel)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .tracking(0.44)
+                Spacer(minLength: PocketSheetSpace.s)
+                Text(row.timecode)
+                    .font(PocketSheetType.status)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
 
-            sceneResizeHandle
+            GeneratedStoryboardThumbnail(
+                url: row.thumbnailURL,
+                fallbackSystemImage: "camera"
+            )
 
-            ScrollView(.horizontal, showsIndicators: true) {
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        GeneratedStoryboardHeaderCell(
-                            title: "WHAT TO SHOW",
-                            width: whatColumnWidth,
-                            height: headerHeight
-                        )
-                        GeneratedStoryboardHeaderCell(
-                            title: "AUDIO / DIALOGUE",
-                            width: audioColumnWidth,
-                            height: headerHeight
-                        )
-                        GeneratedStoryboardHeaderCell(
-                            title: "ON-SCREEN TEXT",
-                            width: textColumnWidth,
-                            height: headerHeight
-                        )
-                    }
-                    ForEach(rows) { row in
-                        HStack(alignment: .top, spacing: 0) {
-                            GeneratedStoryboardTextCell(
-                                text: row.whatToShow,
-                                width: whatColumnWidth,
-                                height: rowHeight
-                            )
-                            GeneratedStoryboardDialogueCell(
-                                text: row.audioDialogue,
-                                width: audioColumnWidth,
-                                height: rowHeight
-                            )
-                            GeneratedStoryboardOnScreenTextCell(
-                                row: row,
-                                width: textColumnWidth,
-                                height: rowHeight
-                            )
-                        }
-                    }
+            GeneratedStoryboardShotField(title: "Title", value: row.visualShot)
+            GeneratedStoryboardShotField(title: "Instructions", value: row.whatToShow)
+            GeneratedStoryboardShotField(title: "Dialogue", value: "\"\(row.audioDialogue)\"")
+
+            VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
+                Text("Overlay")
+                    .font(PocketSheetType.status)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                Text(row.onScreenText)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let placement = row.onScreenTextPlacement?.nilIfBlank {
+                    Text(placement)
+                        .font(PocketSheetType.status)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(PocketSheetSpace.m)
+        .background(PocketSheetTheme.Color.paperRaised)
         .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
                 .stroke(PocketSheetTheme.Color.hairline.opacity(0.78), lineWidth: 1)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Shot \(row.sceneNumber), \(row.timecode). Title: \(row.visualShot). Instructions: \(row.whatToShow). Dialogue: \(row.audioDialogue). Overlay: \(row.onScreenText)"
+        )
     }
 
-    private var sceneResizeHandle: some View {
-        Rectangle()
-            .fill(PocketSheetTheme.Color.hairline.opacity(0.9))
-            .frame(width: 12)
-            .overlay {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(PocketSheetTheme.Color.inkQuiet.opacity(0.8))
-                    .frame(width: 3, height: 34)
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        sceneColumnWidth = min(
-                            max(sceneColumnMinWidth, sceneColumnWidthAtDragStart + value.translation.width),
-                            sceneColumnMaxWidth
-                        )
-                    }
-                    .onEnded { _ in
-                        sceneColumnWidthAtDragStart = sceneColumnWidth
-                    }
-            )
-            .accessibilityLabel("Resize scene column")
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment:
-                    sceneColumnWidth = min(sceneColumnMaxWidth, sceneColumnWidth + 16)
-                case .decrement:
-                    sceneColumnWidth = max(sceneColumnMinWidth, sceneColumnWidth - 16)
-                @unknown default:
-                    break
-                }
-            }
+    private var headerLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: PocketSheetSpace.s))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: PocketSheetSpace.s))
     }
 }
 
-struct GeneratedStoryboardHeaderCell: View {
+private struct GeneratedStoryboardShotField: View {
     let title: String
-    let width: CGFloat
-    let height: CGFloat
-
-    var body: some View {
-        Text(title)
-            .font(PocketSheetType.sectionLabel)
-            .foregroundStyle(PocketSheetTheme.Color.inversePaper)
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
-            .frame(width: width, height: height)
-            .background(PocketSheetTheme.Color.ink)
-            .storyboardGridLines(isHeader: true)
-    }
-}
-
-struct GeneratedStoryboardSceneCell: View {
-    let row: GeneratedStoryboardBreakdownRow
-    let width: CGFloat
-    let height: CGFloat
+    let value: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-            GeneratedStoryboardThumbnail(url: row.thumbnailURL)
-                .frame(width: width - 16, height: 54)
-            HStack(spacing: PocketSheetSpace.xxs) {
-                Text(String(format: "%02d", row.sceneNumber))
-                    .font(PocketSheetType.status)
-                    .foregroundStyle(PocketSheetTheme.Color.inverseInk)
-                Text(row.timecode)
-                    .font(PocketSheetType.status)
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-            }
-            Text(row.visualShot)
+            Text(title)
+                .font(PocketSheetType.status)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+            Text(value)
                 .font(PocketSheetType.rowSubtitle)
                 .foregroundStyle(PocketSheetTheme.Color.ink)
-                .lineLimit(4)
-                .minimumScaleFactor(0.8)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(PocketSheetSpace.xs)
-        .frame(width: width, height: height, alignment: .topLeading)
-        .background(PocketSheetTheme.Color.paperRaised.opacity(0.78))
-        .storyboardGridLines()
-        .accessibilityLabel("Scene \(row.sceneNumber), \(row.timecode), \(row.visualShot)")
     }
 }
 
@@ -490,113 +415,6 @@ struct GeneratedStoryboardThumbnail: View {
     }
 }
 
-struct GeneratedStoryboardTextCell: View {
-    let text: String
-    let width: CGFloat
-    let height: CGFloat
-
-    var body: some View {
-        Text(text)
-            .font(PocketSheetType.rowSubtitle)
-            .foregroundStyle(PocketSheetTheme.Color.ink)
-            .lineSpacing(2)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(
-                width: width - (PocketSheetSpace.s * 2),
-                height: height - (PocketSheetSpace.s * 2),
-                alignment: .topLeading
-            )
-            .padding(PocketSheetSpace.s)
-            .frame(width: width, height: height, alignment: .topLeading)
-            .background(PocketSheetTheme.Color.paperRaised.opacity(0.42))
-            .storyboardGridLines()
-    }
-}
-
-struct GeneratedStoryboardDialogueCell: View {
-    let text: String
-    let width: CGFloat
-    let height: CGFloat
-
-    var body: some View {
-        Text("\"\(text)\"")
-            .font(PocketSheetType.rowSubtitle)
-            .foregroundStyle(PocketSheetTheme.Color.ink)
-            .lineSpacing(2)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(
-                width: width - (PocketSheetSpace.s * 2),
-                height: height - (PocketSheetSpace.s * 2),
-                alignment: .topLeading
-            )
-            .padding(PocketSheetSpace.s)
-            .frame(width: width, height: height, alignment: .topLeading)
-            .background(PocketSheetTheme.Color.paperRaised.opacity(0.52))
-            .storyboardGridLines()
-    }
-}
-
-struct GeneratedStoryboardOnScreenTextCell: View {
-    let row: GeneratedStoryboardBreakdownRow
-    let width: CGFloat
-    let height: CGFloat
-
-    var body: some View {
-        VStack(spacing: PocketSheetSpace.xs) {
-            Text(row.onScreenText.uppercased())
-                .font(PocketSheetType.rowTitle.weight(.black))
-                .foregroundStyle(PocketSheetTheme.Color.ink)
-                .multilineTextAlignment(.center)
-                .lineLimit(4)
-                .minimumScaleFactor(0.62)
-
-            if let placement = row.onScreenTextPlacement {
-                Text(placement)
-                    .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.72)
-            }
-        }
-        .frame(width: width - (PocketSheetSpace.s * 2), height: height - (PocketSheetSpace.s * 2))
-            .padding(PocketSheetSpace.s)
-            .frame(width: width, height: height)
-            .background(PocketSheetTheme.Color.paper.opacity(0.86))
-            .storyboardGridLines()
-    }
-}
-
-private struct StoryboardGridLineModifier: ViewModifier {
-    let isHeader: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .overlay(alignment: .trailing) {
-                Rectangle()
-                    .fill(lineColor)
-                    .frame(width: 1)
-            }
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(lineColor)
-                    .frame(height: 1)
-            }
-    }
-
-    private var lineColor: Color {
-        isHeader
-            ? PocketSheetTheme.Color.paperRaised.opacity(0.22)
-            : PocketSheetTheme.Color.hairline.opacity(0.62)
-    }
-}
-
-private extension View {
-    func storyboardGridLines(isHeader: Bool = false) -> some View {
-        modifier(StoryboardGridLineModifier(isHeader: isHeader))
-    }
-}
-
 struct GeneratedStoryboardTip: View {
     let text: String
 
@@ -654,11 +472,14 @@ struct InstagramExecutionSummary: View {
                     .font(PocketSheetType.sectionLabel)
                     .foregroundStyle(PocketSheetTheme.Color.inversePaper)
                     .padding(.horizontal, PocketSheetSpace.s)
-                    .frame(height: 26)
+                    .frame(minHeight: 26)
+                    .fixedSize(horizontal: false, vertical: true)
                     .background(PocketSheetTheme.Color.inverseInk, in: Capsule())
+                    .accessibilityIdentifier("plan.package.format")
                 Text(durationLabel)
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                    .accessibilityIdentifier("plan.package.duration")
                 Spacer(minLength: PocketSheetSpace.s)
             }
         }
@@ -669,11 +490,12 @@ struct InstagramExecutionSummary: View {
     }
 
     private var durationLabel: String {
+        if card.format?.lowercased() == "post" { return "Photo / carousel" }
         if let durationSeconds = card.durationSeconds, durationSeconds > 0 {
-            return "\(durationSeconds) sec edit"
+            return "\(durationSeconds.formatted()) sec edit"
         }
         if let seconds = SceneTiming.totalSeconds(for: card.sceneList), seconds > 0 {
-            return "\(seconds) sec edit"
+            return "\(seconds.formatted()) sec edit"
         }
         return "\(card.estimatedShootMinutes) min shoot"
     }
@@ -751,7 +573,7 @@ struct GeneratedScriptTimelineContent: View {
                             .font(PocketSheetType.sectionLabel)
                             .foregroundStyle(PocketSheetTheme.Color.inversePaper)
                         Spacer(minLength: PocketSheetSpace.s)
-                        Text("\(rows.count) lines")
+                        Text("\(rows.count.formatted()) \(rows.count == 1 ? "line" : "lines")")
                             .font(PocketSheetType.rowSubtitle)
                             .foregroundStyle(PocketSheetTheme.Color.inversePaper)
                     }
@@ -760,7 +582,7 @@ struct GeneratedScriptTimelineContent: View {
                     .frame(minHeight: 38)
                     .background(PocketSheetTheme.Color.ink, in: RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
                 } else {
-                    Text("\(rows.count) lines")
+                    Text("\(rows.count.formatted()) \(rows.count == 1 ? "line" : "lines")")
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .accessibilityIdentifier("plan.script.lineCount")

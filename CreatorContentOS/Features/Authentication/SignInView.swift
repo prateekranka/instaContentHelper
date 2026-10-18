@@ -8,14 +8,16 @@ struct SignInView: View {
         ZStack {
             PocketSheetTheme.Color.paper.ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: PocketSheetSpace.xl) {
-                header
-                signInActions
-                Spacer(minLength: 0)
+            ScrollView {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xl) {
+                    header
+                    welcomeCard
+                    signInActions
+                }
+                .padding(.horizontal, PocketSheetSpace.l)
+                .padding(.top, 48)
+                .padding(.bottom, 48)
             }
-            .padding(.horizontal, PocketSheetSpace.l)
-            .padding(.top, 48)
-            .padding(.bottom, 48)
         }
         .tint(PocketSheetTheme.Color.ink)
     }
@@ -29,6 +31,42 @@ struct SignInView: View {
                 .font(PocketSheetType.rowSubtitle)
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
         }
+    }
+
+    private var welcomeCard: some View {
+        PocketSheetCard {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                HStack(spacing: PocketSheetSpace.xs) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Your next ready idea")
+                        .font(.headline)
+                }
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+
+                Text("Open Today to find one shootable idea, with the hook, format, and effort already clear.")
+                    .font(.body)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
+                    Text("Sample")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
+                        .textCase(.uppercase)
+                    Text("A quiet reset that makes Monday feel lighter")
+                        .font(.headline)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                    Text("Short check-in · 10 minutes")
+                        .font(.subheadline)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                }
+                .padding(.top, PocketSheetSpace.xs)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Your next ready idea. Open Today to find one shootable idea with the hook, format, and effort already clear. Sample: A quiet reset that makes Monday feel lighter. Short check-in, 10 minutes.")
+        .accessibilityIdentifier("sign-in.welcome")
     }
 
     private var signInActions: some View {
@@ -53,10 +91,15 @@ struct SignInView: View {
             }
 
             if let error = appState.authenticationError {
-                Text(error)
-                    .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.validationAttention)
-                    .accessibilityIdentifier("authentication-error")
+                HStack(alignment: .top, spacing: PocketSheetSpace.xs) {
+                    Image(systemName: "exclamationmark.circle")
+                        .accessibilityHidden(true)
+                    Text(error)
+                        .font(PocketSheetType.rowSubtitle)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+                .accessibilityIdentifier("authentication-error")
             }
         }
     }

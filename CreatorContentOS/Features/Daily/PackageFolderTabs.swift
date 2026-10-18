@@ -23,6 +23,7 @@ enum PackageFolderTab: String, CaseIterable, Identifiable, Hashable {
 
 /// Horizontal folder-style tabs: selected tab is ink on paper and joins the panel below.
 struct PackageFolderTabs<Content: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Binding var selection: PackageFolderTab
     @ViewBuilder var content: (PackageFolderTab) -> Content
 
@@ -36,11 +37,11 @@ struct PackageFolderTabs<Content: View>: View {
     }
 
     private var tabStrip: some View {
-        HStack(alignment: .bottom, spacing: 0) {
+        tabLayout {
             ForEach(PackageFolderTab.allCases) { tab in
                 folderTabButton(tab)
             }
-            Spacer(minLength: 0)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
         }
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -50,6 +51,12 @@ struct PackageFolderTabs<Content: View>: View {
         .accessibilityElement(children: .contain)
     }
 
+    private var tabLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
+            : AnyLayout(HStackLayout(alignment: .bottom, spacing: 0))
+    }
+
     private func folderTabButton(_ tab: PackageFolderTab) -> some View {
         let isSelected = selection == tab
         return Button {
@@ -57,10 +64,10 @@ struct PackageFolderTabs<Content: View>: View {
         } label: {
             Text(tab.title)
                 .font(PocketSheetType.chip)
-                .foregroundStyle(isSelected ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.inkQuiet)
+                .foregroundStyle(isSelected ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.inkMuted)
                 .padding(.horizontal, PocketSheetSpace.s)
                 .padding(.vertical, PocketSheetSpace.xs)
-                .frame(minHeight: 34)
+                .frame(minHeight: 44)
                 .background {
                     if isSelected {
                         UnevenRoundedRectangle(
@@ -88,7 +95,7 @@ struct PackageFolderTabs<Content: View>: View {
                 }
                 .zIndex(isSelected ? 1 : 0)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PocketSheetPressFeedbackStyle())
         .accessibilityLabel(tab.title)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .accessibilityIdentifier(tab.accessibilityIdentifier)

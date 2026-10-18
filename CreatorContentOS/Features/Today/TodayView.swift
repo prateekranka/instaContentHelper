@@ -3,10 +3,14 @@ import SwiftUI
 struct TodayView: View {
     @Environment(AppServices.self) private var services
     @Environment(AppState.self) private var appState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var sheet: TodaySheet?
 
     var body: some View {
-        PocketSheetScreen(bottomContentPadding: 120) {
+        PocketSheetScreen(
+            bottomContentPadding: dynamicTypeSize.isAccessibilitySize ? PocketSheetSpace.l : 120,
+            showsBottomBar: !dynamicTypeSize.isAccessibilitySize
+        ) {
             VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
                 header
                 PocketSheetFeedbackBanner(message: services.lastActionMessage, kind: .ready)
@@ -15,6 +19,9 @@ struct TodayView: View {
                         message: "Couldn't save your decision — \(decisionError)",
                         kind: .issue
                     )
+                }
+                if dynamicTypeSize.isAccessibilitySize, case .ready = services.todayContentState {
+                    primaryAction
                 }
                 switch services.todayContentState {
                 case .ready:
@@ -34,26 +41,8 @@ struct TodayView: View {
         } bottomBar: {
             if case .ready = services.todayContentState {
                 PocketSheetCommandBar {
-                    if services.canMarkPosted {
-                        PocketSheetPrimaryAction(
-                            title: "Mark as posted",
-                            systemImage: "paperplane.fill"
-                        ) {
-                            services.markPosted()
-                        }
-                        .accessibilityIdentifier("today.markPosted")
-                    } else if !services.todayCard.scenes.isEmpty {
-                        PocketSheetPrimaryAction(
-                            title: services.areAllScenesShot ? "All scenes shot" : "Mark all as shot",
-                            systemImage: services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal"
-                        ) {
-                            services.markAllScenesShot()
-                        }
-                        .disabled(services.areAllScenesShot)
-                        .accessibilityIdentifier("today.markAllScenesShot")
-                    }
-
-                    PocketSheetSecondaryAction(title: "Give me other ideas") {
+                    primaryAction
+                    PocketSheetSecondaryAction(title: "Need something easier?") {
                         sheet = .notToday
                     }
                     .accessibilityIdentifier("today.notEasier")
@@ -64,11 +53,20 @@ struct TodayView: View {
             switch item {
             case .notToday:
                 NotTodaySheet()
-                    .presentationDetents([.height(560)])
+                    .environment(\.dynamicTypeSize, dynamicTypeSize)
+                    .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
         }
         .navigationBarHidden(true)
+    }
+
+    private var primaryActionTitle: String {
+        if services.todayCard.completionState == .posted { return "View posted content" }
+        if services.todayCard.isNonFilmingPost { return "Get post text" }
+        if services.areAllScenesShot { return "Get post text" }
+        if services.shotSceneCount > 0 { return "Continue filming" }
+        return "Start filming"
     }
 
     private var header: some View {
@@ -89,6 +87,7 @@ struct TodayView: View {
                 readyPlanEntries
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today.header")
     }
 
@@ -102,10 +101,17 @@ struct TodayView: View {
             NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
                 Label("Plan", systemImage: "calendar")
             }
+            if dynamicTypeSize.isAccessibilitySize {
+                Button {
+                    sheet = .notToday
+                } label: {
+                    Label("Need something easier?", systemImage: "lightbulb")
+                }
+            }
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 16, weight: .medium))
-                .frame(width: 42, height: 42)
+                .frame(width: 44, height: 44)
                 .foregroundStyle(PocketSheetTheme.Color.ink)
                 .background(PocketSheetTheme.Color.paperRaised, in: Circle())
                 .overlay {
@@ -116,6 +122,40 @@ struct TodayView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Today options")
         .accessibilityIdentifier("today.overflow")
+    }
+
+    @ViewBuilder
+    private var primaryAction: some View {
+        if !services.todayCard.scenes.isEmpty || services.todayCard.isNonFilmingPost {
+            NavigationLink(value: CreatorRoute.todayShootSession) {
+                primaryActionLabel(
+                    title: primaryActionTitle,
+                    systemImage: services.todayCard.isNonFilmingPost ? "text.bubble" : "video.fill"
+                )
+            }
+            .buttonStyle(PocketSheetPressFeedbackStyle())
+            .accessibilityLabel(primaryActionTitle)
+            .accessibilityIdentifier("today.startFilming")
+        } else {
+            NavigationLink(value: CreatorRoute.shootFolio(editing: false)) {
+                primaryActionLabel(title: "Open shoot plan", systemImage: "list.bullet.rectangle")
+            }
+            .buttonStyle(PocketSheetPressFeedbackStyle())
+            .accessibilityIdentifier("today.openShootPlan")
+        }
+    }
+
+    private func primaryActionLabel(title: String, systemImage: String) -> some View {
+        HStack(spacing: PocketSheetSpace.xs) {
+            Image(systemName: systemImage)
+            Text(title)
+                .font(PocketSheetType.actionPrimary)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 52)
+        .foregroundStyle(PocketSheetTheme.Color.inversePaper)
+        .background(PocketSheetTheme.Color.inverseInk)
+        .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
     }
 
     private var planDateForReadyCard: String {
@@ -249,6 +289,7 @@ private struct MissingTodayCardView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("today.emptyCard")
     }
 }

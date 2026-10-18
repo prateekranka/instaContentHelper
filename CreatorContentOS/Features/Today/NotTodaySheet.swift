@@ -3,63 +3,68 @@ import SwiftUI
 struct NotTodaySheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
+    @Environment(AppState.self) private var appState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var detail: BackupDetail?
 
     var body: some View {
         ZStack {
             PocketSheetTheme.Color.paper.ignoresSafeArea()
-            VStack(spacing: PocketSheetSpace.l) {
-                VStack(spacing: PocketSheetSpace.s) {
-                    Text("Other ideas")
-                        .font(PocketSheetType.screenTitle)
-                        .foregroundStyle(PocketSheetTheme.Color.ink)
-                    Rectangle()
-                        .fill(PocketSheetTheme.Color.hairline)
-                        .frame(width: 32, height: 1)
-                    Text("Choose the smallest useful win.")
-                        .font(PocketSheetType.rowSubtitle)
-                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+            ScrollView {
+                VStack(spacing: PocketSheetSpace.l) {
+                    VStack(spacing: PocketSheetSpace.s) {
+                        Text("Other ideas")
+                            .font(PocketSheetType.screenTitle)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
+                        Rectangle()
+                            .fill(PocketSheetTheme.Color.hairline)
+                            .frame(width: 32, height: 1)
+                        Text("Choose the smallest useful win.")
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                    }
+                    .padding(.top, PocketSheetSpace.l)
+
+                    VStack(spacing: PocketSheetSpace.m) {
+                        BackupOptionRow(
+                            symbol: "10.circle",
+                            title: "10-second story",
+                            subtitle: backupStorySubtitle
+                        ) {
+                            detail = .story
+                        }
+                        BackupOptionRow(
+                            symbol: "feather",
+                            title: "Caption-only post",
+                            subtitle: backupCaptionSubtitle
+                        ) {
+                            detail = .captionOnly
+                        }
+                        BackupOptionRow(
+                            symbol: "bookmark",
+                            title: "Plan tomorrow",
+                            subtitle: "Open tomorrow's plan and choose a real package."
+                        ) {
+                            planTomorrow()
+                        }
+                    }
+
+                    Spacer()
+
+                    PocketSheetSecondaryAction(title: "Skip intentionally") {
+                        complete(.skippedIntentionally)
+                    }
                 }
+                .padding(PocketSheetSpace.l)
                 .padding(.top, PocketSheetSpace.l)
-
-                VStack(spacing: PocketSheetSpace.m) {
-                    BackupOptionRow(
-                        symbol: "10.circle",
-                        title: "10-second story",
-                        subtitle: backupStorySubtitle
-                    ) {
-                        detail = .story
-                    }
-                    BackupOptionRow(
-                        symbol: "feather",
-                        title: "Caption-only post",
-                        subtitle: backupCaptionSubtitle
-                    ) {
-                        detail = .captionOnly
-                    }
-                    BackupOptionRow(
-                        symbol: "bookmark",
-                        title: "Save for tomorrow",
-                        subtitle: "Keep the card ready."
-                    ) {
-                        complete(.savedForTomorrow)
-                    }
-                }
-
-                Spacer()
-
-                PocketSheetSecondaryAction(title: "Skip intentionally") {
-                    complete(.skippedIntentionally)
-                }
+                .padding(.bottom, PocketSheetSpace.l)
             }
-            .padding(PocketSheetSpace.l)
-            .padding(.top, PocketSheetSpace.l)
-            .padding(.bottom, PocketSheetSpace.l)
         }
         .sheet(item: $detail) { detail in
             BackupDecisionSheet(detail: detail) {
                 complete(detail.decision)
             }
+            .environment(\.dynamicTypeSize, dynamicTypeSize)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -78,10 +83,20 @@ struct NotTodaySheet: View {
         services.lastActionMessage = decision.confirmationMessage
         dismiss()
     }
+
+    private func planTomorrow() {
+        let tomorrow = SupabaseDateFormatting.dateOptions(
+            starting: services.currentTodayDateString,
+            dayCount: 2
+        )[safe: 1] ?? services.currentTodayDateString
+        appState.preparePlan(selecting: tomorrow)
+        appState.pendingCreatorTab = .plan
+        dismiss()
+    }
 }
 
 /// Which backup the creator tapped. Opening the sheet does NOT record a
-/// decision — only tapping `Use backup` inside it does.
+/// decision. The creator must explicitly confirm they posted the backup.
 private enum BackupDetail: Identifiable, Hashable {
     case story
     case captionOnly
@@ -123,6 +138,7 @@ private struct BackupDecisionSheet: View {
                             Text(subtitle)
                                 .font(PocketSheetType.rowSubtitle)
                                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                                .lineLimit(3)
                         }
 
                         if let primary = primaryText?.nilIfBlank {
@@ -140,10 +156,14 @@ private struct BackupDecisionSheet: View {
 
                         Spacer(minLength: PocketSheetSpace.m)
 
-                        PocketSheetPrimaryAction(title: "Use backup", systemImage: "checkmark.seal") {
+                        Text("Post this in your usual app. Your main idea stays in Today.")
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        PocketSheetPrimaryAction(title: "I've posted this backup", systemImage: "checkmark.seal") {
                             onUseBackup()
                             dismiss()
                         }
+                        .accessibilityIdentifier("backup.confirmPosted")
                     }
                     .padding(PocketSheetSpace.l)
                 }

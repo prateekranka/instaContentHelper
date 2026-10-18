@@ -9,6 +9,10 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     var hook: String?
     var sourceNote: String?
     var scheduledDate: String?
+    /// Optional so caches written before execution metadata remain readable.
+    var format: String?
+    var primarySurface: String?
+    var durationSeconds: Int?
     var scenes: [ShotScene]
     var shotTimeline: [ProductionTimelineItem]?
     var voiceoverTimeline: [ProductionTimelineItem]?
@@ -41,6 +45,9 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         hook: String? = nil,
         sourceNote: String? = nil,
         scheduledDate: String? = nil,
+        format: String? = nil,
+        primarySurface: String? = nil,
+        durationSeconds: Int? = nil,
         scenes: [ShotScene],
         shotTimeline: [ProductionTimelineItem]? = nil,
         voiceoverTimeline: [ProductionTimelineItem]? = nil,
@@ -71,6 +78,9 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.hook = hook
         self.sourceNote = sourceNote
         self.scheduledDate = scheduledDate
+        self.format = format
+        self.primarySurface = primarySurface
+        self.durationSeconds = durationSeconds
         self.scenes = scenes
         self.shotTimeline = shotTimeline
         self.voiceoverTimeline = voiceoverTimeline
@@ -96,6 +106,11 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
 }
 
 extension DailyCard {
+    /// A photo or caption post has no filming work to complete.
+    var isNonFilmingPost: Bool {
+        format?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "post" && scenes.isEmpty
+    }
+
     /// The hook shown on the Today card. Prefers the generated `hook`. When missing,
     /// derives a fallback from the richest available copy.
     var effectiveHook: String? {
@@ -439,7 +454,7 @@ struct DailyDecision: Codable, Hashable, Sendable {
     )
 }
 
-struct ArchiveEntry: Identifiable, Hashable, Sendable {
+struct ArchiveEntry: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let dailyCardID: UUID?
     let day: String
@@ -510,6 +525,8 @@ enum YouRoute: Hashable, Sendable {
 enum CreatorRoute: Hashable, Sendable {
     /// Opens Shoot Folio; `editing` starts scene/script light-edit mode.
     case shootFolio(editing: Bool = false)
+    /// Opens the one-shot Today execution flow.
+    case todayShootSession
     /// Opens Plan; optional `selectedDate` (`yyyy-MM-dd`) preselects that day.
     case plan(selectedDate: String?)
 }
@@ -1010,6 +1027,9 @@ extension GeneratedDailyCardDraft {
             hook: hook?.nilIfBlank,
             sourceNote: sourceNote.nilIfBlank ?? contentPillar,
             scheduledDate: scheduledDate,
+            format: format,
+            primarySurface: primarySurface,
+            durationSeconds: durationSeconds,
             scenes: sceneList,
             shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
             voiceoverTimeline: voiceoverTimeline.isEmpty ? nil : voiceoverTimeline,
@@ -1048,6 +1068,9 @@ extension GeneratedDailyCardDraft {
             estimatedShootMinutes: 10,
             energyRequired: "low",
             languageMode: "English",
+            format: card.format,
+            primarySurface: card.primarySurface,
+            durationSeconds: card.durationSeconds,
             hook: card.hook,
             sceneList: card.scenes,
             shotTimeline: card.shotTimeline ?? [],

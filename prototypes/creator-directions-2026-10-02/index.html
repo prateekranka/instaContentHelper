@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- Four structurally different ContentHelper UI prototypes, switchable with ?variant=A|B|C|D. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ecece9">
+  <title>ContentHelper — four directions</title>
+  <link rel="stylesheet" href="styles.css?v=2">
+  <link rel="stylesheet" href="details.css?v=2">
+  <script src="app.js?v=2" defer></script>
+</head>
+<body>
+  <header class="preview-header">
+    <a class="preview-brand" href="?variant=A" aria-label="ContentHelper prototype home"><span class="brand-mark">c<span>h</span></span>contenthelper</a>
+    <span class="preview-tag">FULL APP PREVIEW <span>•</span> 4 DIRECTIONS</span>
+    <button class="quiet-preview" data-action="compare">Compare all four <span aria-hidden="true">↗</span></button>
+  </header>
+  <main id="workspace" class="workspace">
+    <aside class="direction-notes" aria-labelledby="direction-name">
+      <div id="direction-key" class="direction-key">DIRECTION 01 / 04</div>
+      <h1 id="direction-name">Pocket</h1>
+      <p id="direction-description"></p>
+      <div class="note-rule"></div>
+      <div class="notes-label">THE IDEA</div>
+      <p id="direction-thesis" class="direction-thesis"></p>
+      <div class="try-label">TAKE IT FOR A SPIN</div>
+      <ol class="try-list"><li>Try onboarding, or open today's idea.</li><li>Follow the shots and edit your words.</li><li>Plan another day and personalize You.</li></ol>
+      <ol class="flow-map" aria-label="Creator workflow"><li>A short, optional setup</li><li>An idea ready for today</li><li>Shots, script, and caption</li><li>Your next day, already easier</li></ol>
+      <div class="scenario-controls" aria-label="Preview scenarios">
+        <button data-scenario="ready" aria-pressed="true">Ready today</button>
+        <button data-scenario="empty" aria-pressed="false">No idea yet</button>
+        <button data-scenario="error" aria-pressed="false">Idea retry</button>
+      </div>
+      <p class="prototype-disclosure">Sample content. Actions stay in this preview. Recording and posting happen in your usual apps.</p>
+    </aside>
+    <section class="device-stage" aria-label="Interactive phone preview">
+      <nav class="journey-bar" aria-label="Preview journeys"><button data-journey="today" aria-pressed="true">Daily idea</button><button data-journey="onboarding" aria-pressed="false">Onboarding</button><button data-journey="plan" aria-pressed="false">Weekly plan</button><button data-journey="you" aria-pressed="false">Creator profile</button></nav>
+      <div id="phone" class="phone theme-A">
+        <div class="device-status"><span>9:41</span><div class="device-island" aria-hidden="true"></div><div class="device-signals" aria-hidden="true"><span>▮▮▮</span><svg viewBox="0 0 18 14"><path d="M2 5Q9-1 16 5M5 8Q9 4 13 8M8 11Q9 10 10 11" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="battery"></span></div></div>
+        <div id="app" class="app"></div>
+        <div id="toast" class="app-toast" role="status" aria-live="polite"></div>
+        <div class="home-indicator" aria-hidden="true"></div>
+      </div>
+      <p class="device-caption"><span id="device-state">Today · Ready to film</span><button data-action="reset">Reset preview ↺</button></p>
+    </section>
+    <aside class="detail-notes">
+      <span class="notes-label">DESIGNED AROUND TODAY</span>
+      <div id="detail-points"></div>
+      <div class="detail-foot"><span class="tiny-dot"></span><span>Same idea. Four different ways to begin.</span></div>
+    </aside>
+  </main>
+  <section id="comparison" class="comparison" hidden aria-label="Compare the four directions"></section>
+  <nav class="variant-switcher" aria-label="Design variants">
+    <button class="variant-arrow" data-action="previous-variant" aria-label="Previous design variant">←</button>
+    <div class="variant-options">
+      <button data-variant="A" aria-pressed="true"><span>A</span> Pocket</button>
+      <button data-variant="B" aria-pressed="false"><span>B</span> Daybook</button>
+      <button data-variant="C" aria-pressed="false"><span>C</span> Studio</button>
+      <button data-variant="D" aria-pressed="false"><span>D</span> Cue</button>
+    </div>
+    <button class="variant-arrow" data-action="next-variant" aria-label="Next design variant">→</button>
+  </nav>
+  <dialog id="sheet" class="sheet-dialog" aria-labelledby="sheet-title"></dialog>
+</body>
+</html>

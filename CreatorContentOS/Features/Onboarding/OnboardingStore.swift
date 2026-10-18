@@ -26,7 +26,7 @@ struct WorkspaceScopedOnboardingStore: OnboardingStoring, @unchecked Sendable {
     init(
         workspaceID: UUID,
         creatorID: UUID,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = DebugLaunchConfiguration.onboardingDefaults
     ) {
         self.workspaceID = workspaceID
         self.creatorID = creatorID
@@ -95,6 +95,16 @@ struct WorkspaceScopedOnboardingStore: OnboardingStoring, @unchecked Sendable {
         clearProgress()
         defaults.removeObject(forKey: scopedKey(KeySuffix.data))
     }
+
+#if DEBUG
+    /// Clears only fixture-scoped onboarding keys in the selected defaults suite.
+    /// It never touches the app's standard defaults when fixture QA is active.
+    static func resetFixtureScopedKeys(defaults: UserDefaults = DebugLaunchConfiguration.onboardingDefaults) {
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("ch-onboarding.") {
+            defaults.removeObject(forKey: key)
+        }
+    }
+#endif
 }
 
 enum OnboardingPresentationPolicy {
@@ -102,7 +112,7 @@ enum OnboardingPresentationPolicy {
     /// When `MCO_FORCE_ONBOARDING=1`, keep the launch one-screen visible for QA even if the
     /// loaded profile is `established` (e.g. fixture HYROX). Does not mutate the profile.
     static var forceOnboardingForQA: Bool {
-        ProcessInfo.processInfo.environment["MCO_FORCE_ONBOARDING"] == "1"
+        DebugLaunchConfiguration.isEnabled("MCO_FORCE_ONBOARDING")
     }
 #endif
 
@@ -140,7 +150,7 @@ struct UserDefaultsOnboardingStore: OnboardingStoring, @unchecked Sendable {
         static let data = "ch-onboarding-data"
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = DebugLaunchConfiguration.onboardingDefaults) {
         self.defaults = defaults
     }
 

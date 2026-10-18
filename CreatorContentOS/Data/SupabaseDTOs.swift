@@ -318,6 +318,9 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             hook: hook?.nilIfBlank,
             sourceNote: sourceNote ?? contentPillar,
             scheduledDate: scheduledDate,
+            format: format,
+            primarySurface: primarySurface,
+            durationSeconds: durationSeconds,
             scenes: sceneList.enumerated().map { index, scene in
                 scene.domainScene(fallbackNumber: index + 1)
             },

@@ -1390,8 +1390,8 @@
     transition: background 140ms ease-out;
   }
   .lsheet-idea:active { background: #f5f5f5; }
-  .lsheet-idea-t { font-size: 14px; font-weight: 650; margin-bottom: 4px; }
-  .lsheet-idea-s { font-size: 12px; color: #737373; line-height: 1.35; }
+  .lsheet-idea-t { font-size: 14px; font-weight: 650; }
+  .lsheet-idea-s { font-size: 12px; color: #737373; line-height: 1.35; margin-top: 4px; }
 
   /* ——— You tab (account + archive entry) ——— */
   .pf-head { padding: 4px 20px 16px; }
@@ -1741,8 +1741,8 @@
   .pl-daygen-idea:disabled,
   .pl-daygen-other:disabled,
   .pl-daygen-submit:disabled { opacity: 0.45; cursor: default; }
-  .pl-daygen-idea-t { font-size: 14px; font-weight: 650; margin-bottom: 4px; }
-  .pl-daygen-idea-s { font-size: 12px; color: #737373; line-height: 1.35; }
+  .pl-daygen-idea-t { font-size: 14px; font-weight: 650; }
+  .pl-daygen-idea-s { font-size: 12px; color: #737373; line-height: 1.35; margin-top: 4px; }
   .pl-daygen-other {
     width: 100%;
     text-align: left;
@@ -2996,9 +2996,79 @@ function onboardingRefMotionEnabled() {
 }
 
 function focusOnboardingRefValidationTarget() {
-  const input = document.querySelector(`textarea[data-onboarding-ref-input="${state.onboardingRefType}"]`);
-  const target = input || document.querySelector(".ob-type-btn[data-attn]");
-  target?.focus?.({ preventScroll: true });
+  const input = document.querySelector("textarea[data-onboarding-ref-input]");
+  input?.focus?.({ preventScroll: true });
+}
+
+function onOnboardingRefInput(value) {
+  const previous = state.onboardingRefPaste;
+  state.onboardingRefPaste = value;
+  if (shouldAutoAddCompleteReelOrPost(previous, value)) {
+    void addOnboardingRefAsync();
+    return;
+  }
+  if (value.length - previous.length >= 12) {
+    const parsed = parseOnboardingRefInput(value);
+    if (!parsed.ok) showToast(parsed.error);
+  }
+}
+
+function submitOnboardingRef() {
+  if (!state.onboardingRefPaste.trim()) return;
+  void addOnboardingRefAsync();
+}
+
+function addOnboardingRef() {
+  void addOnboardingRefAsync();
+}
+
+async function addOnboardingRefAsync() {
+  const text = state.onboardingRefPaste.trim();
+  if (!text) return false;
+  if (state.onboardingRefValidating) return false;
+  if (state.onboardingRefs.length >= 10) {
+    showToast("Max 10 references during onboarding");
+    return false;
+  }
+
+  const parsed = parseOnboardingRefInput(text);
+  if (!parsed.ok) {
+    showToast(parsed.error);
+    return false;
+  }
+
+  let ref = parsed.ref;
+  let lookup = null;
+  if (parsed.needsLookup) {
+    state.onboardingRefValidating = true;
+    render();
+    lookup = await verifyInstagramProfile(parsed.handle);
+    state.onboardingRefValidating = false;
+    if (lookup.status === PROFILE_VERIFICATION_STATUS.NOT_FOUND) {
+      showToast(`@${lookup.handle} wasn't found on Instagram`);
+      render();
+      return false;
+    }
+    ref = buildOnboardingProfileRef(lookup.handle, lookup.url);
+  }
+
+  const dup = state.onboardingRefs.find(r => r.key === ref.key);
+  if (dup) {
+    showToast("Already added");
+    render();
+    return false;
+  }
+
+  state.onboardingRefs.push({ id: `obr${Date.now()}`, ...ref });
+  state.onboardingRefPaste = "";
+  saveOnboardingProgress();
+  if (lookup?.status === PROFILE_VERIFICATION_STATUS.TEMPORARILY_UNAVAILABLE) {
+    showToast("Profile added. We couldn't check Instagram right now.");
+  } else {
+    showToast(ref.type === "account" ? "Profile added" : "Reel added");
+  }
+  render();
+  return true;
 }
 
 function onboardingRefsValid() {
@@ -3131,7 +3201,7 @@ function buildOnboardingProfileRef(handle, url) {
   };
 }
 
-function parseOnboardingRefInput(text, expectedKind) {
+function parseOnboardingRefInput(text) {
   const trimmed = text.trim();
   if (!trimmed) return { ok: false, error: "Paste a reel URL or @handle" };
 
@@ -3144,20 +3214,12 @@ function parseOnboardingRefInput(text, expectedKind) {
     if (c.kind === "story") return { ok: false, error: c.reason };
     if (c.kind === "audio") return { ok: false, error: "Audio links aren't supported — paste a reel or profile." };
     if (c.kind === "malformed") {
-      return { ok: false, error: expectedKind === "reel"
-        ? "That doesn't look like a reel — try instagram.com/reel/…"
-        : "That doesn't look like a profile — try @handle or instagram.com/handle" };
+      return { ok: false, error: "That doesn't look like a reel or profile — try instagram.com/reel/… or @handle" };
     }
     if (c.kind === "reel" || c.kind === "post") {
-      if (expectedKind === "profile") {
-        return { ok: false, error: "That's a reel link — switch to Reel URL or paste a profile @handle." };
-      }
       return { ok: true, ref: buildOnboardingReelRef(c) };
     }
     if (c.kind === "profile") {
-      if (expectedKind === "reel") {
-        return { ok: false, error: "That's a profile link — switch to Profile @handle or paste a reel URL." };
-      }
       return {
         ok: true,
         needsLookup: true,
@@ -3168,23 +3230,35 @@ function parseOnboardingRefInput(text, expectedKind) {
   }
 
   const handle = normalizePlainHandle(trimmed);
-  if (!handle) {
+  if (handle) {
     return {
-      ok: false,
-      error: expectedKind === "reel"
-        ? "Paste a full reel URL — e.g. instagram.com/reel/…"
-        : "Enter a valid @handle — letters, numbers, dots, underscores (2–30 chars).",
+      ok: true,
+      needsLookup: true,
+      handle,
+      ref: buildOnboardingProfileRef(handle, instagramProfileURL(handle)),
     };
   }
-  if (expectedKind === "reel") {
-    return { ok: false, error: "Handles are for profiles — paste a reel URL or switch to Profile @handle." };
+  if (trimmed.startsWith("@") || /^[A-Za-z0-9._]+$/.test(trimmed)) {
+    return { ok: false, error: "Enter a valid @handle — letters, numbers, dots, underscores (2–30 chars)." };
   }
-  return {
-    ok: true,
-    needsLookup: true,
-    handle,
-    ref: buildOnboardingProfileRef(handle, instagramProfileURL(handle)),
-  };
+  return { ok: false, error: "That doesn't look like a reel or profile — try instagram.com/reel/… or @handle" };
+}
+
+function looksLikeCompleteReelOrPostURL(text) {
+  const parsed = parseOnboardingRefInput(text);
+  return !!(parsed.ok && parsed.ref && parsed.ref.type !== "account");
+}
+
+function reelOrPostURLLooksTerminated(text) {
+  const trimmed = String(text || "").trim();
+  if (/(?:instagram\.com)\/(?:reel|reels|p)\/[A-Za-z0-9_-]{5,}(?:\/|\?)/i.test(trimmed)) return true;
+  return /(?:instagram\.com)\/(?:reel|reels|p)\/[A-Za-z0-9_-]{11,}\s*$/i.test(trimmed);
+}
+
+function shouldAutoAddCompleteReelOrPost(previous, current) {
+  if (!looksLikeCompleteReelOrPostURL(current)) return false;
+  if (current.length - previous.length >= 12) return true;
+  return reelOrPostURLLooksTerminated(current);
 }
 
 function parsePlanRefInput(text) {
@@ -3272,18 +3346,11 @@ async function verifyInstagramProfile(handle) {
 }
 
 function onboardingRefsMixHint() {
-  const n = state.onboardingRefs.length;
-  if (n < 2 || onboardingRefsValid()) return "";
+  if (onboardingRefsValid()) return "";
   const reels = onboardingReelCount();
   const profiles = onboardingProfileCount();
-  if (reels === 0 && profiles >= 2) {
-    return "You have profiles only — add at least one reel URL (use Reel URL and paste instagram.com/reel/…).";
-  }
-  if (profiles === 0 && reels >= 2) {
-    return "You have reels only — add at least one profile (use Profile @handle and paste @creator).";
-  }
-  if (reels === 0) return "Add at least one reel URL to continue.";
-  if (profiles === 0) return "Add at least one profile @handle to continue.";
+  if (reels === 0 && profiles >= 1) return "Add at least one reel URL to continue.";
+  if (profiles === 0 && reels >= 1) return "Add at least one profile @handle to continue.";
   return "";
 }
 
@@ -3292,56 +3359,6 @@ function setOnboardingRefType(type) {
   render();
 }
 
-function addOnboardingRef() {
-  void addOnboardingRefAsync();
-}
-
-async function addOnboardingRefAsync() {
-  const text = state.onboardingRefPaste.trim();
-  if (!text) {
-    showToast("Paste a reel URL or @handle");
-    return;
-  }
-  if (state.onboardingRefValidating) return;
-
-  const parsed = parseOnboardingRefInput(text, state.onboardingRefType);
-  if (!parsed.ok) {
-    showToast(parsed.error);
-    return;
-  }
-
-  let ref = parsed.ref;
-  let lookup = null;
-  if (parsed.needsLookup) {
-    state.onboardingRefValidating = true;
-    render();
-    lookup = await verifyInstagramProfile(parsed.handle);
-    state.onboardingRefValidating = false;
-    if (lookup.status === PROFILE_VERIFICATION_STATUS.NOT_FOUND) {
-      showToast(`@${lookup.handle} wasn't found on Instagram`);
-      render();
-      return;
-    }
-    ref = buildOnboardingProfileRef(lookup.handle, lookup.url);
-  }
-
-  const dup = state.onboardingRefs.find(r => r.key === ref.key);
-  if (dup) {
-    showToast("Already added");
-    render();
-    return;
-  }
-
-  state.onboardingRefs.push({ id: `obr${Date.now()}`, ...ref });
-  state.onboardingRefPaste = "";
-  saveOnboardingProgress();
-  if (lookup?.status === PROFILE_VERIFICATION_STATUS.TEMPORARILY_UNAVAILABLE) {
-    showToast("Profile added. We couldn't check Instagram right now.");
-  } else {
-    showToast(ref.type === "account" ? "Profile added" : "Reel added");
-  }
-  render();
-}
 
 function removeOnboardingRef(id) {
   state.onboardingRefs = state.onboardingRefs.filter(r => r.id !== id);
@@ -3361,7 +3378,11 @@ function advanceOnboardingFromCategories() {
   render();
 }
 
-function advanceOnboardingFromRefs() {
+async function advanceOnboardingFromRefs() {
+  if (state.onboardingRefPaste.trim()) {
+    await addOnboardingRefAsync();
+    if (state.onboardingRefPaste.trim()) return;
+  }
   if (!onboardingRefsValid()) {
     const missing = onboardingRefMissingTypes();
     state.onboardingRefValidation = {
@@ -3369,9 +3390,6 @@ function advanceOnboardingFromRefs() {
       profile: missing.includes("profile"),
       motion: onboardingRefMotionEnabled(),
     };
-    if (missing.length === 1 || !missing.includes(state.onboardingRefType)) {
-      state.onboardingRefType = missing[0] || state.onboardingRefType;
-    }
     const message = onboardingRefValidationMessage();
     showToast(message || "Add at least one reel URL and one profile @handle to continue.");
     render();
@@ -3465,9 +3483,6 @@ function renderOnboarding() {
     const validationMessage = onboardingRefValidationMessage(attn);
     const mixHint = onboardingRefsMixHint();
     const refHint = validationMessage || mixHint;
-    const refHintHtml = refHint
-      ? `<p ${validationMessage ? 'id="onboarding-ref-error" role="alert"' : ""} class="ob-hint-warn">${esc(refHint)}</p>`
-      : "";
     const refRows = state.onboardingRefs.length
       ? state.onboardingRefs.map(r => `
           <div class="ob-ref-row">
@@ -3475,24 +3490,21 @@ function renderOnboarding() {
             <button type="button" class="ob-ref-remove press" onclick="removeOnboardingRef('${r.id}')" aria-label="Remove">×</button>
           </div>`).join("")
       : `<p class="ob-hint" style="margin:0">No references yet.</p>`;
-    const profileInputAttn = attn.profile && state.onboardingRefType === "profile";
-    const reelInputAttn = attn.reel && state.onboardingRefType === "reel";
+    const inputAttn = attn.reel || attn.profile;
+    const checkingHint = state.onboardingRefValidating ? "Checking on Instagram…" : "";
+    const liveHint = checkingHint || refHint;
+    const liveHintHtml = liveHint
+      ? `<p ${validationMessage && !checkingHint ? 'id="onboarding-ref-error" role="alert"' : ""} class="ob-hint-warn">${esc(liveHint)}</p>`
+      : "";
     body = `
       <div class="ob-content">
-        <div class="ob-type-toggle">
-          <button type="button" class="ob-type-btn press" ${state.onboardingRefType === "reel" ? "data-sel" : ""} ${attn.reel ? "data-attn aria-invalid=\"true\"" : ""} ${attn.reel && attentionMotion ? "data-attn-motion" : ""} onclick="setOnboardingRefType('reel')">Reel URL</button>
-          <button type="button" class="ob-type-btn press" ${state.onboardingRefType === "profile" ? "data-sel" : ""} ${attn.profile ? "data-attn aria-invalid=\"true\"" : ""} ${attn.profile && attentionMotion ? "data-attn-motion" : ""} onclick="setOnboardingRefType('profile')">Profile @handle</button>
-        </div>
-        <textarea class="pl-textarea" data-onboarding-ref-input="${state.onboardingRefType}" ${profileInputAttn || reelInputAttn ? "data-attn aria-invalid=\"true\"" : ""} ${profileInputAttn || reelInputAttn ? "aria-describedby=\"onboarding-ref-error\"" : ""} ${((state.onboardingRefType === "profile" && attn.profile) || (state.onboardingRefType === "reel" && attn.reel)) && attentionMotion ? "data-attn-motion" : ""} placeholder="${state.onboardingRefType === "profile" ? "@creator" : "https://instagram.com/reel/…"}" oninput="state.onboardingRefPaste=this.value">${esc(state.onboardingRefPaste)}</textarea>
-        <button type="button" class="pl-ref-add press" style="margin-top:8px" ${state.onboardingRefValidating ? "disabled" : ""} onclick="addOnboardingRef()">${state.onboardingRefValidating ? "Checking on Instagram…" : "+ Add reference"}</button>
+        <textarea class="pl-textarea" data-onboarding-ref-input ${inputAttn ? "data-attn aria-invalid=\"true\"" : ""} ${inputAttn ? "aria-describedby=\"onboarding-ref-error\"" : ""} ${inputAttn && attentionMotion ? "data-attn-motion" : ""} placeholder="Paste a reel link or @handle" oninput="onOnboardingRefInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();submitOnboardingRef();}" onblur="submitOnboardingRef()">${esc(state.onboardingRefPaste)}</textarea>
         <div style="margin-top:14px">${refRows}</div>
-        <p class="ob-hint" style="margin-top:12px">${state.onboardingRefs.length}/10 · ${onboardingReelCount()} reel · ${onboardingProfileCount()} profile</p>
-        ${refHintHtml}
+        <p class="ob-hint" style="margin-top:12px;font-variant-numeric:tabular-nums">${state.onboardingRefs.length}/10 · ${onboardingReelCount()} reel · ${onboardingProfileCount()} profile</p>
+        ${liveHintHtml}
       </div>`;
     dock = `
-      <button type="button" class="ob-skip-link press" onclick="softSkipOnboarding()">Set up later</button>
-      <button type="button" class="ob-primary press" onclick="advanceOnboardingFromRefs()">Continue</button>
-      <button type="button" class="ob-secondary press" onclick="goToOnboardingStep(0)">Back</button>`;
+      <button type="button" class="ob-primary press" onclick="advanceOnboardingFromRefs()">Continue</button>`;
   } else {
     const catLabels = state.onboardingCategories
       .map(id => onboardingCategoryLabel(id))
@@ -3670,7 +3682,6 @@ function renderDaygenPanel() {
       ${prompts.map((p, i) => `
         <button type="button" class="pl-daygen-idea press" ${state.selectedIdeaIndex === i ? "data-sel" : ""} ${busy ? "disabled" : ""} onclick="selectDaygenIdea(${i})" aria-label="Generate ${esc(p.title)}">
           <div class="pl-daygen-idea-t">${esc(p.title)}</div>
-          <div class="pl-daygen-idea-s">${esc(p.summary)}</div>
         </button>`).join("")}
       <button type="button" class="pl-daygen-other press" ${otherOpen ? "data-sel" : ""} ${busy ? "disabled" : ""} onclick="selectDaygenOther()" aria-label="Write another idea">
         <div class="pl-daygen-idea-t">Other</div>
@@ -3687,32 +3698,66 @@ function renderDaygenPanel() {
     </div>`;
 }
 
+/** On-device Instagram-format trend templates (not a live scrape). Mirrors PlanDayIdeaBuilder. */
+const DAYGEN_TREND_TEMPLATES = [
+  { format: "POV Reel", title: (p, d) => `POV: what a real ${p} day looks like on ${d.weekday}` },
+  { format: "GRWM Reel", title: (p, d) => `GRWM while I talk through my ${p} plan for ${d.weekday}` },
+  { format: "Listicle Reel", title: (p) => `3 mistakes beginners still make with ${p}` },
+  { format: "Stop doing this", title: (p) => `Stop doing this in your ${p} routine` },
+  { format: "Myth vs reality", title: (p) => `Myth vs reality: ${p} advice that sounds good` },
+  { format: "Day in the life", title: (p, d) => `Day in the life: soft ${p} storytelling for ${d.weekday}` },
+  { format: "Wish I knew", title: (p) => `Things I wish I knew before taking ${p} seriously` },
+  { format: "Before / after", title: (p) => `Before/after: one honest week of ${p}` },
+  { format: "Voiceover story", title: (p) => `Voiceover: the quiet truth about my ${p} habit` },
+  { format: "Carousel myths", title: (p) => `Carousel: ${p} myths people still believe` },
+  { format: "Soft life Reel", title: (p, d) => `Soft life morning built around ${p} on ${d.weekday}` },
+  { format: "Hot take Reel", title: (p) => `Hot take: the unpopular opinion I have about ${p}` },
+  { format: "Busy-day Reel", title: (p, d) => `What I actually do for ${p} on a busy ${d.weekday}` },
+  { format: "Tell me without telling me", title: (p) => `Tell me you're into ${p} without telling me` },
+  { format: "Ranking Reel", title: (p) => `Ranking my ${p} essentials from skip to keep` },
+];
+
+function daygenStableSeed(material) {
+  let hash = 0;
+  for (let i = 0; i < material.length; i++) {
+    hash = ((hash * 31) + material.charCodeAt(i)) & 0x7fffffff;
+  }
+  return hash;
+}
+
 function buildDaygenPrompts() {
-  const { weekday, label } = formatPlanDate(state.planSelected);
-  const voiceHint = voiceComplete() ? "your voice" : "your positioning";
-  const refsHint = refsCount() > 0 ? `${refsCount()} reference${refsCount() === 1 ? "" : "s"}` : "what you save";
-  return [
-    {
-      title: "Behind the routine",
-      summary: `What ${weekday} actually looks like — one honest moment, no polish.`,
-    },
-    {
-      title: "Small win, said plainly",
-      summary: `One thing that went right before ${label.split(" ")[0]} ${label.split(" ")[1]} — quick hook, simple payoff.`,
-    },
-    {
-      title: "Process over outcome",
-      summary: `Show the prep, not the result — ${voiceHint} leads, camera follows.`,
-    },
-    {
-      title: "Question you keep getting",
-      summary: `Answer the DM you would have ignored — framed for ${weekday}'s audience.`,
-    },
-    {
-      title: "Contrast reel",
-      summary: `Two beats: expectation vs reality. ${refsHint} can set the pacing.`,
-    },
-  ];
+  const formatted = formatPlanDate(state.planSelected);
+  const pillarsRaw = (state.planCategories || [])
+    .map((id) => {
+      if (id === ONBOARDING_CATEGORY_OTHER_ID) {
+        return String(state.planCategoryOther || "other").trim().toLowerCase();
+      }
+      const match = ONBOARDING_CATEGORIES.find((c) => c.id === id);
+      return String(match?.label || id).trim().toLowerCase();
+    })
+    .filter(Boolean);
+  const pillars = pillarsRaw.length ? pillarsRaw : ["your niche"];
+  const voiceOn = voiceComplete();
+  const refs = refsCount();
+  const seed = daygenStableSeed([
+    state.planSelected,
+    pillars.join(","),
+    voiceOn ? "voice" : "no-voice",
+    `refs:${refs}`,
+  ].join("|"));
+  const start = seed % DAYGEN_TREND_TEMPLATES.length;
+  const hintBits = [];
+  if (voiceOn) hintBits.push("in your voice");
+  if (refs > 0) hintBits.push(`paced like your ${refs} reference${refs === 1 ? "" : "s"}`);
+  const hint = hintBits.length ? hintBits.join(", ") : null;
+
+  return Array.from({ length: 5 }, (_, offset) => {
+    const template = DAYGEN_TREND_TEMPLATES[(start + offset) % DAYGEN_TREND_TEMPLATES.length];
+    const pillar = pillars[offset % pillars.length];
+    const title = template.title(pillar, formatted);
+    const summary = hint ? `${template.format} · ${hint}` : template.format;
+    return { title, summary };
+  });
 }
 
 function renderCalendarGrid() {
@@ -4320,7 +4365,6 @@ function renderLightSheet() {
       ${prompts.map((p, i) => `
         <button type="button" class="lsheet-idea press" onclick="pickDaygenPrompt(${i})">
           <div class="lsheet-idea-t">${esc(p.title)}</div>
-          <div class="lsheet-idea-s">${esc(p.summary)}</div>
         </button>`).join("")}
       <button type="button" class="lsheet-secondary press" onclick="closeSheet()">Cancel</button>`;
   } else if (s === "calendar") {

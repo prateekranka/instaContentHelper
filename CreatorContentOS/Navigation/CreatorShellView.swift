@@ -12,6 +12,8 @@ struct CreatorShellView: View {
                         switch route {
                         case .shootFolio(let editing):
                             ShootFolioView(startsInEditingMode: editing)
+                        case .todayShootSession:
+                            TodayShootSessionView()
                         case .plan(let selectedDate):
                             PlanHubView(
                                 showsModeSwitch: false,

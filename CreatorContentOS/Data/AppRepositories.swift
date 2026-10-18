@@ -66,7 +66,7 @@ struct AppRepositories: Sendable {
             weeklyPlans: FixtureWeeklyPlanRepository(publishedStore: publishedStore),
             references: FixtureReferenceRepository(),
             referenceImport: FixtureReferenceImportRepository(),
-            dailyGeneration: FixtureDayGenerationRepository(),
+            dailyGeneration: FixtureDayGenerationRepository(publishedStore: publishedStore),
             planDayIdeas: FixturePlanDayIdeaRepository(),
             intelligence: FixtureIntelligenceRepository(),
             creatorProfile: FixtureCreatorProfileRepository(store: profileStore),
@@ -306,6 +306,9 @@ protocol DayGenerationRepository: Sendable {
         creatorID: UUID,
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult
+
+    /// Loads locally persisted Plan packages when a repository supports them.
+    func persistedDayPackages(context: WorkspaceContext) async -> [GeneratedDailyCardDraft]
 }
 
 /// Fetches the five Plan empty-day idea one-liners (DeepSeek via edge function in live mode).
@@ -358,6 +361,11 @@ extension DayGenerationRepository {
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult {
         throw RepositoryError.notConfigured("resume_day_generation_not_configured")
+    }
+
+    func persistedDayPackages(context: WorkspaceContext) async -> [GeneratedDailyCardDraft] {
+        _ = context
+        return []
     }
 }
 
