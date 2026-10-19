@@ -17,6 +17,7 @@ struct PieceDetailView: View {
     @State private var showsMove = false
     @State private var showsEditChoice = false
     @State private var showsPostedEditChoice = false
+    @State private var showsArchiveConfirmation = false
     @State private var duplicatedPieceID: UUID?
 
     var body: some View {
@@ -94,6 +95,30 @@ struct PieceDetailView: View {
                     NavigationLink(value: PieceRoute.versions(piece.id)) {
                         Label("Versions", systemImage: "clock.arrow.circlepath")
                     }
+                    if piece.archivedAt == nil {
+                        let dayPieces = services.pieceStore.pieces(on: piece.date)
+                        let position = dayPieces.firstIndex { $0.id == piece.id } ?? 0
+                        if position > 0 {
+                            Button {
+                                reorder(piece, by: -1)
+                            } label: {
+                                Label("Move earlier in the day", systemImage: "arrow.up")
+                            }
+                        }
+                        if position < dayPieces.count - 1 {
+                            Button {
+                                reorder(piece, by: 1)
+                            } label: {
+                                Label("Move later in the day", systemImage: "arrow.down")
+                            }
+                        }
+                        Button {
+                            showsArchiveConfirmation = true
+                        } label: {
+                            Label("Remove from day", systemImage: "archivebox")
+                        }
+                        .accessibilityIdentifier("piece.archive")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .frame(minWidth: 44, minHeight: 44)
@@ -101,6 +126,20 @@ struct PieceDetailView: View {
                 .accessibilityLabel("Content options")
                 .accessibilityIdentifier("piece.options")
             }
+        }
+        .confirmationDialog("Remove \u{201C}\(piece.title)\u{201D} from \(PieceDates.longLabel(piece.date))?", isPresented: $showsArchiveConfirmation, titleVisibility: .visible) {
+            Button("Remove from day") {
+                services.pieceStore.update { library, now in
+                    try library.archive(piece.id, now: now)
+                }
+                services.lastActionMessage = "Removed from the day. Restore it from Your content."
+            }
+            .accessibilityIdentifier("piece.archive.confirm")
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text(piece.hasPostedOutcome
+                ? "It moves to Archived in Your content with its versions, media and posting records. Posts already on Instagram or TikTok stay there."
+                : "It moves to Archived in Your content with its versions, media and progress.")
         }
         .confirmationDialog("What would you like to edit?", isPresented: $showsEditChoice, titleVisibility: .visible) {
             Button("Script") { editor = .script }
@@ -249,6 +288,9 @@ struct PieceDetailView: View {
     }
 
     private func note(for piece: ContentPiece) -> String {
+        if piece.archivedAt != nil {
+            return "Archived. Its versions, media and records are kept."
+        }
         if piece.hasPostedOutcome {
             return "Changes here do not update the live post."
         }
@@ -263,7 +305,17 @@ struct PieceDetailView: View {
 
     @ViewBuilder
     private func footer(_ piece: ContentPiece) -> some View {
-        if piece.needsReview {
+        if piece.archivedAt != nil {
+            PieceFooter {
+                PiecePrimaryButton(title: "Restore to \(PieceDates.shortLabel(piece.date, today: services.currentTodayDateString))") {
+                    services.pieceStore.update { library, now in
+                        try library.unarchive(piece.id, now: now)
+                    }
+                    services.lastActionMessage = "Restored."
+                }
+                .accessibilityIdentifier("piece.restore")
+            }
+        } else if piece.needsReview {
             PieceFooter {
                 PiecePrimaryButton(title: piece.hasUnapprovedChanges ? "Approve new version" : "Approve content") {
                     services.approvePieces([piece.id])
@@ -328,6 +380,12 @@ struct PieceDetailView: View {
         guard piece.content.format.usesFilming && !piece.filmingShots.isEmpty else { return "Prepare media" }
         if piece.allFilmingShotsCaptured { return "Review captured shots" }
         return piece.isFilmingInProgress ? "Continue filming" : "Start filming"
+    }
+
+    private func reorder(_ piece: ContentPiece, by offset: Int) {
+        services.pieceStore.update { library, now in
+            try library.reorder(piece.id, by: offset, now: now)
+        }
     }
 
     private func duplicate(_ piece: ContentPiece) {

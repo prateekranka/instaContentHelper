@@ -181,7 +181,7 @@ struct YouView: View {
     }
 
     private var yourContentSubtitle: String {
-        let count = services.pieceStore.library.pieces.count
+        let count = services.pieceStore.library.activePieces.count
         return count == 1 ? "1 piece · search drafts, approved, shot and posted" : "\(count) pieces · search drafts, approved, shot and posted"
     }
 

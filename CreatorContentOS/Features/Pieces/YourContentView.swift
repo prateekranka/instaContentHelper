@@ -6,6 +6,7 @@ enum YourContentFilter: String, CaseIterable, Identifiable {
     case approved
     case shot
     case posted
+    case archived
 
     var id: String { rawValue }
 
@@ -16,16 +17,18 @@ enum YourContentFilter: String, CaseIterable, Identifiable {
         case .approved: "Approved"
         case .shot: "Shot"
         case .posted: "Posted"
+        case .archived: "Archived"
         }
     }
 
     func includes(_ piece: ContentPiece) -> Bool {
         switch self {
-        case .all: true
-        case .draft: piece.needsReview
-        case .approved: piece.stage == .approved
-        case .shot: piece.stage == .shot
-        case .posted: piece.stage == .posted
+        case .archived: piece.archivedAt != nil
+        case .all: piece.archivedAt == nil
+        case .draft: piece.archivedAt == nil && piece.needsReview
+        case .approved: piece.archivedAt == nil && piece.stage == .approved
+        case .shot: piece.archivedAt == nil && piece.stage == .shot
+        case .posted: piece.archivedAt == nil && piece.stage == .posted
         }
     }
 }
@@ -127,7 +130,12 @@ struct YourContentView: View {
         }
         let byDate = Dictionary(grouping: matching, by: \.date)
         return byDate.keys.sorted(by: >).map { date in
-            PieceDateGroup(date: date, pieces: services.pieceStore.pieces(on: date).filter { piece in matching.contains { $0.id == piece.id } })
+            PieceDateGroup(
+                date: date,
+                pieces: (byDate[date] ?? []).sorted { lhs, rhs in
+                    lhs.sortOrder == rhs.sortOrder ? lhs.createdAt < rhs.createdAt : lhs.sortOrder < rhs.sortOrder
+                }
+            )
         }
     }
 }

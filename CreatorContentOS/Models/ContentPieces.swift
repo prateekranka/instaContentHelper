@@ -440,6 +440,7 @@ struct ContentPiece: Identifiable, Codable, Hashable, Sendable {
     var linkedDailyCardID: UUID?
     var basedOnPieceID: UUID?
     var topic: String?
+    var archivedAt: Date?
 
     init(
         id: UUID = UUID(),
@@ -777,9 +778,17 @@ struct PieceLibrary: Codable, Hashable, Sendable {
         pieces.first { $0.id == id }
     }
 
+    var activePieces: [ContentPiece] {
+        pieces.filter { $0.archivedAt == nil }
+    }
+
+    var archivedPieces: [ContentPiece] {
+        pieces.filter { $0.archivedAt != nil }.sorted { ($0.archivedAt ?? .distantPast) > ($1.archivedAt ?? .distantPast) }
+    }
+
     func pieces(on date: String) -> [ContentPiece] {
         pieces
-            .filter { $0.date == date }
+            .filter { $0.date == date && $0.archivedAt == nil }
             .sorted { lhs, rhs in
                 lhs.sortOrder == rhs.sortOrder ? lhs.createdAt < rhs.createdAt : lhs.sortOrder < rhs.sortOrder
             }
@@ -795,7 +804,36 @@ struct PieceLibrary: Codable, Hashable, Sendable {
     }
 
     var datesWithPieces: Set<String> {
-        Set(pieces.map(\.date))
+        Set(activePieces.map(\.date))
+    }
+
+    mutating func archive(_ id: UUID, now: Date) throws {
+        let index = try index(of: id)
+        pieces[index].archivedAt = now
+        pieces[index].updatedAt = now
+    }
+
+    mutating func unarchive(_ id: UUID, now: Date) throws {
+        let index = try index(of: id)
+        guard pieces[index].archivedAt != nil else { return }
+        pieces[index].archivedAt = nil
+        pieces[index].sortOrder = nextSortOrder(on: pieces[index].date)
+        pieces[index].updatedAt = now
+    }
+
+    mutating func reorder(_ id: UUID, by offset: Int, now: Date) throws {
+        guard let piece = piece(id) else { throw PieceLibraryError.missingPiece }
+        var dayPieces = pieces(on: piece.date)
+        guard let from = dayPieces.firstIndex(where: { $0.id == id }) else { return }
+        let to = from + offset
+        guard dayPieces.indices.contains(to) else { return }
+        dayPieces.swapAt(from, to)
+        for (order, dayPiece) in dayPieces.enumerated() {
+            guard let index = pieces.firstIndex(where: { $0.id == dayPiece.id }),
+                  pieces[index].sortOrder != order else { continue }
+            pieces[index].sortOrder = order
+            pieces[index].updatedAt = now
+        }
     }
 
     private func nextSortOrder(on date: String) -> Int {

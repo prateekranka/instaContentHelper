@@ -174,4 +174,24 @@ test('a date with an AI package takes a second AI draft and a written piece, and
   await expect(screen.getByTestId('day.title')).toBeVisible();
   await expect(screen.getByTestId('day.piece.2')).toContainText('Evening stretch');
   await app.screenshot('pieces-plan-day');
+
+  await screen.getByTestId('day.piece.2').tap();
+  await screen.getByTestId('piece.options').tap();
+  await screen.getByRole('button', 'Move earlier in the day', { exact: true }).tap();
+  await screen.getByTestId('piece.options').tap();
+  await screen.getByRole('button', 'Remove from day', { exact: true }).tap();
+  await screen.getByRole('button', 'Remove from day', { exact: true }).tap();
+  await expect(screen.getByTestId('piece.restore')).toBeVisible();
+  await expect(screen.getByTestId('piece.note')).toContainText('Archived');
+  await app.back();
+  await expect(screen.getByTestId('day.title')).toContainText('2 pieces');
+  await selectTab(screen, 'You');
+  await screen.getByTestId('content.filter.archived').tap();
+  await expect(screen.getByTestId('content.piece.Evening stretch')).toBeVisible();
+  await screen.getByTestId('content.piece.Evening stretch').tap();
+  await screen.getByTestId('piece.restore').tap();
+  await expect(screen.getByTestId('piece.restore')).toBeHidden();
+  await selectTab(screen, 'Today');
+  await expect(screen.getByTestId('today.summary')).toHaveText('3 pieces · 1 approved · 2 need review');
+  await app.screenshot('pieces-archive-restore');
 });
