@@ -27,7 +27,8 @@ if (scenario === 'welcome') flags.MCO_FORCE_SIGN_IN = '1';
 
 const suite = ['onboarding', 'retry', 'slow'].includes(scenario) ? 'onboarding'
   : ['large', 'long', 'motion', 'empty', 'welcome'].includes(scenario) ? 'accessibility'
-  : scenario === 'plan' ? 'plan' : scenario === 'alternatives' ? 'alternatives' : 'today';
+  : scenario === 'plan' ? 'plan' : scenario === 'alternatives' ? 'alternatives'
+  : scenario === 'pieces' ? 'pieces' : 'today';
 
 // Deterministic native tests. No AI model, provider, account credentials, or live generation.
 export default {

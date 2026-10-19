@@ -37,6 +37,7 @@ struct PlanHubView: View {
                 header
                 selectedDateHeader
                 sevenDaySelector
+                PlanDayPiecesSection(date: scheduledDateString)
                 if let otherLabel = otherDayGeneratingLabel {
                     Text("Still drafting \(otherLabel) in the background — you can keep planning other days.")
                         .font(PocketSheetType.rowSubtitle)
@@ -116,7 +117,7 @@ struct PlanHubView: View {
             EmptyView()
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if canMakeAvailable {
+            if canMakeAvailable && !isDisplayedPackageInPieces {
                 approveDock
             }
         }
@@ -184,6 +185,9 @@ struct PlanHubView: View {
         }
         .onChange(of: appState.planSelectedDate) { _, _ in
             applyPendingPlanDateSelection()
+        }
+        .task(id: displayedCard?.id) {
+            services.syncPiecesWithDayPackage(on: scheduledDateString)
         }
         .onChange(of: services.aiConsentEpoch) { _, _ in
             refreshDayIdeasIfNeeded()
@@ -324,6 +328,11 @@ struct PlanHubView: View {
         services.dayPackage(for: scheduledDateString)
     }
 
+    private var isDisplayedPackageInPieces: Bool {
+        guard let card = displayedCard else { return false }
+        return services.pieceStore.piece(linkedTo: card.id) != nil
+    }
+
     // MARK: - Sections
 
     private var header: some View {
@@ -457,7 +466,7 @@ struct PlanHubView: View {
 
     @ViewBuilder
     private var resultBlock: some View {
-        if let card = displayedCard, !isGeneratingSelectedDay {
+        if let card = displayedCard, !isGeneratingSelectedDay, !isDisplayedPackageInPieces {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 Text(card.title)
                     .font(PocketSheetType.screenTitle)

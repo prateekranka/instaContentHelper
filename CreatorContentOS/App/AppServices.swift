@@ -112,6 +112,7 @@ final class AppServices {
     private let todayDate: TodayDateProvider
     private let acceptedGenerationStore: any AcceptedDayGenerationStoring
     let aiConsentStore: any AIConsentStoring
+    let pieceStore: PieceStore
     var isAIConsentSheetPresented = false
     var aiConsentAllowsOutbound = false
     var aiConsentEpoch = 0
@@ -238,6 +239,7 @@ final class AppServices {
             creatorID: repositories.context.creatorID
         )
         self.aiConsentAllowsOutbound = AIConsentPolicy.allowsOutbound(self.aiConsentStore.load())
+        self.pieceStore = PieceStore(context: repositories.context)
         self.todayCard = todayCard
         shotSceneIDs = todayCard.completionState == .shot || todayCard.completionState == .posted
             ? Set(todayCard.scenes.map(\.id))

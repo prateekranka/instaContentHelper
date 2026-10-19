@@ -1,11 +1,12 @@
 import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
-import { selectTab, startFromOnboarding, scrollToControl } from './pocket-support';
+import { selectTab, startFromOnboarding, scrollToControl, writePiece } from './pocket-support';
 
-test('Plan keeps seven dates separate and supports cancelling or confirming a future overwrite', { timeout: 360_000 }, async ({ app, screen }) => {
+test('Plan keeps seven dates separate and lets a future date hold an AI draft and a written piece', { timeout: 360_000 }, async ({ app, screen }) => {
   await startFromOnboarding(app, screen);
   await selectTab(screen, 'Plan');
   await expect(screen.getByTestId('plan.title')).toBeVisible();
+  await expect(screen.getByTestId('plan.pieces.summary')).toHaveText('Day approved · 1 piece');
   const days = screen.getByTestId(/^plan\.sevenDaySelector\.day\./);
   await expect(days).toHaveCount(7);
   for (let index = 0; index < 8; index += 1) {
@@ -13,6 +14,7 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
     await expect(days.nth(index % 7)).toBeSelected();
   }
   await days.nth(1).tap();
+  await expect(screen.getByTestId('plan.pieces.piece.0')).toBeHidden();
   await scrollToControl(screen, screen.getByTestId('plan.voiceGate.setup'));
   await screen.getByTestId('plan.voiceGate.setup').tap();
   await expect(screen.getByTestId('you.voice.positioning')).toBeVisible();
@@ -29,52 +31,26 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
   await screen.scrollUntilVisible(screen.getByTestId('plan.daygen.idea.0'));
   await expect(screen.getByTestId('plan.daygen.idea.0')).toBeEnabled();
   await screen.getByTestId('plan.daygen.idea.0').tap();
-  await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
-  await expect(screen.getByTestId('daily.availableOnToday')).toContainText('Save for');
-  const originalTitle = await screen.getByTestId('plan.package.title').textContent();
+  await expect(screen.getByTestId('plan.pieces.piece.0')).toContainText('Draft', { timeout: 45_000 });
+  await expect(screen.getByTestId('plan.pieces.summary')).toHaveText('1 piece · 1 needs review');
   await app.screenshot('pocket-plan-future-draft');
-  await screen.getByTestId('daily.availableOnToday').tap();
-  await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
-  await expect(screen.getByTestId('plan.title')).toBeVisible();
-  await expect(days.nth(1)).toBeSelected();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.package.tab.caption'));
-  for (let index = 0; index < 8; index += 1) {
-    const tab = ['script', 'caption', 'storyboard'][index % 3];
-    await screen.getByTestId(`plan.package.tab.${tab}`).tap();
-    await expect(screen.getByTestId(`plan.package.tab.${tab}`)).toBeSelected();
-  }
-  await screen.scrollUntilVisible(screen.getByTestId('plan.package.replaceIdea'));
-  await screen.getByTestId('plan.package.replaceIdea').tap();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.daygen.idea.0'), { direction: 'up' });
-  await screen.getByTestId('plan.daygen.idea.0').tap();
-  await expect(screen.getByRole('button', 'Overwrite', { exact: true })).toBeVisible();
-  await screen.getByRole('button', 'Cancel', { exact: true }).tap();
-  await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
+  await screen.getByTestId('plan.pieces.piece.0').tap();
+  await expect(screen.getByTestId('piece.note')).toContainText('It does not post');
+  await screen.getByTestId('piece.approve').tap();
+  await expect(screen.getByTestId('piece.status')).toContainText('Approved · version 1');
+  await app.back();
+  await expect(screen.getByTestId('plan.pieces.summary')).toHaveText('Day approved · 1 piece');
+  await scrollToControl(screen, screen.getByTestId('plan.pieces.add'));
+  await screen.getByTestId('plan.pieces.add').tap();
+  await writePiece(screen, 'Second idea for the same day');
+  await expect(screen.getByTestId('plan.pieces.summary')).toHaveText('2 pieces · 1 approved · 1 needs review');
+  await expect(screen.getByTestId('plan.pieces.piece.0')).toContainText('Approved');
+  await app.screenshot('pocket-plan-two-pieces');
+  await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
   await days.nth(2).tap();
   await days.nth(1).tap();
-  await expect(screen.getByTestId('plan.package.tab.caption')).toBeVisible();
-  await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
-  await app.screenshot('pocket-plan-future-ready');
-  await scrollToControl(screen, screen.getByTestId('plan.package.replaceIdea'));
-  await screen.getByTestId('plan.package.replaceIdea').tap();
-  await scrollToControl(screen, screen.getByTestId('plan.daygen.idea.1'), 'up');
-  await screen.getByTestId('plan.daygen.idea.1').tap();
-  await expect(screen.getByRole('button', 'Overwrite', { exact: true })).toBeVisible();
-  await screen.getByRole('button', 'Overwrite', { exact: true }).tap();
-  await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
-  await expect(screen.getByTestId('daily.availableOnToday')).toContainText('Save for');
-  const replacementTitle = await screen.getByTestId('plan.package.title').textContent();
-  expect(replacementTitle).not.toBe(originalTitle);
-  await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
-  await screen.getByTestId('daily.availableOnToday').tap();
-  await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
-  await days.nth(2).tap();
-  await days.nth(1).tap();
-  await expect(screen.getByTestId('plan.package.tab.storyboard')).toBeVisible();
-  await expect(screen.getByTestId('plan.package.title')).toHaveText(replacementTitle);
-  await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
-  await app.screenshot('pocket-plan-overwrite-confirmed');
+  await expect(screen.getByTestId('plan.pieces.summary')).toHaveText('2 pieces · 1 approved · 1 needs review');
+  await days.nth(0).tap();
+  await expect(screen.getByTestId('plan.pieces.summary')).toHaveText('Day approved · 1 piece');
+  await app.screenshot('pocket-plan-dates-separate');
 });

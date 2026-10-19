@@ -25,6 +25,7 @@ struct YouView: View {
                         .accessibilityIdentifier("you.title")
 
                     accountBlock
+                    yourContentBlock
                     generationInputsBlock
                     archiveBlock
 #if DEBUG
@@ -39,6 +40,7 @@ struct YouView: View {
             .navigationDestination(for: YouRoute.self) { route in
                 YouRouteView(route: route, navigationPath: $navigationPath)
             }
+            .pieceDestinations()
         }
         .onAppear(perform: consumePendingNavigation)
         .onChange(of: appState.pendingYouNavigation?.destination) { _, _ in
@@ -162,6 +164,25 @@ struct YouView: View {
             }
         }
         .padding(.horizontal, PocketSheetSpace.l)
+    }
+
+    private var yourContentBlock: some View {
+        PocketSheetBlock(header: "Content") {
+            NavigationLink(value: PieceRoute.yourContent) {
+                PocketSheetRow(
+                    title: "Your content",
+                    subtitle: yourContentSubtitle
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("you.yourContent")
+        }
+        .padding(.horizontal, PocketSheetSpace.l)
+    }
+
+    private var yourContentSubtitle: String {
+        let count = services.pieceStore.library.pieces.count
+        return count == 1 ? "1 piece · search drafts, approved, shot and posted" : "\(count) pieces · search drafts, approved, shot and posted"
     }
 
     private var archiveBlock: some View {

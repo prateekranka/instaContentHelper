@@ -1,4 +1,5 @@
 import { expect, type App, type Screen, type Locator } from 'e2e';
+import type { Device } from '@e2e-dev/mobile';
 
 export async function selectTab(screen: Screen, name: 'Today' | 'Plan' | 'You') {
   const bar = screen.getByRole('tablist');
@@ -14,8 +15,28 @@ export async function startFromOnboarding(app: App, screen: Screen) {
   await expect(screen.getByTestId('onboarding.setUpLater')).toBeVisible();
   await app.screenshot('onboarding-start');
   await screen.getByTestId('onboarding.setUpLater').tap();
-  await expect(screen.getByTestId('today.startFilming')).toBeVisible({ timeout: 45_000 });
+  await expect(screen.getByTestId('today.piece.0')).toBeVisible({ timeout: 45_000 });
+  await expect(screen.getByTestId('today.primaryAction')).toBeVisible();
   await expect(screen.getByTestId('onboarding.setUpLater')).toBeHidden();
+}
+
+export async function relaunch(device: Device) {
+  await device.openApp('com.prateekranka.creatorcontenthelper', {
+    relaunch: true,
+    launchArguments: ['-MCO_FORCE_FIXTURE_UI', '1', '-MCO_FORCE_APP_MODE', 'creator',
+      '-MCO_QA_SESSION', process.env.POCKET_E2E_SESSION!, '-MCO_FORCE_ONBOARDING', '0'],
+  });
+}
+
+// Writes a piece without AI from the open composer and returns to the day.
+export async function writePiece(screen: Screen, topic: string) {
+  await expect(screen.getByTestId('composer.topic')).toBeVisible();
+  await screen.getByTestId('composer.topic').pressSequentially(topic);
+  await screen.getByTestId('composer.writeMyself').tap();
+  await expect(screen.getByTestId('piece.title')).toHaveText(topic);
+  await expect(screen.getByTestId('piece.status')).toContainText('Draft');
+  await screen.getByTestId('composer.cancel').tap();
+  await expect(screen.getByTestId('composer.cancel')).toBeHidden();
 }
 
 // Use a fresh e2e rectangle when the visible target is known but mobile

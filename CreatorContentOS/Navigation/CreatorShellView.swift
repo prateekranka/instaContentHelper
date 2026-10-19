@@ -3,11 +3,14 @@ import SwiftUI
 struct CreatorShellView: View {
     @Environment(AppState.self) private var appState
     @State private var selectedTab: CreatorTab = .today
+    @State private var todayPath = NavigationPath()
+    @State private var planPath = NavigationPath()
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            NavigationStack {
+            NavigationStack(path: $todayPath) {
                 TodayView()
+                    .pieceDestinations()
                     .navigationDestination(for: CreatorRoute.self) { route in
                         switch route {
                         case .shootFolio(let editing):
@@ -26,8 +29,9 @@ struct CreatorShellView: View {
             .tag(CreatorTab.today)
             .accessibilityIdentifier("shell.tab.today")
 
-            NavigationStack {
+            NavigationStack(path: $planPath) {
                 PlanHubView(showsModeSwitch: false, showsBackButton: false)
+                    .pieceDestinations()
             }
             .tabItem { Label(CreatorTab.plan.rawValue, systemImage: CreatorTab.plan.systemImage) }
             .tag(CreatorTab.plan)
@@ -48,6 +52,10 @@ struct CreatorShellView: View {
         }
         .onChange(of: appState.pendingCreatorTab) { _, _ in
             applyPendingCreatorTabIfNeeded()
+        }
+        .onChange(of: appState.todayNavigationResetToken) { _, _ in
+            todayPath = NavigationPath()
+            planPath = NavigationPath()
         }
     }
 

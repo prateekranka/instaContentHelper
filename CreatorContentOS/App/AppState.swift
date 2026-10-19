@@ -18,6 +18,7 @@ final class AppState {
     var pendingYouNavigation: YouNavigationIntent?
     /// Active return context while a You destination opened from Plan is visible.
     var youNavigationOrigin: YouNavigationOrigin?
+    var todayNavigationResetToken = 0
 
     private let authenticationService: any AuthenticationServicing
     private let liveRuntimeBuilder: @MainActor (PairedDeviceSession) -> AppRuntime
@@ -56,6 +57,11 @@ final class AppState {
 
     func requestCreatorTab(_ tab: CreatorTab) {
         pendingCreatorTab = tab
+    }
+
+    func returnToToday() {
+        todayNavigationResetToken += 1
+        pendingCreatorTab = .today
     }
 
     /// Preselects a Plan calendar date (`yyyy-MM-dd`) before opening Plan.

@@ -7,7 +7,7 @@ enum PocketSheetTheme {
         static let paper = SwiftUI.Color(hex: 0xFAFAFA)
         static let paperRaised = SwiftUI.Color(hex: 0xFFFFFF)
         static let ink = SwiftUI.Color(hex: 0x111111)
-        static let inkMuted = SwiftUI.Color(hex: 0x737373)
+        static let inkMuted = SwiftUI.Color(hex: 0x666666)
         static let inkQuiet = SwiftUI.Color(hex: 0xA3A3A3)
         static let hairline = SwiftUI.Color(hex: 0xE5E5E5)
         static let hairlineSoft = SwiftUI.Color(hex: 0xF0F0F0)

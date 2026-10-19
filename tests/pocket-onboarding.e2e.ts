@@ -36,8 +36,8 @@ test(`optional onboarding reaches Today (${scenario})`, { timeout: 180_000 }, as
     await expect(screen.getByTestId('onboarding.setUpLater')).toBeDisabled();
     await expect(screen.getByTestId('onboarding.generateFirstDay')).toBeDisabled();
   }
-  await expect(screen.getByTestId('today.startFilming')).toBeVisible({ timeout: 45_000 });
-  await expect(screen.getByTestId('today.package.title')).toBeVisible();
+  await expect(screen.getByTestId('today.piece.0')).toBeVisible({ timeout: 45_000 });
+  await expect(screen.getByTestId('today.primaryAction')).toBeVisible();
   await expect(screen.getByTestId('onboarding.setUpLater')).toBeHidden();
   await app.screenshot(`pocket-first-idea-${scenario}`);
 });

@@ -7,6 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A692EAD8E841B9F360B76593 /* AppServices+Pieces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B27B812D564CEA7B352821C /* AppServices+Pieces.swift */; };
+		9CCAE02EAF8E627AE2AB85E9 /* PieceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD12D23CEBF23567C855A8A1 /* PieceStore.swift */; };
+		627AA6BCA987A840DD6CD7E8 /* ContentPieces.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67BB715EA190A0C5B85D99D9 /* ContentPieces.swift */; };
+		BE8E0BD2A142402CB9E71B27 /* PieceComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C4BC779F00B4108BEF2DF5 /* PieceComponents.swift */; };
+		002A0B9C9321B3A16D3FF84C /* PieceComposerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C107DC11DFC62C6C41CAB7A9 /* PieceComposerSheet.swift */; };
+		75929AD072D8B8BEAD9A8408 /* PieceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAFADD5D33F9CF0E839C428 /* PieceDetailView.swift */; };
+		7A9667D48F3BD5706B344038 /* PieceEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A439DF07FD4222F797FC384 /* PieceEditorSheet.swift */; };
+		5E1D0D4D13948E6DC7B859B6 /* PieceVersionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E652E63779DA3A09639EE76C /* PieceVersionsView.swift */; };
+		B4677D14262C6127EFDE73A5 /* PieceFilmingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0A801DC3ADAFCB3D5C404D /* PieceFilmingViews.swift */; };
+		03993C8F9484268BBD5220A9 /* PiecePostingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C855907168CD1134165CAC85 /* PiecePostingViews.swift */; };
+		D744E2A536E4104588E73020 /* YourContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9092BC9A162A06A985D34262 /* YourContentView.swift */; };
 		006F38C338FAD348CA0C0EDD /* CreatorContentOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54E107AF78B3000D2A9C264 /* CreatorContentOSApp.swift */; };
 		05431381D7C9061805A2209B /* PlanDayIdeaBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 754A2AAFEEABD9880DC35BC9 /* PlanDayIdeaBuilder.swift */; };
 		066BE6E745C55E2B1EA202DA /* PlanHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23395AB2FF74CF4F50E144C /* PlanHubView.swift */; };
@@ -137,6 +148,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		9B27B812D564CEA7B352821C /* AppServices+Pieces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppServices+Pieces.swift"; sourceTree = "<group>"; };
+		BD12D23CEBF23567C855A8A1 /* PieceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PieceStore.swift; sourceTree = "<group>"; };
+		67BB715EA190A0C5B85D99D9 /* ContentPieces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentPieces.swift; sourceTree = "<group>"; };
+		A1C4BC779F00B4108BEF2DF5 /* PieceComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PieceComponents.swift; sourceTree = "<group>"; };
+		C107DC11DFC62C6C41CAB7A9 /* PieceComposerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PieceComposerSheet.swift; sourceTree = "<group>"; };
+		2BAFADD5D33F9CF0E839C428 /* PieceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PieceDetailView.swift; sourceTree = "<group>"; };
+		3A439DF07FD4222F797FC384 /* PieceEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PieceEditorSheet.swift; sourceTree = "<group>"; };
+		E652E63779DA3A09639EE76C /* PieceVersionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PieceVersionsView.swift; sourceTree = "<group>"; };
+		AC0A801DC3ADAFCB3D5C404D /* PieceFilmingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PieceFilmingViews.swift; sourceTree = "<group>"; };
+		C855907168CD1134165CAC85 /* PiecePostingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiecePostingViews.swift; sourceTree = "<group>"; };
+		9092BC9A162A06A985D34262 /* YourContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YourContentView.swift; sourceTree = "<group>"; };
 		01DB4E235145313FD2217725 /* OnboardingReferenceParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingReferenceParsing.swift; sourceTree = "<group>"; };
 		0311051E97D891CD6A4FC060 /* PlanSelectedDateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSelectedDateStore.swift; sourceTree = "<group>"; };
 		06532C1FFF81B3D144F6E4B2 /* CreatorContentOSTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CreatorContentOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -275,6 +297,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		FB5A3B200C39782BB484E5B9 /* Pieces */ = {
+			isa = PBXGroup;
+			children = (
+				A1C4BC779F00B4108BEF2DF5 /* PieceComponents.swift */,
+				C107DC11DFC62C6C41CAB7A9 /* PieceComposerSheet.swift */,
+				2BAFADD5D33F9CF0E839C428 /* PieceDetailView.swift */,
+				3A439DF07FD4222F797FC384 /* PieceEditorSheet.swift */,
+				E652E63779DA3A09639EE76C /* PieceVersionsView.swift */,
+				AC0A801DC3ADAFCB3D5C404D /* PieceFilmingViews.swift */,
+				C855907168CD1134165CAC85 /* PiecePostingViews.swift */,
+				9092BC9A162A06A985D34262 /* YourContentView.swift */,
+			);
+			path = Pieces;
+			sourceTree = "<group>";
+		};
 		1D3F0113F25165BD1338AC79 /* Navigation */ = {
 			isa = PBXGroup;
 			children = (
@@ -335,6 +372,7 @@
 		5D45D6EBB42D2976CCF03F78 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				9B27B812D564CEA7B352821C /* AppServices+Pieces.swift */,
 				1075444BEDE6E2FA7B31576A /* AppRuntime.swift */,
 				42BD41A8C80F9A15CA1DAD88 /* AppServices.swift */,
 				B82B8C51789A80CE5C4FD227 /* AppServices+AIConsent.swift */,
@@ -364,6 +402,7 @@
 		80A57DD966676A6A833A0B31 /* Data */ = {
 			isa = PBXGroup;
 			children = (
+				BD12D23CEBF23567C855A8A1 /* PieceStore.swift */,
 				A9871F3B2098E250290FE0D0 /* AIConsentStore.swift */,
 				901CA42E68495333D010A290 /* AppRepositories.swift */,
 				FF707A0EDF15BE1081E06761 /* AuthenticationDTOs.swift */,
@@ -518,6 +557,7 @@
 				C92EBDE6BE9C33970C9B0258 /* Design */,
 				4687AD2DBB82D88B1EE92D99 /* Intelligence */,
 				1E18621E823F59510AF7EB22 /* Onboarding */,
+				FB5A3B200C39782BB484E5B9 /* Pieces */,
 				8C78F7060307CE5688A905A5 /* Privacy */,
 				87FF7DE577AA31A3051946A4 /* Today */,
 				D2C98F1CFAA2C8D7EA7A7B41 /* You */,
@@ -548,6 +588,7 @@
 		D665ECFFAE1215C5330D91C5 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				67BB715EA190A0C5B85D99D9 /* ContentPieces.swift */,
 				37F9A7463B86BBE57EF99AB5 /* ContentQualityLearningLoop.swift */,
 				0D7E49F920DF70C5EEE2E7C2 /* GeneratedStoryboardBreakdown.swift */,
 				4A748621CB6EAB1EBCE6C5EB /* Models.swift */,
@@ -725,6 +766,17 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A692EAD8E841B9F360B76593 /* AppServices+Pieces.swift in Sources */,
+				9CCAE02EAF8E627AE2AB85E9 /* PieceStore.swift in Sources */,
+				627AA6BCA987A840DD6CD7E8 /* ContentPieces.swift in Sources */,
+				BE8E0BD2A142402CB9E71B27 /* PieceComponents.swift in Sources */,
+				002A0B9C9321B3A16D3FF84C /* PieceComposerSheet.swift in Sources */,
+				75929AD072D8B8BEAD9A8408 /* PieceDetailView.swift in Sources */,
+				7A9667D48F3BD5706B344038 /* PieceEditorSheet.swift in Sources */,
+				5E1D0D4D13948E6DC7B859B6 /* PieceVersionsView.swift in Sources */,
+				B4677D14262C6127EFDE73A5 /* PieceFilmingViews.swift in Sources */,
+				03993C8F9484268BBD5220A9 /* PiecePostingViews.swift in Sources */,
+				D744E2A536E4104588E73020 /* YourContentView.swift in Sources */,
 				30A0AAA05F5ECB5CD53E6592 /* AIConsentCopy.swift in Sources */,
 				8AA90468A6A1FFE4CEF2E7A9 /* AIConsentSheet.swift in Sources */,
 				51A6A595070D5DC95FDA256D /* AIConsentStore.swift in Sources */,

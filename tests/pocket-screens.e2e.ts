@@ -82,7 +82,7 @@ async function capture(app: App, device: Device, name: string, layoutLimit = 160
   }, null, 2));
 }
 
-test('catalog onboarding, Today states, filming, post text, and backup sheets', async ({ app, screen, device }) => {
+test('catalog onboarding, Today pieces, review, filming, posting, and backup sheets', async ({ app, screen, device }) => {
   if (process.env.POCKET_E2E_INSTALL === '1') await device.installApp();
   await launch(device, 'journey', { MCO_FORCE_ONBOARDING: '1', MCO_FORCE_EMPTY_TODAY: '1', MCO_SLOW_FIRST_IDEA: '1' });
   await device.setOrientation('portrait');
@@ -95,59 +95,72 @@ test('catalog onboarding, Today states, filming, post text, and backup sheets', 
   await screen.getByTestId('onboarding.generateFirstDay').tap();
   await expect(screen.getByTestId('onboarding.preparing')).toBeVisible();
   await capture(app, device, '03-onboarding-preparing');
-  await expect(screen.getByTestId('today.startFilming')).toBeVisible({ timeout: 45_000 });
-  await capture(app, device, '04-today-ready-no-progress');
+  await expect(screen.getByTestId('today.primaryAction')).toBeVisible({ timeout: 45_000 });
+  await capture(app, device, '04-today-one-piece');
   await screen.getByTestId('today.overflow').tap();
   await capture(app, device, '05-today-menu');
-  await screen.getByTestId('today.editScenesScript').tap();
-  await expect(screen.getByTestId('shootFolio.saveEdits')).toBeVisible();
-  await capture(app, device, '05b-edit-scenes-and-script');
-  await tapEditorControl(screen, 'shootFolio.cancelEdit');
-  await capture(app, device, '05c-shoot-plan');
+  await screen.getByRole('button', 'Add content', { exact: true }).tap();
+  await expect(screen.getByTestId('composer.topic')).toBeVisible();
+  await capture(app, device, '05b-new-content');
+  await screen.getByTestId('composer.topic').pressSequentially('My recovery routine');
+  await screen.getByTestId('composer.writeMyself').tap();
+  await expect(screen.getByTestId('piece.approve')).toBeVisible();
+  await capture(app, device, '05c-review-draft');
+  await screen.getByTestId('piece.edit.shots').tap();
+  await expect(screen.getByTestId('editor.addShot')).toBeVisible();
+  await screen.getByTestId('editor.addShot').tap();
+  await capture(app, device, '05d-edit-shots');
+  await tapEditorControl(screen, 'editor.save');
+  await screen.getByTestId('piece.edit.caption').tap();
+  await expect(screen.getByTestId('editor.caption')).toBeVisible();
+  await capture(app, device, '05e-edit-caption');
+  await screen.getByTestId('editor.cancel').tap();
+  await screen.getByTestId('composer.cancel').tap();
+  await expect(screen.getByTestId('today.summary')).toHaveText('2 pieces · 1 approved · 1 needs review');
+  await capture(app, device, '05f-today-two-pieces');
+  await screen.getByTestId('today.overflow').tap();
+  await screen.getByTestId('today.reviewDay').tap();
+  await expect(screen.getByTestId('reviewDay.approve')).toHaveText('Approve 1 piece');
+  await capture(app, device, '05g-review-day');
+  await screen.getByTestId('reviewDay.approve').tap();
   await app.back();
-  await expect(screen.getByTestId('today.startFilming')).toBeVisible();
-  await screen.getByTestId('today.startFilming').tap();
-  await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 1 of');
+  await expect(screen.getByTestId('today.dayApproved')).toBeVisible();
+  await capture(app, device, '05h-day-approved');
+  await screen.getByTestId('today.primaryAction').tap();
+  await expect(screen.getByTestId('filming.progress')).toContainText('SHOT 1 OF');
   await capture(app, device, '06-filming-first-shot');
-  await screen.getByTestId('shoot.complete').tap();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
-  await capture(app, device, '07-filming-shot-complete');
-  await app.back();
-  await expect(screen.getByTestId('today.startFilming')).toContainText('Continue filming');
+  await screen.getByTestId('filming.markCaptured').tap();
+  await expect(screen.getByTestId('filming.progress')).toContainText('SHOT 2 OF');
+  await capture(app, device, '07-filming-next-shot');
+  await screen.getByTestId('filming.pause').tap();
+  await expect(screen.getByTestId('today.primaryAction')).toHaveText('Continue filming');
   await capture(app, device, '08-today-continue-filming');
-  await screen.getByTestId('today.startFilming').tap();
-  await screen.getByTestId('shoot.previous').tap();
-  const progress = await screen.getByTestId('shoot.progress').textContent();
-  const count = Number(progress?.match(/of\s+(\d+)/)?.[1]);
+  await screen.getByTestId('today.primaryAction').tap();
+  const progress = await screen.getByTestId('filming.progress').textContent();
+  const count = Number(progress?.match(/OF\s+([\d,]+)/)?.[1]?.replace(/,/g, ''));
   expect(count).toBeGreaterThan(1);
-  for (let shot = 1; shot <= count; shot++) {
+  for (let shot = 2; shot <= count; shot++) {
     await capture(app, device, `filming-shot-${shot}-of-${count}`);
-    if (await screen.getByTestId('shoot.complete').isEnabled()) await screen.getByTestId('shoot.complete').tap();
-    if (shot < count) await screen.getByTestId('shoot.next').tap();
+    await screen.getByTestId('filming.markCaptured').tap();
   }
-  await expect(screen.getByTestId('post.markPosted')).toBeVisible();
-  await capture(app, device, '09-post-ready');
-  await screen.getByTestId('post.edit').tap();
-  await expect(screen.getByTestId('post.script.editor')).toBeVisible();
-  await capture(app, device, '10-post-edit');
-  await screen.getByTestId('post.script.editor').tap();
-  await expect(screen.getByTestId('post.keyboardDone')).toBeVisible();
-  await capture(app, device, '11-post-edit-keyboard');
-  await screen.getByTestId('post.keyboardDone').tap();
-  try {
-    await tapEditorControl(screen, 'post.cancel');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!message.includes('runner session was invalidated')) throw error;
-    await readSnapshot();
-  }
-  await expect(screen.getByTestId('post.markPosted')).toBeVisible();
-  await screen.getByTestId('post.markPosted').tap();
-  await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
+  await screen.getByTestId('filming.reviewShots').tap();
+  await capture(app, device, '09-all-shots-captured');
+  await screen.getByTestId('shots.markShot').tap();
+  await screen.getByTestId('shots.preparePost').tap();
+  await capture(app, device, '10-ready-to-post');
+  await screen.getByTestId('ready.preparePost').tap();
+  await screen.getByTestId('post.target.instagram').tap();
+  await capture(app, device, '11-post-options');
+  await screen.getByTestId('post.review').tap();
+  await expect(screen.getByTestId('finish.markPosted')).toBeVisible();
+  await capture(app, device, '11b-finish-in-instagram');
+  await screen.getByTestId('finish.markPosted').tap();
+  await expect(screen.getByTestId('results.instagram')).toContainText('Marked posted by you');
   await capture(app, device, '12-posted');
-  await app.back();
-  await expect(screen.getByTestId('today.startFilming')).toContainText('View posted content');
+  await screen.getByTestId('results.backToToday').tap();
+  await expect(screen.getByTestId('today.piece.0')).toContainText('Instagram marked posted');
   await capture(app, device, '13-today-posted');
+  await screen.getByTestId('today.overflow').tap();
   await screen.getByTestId('today.notEasier').tap();
   await expect(screen.getByText('Other ideas', { exact: true })).toBeVisible();
   await capture(app, device, '14-other-ideas');
@@ -200,7 +213,7 @@ test('catalog You and each creator preference screen', async ({ app, screen, dev
 
 test('catalog empty, welcome, retry, and long data states', async ({ app, screen, device }) => {
   await launch(device, 'empty', { MCO_FORCE_EMPTY_TODAY: '1' });
-  await expect(screen.getByTestId('today.emptyCard')).toBeVisible();
+  await expect(screen.getByTestId('today.empty')).toBeVisible();
   await capture(app, device, '30-today-empty');
   await launch(device, 'welcome', { MCO_FORCE_SIGN_IN: '1' });
   await expect(screen.getByTestId('sign-in.welcome')).toBeVisible();
@@ -210,13 +223,17 @@ test('catalog empty, welcome, retry, and long data states', async ({ app, screen
   await expect(screen.getByTestId('onboarding.retryFirstIdea')).toBeVisible();
   await capture(app, device, '32-onboarding-error');
   await screen.getByTestId('onboarding.retryFirstIdea').tap();
-  await expect(screen.getByTestId('today.startFilming')).toBeVisible({ timeout: 45_000 });
+  await expect(screen.getByTestId('today.primaryAction')).toBeVisible({ timeout: 45_000 });
   await capture(app, device, '33-today-retry-recovered');
   await launch(device, 'long', { MCO_LONG_CONTENT: '1' });
-  await expect(screen.getByTestId('today.startFilming')).toBeVisible();
+  await expect(screen.getByTestId('today.primaryAction')).toBeVisible();
   await capture(app, device, '34-today-long-content');
-  await screen.getByTestId('today.startFilming').tap();
-  await expect(screen.getByTestId('shoot.progress')).toBeVisible();
+  await screen.getByTestId('today.piece.0').tap();
+  await expect(screen.getByTestId('piece.title')).toBeVisible();
+  await capture(app, device, '34b-piece-long-content');
+  await app.back();
+  await screen.getByTestId('today.primaryAction').tap();
+  await expect(screen.getByTestId('filming.progress')).toBeVisible();
   await capture(app, device, '35-filming-long-content');
 });
 
@@ -236,7 +253,7 @@ test('from onboarding, create and restore four Story, Reel, and photo packages t
   await screen.getByTestId('onboarding.generateFirstDay').tap();
   await expect(screen.getByTestId('onboarding.preparing')).toBeVisible();
   await capture(app, device, '39c-onboarding-preparing');
-  await expect(screen.getByTestId('today.startFilming')).toBeVisible({ timeout: 45_000 });
+  await expect(screen.getByTestId('today.primaryAction')).toBeVisible({ timeout: 45_000 });
   await capture(app, device, '39d-today-after-onboarding');
   await selectTab(screen, 'Plan');
   await expect(screen.getByTestId('plan.title')).toBeVisible();
@@ -295,51 +312,43 @@ test('from onboarding, create and restore four Story, Reel, and photo packages t
       expect(submitBox.y + submitBox.height).toBeLessThanOrEqual(visibleKeyboardBox.y - 8);
     }
     await submitDirection.tap();
-    await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
-    await scrollToControl(screen, screen.getByTestId('plan.package.title'), 'up');
-    titles.push(await screen.getByTestId('plan.package.title').textContent());
-    await expect(screen.getByTestId('plan.package.format')).toHaveText(item.format);
-    await expect(screen.getByTestId('plan.package.duration')).toHaveText(item.duration);
+    await expect(screen.getByTestId('plan.pieces.piece.0')).toContainText('Draft', { timeout: 45_000 });
+    await scrollToControl(screen, screen.getByTestId('plan.pieces.piece.0'), 'up');
     await capture(app, device, `${item.name}-draft`);
-    for (const tab of ['storyboard', 'script', 'caption']) {
-      await scrollToControl(screen, screen.getByTestId(`plan.package.tab.${tab}`));
-      await screen.getByTestId(`plan.package.tab.${tab}`).tap();
-      await expect(screen.getByTestId(`plan.package.tab.${tab}`)).toBeSelected();
-      await capture(app, device, `${item.name}-${tab}`);
-    }
-    await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
-    await screen.getByTestId('daily.availableOnToday').tap();
-    await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
+    await screen.getByTestId('plan.pieces.piece.0').tap();
+    titles.push(await screen.getByTestId('piece.title').textContent());
+    await capture(app, device, `${item.name}-review`);
+    await screen.getByTestId('piece.approve').tap();
+    await expect(screen.getByTestId('piece.status')).toContainText('Approved · version 1');
+    await app.back();
+    await expect(screen.getByTestId('plan.pieces.summary')).toHaveText('Day approved · 1 piece');
     await capture(app, device, `${item.name}-saved`);
   }
   expect(new Set(titles).size).toBe(4);
-  for (const item of cases) {
+  for (const [index, item] of cases.entries()) {
     await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
     await days.nth(item.day).tap();
-    await expect(screen.getByTestId('plan.package.format')).toHaveText(item.format);
-    await expect(screen.getByTestId('plan.package.duration')).toHaveText(item.duration);
-    await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
+    await expect(screen.getByTestId('plan.pieces.piece.0')).toContainText(titles[index] ?? '');
+    await expect(screen.getByTestId('plan.pieces.summary')).toHaveText('Day approved · 1 piece');
   }
-  await capture(app, device, '48-plan-packages-saved');
+  await capture(app, device, '48-plan-pieces-saved');
 
-  // Relaunch with the same fixture namespace, then prove Plan restores each saved package.
+  // Relaunch with the same fixture namespace, then prove Plan restores each saved piece.
   await launch(device, 'onboarding-plan');
-  await expect(screen.getByTestId('today.startFilming')).toBeVisible();
+  await expect(screen.getByTestId('today.primaryAction')).toBeVisible();
   await capture(app, device, '49-today-after-plan-relaunch');
   await selectTab(screen, 'Plan');
   await expect(screen.getByTestId('plan.title')).toBeVisible();
   await capture(app, device, '50-plan-after-relaunch');
   const restoredDays = screen.getByTestId(/^plan\.sevenDaySelector\.day\./);
-  for (const item of cases) {
+  for (const [index, item] of cases.entries()) {
     await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
     await restoredDays.nth(item.day).tap();
-    if (item.day === 1) await capture(app, device, '51-plan-first-package-after-relaunch');
-    await expect(screen.getByTestId('plan.package.title')).toHaveText(titles[item.day - 1] ?? '');
-    await expect(screen.getByTestId('plan.package.format')).toHaveText(item.format);
-    await expect(screen.getByTestId('plan.package.duration')).toHaveText(item.duration);
-    await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
+    if (item.day === 1) await capture(app, device, '51-plan-first-piece-after-relaunch');
+    await expect(screen.getByTestId('plan.pieces.piece.0')).toContainText(titles[index] ?? '');
+    await expect(screen.getByTestId('plan.pieces.summary')).toHaveText('Day approved · 1 piece');
   }
-  await capture(app, device, '52-plan-packages-restored-after-relaunch');
+  await capture(app, device, '52-plan-pieces-restored-after-relaunch');
 });
 
 test('break-ui worst content, large text, and reduced motion remain usable', async ({ app, screen, device }) => {
@@ -351,28 +360,23 @@ test('break-ui worst content, large text, and reduced motion remain usable', asy
     ['narrow-large', { MCO_BREAK_UI_DATA: 'worst', MCO_BREAK_UI_320: '1', MCO_DYNAMIC_TYPE_ACCESSIBILITY5: '1' }],
   ] as const) {
     await launch(device, suffix, flags);
-    await expect(screen.getByTestId('today.startFilming')).toBeVisible();
-    if (suffix === 'large' || suffix === 'narrow-large') {
-      const action = await screen.getByTestId('today.startFilming').boundingBox();
-      const title = await screen.getByTestId('today.package.title').boundingBox();
-      expect(action.y + action.height).toBeLessThanOrEqual(title.y);
-    }
-    if (suffix.startsWith('narrow')) {
-      expect((await screen.getByTestId('today.package.title').boundingBox()).width).toBeLessThanOrEqual(280);
-    }
-    await capture(app, device, `50-${suffix}-today`);
-    const commandTop = suffix.includes('large') ? undefined
-      : (await screen.getByTestId('today.startFilming').boundingBox()).y - 16;
-    await scrollToControl(screen, screen.getByText('SHOT 01', { exact: true }), 'down', commandTop);
-    await capture(app, device, `51-${suffix}-shot-list`);
-    if (suffix === 'large' || suffix === 'narrow-large') {
-      await scrollToControl(screen, screen.getByTestId('today.startFilming'), 'up');
-    }
-    await screen.getByTestId('today.startFilming').tap();
-    await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 1 of 4');
+    await expect(screen.getByTestId('today.primaryAction')).toBeVisible();
     const viewport = (await readSnapshot()).viewport;
     if (!viewport) throw new Error('mobile snapshot did not report viewport geometry');
-    for (const id of ['shoot.complete', 'shoot.next', 'shoot.previous']) {
+    const action = await screen.getByTestId('today.primaryAction').boundingBox();
+    expect(action.height).toBeGreaterThanOrEqual(44);
+    expect(action.x + action.width).toBeLessThanOrEqual(viewport.width);
+    if (suffix.startsWith('narrow')) {
+      expect((await screen.getByTestId('today.piece.0').boundingBox()).width).toBeLessThanOrEqual(320);
+    }
+    await capture(app, device, `50-${suffix}-today`);
+    await screen.getByTestId('today.piece.0').tap();
+    await expect(screen.getByTestId('piece.title')).toBeVisible();
+    await capture(app, device, `51-${suffix}-piece`);
+    await app.back();
+    await screen.getByTestId('today.primaryAction').tap();
+    await expect(screen.getByTestId('filming.progress')).toContainText('SHOT 1 OF 4');
+    for (const id of ['filming.markCaptured', 'filming.previous', 'filming.pause']) {
       const box = await screen.getByTestId(id).boundingBox();
       expect(box.height).toBeGreaterThanOrEqual(44);
       expect(box.width).toBeGreaterThanOrEqual(44);
@@ -381,47 +385,45 @@ test('break-ui worst content, large text, and reduced motion remain usable', asy
       expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
     }
     await capture(app, device, `52-${suffix}-filming`);
-    await screen.getByTestId('shoot.complete').tap();
-    await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+    await screen.getByTestId('filming.markCaptured').tap();
+    await expect(screen.getByTestId('filming.progress')).toContainText('SHOT 2 OF 4');
   }
 });
 
 test('break-ui zero, one, and 1,284 shots preserve the primary action', async ({ app, screen, device }) => {
   await launch(device, 'zero', { MCO_BREAK_UI_DATA: 'empty' });
-  await expect(screen.getByTestId('today.startFilming')).toHaveText('Get post text');
+  await expect(screen.getByTestId('today.primaryAction')).toHaveText('Prepare media');
   await capture(app, device, '53-photo-without-shots');
-  await screen.getByTestId('today.startFilming').tap();
-  await expect(screen.getByTestId('post.markPosted')).toBeEnabled();
-  await capture(app, device, '54-photo-post-preparation');
-  await screen.getByTestId('post.markPosted').tap();
-  await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
+  await screen.getByTestId('today.primaryAction').tap();
+  await expect(screen.getByTestId('ready.markReady')).toBeVisible();
+  await capture(app, device, '54-photo-media-preparation');
+  await screen.getByTestId('ready.markReady').tap();
+  await expect(screen.getByTestId('ready.status')).toContainText('Ready');
   await launch(device, 'zero', { MCO_BREAK_UI_DATA: 'demo' });
-  await expect(screen.getByText('Post', { exact: true })).toBeVisible();
-  await expect(screen.getByTestId('today.startFilming')).toHaveText('View posted content');
-  await capture(app, device, '54b-photo-post-preserved-after-relaunch');
+  await expect(screen.getByTestId('today.primaryAction')).toHaveText('Prepare to post');
+  await capture(app, device, '54b-photo-ready-preserved-after-relaunch');
 
   await launch(device, 'one', { MCO_BREAK_UI_DATA: 'one' });
-  await scrollToControl(screen, screen.getByTestId('today.package.sceneProgress'));
-  await expect(screen.getByTestId('today.package.sceneProgress')).toHaveText('0 of 1 shot done');
+  await expect(screen.getByTestId('today.primaryAction')).toHaveText('Start filming');
   await capture(app, device, '55-single-shot-today');
-  await screen.getByTestId('today.startFilming').tap();
-  await expect(screen.getByTestId('shoot.progress')).toHaveText('Shot 1 of 1');
+  await screen.getByTestId('today.primaryAction').tap();
+  await expect(screen.getByTestId('filming.progress')).toHaveText('SHOT 1 OF 1');
   await capture(app, device, '56-single-shot-filming');
-  await screen.getByTestId('shoot.complete').tap();
-  await expect(screen.getByTestId('post.markPosted')).toBeEnabled();
-  await capture(app, device, '57-single-shot-ready-to-post');
-  await launch(device, 'one', { MCO_BREAK_UI_DATA: 'demo' });
-  await expect(screen.getByText('Story · 10 sec', { exact: true })).toBeVisible();
-  await expect(screen.getByTestId('today.startFilming')).toHaveText('Get post text');
+  await screen.getByTestId('filming.markCaptured').tap();
+  await expect(screen.getByTestId('filming.reviewShots')).toBeVisible();
+  await screen.getByTestId('filming.reviewShots').tap();
+  await screen.getByTestId('shots.markShot').tap();
+  await expect(screen.getByTestId('shots.preparePost')).toBeVisible();
+  await capture(app, device, '57-single-shot-marked-shot');
 
   await launch(device, 'huge', { MCO_BREAK_UI_DATA: 'huge' });
-  await expect(screen.getByTestId('today.startFilming')).toBeVisible();
-  await capture(app, device, '58-1284-shot-list', 64);
-  await screen.getByTestId('today.startFilming').tap();
+  await expect(screen.getByTestId('today.primaryAction')).toBeVisible();
+  await capture(app, device, '58-1284-shot-today', 64);
+  await screen.getByTestId('today.primaryAction').tap();
   await capture(app, device, '59-1284-shot-filming', 64);
-  await expect(screen.getByTestId('shoot.progress')).toHaveText('Shot 1 of 1,284');
-  await screen.getByTestId('shoot.next').tap();
-  await expect(screen.getByTestId('shoot.progress')).toHaveText('Shot 2 of 1,284');
+  await expect(screen.getByTestId('filming.progress')).toHaveText('SHOT 1 OF 1,284');
+  await screen.getByTestId('filming.markCaptured').tap();
+  await expect(screen.getByTestId('filming.progress')).toHaveText('SHOT 2 OF 1,284');
 });
 
 test('break-ui uses the widest foldable window and preserves light appearance', async ({ app, screen, device }) => {
@@ -430,10 +432,10 @@ test('break-ui uses the widest foldable window and preserves light appearance', 
     if (isFoldable) await device.fold('open');
     await device.setOrientation('landscape-left');
     await device.setAppearance('dark');
-    await expect(screen.getByTestId('today.startFilming')).toBeVisible();
+    await expect(screen.getByTestId('today.primaryAction')).toBeVisible();
     await capture(app, device, '60-wide-today');
-    await tapVisibleControl(screen, screen.getByTestId('today.startFilming'));
-    await expect(screen.getByTestId('shoot.progress')).toBeVisible();
+    await tapVisibleControl(screen, screen.getByTestId('today.primaryAction'));
+    await expect(screen.getByTestId('filming.progress')).toBeVisible();
     await capture(app, device, '61-wide-filming');
   } finally {
     await device.setAppearance('light');

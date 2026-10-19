@@ -26,18 +26,19 @@ The default device is the iPhone 18 Pro used for this task. The default build an
 
 | Scenario | Coverage |
 |---|---|
-| ready | Optional onboarding, first idea, twelve shot navigation transitions, repeated completion, script cancel/save, caption save, clipboard, posted/undo/repost, relaunch persistence, one archive row |
+| ready | Optional onboarding, first piece on Today, reachable next action, caption edit as draft revision, approval of version 2, relaunch persistence, one Your content row |
+| pieces | Several pieces per date, Review day group approval, draft revision that keeps the approved version, Versions and Review changes, filming Pause and relaunch, Mark as shot, separate Instagram and TikTok manual results, new version after posting, AI recovery, Your content filters, Plan day pieces |
 | onboarding | Repeated starting-point and interest selections, Show my first idea, useful Today destination |
 | retry | First generation fails once; Retry succeeds |
 | slow | Slow generation, disabled duplicate submission, Today handoff |
-| plan | Seven dates, Creator Voice setup/save, future generation/save, package tabs, cancelled and confirmed overwrite, replacement title persistence |
-| alternatives | Partial shot progress after relaunch, backup preview/cancel, backup confirmation, Plan tomorrow |
+| plan | Seven dates, Creator Voice setup/save, future AI draft as a piece, approval, a second written piece on the same date, dates kept separate |
+| alternatives | Partial filming after relaunch, Previous to a captured shot, backup preview/cancel, backup confirmation, Plan tomorrow |
 | large | Accessibility Dynamic Type override, fixed actions, filming, Plan, You |
 | long | Long-content fixture after onboarding, wrapping and navigation |
 | motion | App-level Reduce Motion override and normal outcomes |
-| empty | Empty Today, Plan generation, Make ready for Today, and filming handoff |
+| empty | Empty Today, Create first draft with AI, approval, Day approved summary |
 | welcome | Native welcome and Apple sign-in control; no real account sign-in |
-| sync-error | A failed decision sync preserves local completion and visible feedback |
+| sync-error | Runs the ready suite with a failing decision sync; pieces keep local state |
 
 Every creator journey starts from optional onboarding. The empty and signed-out checks deliberately start at those states. Test data is isolated by `MCO_QA_SESSION`. Tests do not erase the simulator, clear its keychain, or use production creator data.
 
