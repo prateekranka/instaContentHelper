@@ -26,6 +26,7 @@ struct AppRepositories: Sendable {
     let archive: any ArchiveRepository
     let testerAccess: any TesterAccessRepository
     let runtimeHealth: any RuntimeHealthRepository
+    let pieceSync: any PieceSyncRepository
 
     init(
         context: WorkspaceContext,
@@ -40,7 +41,8 @@ struct AppRepositories: Sendable {
         creatorProfile: any CreatorProfileRepository,
         archive: any ArchiveRepository,
         testerAccess: any TesterAccessRepository = FixtureTesterAccessRepository(),
-        runtimeHealth: any RuntimeHealthRepository = FixtureRuntimeHealthRepository()
+        runtimeHealth: any RuntimeHealthRepository = FixtureRuntimeHealthRepository(),
+        pieceSync: any PieceSyncRepository = LocalOnlyPieceSyncRepository()
     ) {
         self.context = context
         self.today = today
@@ -55,6 +57,7 @@ struct AppRepositories: Sendable {
         self.archive = archive
         self.testerAccess = testerAccess
         self.runtimeHealth = runtimeHealth
+        self.pieceSync = pieceSync
     }
 
     static var fixture: AppRepositories {
@@ -307,6 +310,14 @@ protocol DayGenerationRepository: Sendable {
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult
 
+    /// Generates an additional AI draft for a date without replacing the date's day package.
+    func generatePieceDraft(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult
+
     /// Loads locally persisted Plan packages when a repository supports them.
     func persistedDayPackages(context: WorkspaceContext) async -> [GeneratedDailyCardDraft]
 }
@@ -361,6 +372,15 @@ extension DayGenerationRepository {
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult {
         throw RepositoryError.notConfigured("resume_day_generation_not_configured")
+    }
+
+    func generatePieceDraft(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        throw RepositoryError.notConfigured("generate_piece_draft_not_configured")
     }
 
     func persistedDayPackages(context: WorkspaceContext) async -> [GeneratedDailyCardDraft] {

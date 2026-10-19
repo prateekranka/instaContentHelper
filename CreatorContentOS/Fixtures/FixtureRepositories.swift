@@ -518,6 +518,18 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
         return result
     }
 
+    func generatePieceDraft(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        _ = creatorID
+        _ = context
+        try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
+        return makeResult(scheduledDate: scheduledDate, dayBrief: dayBrief)
+    }
+
     func regenerateDay(
         creatorID: UUID,
         weeklyPlanID: UUID,

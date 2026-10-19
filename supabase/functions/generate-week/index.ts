@@ -99,6 +99,7 @@ import type {
   PerDayGenerationSnapshot,
 } from "./generation-status.ts";
 import {
+  defaultAttachDayStoryboardThumbnails,
   runDayGenerationPipeline,
   scheduleSingleDayGeneration,
   type SingleDayGenerationStageTimings,
@@ -337,8 +338,18 @@ function isRegenerateDayAction(body: unknown): body is Record<string, unknown> {
 }
 
 function isGenerateDayAction(body: unknown): body is Record<string, unknown> {
-  return isRecord(body) && body.action === "generate_day";
+  return isRecord(body) &&
+    (body.action === "generate_day" || body.action === "generate_piece_draft");
 }
+
+type DayGenerationOptions = {
+  /**
+   * Piece drafts are additional AI drafts for a date. They never replace or
+   * write the date's daily card; the generated card is returned with its own
+   * identity and stored by the client as an independent content piece.
+   */
+  pieceDraft?: boolean;
+};
 
 async function handleRegenerateDayRequest(
   admin: SupabaseAdminClient,
@@ -426,11 +437,15 @@ async function handleGenerateDayRequest(
     day_guidance: request.day_brief,
   };
 
+  const options: DayGenerationOptions = {
+    pieceDraft: request.action === "generate_piece_draft",
+  };
   const preparedResult = await prepareDayGeneration(
     admin,
     env,
     regenerateBody,
     session,
+    options,
   );
   if ("response" in preparedResult) {
     return preparedResult.response;
@@ -453,6 +468,7 @@ async function handleGenerateDayRequest(
     session,
     dependencies,
     "generate_day",
+    options,
   );
 }
 
@@ -519,6 +535,7 @@ async function startPreparedDayGeneration(
   session: VerifiedDeviceSession,
   dependencies: GenerateWeekDependencies,
   action: "generate_day" | "regenerate_day",
+  options: DayGenerationOptions = {},
 ): Promise<Response> {
   const runResult = await createDayGenerationRun(
     admin,
@@ -558,7 +575,7 @@ async function startPreparedDayGeneration(
       runResult.run.id,
       prepared,
       progress,
-      buildSingleDayRunnerHost(dependencies),
+      buildSingleDayRunnerHost(dependencies, options),
     );
     if ("response" in scheduleResult) {
       return scheduleResult.response;
@@ -576,7 +593,7 @@ async function startPreparedDayGeneration(
     admin,
     runResult.run.id,
     prepared,
-    buildSingleDayRunnerHost(dependencies),
+    buildSingleDayRunnerHost(dependencies, options),
   );
   return "response" in result ? result.response : jsonResponse(result.payload);
 }
@@ -586,6 +603,7 @@ async function prepareDayGeneration(
   env: EnvReader,
   rawBody: unknown,
   session: VerifiedDeviceSession,
+  options: DayGenerationOptions = {},
 ): Promise<{ prepared: PreparedDayGeneration } | { response: Response }> {
   let request: RegenerateDayRequest;
   try {
@@ -643,9 +661,11 @@ async function prepareDayGeneration(
   if ("response" in cardsResult) {
     return cardsResult;
   }
-  const targetCard = cardsResult.cards.find((card) =>
-    card.scheduled_date === request.scheduled_date
-  );
+  const targetCard = options.pieceDraft
+    ? undefined
+    : cardsResult.cards.find((card) =>
+      card.scheduled_date === request.scheduled_date
+    );
   if (targetCard && targetCard.status !== "draft") {
     return {
       response: jsonResponse({ error: "daily_card_not_found" }, 404),
@@ -1261,7 +1281,23 @@ function makeGenerateWeekDraftResponse(
 
 function buildSingleDayRunnerHost(
   dependencies: GenerateWeekDependencies,
+  options: DayGenerationOptions = {},
 ): SingleDayRunnerHost {
+  if (options.pieceDraft) {
+    return {
+      ...buildSingleDayRunnerHost(dependencies),
+      persistRegeneratedDay: (_admin, prepared, generatedCard) =>
+        Promise.resolve({
+          dailyCard: {
+            ...generatedCard,
+            id: crypto.randomUUID(),
+            scheduled_date: prepared.request.scheduled_date,
+          },
+        }),
+      attachDayStoryboardThumbnails: (admin, prepared, dailyCard) =>
+        defaultAttachDayStoryboardThumbnails(admin, prepared, dailyCard, false),
+    };
+  }
   return {
     generateOutput: (prepared, generationID, dayIndex) =>
       generateRegeneratedDayOutput(
@@ -1828,6 +1864,7 @@ function retiredImplicitFullWeekResponse(body: unknown): Response | null {
   if (
     action === "status" ||
     action === "generate_day" ||
+    action === "generate_piece_draft" ||
     action === "regenerate_day" ||
     action === "retry_day" ||
     action === "cancel_generation" ||

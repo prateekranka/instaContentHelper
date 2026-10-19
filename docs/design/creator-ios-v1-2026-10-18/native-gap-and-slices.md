@@ -27,15 +27,21 @@ Reused as is: Pocket design tokens and components, Today / Plan / You shell, onb
 3. **Day and piece screens.** Today (05, 34, 04), Review day (33), New content (06), Review draft and Approved (07, 08, 11), Edit script, shots and caption (13–15), Versions (16), Move content (12), and the selected day's pieces in Plan (09, 10).
 4. **Filming and final media.** Continue filming with Previous and Pause (17), Attach clip from Photos (18), All shots captured and Mark as shot (19), and Ready to post with final media selection (20). Photo and carousel pieces use Prepare media and Mark ready.
 5. **Manual posting and history.** Post options with copy caption, share/export and Finish in Instagram or TikTok (21). Each platform gets "Marked posted by you" with an optional link and its own result (24). Your content with search and filters (25), a posted piece (26), and edit-posted options that keep the original record (28). Reapproval with filming impact (27).
-6. **Later, not in this change.**
-   - Backend migration to store pieces and versions on the server, so several AI drafts per date and multi-device sync become possible. Today the backend allows one AI package per date, and pieces stay on the device.
+6. **Cloud sync and several AI drafts per date** (19 October, second change).
+   - Migration `20261019120000_content_pieces_sync.sql` adds `content_pieces`. Each row stores one piece document, a revision for safe concurrent writes, and a sequence number that lets a device fetch only rows changed since its last sync. The table is reachable only through edge functions.
+   - Edge function `sync-pieces` handles `pull` and `push`. It authenticates with the same device session as the other functions. A push whose base revision is out of date is rejected as a conflict and the server copy is returned.
+   - The app pulls, merges, then pushes. On a conflict it merges both copies and pushes the result. Approved versions, drafts from each device, captured shots and posting records are all kept; when two devices edit the same draft, the later edit becomes a new draft version. Edits are saved on the device first, and a banner says when they are waiting to sync.
+   - `generate-week` accepts `generate_piece_draft`. It runs the same generation pipeline as `generate_day` but never reads or writes the date's daily card, so a date can hold any number of AI drafts. The first AI draft for a date still uses `generate_day` and becomes that date's day package.
+   - The old Shoot Folio and one-package filming screens are removed. Filming uses the piece flow only.
+7. **Later, not in this change.**
    - Instagram and TikTok connections, direct posting and insights (22, 23, 30–32). These need API access, platform review and owner approval.
    - Reminders, appearance and AI-privacy preferences (37–40) beyond what already exists.
-   - Offline sync indicator (36) once a server copy exists.
 
-## Limits that remain after slices 1–5
+## Limits that remain
 
-- Pieces live on one device. Deleting the app removes local pieces and their versions. Server day packages and the archive are unaffected.
-- AI "Create draft" can only be used for a date without an AI package. Other dates offer Write it myself and keep the topic for a later attempt.
-- Clips are referenced through the Photos library identifier. The app does not copy or render video.
+- The migration and the `sync-pieces` and `generate-week` changes are in the repository only. They have not been deployed. Until they are, live sync reports a failure and edits stay on the device.
+- Attached clips and final media files stay on the device that added them. Their records sync, and other devices ask the creator to choose the file again.
+- Storyboard previews for a second or later AI draft are generated, but the app keeps the copy it received when the text finished. Previews that arrive later are not fetched again.
+- Clips are copied into the app from Photos. The app does not edit or render video.
 - Posting results are manual marks. Nothing is sent to Instagram or TikTok.
+- Fixture and e2e runs use local-only sync, so e2e cannot show sync between two devices.

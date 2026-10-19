@@ -71,6 +71,10 @@ struct PieceDetailView: View {
             }
             PieceNote(text: note(for: piece), systemImage: piece.needsReview && !piece.isApproved ? "doc.text" : nil)
                 .accessibilityIdentifier("piece.note")
+            if case .failed = services.pieceStore.syncStatus, services.pieceStore.isWaitingToSync(piece.id) {
+                PieceNote(text: "Offline · saved on this device. Waiting to sync.", systemImage: "icloud.slash")
+                    .accessibilityIdentifier("piece.syncPending")
+            }
         } footer: {
             footer(piece)
         }

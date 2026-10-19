@@ -87,7 +87,8 @@ struct SupabaseRepositoryBundleFactory {
             ),
             archive: SupabaseArchiveRepository(client: client),
             testerAccess: SupabaseTesterAccessRepository(client: client),
-            runtimeHealth: SupabaseRuntimeHealthRepository(client: client)
+            runtimeHealth: SupabaseRuntimeHealthRepository(client: client),
+            pieceSync: SupabasePieceSyncRepository(client: client)
         )
     }
 }

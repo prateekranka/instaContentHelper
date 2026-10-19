@@ -1,15 +1,12 @@
 import Foundation
 
 enum PieceDraftCreationError: LocalizedError, Equatable {
-    case dateHasAIDraft
     case pastDate
     case voiceRequired
     case generationFailed(String)
 
     var errorDescription: String? {
         switch self {
-        case .dateHasAIDraft:
-            "This date already has an AI draft. For now AI can create one draft per date. You can write this one yourself."
         case .pastDate:
             "AI drafts are available for today and later dates. You can write this one yourself."
         case .voiceRequired:
@@ -171,9 +168,6 @@ extension AppServices {
         guard !SupabaseDateFormatting.isDatePast(date, todayString: currentTodayDateString) else {
             throw PieceDraftCreationError.pastDate
         }
-        guard dayPackage(for: date) == nil else {
-            throw PieceDraftCreationError.dateHasAIDraft
-        }
         guard canGenerateContent else {
             throw PieceDraftCreationError.voiceRequired
         }
@@ -181,17 +175,36 @@ extension AppServices {
         if keepItSimple {
             brief += " Keep it easy to film with what is at hand."
         }
-        let package: GeneratedDailyCardDraft
-        do {
-            package = try await generateDayCard(scheduledDate: date, dayBrief: brief)
-        } catch {
-            let message = dayBriefGenerationErrors[date]?.nilIfBlank
-                ?? error.localizedDescription.nilIfBlank
-                ?? "We could not create a draft."
-            throw PieceDraftCreationError.generationFailed(message)
-        }
-        guard let piece = importDayPackage(package, approved: false) else {
-            throw PieceDraftCreationError.generationFailed("We could not create a draft.")
+        let piece: ContentPiece
+        if dayPackage(for: date) == nil {
+            let package: GeneratedDailyCardDraft
+            do {
+                package = try await generateDayCard(scheduledDate: date, dayBrief: brief)
+            } catch {
+                let message = dayBriefGenerationErrors[date]?.nilIfBlank
+                    ?? error.localizedDescription.nilIfBlank
+                    ?? "We could not create a draft."
+                throw PieceDraftCreationError.generationFailed(message)
+            }
+            guard let imported = importDayPackage(package, approved: false) else {
+                throw PieceDraftCreationError.generationFailed("We could not create a draft.")
+            }
+            piece = imported
+        } else {
+            let package: GeneratedDailyCardDraft
+            do {
+                package = try await generatePieceDraftPackage(scheduledDate: date, dayBrief: brief)
+            } catch {
+                throw PieceDraftCreationError.generationFailed(
+                    error.localizedDescription.nilIfBlank ?? "We could not create a draft."
+                )
+            }
+            piece = pieceStore.addPiece(
+                date: date,
+                content: PieceContent(package: package),
+                origin: .generated,
+                topic: topic
+            )
         }
         pieceStore.update { library, now in
             guard let index = library.pieces.firstIndex(where: { $0.id == piece.id }) else { return }

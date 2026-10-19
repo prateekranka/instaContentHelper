@@ -138,19 +138,23 @@ test('filming resumes after Pause and relaunch, then each platform keeps its own
   await app.screenshot('pieces-new-version-after-post');
 });
 
-test('AI recovery keeps the idea, and Your content and Plan show every piece', { timeout: 300_000 }, async ({ app, screen }) => {
+test('a date with an AI package takes a second AI draft and a written piece, and Your content and Plan show all three', { timeout: 300_000 }, async ({ app, screen }) => {
   await startFromOnboarding(app, screen);
   await screen.getByTestId('today.addContent').tap();
-  await screen.getByTestId('composer.topic').pressSequentially('Evening stretch');
+  await screen.getByTestId('composer.topic').pressSequentially('A second idea for today');
   await screen.getByTestId('composer.format.story').tap();
   await expect(screen.getByTestId('composer.format.story')).toBeSelected();
   await screen.getByTestId('composer.createDraft').tap();
-  await expect(screen.getByTestId('composer.failure')).toContainText('one draft per date');
-  await app.screenshot('pieces-create-draft-recovery');
-  await screen.getByTestId('composer.failure.writeMyself').tap();
-  await expect(screen.getByTestId('piece.title')).toHaveText('Evening stretch');
+  await expect(screen.getByTestId('piece.status')).toContainText('Draft', { timeout: 45_000 });
+  await expect(screen.getByTestId('piece.approve')).toHaveText('Approve content');
+  await app.screenshot('pieces-second-ai-draft');
   await screen.getByTestId('composer.cancel').tap();
-  await expect(screen.getByTestId('today.summary')).toContainText('2 pieces');
+  await expect(screen.getByTestId('today.summary')).toHaveText('2 pieces · 1 approved · 1 needs review');
+  await expect(screen.getByTestId('today.piece.0')).toContainText('Approved');
+
+  await screen.getByTestId('today.addContent').tap();
+  await writePiece(screen, 'Evening stretch');
+  await expect(screen.getByTestId('today.summary')).toHaveText('3 pieces · 1 approved · 2 need review');
 
   await selectTab(screen, 'You');
   await screen.scrollUntilVisible(screen.getByTestId('you.yourContent'));
@@ -164,10 +168,10 @@ test('AI recovery keeps the idea, and Your content and Plan show every piece', {
 
   await selectTab(screen, 'Plan');
   await expect(screen.getByTestId('plan.pieces')).toBeVisible();
-  await expect(screen.getByTestId('plan.pieces.summary')).toContainText('2 pieces');
-  await expect(screen.getByTestId('plan.pieces.piece.1')).toContainText('Evening stretch');
+  await expect(screen.getByTestId('plan.pieces.summary')).toHaveText('3 pieces · 1 approved · 2 need review');
+  await expect(screen.getByTestId('plan.pieces.piece.2')).toContainText('Evening stretch');
   await screen.getByTestId('plan.pieces.openDay').tap();
   await expect(screen.getByTestId('day.title')).toBeVisible();
-  await expect(screen.getByTestId('day.piece.1')).toContainText('Evening stretch');
+  await expect(screen.getByTestId('day.piece.2')).toContainText('Evening stretch');
   await app.screenshot('pieces-plan-day');
 });

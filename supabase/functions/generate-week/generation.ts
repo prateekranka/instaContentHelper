@@ -151,7 +151,7 @@ export type GenerateWeekRequest = {
 };
 
 export type GenerateDayRequest = {
-  action: "generate_day";
+  action: "generate_day" | "generate_piece_draft";
   creator_id: string;
   scheduled_date: string;
   day_brief: string;

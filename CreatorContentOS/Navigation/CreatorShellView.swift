@@ -13,10 +13,6 @@ struct CreatorShellView: View {
                     .pieceDestinations()
                     .navigationDestination(for: CreatorRoute.self) { route in
                         switch route {
-                        case .shootFolio(let editing):
-                            ShootFolioView(startsInEditingMode: editing)
-                        case .todayShootSession:
-                            TodayShootSessionView()
                         case .plan(let selectedDate):
                             PlanHubView(
                                 showsModeSwitch: false,

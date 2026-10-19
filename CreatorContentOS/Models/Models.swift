@@ -523,10 +523,6 @@ enum YouRoute: Hashable, Sendable {
 }
 
 enum CreatorRoute: Hashable, Sendable {
-    /// Opens Shoot Folio; `editing` starts scene/script light-edit mode.
-    case shootFolio(editing: Bool = false)
-    /// Opens the one-shot Today execution flow.
-    case todayShootSession
     /// Opens Plan; optional `selectedDate` (`yyyy-MM-dd`) preselects that day.
     case plan(selectedDate: String?)
 }

@@ -54,6 +54,7 @@ The script deploys:
 - `unpublish-day`
 - `update-ready-day-package`
 - `runtime-health`
+- `sync-pieces`
 
 All functions deploy with JWT verification disabled because the app uses the publishable key plus `x-mco-device-token`; the service role key stays inside Edge Functions.
 

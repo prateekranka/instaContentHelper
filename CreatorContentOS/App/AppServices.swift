@@ -239,7 +239,9 @@ final class AppServices {
             creatorID: repositories.context.creatorID
         )
         self.aiConsentAllowsOutbound = AIConsentPolicy.allowsOutbound(self.aiConsentStore.load())
-        self.pieceStore = PieceStore(context: repositories.context)
+        let pieceStore = PieceStore(context: repositories.context)
+        pieceStore.configureSync(repository: repositories.pieceSync, context: repositories.context)
+        self.pieceStore = pieceStore
         self.todayCard = todayCard
         shotSceneIDs = todayCard.completionState == .shot || todayCard.completionState == .posted
             ? Set(todayCard.scenes.map(\.id))
@@ -1065,6 +1067,41 @@ final class AppServices {
             logGeneration(
                 "generate_day failed scheduled_date=\(scheduledDate) user_message=\(message) error_type=\(String(describing: type(of: error))) localized=\(error.localizedDescription) dump=\(String(describing: error))"
             )
+            throw RepositoryError.edgeFunction(message)
+        }
+    }
+
+    /// Generates an additional AI draft for a date. The date's day package is left unchanged.
+    func generatePieceDraftPackage(
+        scheduledDate: String,
+        dayBrief: String
+    ) async throws -> GeneratedDailyCardDraft {
+        let brief = dayBrief.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !brief.isEmpty else {
+            throw RepositoryError.edgeFunction(DayGenerationErrorDisplay.message(forCode: "day_brief_required"))
+        }
+        guard !SupabaseDateFormatting.isDatePast(scheduledDate, todayString: todayDate()) else {
+            throw RepositoryError.edgeFunction(DayGenerationErrorDisplay.message(forCode: "past_generation_date_not_allowed"))
+        }
+        guard canGenerateContent else {
+            throw RepositoryError.edgeFunction(DayGenerationErrorDisplay.message(forCode: "creator_voice_required"))
+        }
+        try requireAIConsent(for: .generateDay(scheduledDate: scheduledDate))
+        do {
+            logGeneration("generate_piece_draft started scheduled_date=\(scheduledDate) brief_chars=\(brief.count)")
+            let result = try await repositories.dailyGeneration.generatePieceDraft(
+                creatorID: context.creatorID,
+                scheduledDate: scheduledDate,
+                dayBrief: brief,
+                context: context
+            )
+            guard result.dailyCard.scheduledDate == scheduledDate else {
+                throw RepositoryError.edgeFunction("invalid_generated_day")
+            }
+            return result.dailyCard
+        } catch {
+            let message = DayGenerationErrorDisplay.message(for: error)
+            logGeneration("generate_piece_draft failed scheduled_date=\(scheduledDate) user_message=\(message)")
             throw RepositoryError.edgeFunction(message)
         }
     }

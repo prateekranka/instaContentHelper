@@ -20,6 +20,13 @@ struct TodayView: View {
             if let storeError = services.pieceStore.lastError?.nilIfBlank {
                 PocketSheetFeedbackBanner(message: storeError, kind: .issue)
             }
+            if case .failed = services.pieceStore.syncStatus, services.pieceStore.hasUnsyncedChanges {
+                PocketSheetFeedbackBanner(
+                    message: "Offline · saved on this device. Changes sync when you reconnect.",
+                    kind: .pending
+                )
+                .accessibilityIdentifier("today.syncPending")
+            }
             if pieces.isEmpty {
                 if case .loading = services.todayContentState {
                     TodayLoadingCard()
@@ -35,6 +42,10 @@ struct TodayView: View {
         .toolbar(.hidden, for: .navigationBar)
         .task(id: syncKey) {
             services.syncPiecesWithDayPackages()
+            await services.pieceStore.syncNow()
+        }
+        .refreshable {
+            await services.pieceStore.syncNow()
         }
         .sheet(item: $sheet) { item in
             switch item {

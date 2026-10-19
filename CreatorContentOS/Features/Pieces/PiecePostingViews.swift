@@ -57,6 +57,9 @@ struct PieceReadyToPostView: View {
             }
             if let importError {
                 PieceNote(text: importError, systemImage: "exclamationmark.circle")
+            } else if let media = piece.finalMedia, services.pieceStore.mediaURL(for: media.fileName) == nil {
+                PieceNote(text: "Your final \(media.kind == .video ? "video" : "photo") was added on another device. Choose it again here to post from this phone.", systemImage: "iphone")
+                    .accessibilityIdentifier("ready.mediaElsewhere")
             } else if piece.finalMedia == nil {
                 PieceNote(text: isVideo
                     ? "Captured clips are not a finished video. Edit them in your usual app, then choose the final video here."

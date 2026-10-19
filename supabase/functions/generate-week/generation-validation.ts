@@ -385,10 +385,13 @@ export function weekStartDateForDate(dateStr: string): string {
 }
 
 export function normalizeGenerateDayRequest(body: unknown): GenerateDayRequest {
-  if (!isRecord(body) || body.action !== "generate_day") {
+  if (
+    !isRecord(body) ||
+    (body.action !== "generate_day" && body.action !== "generate_piece_draft")
+  ) {
     throw new GenerateWeekValidationError(
       "invalid_generation_payload",
-      "action must be generate_day.",
+      "action must be generate_day or generate_piece_draft.",
     );
   }
 
@@ -418,7 +421,9 @@ export function normalizeGenerateDayRequest(body: unknown): GenerateDayRequest {
   }
 
   return {
-    action: "generate_day",
+    action: body.action === "generate_piece_draft"
+      ? "generate_piece_draft"
+      : "generate_day",
     creator_id: creatorID,
     scheduled_date: scheduledDate,
     day_brief: dayBrief,

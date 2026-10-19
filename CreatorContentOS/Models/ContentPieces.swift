@@ -250,7 +250,7 @@ enum PieceVersionOrigin: Codable, Hashable, Sendable {
 
 struct PieceVersion: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
-    let number: Int
+    var number: Int
     var content: PieceContent
     var origin: PieceVersionOrigin
     let createdAt: Date
@@ -643,9 +643,135 @@ enum PieceLibraryError: Error, Equatable {
     case shotsIncomplete
 }
 
+struct PieceSyncState: Codable, Hashable, Sendable {
+    var revision: Int?
+    var dirty: Bool
+}
+
+extension ContentPiece {
+    static func merged(_ first: ContentPiece, _ second: ContentPiece) -> ContentPiece {
+        guard first.id == second.id, first != second else { return first }
+        let firstIsNewer = first.updatedAt >= second.updatedAt
+        let newer = firstIsNewer ? first : second
+        let older = firstIsNewer ? second : first
+        var result = newer
+
+        var versionsByID: [UUID: PieceVersion] = [:]
+        var forkedDrafts: [PieceVersion] = []
+        for version in older.versions + newer.versions {
+            guard let existing = versionsByID[version.id] else {
+                versionsByID[version.id] = version
+                continue
+            }
+            if existing.approvedAt != nil, version.approvedAt == nil, existing.content != version.content {
+                forkedDrafts.append(version)
+            } else if version.approvedAt != nil, existing.approvedAt == nil, existing.content != version.content {
+                versionsByID[version.id] = version
+                forkedDrafts.append(existing)
+            } else {
+                var chosen = version.updatedAt >= existing.updatedAt ? version : existing
+                chosen.approvedAt = [existing.approvedAt, version.approvedAt].compactMap { $0 }.min()
+                chosen.reviewedAt = [existing.reviewedAt, version.reviewedAt].compactMap { $0 }.min()
+                versionsByID[version.id] = chosen
+            }
+        }
+
+        var versions = versionsByID.values.sorted { lhs, rhs in
+            lhs.number == rhs.number ? lhs.createdAt < rhs.createdAt : lhs.number < rhs.number
+        }
+        var usedNumbers = Set<Int>()
+        var highest = versions.map(\.number).max() ?? 0
+        for index in versions.indices {
+            if usedNumbers.contains(versions[index].number) {
+                highest += 1
+                versions[index].number = highest
+            }
+            usedNumbers.insert(versions[index].number)
+        }
+        var forkedDraftIDs: [UUID] = []
+        for fork in forkedDrafts.sorted(by: { $0.updatedAt < $1.updatedAt }) {
+            highest += 1
+            let base = versionsByID[fork.id]?.content ?? fork.content
+            var draft = PieceVersion(
+                number: highest,
+                content: fork.content,
+                origin: .edit,
+                createdAt: fork.updatedAt,
+                changeSummary: fork.content.changes(from: base)
+            )
+            draft.updatedAt = fork.updatedAt
+            versions.append(draft)
+            forkedDraftIDs.append(draft.id)
+        }
+        result.versions = versions
+
+        let byID = Dictionary(uniqueKeysWithValues: versions.map { ($0.id, $0) })
+        result.approvedVersionID = [first.approvedVersionID, second.approvedVersionID]
+            .compactMap { $0.flatMap { byID[$0] } }
+            .filter { $0.approvedAt != nil }
+            .max { ($0.approvedAt ?? .distantPast) < ($1.approvedAt ?? .distantPast) }?
+            .id
+        let draftCandidates = ([first.draftVersionID, second.draftVersionID] + forkedDraftIDs)
+            .compactMap { $0.flatMap { byID[$0] } }
+        result.draftVersionID = draftCandidates
+            .filter { $0.approvedAt == nil && $0.id != result.approvedVersionID }
+            .max { $0.updatedAt < $1.updatedAt }?
+            .id
+        if result.approvedVersionID == nil && result.draftVersionID == nil {
+            result.draftVersionID = versions.last?.id
+        }
+
+        var capturesByShot: [UUID: ShotCapture] = [:]
+        for capture in older.captures + newer.captures {
+            if let existing = capturesByShot[capture.shotID], existing.capturedAt > capture.capturedAt {
+                if existing.clip == nil, let clip = capture.clip {
+                    capturesByShot[capture.shotID]?.clip = clip
+                }
+                continue
+            }
+            var chosen = capture
+            if chosen.clip == nil { chosen.clip = capturesByShot[capture.shotID]?.clip }
+            capturesByShot[capture.shotID] = chosen
+        }
+        result.captures = capturesByShot.values.sorted { $0.capturedAt < $1.capturedAt }
+
+        var seenPostings = Set<UUID>()
+        let orderedPostings = (older.postings + newer.postings).filter { seenPostings.insert($0.id).inserted }
+        result.postings = orderedPostings.enumerated()
+            .sorted { lhs, rhs in
+                lhs.element.recordedAt == rhs.element.recordedAt
+                    ? lhs.offset < rhs.offset
+                    : lhs.element.recordedAt < rhs.element.recordedAt
+            }
+            .map(\.element)
+
+        result.filmingStartedAt = [first.filmingStartedAt, second.filmingStartedAt].compactMap { $0 }.min()
+        result.markedShotAt = [first.markedShotAt, second.markedShotAt].compactMap { $0 }.max()
+        result.finalMedia = newer.finalMedia ?? older.finalMedia
+        result.updatedAt = max(first.updatedAt, second.updatedAt)
+        return result
+    }
+}
+
 struct PieceLibrary: Codable, Hashable, Sendable {
     var pieces: [ContentPiece] = []
     var schemaVersion: Int = 1
+    var syncStates: [String: PieceSyncState]?
+    var syncCursor: Int?
+
+    func syncState(for id: UUID) -> PieceSyncState? {
+        syncStates?[id.uuidString]
+    }
+
+    mutating func setSyncState(_ state: PieceSyncState, for id: UUID) {
+        var states = syncStates ?? [:]
+        states[id.uuidString] = state
+        syncStates = states
+    }
+
+    var hasUnsyncedChanges: Bool {
+        pieces.contains { syncState(for: $0.id)?.dirty ?? true }
+    }
 
     func piece(_ id: UUID) -> ContentPiece? {
         pieces.first { $0.id == id }

@@ -543,6 +543,51 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
         }
     }
 
+    func generatePieceDraft(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        do {
+            logGeneration("generate_piece_draft invoke_initial scheduled_date=\(scheduledDate) brief_chars=\(dayBrief.count)")
+            let initial = try await invokeDailyGeneration(
+                SupabaseDailyGenerationRequest(
+                    creatorID: creatorID,
+                    scheduledDate: scheduledDate,
+                    dayBrief: dayBrief,
+                    responseMode: .async,
+                    action: "generate_piece_draft",
+                    clientContext: SupabaseGenerationClientContext(
+                        uiSurface: "new_content",
+                        action: "generate_piece_draft",
+                        selectedWeekStart: nil,
+                        scheduledDate: scheduledDate,
+                        dayGuidancePresent: true,
+                        dayGuidanceChars: dayBrief.count
+                    )
+                )
+            )
+            switch initial {
+            case .completed(let response):
+                return response.domainResult
+            case .running(let status):
+                return try await pollDailyGeneration(
+                    generationID: status.generationID,
+                    creatorID: creatorID,
+                    logAction: .generateDay
+                )
+            case .failed(let status):
+                throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_day")
+            }
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+
     func resumeAcceptedDayGeneration(
         generationID: UUID,
         creatorID: UUID,
@@ -1262,3 +1307,49 @@ struct SupabaseRuntimeHealthRepository: RuntimeHealthRepository {
 }
 
 private struct EmptyJSONBody: Encodable, Sendable {}
+
+struct SupabasePieceSyncRepository: PieceSyncRepository {
+    let client: SupabaseClient
+
+    var isEnabled: Bool { true }
+
+    func pullPieces(since cursor: Int, context: WorkspaceContext) async throws -> PieceSyncPullResult {
+        try await invoke(
+            SupabasePieceSyncRequest(creatorID: context.creatorID, action: "pull", sinceSequence: cursor, pieces: nil)
+        )
+    }
+
+    func pushPieces(_ uploads: [PieceSyncUpload], context: WorkspaceContext) async throws -> PieceSyncPushResult {
+        try await invoke(
+            SupabasePieceSyncRequest(creatorID: context.creatorID, action: "push", sinceSequence: nil, pieces: uploads)
+        )
+    }
+
+    private func invoke<Response: Decodable>(_ body: SupabasePieceSyncRequest) async throws -> Response {
+        do {
+            return try await client.functions.invoke(
+                "sync-pieces",
+                options: FunctionInvokeOptions(body: body)
+            )
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
+                throw RepositoryError.edgeFunction(code)
+            }
+            throw error
+        }
+    }
+}
+
+private struct SupabasePieceSyncRequest: Encodable, Sendable {
+    var creatorID: UUID
+    var action: String
+    var sinceSequence: Int?
+    var pieces: [PieceSyncUpload]?
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case action
+        case sinceSequence = "since_sequence"
+        case pieces
+    }
+}

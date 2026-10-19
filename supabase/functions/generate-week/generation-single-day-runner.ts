@@ -697,6 +697,7 @@ export async function defaultAttachDayStoryboardThumbnails(
   admin: SupabaseAdminClient,
   prepared: SingleDayRunnerPreparedGeneration,
   dailyCard: GeneratedDailyCard,
+  persist = true,
 ): Promise<GeneratedDailyCard> {
   if (prepared.mockEnabled) {
     return dailyCard;
@@ -731,7 +732,7 @@ export async function defaultAttachDayStoryboardThumbnails(
       creatorID: prepared.request.creator_id,
       dailyCardID,
       cardRecord,
-      persist: true,
+      persist,
     });
 
     if (result.skippedReason) {
