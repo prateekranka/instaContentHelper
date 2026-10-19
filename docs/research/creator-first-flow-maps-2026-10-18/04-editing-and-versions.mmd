@@ -1,0 +1,18 @@
+flowchart TD
+    Package[Open a saved package] --> Select[Select hook, script, shot, or caption]
+    Select --> Method{How to change it?}
+    Method -->|Type directly| Manual[Edit text and autosave]
+    Method -->|Ask for help| Consent{Valid AI data consent?}
+    Consent -->|Yes or Allow| Action[Shorter, clearer, my language, different tone]
+    Consent -->|Not now| Manual
+    Action --> Preview[Preview replacement beside current text]
+    Preview --> Decision{Use the suggestion?}
+    Decision -->|Apply| Version[Save a new version of this section]
+    Decision -->|Keep original| Package
+    Manual --> Version
+    Version --> Check{Does the edit affect captured shots?}
+    Check -->|Yes| Impact[Show the affected shots for review]
+    Check -->|No| Package
+    Impact --> Package
+    Package --> History[Version history: restore or make a variant]
+    History --> Package

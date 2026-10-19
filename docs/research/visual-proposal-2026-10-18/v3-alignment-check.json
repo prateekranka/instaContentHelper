@@ -1,0 +1,35 @@
+{
+  "file": "contenthelper-creator-flow-concept-v3.png",
+  "dimensions": [
+    1670,
+    941
+  ],
+  "buttonRows": [
+    {
+      "button": "Make my first plan",
+      "top": 707,
+      "bottom": 749,
+      "center": 728.0
+    },
+    {
+      "button": "Start filming",
+      "top": 707,
+      "bottom": 749,
+      "center": 728.0
+    },
+    {
+      "button": "Apply suggestion",
+      "top": 707,
+      "bottom": 749,
+      "center": 728.0
+    },
+    {
+      "button": "Mark captured",
+      "top": 706,
+      "bottom": 749,
+      "center": 727.5
+    }
+  ],
+  "topSpread": 1,
+  "bottomSpread": 0
+}

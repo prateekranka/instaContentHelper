@@ -1,0 +1,14 @@
+flowchart TD
+    Plan[Open Plan] --> Date[Choose a date]
+    Date --> Exists{Package already exists?}
+    Exists -->|Yes| Existing[Open saved package and status]
+    Exists -->|No| Brief[Suggest a plan or use my idea]
+    Brief --> Generate[Generate for this date only]
+    Generate --> Saved[Save one dated package]
+    Existing -->|Try another version| Variant[Keep current version and preview alternative]
+    Variant --> Saved
+    Saved --> Today[Show on Today for its date]
+    Plan --> Ideas[Next: saved ideas and references]
+    Ideas --> Capture[Save text or a link with a note]
+    Capture --> Pick[Use this idea for a selected date]
+    Pick --> Exists

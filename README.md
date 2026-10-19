@@ -2,6 +2,14 @@
 
 ContentHelper is a native iPhone app built with SwiftUI. The Xcode target and scheme are `CreatorContentOS`. The app bundle is `ContentHelper.app`.
 
+## Latest creator design and Claude handover
+
+Start with [the complete Claude handover](docs/claude-handover.md) and [the complete screen review PDF](output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf). The PDF contains all 40 screen concepts on 10 pages. [Download the actual PDF](https://raw.githubusercontent.com/prateekranka/instaContentHelper/main/output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf) if the browser preview is unavailable.
+
+The [design index](docs/design/creator-ios-v1-2026-10-18/README.md) includes all 10 final PNG boards. Read the [flow and state specification](docs/design/creator-ios-v1-2026-10-18/flow-and-state-spec.md) for the accepted behavior: Today / Plan / You, several pieces per date, approval of reviewed versions, later edits, and monochrome UI with color media. These latest decisions supersede older one-package-per-day rules. The screen concepts and social integration proposals are not yet native implementation or runtime proof.
+
+## Existing native implementation
+
 The creator workflow is Today → Plan → Shoot Folio. Today shows the daily idea. Plan prepares ideas for selected dates. Shoot Folio contains the filming steps and post text. “Mark as posted” records local completion; it does not publish to Instagram.
 
 Read [the current project state and collaborator handoff](docs/project-state-2026-10-18.md) before starting work. The latest source includes the Pocket interface, adaptive onboarding, AI consent, editable post text, and package restoration work.

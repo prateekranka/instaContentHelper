@@ -1,0 +1,274 @@
+{
+  "pdf": "output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf",
+  "pages": 10,
+  "boards": [
+    {
+      "board": "01-first-use",
+      "width": 1670,
+      "height": 941,
+      "sha256": "bf5df590af80adaa8a525871b7dcba2ecc076c3bbbcbdf09ca8a0b2ff598a08b",
+      "pdf_page": 1,
+      "pdf_render_max_channel_difference": 0,
+      "primary_button_dark_bands": [
+        [
+          718,
+          763
+        ],
+        [
+          717,
+          762
+        ],
+        [
+          717,
+          762
+        ],
+        [
+          707,
+          752
+        ]
+      ],
+      "button_top_spread_pixels": 11
+    },
+    {
+      "board": "02-daily-create-approve",
+      "width": 1670,
+      "height": 942,
+      "sha256": "b6737858283c9af709939b1ae16b8d2b8a5139fc62b6f5fa1dfcddb7874159fa",
+      "pdf_page": 2,
+      "pdf_render_max_channel_difference": 0,
+      "primary_button_dark_bands": [
+        [
+          754,
+          802
+        ],
+        [
+          754,
+          803
+        ],
+        [
+          755,
+          803
+        ],
+        [
+          754,
+          802
+        ]
+      ],
+      "button_top_spread_pixels": 1
+    },
+    {
+      "board": "03-plan-review-dates",
+      "width": 1670,
+      "height": 942,
+      "sha256": "e9945b4b61db56bdfc68db6fde6c06e264726b8fc2c8360c9c09516c51bb44c0",
+      "pdf_page": 3,
+      "pdf_render_max_channel_difference": 0,
+      "primary_button_dark_bands": [
+        [
+          775,
+          814
+        ],
+        [
+          775,
+          814
+        ],
+        [
+          775,
+          814
+        ],
+        [
+          776,
+          816
+        ]
+      ],
+      "button_top_spread_pixels": 1
+    },
+    {
+      "board": "04-edit-and-versions",
+      "width": 1604,
+      "height": 980,
+      "sha256": "07605486bc85c3f67320c5f8f5c4317e987fcec144859b5ae2f74fcd5bcbf380",
+      "pdf_page": 4,
+      "pdf_render_max_channel_difference": 0,
+      "primary_button_dark_bands": [
+        [
+          815,
+          860
+        ],
+        [
+          815,
+          860
+        ],
+        [
+          815,
+          860
+        ],
+        [
+          798,
+          843
+        ]
+      ],
+      "button_top_spread_pixels": 17
+    },
+    {
+      "board": "05-film-and-attach",
+      "width": 1670,
+      "height": 942,
+      "sha256": "4ecba3994b7f3724ad0806428754e746efa025e76e22662ff9d967d58819c351",
+      "pdf_page": 5,
+      "pdf_render_max_channel_difference": 0,
+      "primary_button_dark_bands": [
+        [
+          753,
+          798
+        ],
+        [
+          753,
+          798
+        ],
+        [
+          753,
+          798
+        ],
+        [
+          762,
+          806
+        ]
+      ],
+      "button_top_spread_pixels": 9
+    },
+    {
+      "board": "06-publish-platforms",
+      "width": 1663,
+      "height": 946,
+      "sha256": "9732d3ac094a88c55768997fc9e07ca3f94275892626041219c7f51e14efa73e",
+      "pdf_page": 6,
+      "pdf_render_max_channel_difference": 0,
+      "primary_button_dark_bands": [
+        [
+          780,
+          821
+        ],
+        [
+          780,
+          821
+        ],
+        null,
+        [
+          780,
+          821
+        ]
+      ],
+      "button_top_spread_pixels": null
+    },
+    {
+      "board": "07-history-safe-edits",
+      "width": 1670,
+      "height": 942,
+      "sha256": "69c2afc14c69fc3c328ec4ef811c45c2f262675614453659709096b7cc24abbd",
+      "pdf_page": 7,
+      "pdf_render_max_channel_difference": 0,
+      "primary_button_dark_bands": [
+        [
+          764,
+          807
+        ],
+        [
+          764,
+          807
+        ],
+        [
+          763,
+          808
+        ],
+        [
+          769,
+          811
+        ]
+      ],
+      "button_top_spread_pixels": 6
+    },
+    {
+      "board": "08-you-and-connections",
+      "width": 1666,
+      "height": 944,
+      "sha256": "eb63eae329fe35c36074f135a6f0589646cb3c9ce34a561be52648598783793d",
+      "pdf_page": 8,
+      "pdf_render_max_channel_difference": 0,
+      "primary_button_dark_bands": [
+        [
+          789,
+          830
+        ],
+        [
+          789,
+          829
+        ],
+        [
+          789,
+          830
+        ],
+        [
+          789,
+          830
+        ]
+      ],
+      "button_top_spread_pixels": 0
+    },
+    {
+      "board": "09-day-review-and-recovery",
+      "width": 1670,
+      "height": 942,
+      "sha256": "731107e85c4000325f9e9b15965af7e8e0898a647a87215b12c42f5412b55b8b",
+      "pdf_page": 9,
+      "pdf_render_max_channel_difference": 0,
+      "primary_button_dark_bands": [
+        [
+          755,
+          795
+        ],
+        [
+          754,
+          794
+        ],
+        [
+          754,
+          794
+        ],
+        [
+          754,
+          794
+        ]
+      ],
+      "button_top_spread_pixels": 1
+    },
+    {
+      "board": "10-preferences-and-privacy",
+      "width": 1670,
+      "height": 942,
+      "sha256": "6905f76e7d351b07e64fc0c69f58e70eb6dad5f26e498b6352646a6dd34e3d83",
+      "pdf_page": 10,
+      "pdf_render_max_channel_difference": 0,
+      "primary_button_dark_bands": [
+        [
+          798,
+          846
+        ],
+        [
+          798,
+          846
+        ],
+        [
+          798,
+          846
+        ],
+        [
+          798,
+          846
+        ]
+      ],
+      "button_top_spread_pixels": 0
+    }
+  ],
+  "method": "Static raster review and PDF packaging checks; not app behavior tests"
+}

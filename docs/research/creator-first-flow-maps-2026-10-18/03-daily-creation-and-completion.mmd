@@ -1,0 +1,27 @@
+flowchart TD
+    Open[Open Today] --> State{Saved work for today?}
+    State -->|In progress| Continue[Continue at the saved step]
+    State -->|No package| Context[Optional: time, place, camera comfort]
+    Context --> Prepare[Prepare one daily package]
+    Prepare --> Review[Review the plan]
+    Continue -->|Reviewing| Review
+    Continue -->|Filming| Shoot
+    Continue -->|Preparing to post| Ready
+    Review -->|Fits today| Shoot[Shoot Folio: one shot at a time]
+    Review -->|Needs changes| Edit[Edit or make easier]
+    Edit --> Review
+    Review -->|Not today| Later[Keep for later or choose another date]
+    Later --> Decision[Save today's decision and preserve the package]
+    Shoot -->|Pause| Saved[Save shot progress]
+    Saved --> Continue
+    Saved -->|Done for today| Later
+    Shoot -->|Required shots done| Capture[Mark filming done]
+    Review -->|Photo or existing media| Assets[Check the required assets]
+    Capture --> External[Finish media in the chosen editor]
+    Assets --> External
+    External --> Ready[Posting checklist and caption]
+    Ready --> Handoff[Copy text and open the destination app]
+    Handoff --> Confirm{Creator confirms posting?}
+    Confirm -->|Yes| Posted[Marked as posted]
+    Confirm -->|Not yet| Ready
+    Posted --> Feedback[Optional: did this feel like you?]

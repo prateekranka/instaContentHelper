@@ -1,0 +1,8 @@
+undefined
+
+BOARD TITLE: 05 / Film, attach and mark as shot
+
+17 CONTINUE FILMING: focused screen back inline "Shoot Folio"; large "Continue filming"; three-segment monochrome progress bar, first segment black. Label "SHOT 2 OF 3", title "Get your gear ready"; medium COLOR photoreal shot preview of orange training shoes, blue towel and water bottle on gym floor; small "Shot preview · generated"; SAY THIS gray area "A minute to get ready, then I start." Bottom aligned black "Mark captured". Plain Previous and Pause on row below. No saved-place badge.
+18 ATTACH CLIP: focused screen back title "Attach a clip"; heading "Shot 2 · Your gear"; large COLOR uploaded video still of gym gear with small black play icon and duration 0:04; three small COLOR thumbnails below with selected black outline; rows "Choose from Photos >" / "Record a clip >". Small "Only the media you choose is added." Bottom black "Use this clip". This is ContentHelper's own selected-media review, not a fake system picker.
+19 ALL SHOTS READY: back title "Shoot Folio"; large "All 3 shots captured"; three stacked rows with COLOR video thumbnails, black checkmarks, titles Bag / Gear / Warm-up and durations; plain action "Attach or replace clips"; short note "Confirm when this piece is ready." Bottom black "Mark as shot".
+20 READY TO POST: back title "Content"; heading "Before training"; black outlined status "Shot"; large COLOR uploaded video still of Indian woman tying orange shoes on a blue gym mat, play symbol, duration 0:18. Rows "Final video >" / "Instagram caption >" / "TikTok caption >". Small text "You can edit before posting." Bottom black "Prepare to post".

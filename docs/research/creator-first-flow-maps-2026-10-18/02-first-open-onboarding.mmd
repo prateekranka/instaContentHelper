@@ -1,0 +1,27 @@
+flowchart TD
+    Open[First app open] --> Welcome[Welcome: see a sample package]
+    Welcome --> Auth[Continue with Apple]
+    Auth --> Profile{Load creator profile}
+    Profile -->|New| Setup[One short screen: topic and content language]
+    Profile -->|Partial| Setup
+    Profile -->|Established| Shell[Today, Plan, You with existing profile]
+    Profile -->|Load failed| Failed[Keep saved work and offer retry]
+    Failed -->|Retry| Profile
+    Auth -->|Cancel or error| Welcome
+    Setup -->|Back or Cancel| Pause[Keep partial choices, no generation]
+    Pause -->|Resume later| Setup
+    Setup -->|Make my first plan| Consent{Valid AI data consent?}
+    Setup -->|Skip for now| Default[Show starter defaults]
+    Default --> Consent
+    Consent -->|Already allowed| Generate[Prepare one starter package]
+    Consent -->|Choice needed| Ask[Explain data and AI destinations]
+    Ask -->|Allow| Generate
+    Ask -->|Not now| Manual[Saved work, manual tools, and labeled example]
+    Manual -->|Try AI later| Consent
+    Generate --> First[Today: useful script, shots, caption]
+    Generate -->|Interrupted| Resume[Return to the same request]
+    Resume --> Generate
+    First -->|Fits me| Use[Use this plan]
+    First -->|Needs a change| Refine[Edit a section or make it easier]
+    Refine --> First
+    Use --> Shoot[Start filming or save for later]

@@ -1,0 +1,13 @@
+flowchart TD
+    Work[Setup, generation, editing, or filming] --> Exit[App closes or connection fails]
+    Exit --> Restore[Reopen: restore saved content and task state]
+    Restore --> Stage{What was in progress?}
+    Stage -->|Generation| Request[Check the same request]
+    Request --> Status{Request state?}
+    Status -->|Done| Result[Open the saved result]
+    Status -->|Running| Waiting[Show actual status and allow leaving]
+    Status -->|Failed| Retry[Retry or change the brief]
+    Stage -->|Editing| Edit[Restore edits and unapplied suggestion]
+    Stage -->|Filming| Shot[Resume the saved shot]
+    Stage -->|Posting| Ready[Return to posting checklist]
+    Restore -->|Signed out| Auth[Sign in, then return to saved work]

@@ -1,0 +1,391 @@
+{
+  "format": 1,
+  "design_date": "2026-10-18",
+  "source_base_commit": "a3642dd8aa85cb1c7f26a9c0f1ea99ce22e53b44",
+  "screen_review_pdf": {
+    "path": "output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf",
+    "pages": 10,
+    "boards": 10,
+    "screens": 40,
+    "bytes": 17891637,
+    "sha256": "0eda869068df5bd42200cc1422328ee1ab500c4c1ac8652cfd13e8a96e372330",
+    "storage": "regular Git blob; full PDF bytes"
+  },
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 13,
+      "sha256": "547f59603028195ff9f8a87d04c4651551e8bd0d68f075257dfd549cd846b25b"
+    },
+    {
+      "path": "CLAUDE.md",
+      "bytes": 2065,
+      "sha256": "78fa64b68d7dfe246d86a690aaf69c5f9732468a8a9a2f67b469e4d4d4c8f9ed"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4404,
+      "sha256": "1e2044772d030e150b9c65ca391022b9f60cf8385103ca643bca165849fdada0"
+    },
+    {
+      "path": "docs/claude-handover.md",
+      "bytes": 11868,
+      "sha256": "f74188cbdabe27e1b9bf3eb0c6ce7ac8177ed12f798a380a2fe77277b79f3d56"
+    },
+    {
+      "path": "docs/context/contenthelper-context-2026-10-18.md",
+      "bytes": 7220,
+      "sha256": "a8a7eea6f0ab0a2b771fd95ac5810abb668fea6b3f3a3772de5d4a5f64f00214"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/01-first-use-initial.png",
+      "bytes": 1253269,
+      "sha256": "1a96a63bb122134119edf9c39c8bcdfc5cd1a58c131e5f82ef861322b0706c6a"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/01-first-use.png",
+      "bytes": 1564830,
+      "sha256": "bf5df590af80adaa8a525871b7dcba2ecc076c3bbbcbdf09ca8a0b2ff598a08b"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/02-daily-create-approve-initial.png",
+      "bytes": 1359386,
+      "sha256": "1010951373c59668350bb857f367e264f9422479a6726cd4cc90d69abd01f813"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/02-daily-create-approve.png",
+      "bytes": 1539232,
+      "sha256": "b6737858283c9af709939b1ae16b8d2b8a5139fc62b6f5fa1dfcddb7874159fa"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/03-plan-review-dates-initial.png",
+      "bytes": 1383078,
+      "sha256": "408a7286a343e0668e5423752d8ccb0396446c0e17e6215ae93ae31d19640c1b"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/03-plan-review-dates.png",
+      "bytes": 1520136,
+      "sha256": "e9945b4b61db56bdfc68db6fde6c06e264726b8fc2c8360c9c09516c51bb44c0"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/04-edit-and-versions-initial.png",
+      "bytes": 1337419,
+      "sha256": "d8238001190929097800875bdb0d0175ebd5c7b78451c38ba4483cb05bf6fa92"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/04-edit-and-versions.png",
+      "bytes": 1612512,
+      "sha256": "07605486bc85c3f67320c5f8f5c4317e987fcec144859b5ae2f74fcd5bcbf380"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/05-film-and-attach-initial.png",
+      "bytes": 1610320,
+      "sha256": "1bb05db541181a22ff2f684a47a89029e4fc0d103bdaa1e9e49d78553cc86b4a"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/05-film-and-attach.png",
+      "bytes": 1622313,
+      "sha256": "4ecba3994b7f3724ad0806428754e746efa025e76e22662ff9d967d58819c351"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/06-publish-platforms-initial.png",
+      "bytes": 1562582,
+      "sha256": "e226efe44fe6a237b8587407070cbf880aac51608dd1b495e5e2c92233061c75"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/06-publish-platforms.png",
+      "bytes": 1732691,
+      "sha256": "9732d3ac094a88c55768997fc9e07ca3f94275892626041219c7f51e14efa73e"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/07-history-safe-edits-initial.png",
+      "bytes": 1625530,
+      "sha256": "404ffb30bd13d655b9fe333124037a7a354fc094c77b4d88fe7330f7e01c5397"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/07-history-safe-edits.png",
+      "bytes": 1704070,
+      "sha256": "69c2afc14c69fc3c328ec4ef811c45c2f262675614453659709096b7cc24abbd"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/08-you-and-connections-initial.png",
+      "bytes": 1327595,
+      "sha256": "eb63eae329fe35c36074f135a6f0589646cb3c9ce34a561be52648598783793d"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/08-you-and-connections.png",
+      "bytes": 1327595,
+      "sha256": "eb63eae329fe35c36074f135a6f0589646cb3c9ce34a561be52648598783793d"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/09-day-review-and-recovery-initial.png",
+      "bytes": 1406985,
+      "sha256": "f02c6c5c599ce343754118cda42319155413f927c5944bc4da5923dcc93c4dd8"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/09-day-review-and-recovery.png",
+      "bytes": 1552474,
+      "sha256": "731107e85c4000325f9e9b15965af7e8e0898a647a87215b12c42f5412b55b8b"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/10-preferences-and-privacy-initial.png",
+      "bytes": 1319813,
+      "sha256": "82a214d78f35cddad0850b8fe8702c884a2f488c41284a73205c3a1c4d0be132"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/10-preferences-and-privacy.png",
+      "bytes": 1596666,
+      "sha256": "6905f76e7d351b07e64fc0c69f58e70eb6dad5f26e498b6352646a6dd34e3d83"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/README.md",
+      "bytes": 3260,
+      "sha256": "6bac027e4d7cb3156c717345b64534980e558fccdab9798481aad57886b2b9fc"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/flow-and-state-spec.md",
+      "bytes": 13103,
+      "sha256": "cae85cd656ca4784cac5d47f6b2c4042744a60616f6784dece68dcc0c5ef0321"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/package_designs.py",
+      "bytes": 3493,
+      "sha256": "a5ceb8eb15c21cd00d26deac02dbf415a38c0b6f6e4ee861c355c23faa99b71d"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/platform-integrations.md",
+      "bytes": 7576,
+      "sha256": "8e3f4df94f30ddaaa687159a61c3af87e904123088ad25ca4b5544691a0aaa5f"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/01-first-use-alignment-pass-2.md",
+      "bytes": 463,
+      "sha256": "65dad61688d0fab8445318c3df98f638d747cb295ba433a5751c12b955f28ba6"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/01-first-use-refinement.md",
+      "bytes": 421,
+      "sha256": "22604fc8d7d0c3374b6adf171fc2a21818cb7754e90b9d249a8cfa2bb02c9b2b"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/01-first-use.md",
+      "bytes": 1589,
+      "sha256": "5a2b180be5241a56e7454ec705fe2e746db2c888d46ef8fa2bb72b6eebca7302"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/02-daily-create-approve-refinement.md",
+      "bytes": 405,
+      "sha256": "5645919c28d534b023c31fb3a8d9a23fa5cf0602afa515f148799d610083f493"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/02-daily-create-approve.md",
+      "bytes": 3524,
+      "sha256": "fc00f1d1aa711a397ef39eea85cacc3bb0175440514222884c163382ab546a81"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/03-plan-review-dates-refinement.md",
+      "bytes": 403,
+      "sha256": "ec8c2f461887ed355bd3e5818f777061699f75b472042db72755046fc0e0efe1"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/03-plan-review-dates.md",
+      "bytes": 3354,
+      "sha256": "c7f5ee6c523e1795f01c0a8997ae2532a288461c700d1a54d81ca5dcbe74d1eb"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/04-edit-and-versions-alignment-pass-2.md",
+      "bytes": 568,
+      "sha256": "653214266f21871a6c73de42bd0f7caa4c49aa03144cef0bf6b2b4b98672791e"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/04-edit-and-versions-refinement.md",
+      "bytes": 665,
+      "sha256": "f5a6a685bb8d9b958a02f580ef289ff4768aea83d2a05f45dc077eb578db5755"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/04-edit-and-versions.md",
+      "bytes": 3452,
+      "sha256": "fbfa04d1e0dae25c409dc6dfffb768752176ee8a509602e057b612cb3fb496d1"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/05-film-and-attach-alignment-pass-2.md",
+      "bytes": 405,
+      "sha256": "e3b6fddba8c5576a73bab1998f668efca29f36288efbb88082f6e28064b40172"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/05-film-and-attach-refinement.md",
+      "bytes": 631,
+      "sha256": "4cb9806ba7d8adab1609108f2265f3d720048fccf62755c3a60d832a8d60933b"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/05-film-and-attach.md",
+      "bytes": 1654,
+      "sha256": "760298c4a957a65a99a1cae0b7e5da56f133d6939612539aa6ca8d0cc247fc59"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/06-publish-platforms-refinement.md",
+      "bytes": 773,
+      "sha256": "0b0f268b8d22ae027e8280585ec3f8078d3fcb45094c37bc1fe70c184552b4a4"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/06-publish-platforms.md",
+      "bytes": 3924,
+      "sha256": "65ada2d7eec3d20c4b19c4efe314c168daf618703093d3220e1fe51ed70c7d11"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/07-history-safe-edits-refinement.md",
+      "bytes": 545,
+      "sha256": "da4d80c584bf902c89824a62bedd0c0e33ae86e932779809334aa7b99fb02267"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/07-history-safe-edits.md",
+      "bytes": 3676,
+      "sha256": "2815ce4f877fb8de7460e08dcd498e39c916bfe74e8150479a272a990dbdbad0"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/08-you-and-connections.md",
+      "bytes": 3668,
+      "sha256": "f6af7fa7188a7ca4ef4e378b4daa7c2e5b4164cf07039c1cc34d2a2a372fe20b"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/09-day-review-and-recovery-refinement.md",
+      "bytes": 790,
+      "sha256": "5d843e7242db9be3a6da3655be8e21c89086186fdb15ab02ef6e9d7df535eb10"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/09-day-review-and-recovery.md",
+      "bytes": 3758,
+      "sha256": "fd88a7f4d5cb41ce2c3948436486e6c6682dbcd2c5ba40cad34e015b490e32cc"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/10-preferences-and-privacy-refinement.md",
+      "bytes": 449,
+      "sha256": "aac1cf7681f4ec10249117665be66702ef73c89093699a3c1d12f2d119c00518"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/prompts/10-preferences-and-privacy.md",
+      "bytes": 4096,
+      "sha256": "43fa02881a3bead21221b11071fa8f229831ffb90a2ac0ae76443e895f749846"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/screen-index.md",
+      "bytes": 4130,
+      "sha256": "79c0d293388a7a8671410628578277e69614f8e609e76b29eb19e5ceaa6ca742"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/static-measurements.json",
+      "bytes": 5431,
+      "sha256": "8d4837ba1d9c9395a252df05228c431c19f7b815db75101280ad583f6f92f277"
+    },
+    {
+      "path": "docs/design/creator-ios-v1-2026-10-18/visual-audit.md",
+      "bytes": 3890,
+      "sha256": "09f5f4b665210610213463397af9a0a28b930688e17d5aeedb3cea8e25ffd41d"
+    },
+    {
+      "path": "docs/research/contenthelper-visual-proposal-prompt-2026-10-18.md",
+      "bytes": 5624,
+      "sha256": "3c2e8e6f2514c9f40063c51fd176ff1a224bd75e9eb0a159db646852fa435241"
+    },
+    {
+      "path": "docs/research/creator-first-flow-maps-2026-10-18/01-feature-map.mmd",
+      "bytes": 790,
+      "sha256": "2a90a6cdb095a7dbf242137a1b6b1f2b61d5eee0f74c460e71264065f1014f43"
+    },
+    {
+      "path": "docs/research/creator-first-flow-maps-2026-10-18/02-first-open-onboarding.mmd",
+      "bytes": 1353,
+      "sha256": "2cf72d58a16a0d39be162047324d8664fd5a356b5add334c42a8e4811674c841"
+    },
+    {
+      "path": "docs/research/creator-first-flow-maps-2026-10-18/03-daily-creation-and-completion.mmd",
+      "bytes": 1317,
+      "sha256": "ec6f0e1ba2133cac82bd5bbb72e59e495a3e806f3510e90bb2db4c86d29ffd88"
+    },
+    {
+      "path": "docs/research/creator-first-flow-maps-2026-10-18/04-editing-and-versions.mmd",
+      "bytes": 880,
+      "sha256": "9247a6ba195c9591ba02259eccf1c9d5a0ab5679338126e003d6cba1be020825"
+    },
+    {
+      "path": "docs/research/creator-first-flow-maps-2026-10-18/05-planning-and-inspiration.mmd",
+      "bytes": 663,
+      "sha256": "e7306e70252e9670c054c8f450104e6cc4a7159657f031b4c2b2603cc7640596"
+    },
+    {
+      "path": "docs/research/creator-first-flow-maps-2026-10-18/06-interruption-and-recovery.mmd",
+      "bytes": 735,
+      "sha256": "87355d9c3ef40800cbb136dc0a51b101d68054f4ac35dd24f6cd3ace4d0d178e"
+    },
+    {
+      "path": "docs/research/creator-first-flows-2026-10-18.md",
+      "bytes": 32615,
+      "sha256": "64486966ab1829dfdb32b0cc1e745e2b963144b96f9e62c1064f4a40c26aceba"
+    },
+    {
+      "path": "docs/research/market-context-2026-10-17.md",
+      "bytes": 4646,
+      "sha256": "4be8dcc3f1249056f6ca3703528fd6b5542bad44c9c4ee8443d62633996e1a69"
+    },
+    {
+      "path": "docs/research/micro-creator-co-pilot-market-research-2026-10-17.pdf",
+      "bytes": 199706,
+      "sha256": "578e5e8f15c769766a5ab8ef26c196abf55339ee1dcedc73d5ba397a8592291f"
+    },
+    {
+      "path": "docs/research/reference-visual-audit-2026-10-18.md",
+      "bytes": 13488,
+      "sha256": "00b423bd01233a35443c7da268acf58f76b784f36ac436e120ba9f3e2b565aed"
+    },
+    {
+      "path": "docs/research/visual-proposal-2026-10-18/README.md",
+      "bytes": 1353,
+      "sha256": "a8044719e1b1690902d771c66ef74c6de729cd3f784ece432dcb536d9d1f140a"
+    },
+    {
+      "path": "docs/research/visual-proposal-2026-10-18/contenthelper-creator-flow-concept-v2.png",
+      "bytes": 1547705,
+      "sha256": "e2826cb2a0ad0a2e4594dda3b80a458a6eca4996fb10a493f1c290669ce68faa"
+    },
+    {
+      "path": "docs/research/visual-proposal-2026-10-18/contenthelper-creator-flow-concept-v3.png",
+      "bytes": 1520743,
+      "sha256": "233fa2e36225683dc578c7486a96940ec9b41c80fc4310c608061de87fd62063"
+    },
+    {
+      "path": "docs/research/visual-proposal-2026-10-18/contenthelper-creator-flow-concept.png",
+      "bytes": 1344264,
+      "sha256": "9afea9ae1bc923e62afa642378b537d6faab09dcaca1d1e2e057da4d8ab185f9"
+    },
+    {
+      "path": "docs/research/visual-proposal-2026-10-18/contenthelper-feedback-copy.png",
+      "bytes": 1344264,
+      "sha256": "9afea9ae1bc923e62afa642378b537d6faab09dcaca1d1e2e057da4d8ab185f9"
+    },
+    {
+      "path": "docs/research/visual-proposal-2026-10-18/contenthelper-yellow-feedback.jpg",
+      "bytes": 175908,
+      "sha256": "620772f6d48566df8c72f48eb0cd90a00ac6a8b8bf7353e8a9fffab42083ba73"
+    },
+    {
+      "path": "docs/research/visual-proposal-2026-10-18/v2-yellow-marked-removals.md",
+      "bytes": 4081,
+      "sha256": "e70c2e92a1268d609873f9b7a9d97324d51e978b057ba4c33544c8b0e0419c38"
+    },
+    {
+      "path": "docs/research/visual-proposal-2026-10-18/v3-aligned-primary-buttons.md",
+      "bytes": 2101,
+      "sha256": "64a1545ebd604ebebe103b21139af9fdeeeb3645fb98cf18ba2d220206f9f699"
+    },
+    {
+      "path": "docs/research/visual-proposal-2026-10-18/v3-alignment-check.json",
+      "bytes": 596,
+      "sha256": "4b24920a6288771a448f93fac6cf8d2d016ea9dbd4454eaf8a936741271ea526"
+    },
+    {
+      "path": "output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf",
+      "bytes": 17891637,
+      "sha256": "0eda869068df5bd42200cc1422328ee1ab500c4c1ac8652cfd13e8a96e372330"
+    }
+  ]
+}
