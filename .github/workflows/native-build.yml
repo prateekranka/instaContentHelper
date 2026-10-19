@@ -1,0 +1,39 @@
+name: Native build
+
+on:
+  pull_request:
+    paths:
+      - "CreatorContentOS/**"
+      - "CreatorContentOS.xcodeproj/**"
+      - "CreatorContentOSTests/**"
+  push:
+    branches:
+      - main
+      - claude/creator-pieces-v1
+    paths:
+      - "CreatorContentOS/**"
+      - "CreatorContentOS.xcodeproj/**"
+      - "CreatorContentOSTests/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Unsigned Debug simulator build
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Show Xcode
+        run: xcodebuild -version
+      - name: Build ContentHelper.app
+        run: |
+          xcodebuild -project CreatorContentOS.xcodeproj -scheme CreatorContentOS \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath work/DerivedData CODE_SIGNING_ALLOWED=NO build
