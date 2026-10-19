@@ -7,5 +7,6 @@ struct DayGenerationView: View {
 
     var body: some View {
         PlanHubView(showsModeSwitch: showsModeSwitch)
+            .pieceDestinations()
     }
 }
