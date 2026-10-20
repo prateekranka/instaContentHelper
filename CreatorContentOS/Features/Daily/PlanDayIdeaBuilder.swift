@@ -104,6 +104,16 @@ struct PlanDayIdeasCacheEntry: Equatable, Sendable {
 }
 
 enum PlanDayDateFormatting {
+    static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    static var startOfToday: Date {
+        parseLocalDate(SupabaseDateFormatting.todayDateString()) ?? calendar.startOfDay(for: Date())
+    }
+
     struct FormattedPlanDate: Equatable, Sendable {
         let weekday: String
         let label: String
@@ -114,14 +124,17 @@ enum PlanDayDateFormatting {
         guard let date = parseLocalDate(scheduledDate) else { return nil }
         let weekdayFormatter = DateFormatter()
         weekdayFormatter.locale = Locale(identifier: "en_GB")
+        weekdayFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         weekdayFormatter.dateFormat = "EEEE"
 
         let labelFormatter = DateFormatter()
         labelFormatter.locale = Locale(identifier: "en_GB")
+        labelFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         labelFormatter.dateFormat = "d MMMM yyyy"
 
         let shortFormatter = DateFormatter()
         shortFormatter.locale = Locale(identifier: "en_GB")
+        shortFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         shortFormatter.dateFormat = "EEE d MMM"
 
         return FormattedPlanDate(
@@ -134,6 +147,7 @@ enum PlanDayDateFormatting {
     static func parseLocalDate(_ dateString: String) -> Date? {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: dateString)
     }

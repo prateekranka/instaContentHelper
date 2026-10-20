@@ -85,10 +85,10 @@ enum GeneratedStoryboardBreakdown {
                 .flatMap { URL(string: $0) }
 
             let timecode = firstPresent(
+                element(at: index, in: derivedTimecodes),
                 shot?.timestamp,
                 voiceover?.timestamp,
                 text?.timestamp,
-                element(at: index, in: derivedTimecodes),
                 scene?.duration
             ) ?? "Scene \(index + 1)"
 
@@ -163,7 +163,7 @@ enum GeneratedStoryboardBreakdown {
         return scenes.map { scene in
             let start = cursor
             cursor += seconds(from: scene.duration) ?? 0
-            return "\(format(seconds: start))-\(format(seconds: cursor))"
+            return "\(start)-\(cursor) sec"
         }
     }
 
@@ -172,9 +172,6 @@ enum GeneratedStoryboardBreakdown {
         return Int(digits)
     }
 
-    private static func format(seconds: Int) -> String {
-        "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
-    }
 }
 
 /// Shared pasteboard text for Today inline and Shoot Folio copy actions.

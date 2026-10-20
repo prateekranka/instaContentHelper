@@ -2,7 +2,8 @@ import { test } from '@e2e-dev/mobile';
 import { expect, type Screen } from 'e2e';
 import type { Device } from '@e2e-dev/mobile';
 import {
-  selectTab, tapEditorControl, dismissKeyboard, openLoopSession, relaunchLoopSession,
+  selectTab, tapEditorControl, tapVisibleControl, scrollToControl, clearThenType,
+  dismissKeyboard, openLoopSession, relaunchLoopSession,
   openLoopEditor, saveLoopEditor, finishLoopFilming, openLoopPlanDay,
   requestLoopReplacement, approveLoopPackage,
 } from './pocket-support';
@@ -19,7 +20,7 @@ async function editScript(screen: Screen, device: Device, transform: (script: st
   const editor = screen.getByTestId('shootFolio.script.editor');
   await expect(editor).toBeVisible();
   const original = await editor.inputValue();
-  await editor.fill(transform(original));
+  await clearThenType(screen, editor, transform(original));
   await saveLoopEditor(screen, device);
   return original;
 }
@@ -37,7 +38,7 @@ test('loop R1-1: renaming a filmed scene keeps its mark after relaunch', async (
   await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
   await app.back();
   await openLoopEditor(screen);
-  await screen.getByTestId('shootFolio.scene.1.title').fill('Renamed opening scene');
+  await clearThenType(screen, screen.getByTestId('shootFolio.scene.1.title'), 'Renamed opening scene');
   await saveLoopEditor(screen, device);
   await app.back();
   await relaunchLoopSession(device, session);
@@ -75,17 +76,15 @@ test('loop R1-3: script and caption copy exactly the saved text', async ({ scree
   const script = await screen.getByTestId('shootFolio.script.editor').inputValue();
   expect(script.length).toBeGreaterThan(0);
   await screen.getByTestId('shootFolio.cancelEdit').tap();
-  await screen.scrollUntilVisible(screen.getByRole('button', 'Copy full script', { exact: true }));
-  await screen.getByRole('button', 'Copy full script', { exact: true }).tap();
+  await tapVisibleControl(screen, screen.getByRole('button', 'Copy full script', { exact: true }));
   expect(await device.clipboard()).toBe(script);
   await openLoopPlanDay(screen, 1);
-  await screen.scrollUntilVisible(screen.getByTestId('daily.ready.edit.caption'));
+  await scrollToControl(screen, screen.getByTestId('daily.ready.edit.caption'));
   const caption = await screen.getByTestId('daily.ready.edit.caption').inputValue();
   expect(caption.length).toBeGreaterThan(0);
-  await screen.scrollUntilVisible(screen.getByTestId('plan.package.tab.caption'), { direction: 'up' });
-  await screen.getByTestId('plan.package.tab.caption').tap();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.package.copyCaption'));
-  await screen.getByTestId('plan.package.copyCaption').tap();
+  await scrollToControl(screen, screen.getByTestId('plan.package.tab.caption'), 'up');
+  await tapVisibleControl(screen, screen.getByTestId('plan.package.tab.caption'));
+  await tapVisibleControl(screen, screen.getByTestId('plan.package.copyCaption'));
   expect(await device.clipboard()).toBe(caption);
 });
 
@@ -140,9 +139,8 @@ test('loop R1-7: Plan keeps the tapped day across navigation and relaunch', asyn
 test('loop R1-7: an async generation stays on the day that started it', { timeout: 240_000 }, async ({ screen, device }) => {
   await ready(screen, device, { MCO_SLOW_FIRST_IDEA: '1' });
   await openLoopPlanDay(screen, 2);
-  await screen.scrollUntilVisible(screen.getByTestId('plan.daygen.idea.0'));
-  await screen.getByTestId('plan.daygen.idea.0').tap();
-  await expect(screen.getByTestId('plan.generation.progress')).toBeVisible();
+  await tapVisibleControl(screen, screen.getByTestId('plan.daygen.idea.0'));
+  await expect(screen.getByTestId('plan.generation.progress').filter({ hasText: /^Drafting / })).toBeVisible();
   await openLoopPlanDay(screen, 3);
   await expect(screen.getByTestId('plan.generation.backgroundHint')).toBeVisible();
   await expect(screen.getByTestId('plan.package.title')).toBeHidden();
@@ -178,9 +176,11 @@ test('loop R1b-3: the Script tab uses the creator lines before timed voiceover',
   await openLoopEditor(screen);
   await screen.getByTestId('shootFolio.cancelEdit').tap();
   await screen.getByRole('button', 'Script', { exact: true }).tap();
-  await expect(screen.getByTestId('shoot.script.line.1')).toContainText('Creator line 1.');
-  await screen.scrollUntilVisible(screen.getByTestId('shoot.script.line.10'));
-  await expect(screen.getByTestId('shoot.script.line.10')).toContainText('Creator line 10.');
+  for (let line = 1; line <= 10; line += 1) {
+    const dialogue = screen.getByTestId('shoot.script.timeline').filter({ hasText: `Creator line ${line}.` });
+    await scrollToControl(screen, dialogue);
+    await expect(dialogue).toHaveText(`Creator line ${line}.`);
+  }
 });
 
 test('loop R2-1: an older pending decision replays against its own card', async ({ screen, device }) => {
@@ -257,12 +257,27 @@ test('loop R2-6: an unedited script keeps all ten timed dialogue rows', async ({
   await openLoopEditor(screen);
   await screen.getByTestId('shootFolio.cancelEdit').tap();
   await screen.getByRole('button', 'Script', { exact: true }).tap();
-  await expect(screen.getByTestId('shoot.script.line.1')).toContainText('0-3 sec');
-  await expect(screen.getByTestId('shoot.script.line.1')).toContainText('The biggest lie women are told after 40?');
-  await expect(screen.getByTestId('shoot.script.line.2')).toContainText('That getting stronger is not for them anymore.');
-  await screen.scrollUntilVisible(screen.getByTestId('shoot.script.line.10'));
-  await expect(screen.getByTestId('shoot.script.line.10')).toContainText('27-30 sec');
-  await expect(screen.getByTestId('shoot.script.line.10')).toContainText('Do not let your age decide');
+  const lines = [
+    'The biggest lie women are told after 40?',
+    'That getting stronger is not for them anymore.',
+    'I believed that too.',
+    'I was scared of the gym.',
+    'I started small and wondered if I belonged there.',
+    'But here is what I learned.',
+    'Your muscles do not know how old you are.',
+    'They only know whether you use them.',
+    'I feel stronger in my 60s than I did in my 40s.',
+    'Do not let your age decide what your body is capable of.',
+  ];
+  for (const [index, line] of lines.entries()) {
+    const timecode = `${index * 3}-${(index + 1) * 3} sec`;
+    const time = screen.getByTestId('shoot.script.timeline').filter({ hasText: new RegExp(`^${timecode}$`) });
+    await scrollToControl(screen, time);
+    await expect(time).toHaveText(timecode);
+    const dialogue = screen.getByTestId('shoot.script.timeline').filter({ hasText: line });
+    await scrollToControl(screen, dialogue);
+    await expect(dialogue).toHaveText(line);
+  }
 });
 
 test('loop R3-L1 R2-7: posting a replacement retains two distinct archive records', { timeout: 360_000 }, async ({ screen, device }) => {
@@ -317,7 +332,7 @@ test('loop R3-L3: a paragraph edit cannot silently erase later shot dialogue', a
 test('loop R3-L4: a saved scene duration changes this and following filming timecodes', async ({ app, screen, device }) => {
   const session = await ready(screen, device);
   await openLoopEditor(screen);
-  await screen.getByTestId('shootFolio.scene.1.duration').fill('8 sec');
+  await clearThenType(screen, screen.getByTestId('shootFolio.scene.1.duration'), '8 sec');
   await saveLoopEditor(screen, device);
   await app.back();
   await relaunchLoopSession(device, session);
@@ -371,7 +386,7 @@ test('loop R3-C4: a stale fixture pointer resolves to the ready package for toda
 test('loop R3-C5: the initial ready fixture can save its first scene edit', async ({ app, screen, device }) => {
   const session = await openLoopSession(device, 'initial');
   await openLoopEditor(screen);
-  await screen.getByTestId('shootFolio.scene.1.title').fill('Saved initial fixture edit');
+  await clearThenType(screen, screen.getByTestId('shootFolio.scene.1.title'), 'Saved initial fixture edit');
   await saveLoopEditor(screen, device);
   await app.back();
   await relaunchLoopSession(device, session);
@@ -396,39 +411,37 @@ test('loop R2-7: a future caption edit is displayed, copied, and restored', asyn
   const session = await ready(screen, device);
   await openLoopPlanDay(screen, 1);
   const caption = 'Saved future loop caption.';
-  await screen.scrollUntilVisible(screen.getByTestId('daily.ready.edit.caption'));
-  await screen.getByTestId('daily.ready.edit.caption').fill(caption);
-  await device.dismissKeyboard();
-  await screen.getByTestId('daily.ready.edit.save').tap();
+  await clearThenType(screen, screen.getByTestId('daily.ready.edit.caption'), caption);
+  await dismissKeyboard(screen);
+  await tapVisibleControl(screen, screen.getByTestId('daily.ready.edit.save'));
   await expect(screen.getByTestId('daily.ready.edit.save')).toHaveText('Save caption');
   await expect(screen.getByTestId('daily.ready.edit.save')).toBeDisabled();
   await openLoopPlanDay(screen, 2);
   await openLoopPlanDay(screen, 1);
-  await screen.scrollUntilVisible(screen.getByTestId('daily.ready.edit.caption'));
+  await scrollToControl(screen, screen.getByTestId('daily.ready.edit.caption'));
   await expect(screen.getByTestId('daily.ready.edit.caption')).toHaveValue(caption);
-  await screen.scrollUntilVisible(screen.getByTestId('plan.package.tab.caption'), { direction: 'up' });
-  await screen.getByTestId('plan.package.tab.caption').tap();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.package.copyCaption'));
-  await screen.getByTestId('plan.package.copyCaption').tap();
+  await scrollToControl(screen, screen.getByTestId('plan.package.tab.caption'), 'up');
+  await tapVisibleControl(screen, screen.getByTestId('plan.package.tab.caption'));
+  await tapVisibleControl(screen, screen.getByTestId('plan.package.copyCaption'));
   expect(await device.clipboard()).toBe(caption);
   await relaunchLoopSession(device, session);
   await openLoopPlanDay(screen, 1);
-  await screen.scrollUntilVisible(screen.getByTestId('daily.ready.edit.caption'));
+  await scrollToControl(screen, screen.getByTestId('daily.ready.edit.caption'));
   await expect(screen.getByTestId('daily.ready.edit.caption')).toHaveValue(caption);
 });
 
 test('loop R3-C7: Plan blocks a blank caption save', async ({ screen, device }) => {
   await ready(screen, device);
   await openLoopPlanDay(screen, 1);
-  await screen.scrollUntilVisible(screen.getByTestId('daily.ready.edit.caption'));
+  await scrollToControl(screen, screen.getByTestId('daily.ready.edit.caption'));
   const editor = screen.getByTestId('daily.ready.edit.caption');
   const original = await editor.inputValue();
-  await editor.fill('   ');
-  await device.dismissKeyboard();
+  await clearThenType(screen, editor, '   ');
+  await dismissKeyboard(screen);
   await expect(screen.getByTestId('daily.ready.edit.save')).toBeDisabled();
   await openLoopPlanDay(screen, 2);
   await openLoopPlanDay(screen, 1);
-  await screen.scrollUntilVisible(editor);
+  await scrollToControl(screen, editor);
   await expect(editor).toHaveValue(original);
 });
 
@@ -436,8 +449,8 @@ test('loop R3-C7: Shoot Folio blocks a blank script save', async ({ screen, devi
   await ready(screen, device);
   await openLoopEditor(screen);
   await screen.getByRole('button', 'Script', { exact: true }).tap();
-  await screen.getByTestId('shootFolio.script.editor').fill('');
-  await device.dismissKeyboard();
+  await clearThenType(screen, screen.getByTestId('shootFolio.script.editor'), '');
+  await dismissKeyboard(screen);
   await expect(screen.getByTestId('shootFolio.saveEdits')).toBeDisabled();
 });
 
@@ -446,10 +459,9 @@ test('loop R3-C7: Post refuses blank script and caption without changing the sav
   await finishLoopFilming(screen);
   await screen.getByTestId('post.edit').tap();
   const original = await screen.getByTestId('post.script.editor').inputValue();
-  await screen.getByTestId('post.script.editor').fill('');
+  await clearThenType(screen, screen.getByTestId('post.script.editor'), '');
   await dismissKeyboard(screen, 'post.keyboardDone');
-  await screen.scrollUntilVisible(screen.getByTestId('post.caption.editor'));
-  await screen.getByTestId('post.caption.editor').fill('');
+  await clearThenType(screen, screen.getByTestId('post.caption.editor'), '');
   await dismissKeyboard(screen, 'post.keyboardDone');
   await tapEditorControl(screen, 'post.save');
   const error = screen.getByText('Keep some text in Script and Caption before saving.', { exact: true });

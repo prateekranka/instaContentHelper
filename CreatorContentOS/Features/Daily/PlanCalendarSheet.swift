@@ -95,7 +95,7 @@ struct PlanCalendarSheet: View {
     }
 
     private var weekdayHeader: some View {
-        let symbols = Calendar(identifier: .gregorian).veryShortWeekdaySymbols
+        let symbols = PlanDayDateFormatting.calendar.veryShortWeekdaySymbols
         return HStack(spacing: 0) {
             ForEach(Array(symbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
@@ -128,7 +128,7 @@ struct PlanCalendarSheet: View {
         let state = PlanCalendarDayState.from(packageStatus: packageStatusForDate(dateString))
         let isSelected = dateString == Self.dateString(from: selectedDate)
         let isSelectable = date >= Self.startOfToday()
-        let dayNumber = Calendar(identifier: .gregorian).component(.day, from: date)
+        let dayNumber = PlanDayDateFormatting.calendar.component(.day, from: date)
 
         return Button {
             selectedDate = date
@@ -197,7 +197,7 @@ struct PlanCalendarSheet: View {
     }
 
     private func shiftMonth(by value: Int) {
-        guard let next = Calendar(identifier: .gregorian).date(byAdding: .month, value: value, to: visibleMonth) else {
+        guard let next = PlanDayDateFormatting.calendar.date(byAdding: .month, value: value, to: visibleMonth) else {
             return
         }
         visibleMonth = next
@@ -206,12 +206,13 @@ struct PlanCalendarSheet: View {
     private func monthTitle(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "MMMM yyyy"
         return formatter.string(from: date)
     }
 
     private func daysInVisibleMonth() -> [Date?] {
-        let calendar = Calendar(identifier: .gregorian)
+        let calendar = PlanDayDateFormatting.calendar
         guard let monthInterval = calendar.dateInterval(of: .month, for: visibleMonth),
               let firstWeekdayIndex = calendar.dateComponents([.weekday], from: monthInterval.start).weekday
         else {
@@ -233,12 +234,13 @@ struct PlanCalendarSheet: View {
     }
 
     private static func startOfToday() -> Date {
-        Calendar(identifier: .gregorian).startOfDay(for: Date())
+        PlanDayDateFormatting.startOfToday
     }
 
     private static func dateString(from date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
     }

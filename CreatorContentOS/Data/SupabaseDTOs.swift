@@ -109,14 +109,18 @@ enum SupabaseJSONValue: Codable, Hashable, Sendable {
 }
 
 struct SupabaseShotSceneDTO: Codable, Hashable, Sendable {
+    var id: UUID? = nil
     var number: Int?
     var title: String?
     var duration: String?
     var symbol: String?
 
-    func domainScene(fallbackNumber: Int) -> ShotScene {
-        ShotScene(
-            number: number ?? fallbackNumber,
+    func domainScene(fallbackNumber: Int, revisionID: UUID? = nil) -> ShotScene {
+        let sceneNumber = number ?? fallbackNumber
+        let stableID = revisionID.map { ShotScene.stableID(revisionID: $0, number: sceneNumber) }
+        return ShotScene(
+            id: id ?? stableID ?? UUID(),
+            number: sceneNumber,
             title: title ?? "Shot \(fallbackNumber)",
             duration: duration ?? "3 sec",
             symbol: symbol ?? "circle"
@@ -322,7 +326,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             primarySurface: primarySurface,
             durationSeconds: durationSeconds,
             scenes: sceneList.enumerated().map { index, scene in
-                scene.domainScene(fallbackNumber: index + 1)
+                scene.domainScene(fallbackNumber: index + 1, revisionID: id)
             },
             shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
             voiceoverTimeline: voiceoverTimeline.isEmpty ? nil : voiceoverTimeline,
@@ -366,7 +370,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             hook: hook,
             saveShareReason: saveShareReason,
             sceneList: sceneList.enumerated().map { index, scene in
-                scene.domainScene(fallbackNumber: index + 1)
+                scene.domainScene(fallbackNumber: index + 1, revisionID: id)
             },
             shotTimeline: shotTimeline,
             voiceoverTimeline: voiceoverTimeline,
@@ -899,6 +903,7 @@ struct SupabaseCreatorProfileRow: Codable, Hashable, Sendable {
 struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
     struct DailyCardSummary: Codable, Hashable, Sendable {
         var title: String?
+        var caption: String?
     }
 
     var id: UUID
@@ -908,6 +913,10 @@ struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
     var outputLine: String?
     var hasPostThumbnail: Bool
     var dailyCard: DailyCardSummary?
+    var revisionID: UUID? = nil
+    var titleSnapshot: String? = nil
+    var captionSnapshot: String? = nil
+    var decisionAt: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -917,19 +926,27 @@ struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
         case outputLine = "output_line"
         case hasPostThumbnail = "has_post_thumbnail"
         case dailyCard = "daily_cards"
+        case revisionID = "revision_id"
+        case titleSnapshot = "title_snapshot"
+        case captionSnapshot = "caption_snapshot"
+        case decisionAt = "decision_at"
     }
 
     func domainEntry() -> ArchiveEntry {
-        ArchiveEntry(
+        var entry = ArchiveEntry(
             id: id,
-            dailyCardID: dailyCardID,
+            dailyCardID: revisionID ?? dailyCardID,
             day: SupabaseDateFormatting.weekdayAbbreviation(for: archiveDate),
             date: SupabaseDateFormatting.shortDate(for: archiveDate),
-            cardTitle: dailyCard?.title ?? "Daily card",
+            cardTitle: titleSnapshot ?? dailyCard?.title ?? "Daily card",
             decision: CompletionState(supabaseStatus: decision) ?? .skippedIntentionally,
             outputLine: outputLine ?? decision.displayTitle,
             hasPostThumbnail: hasPostThumbnail
         )
+        entry.captionSnapshot = captionSnapshot ?? dailyCard?.caption
+        entry.scheduledDate = archiveDate
+        entry.decisionAt = decisionAt
+        return entry
     }
 }
 

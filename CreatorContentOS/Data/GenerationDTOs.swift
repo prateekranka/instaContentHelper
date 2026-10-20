@@ -362,7 +362,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
             hook: hook,
             saveShareReason: saveShareReason,
             sceneList: sceneList.enumerated().map { index, scene in
-                scene.domainScene(fallbackNumber: index + 1)
+                scene.domainScene(fallbackNumber: index + 1, revisionID: id)
             },
             shotTimeline: shotTimeline ?? [],
             voiceoverTimeline: voiceoverTimeline ?? [],

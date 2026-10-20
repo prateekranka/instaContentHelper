@@ -3,7 +3,7 @@ import type { Device } from '@e2e-dev/mobile';
 import { randomUUID } from 'node:crypto';
 
 export async function selectTab(screen: Screen, name: 'Today' | 'Plan' | 'You') {
-  const bar = screen.getByRole('tablist');
+  const bar = screen.getByRole('tablist', 'Tab Bar', { exact: true });
   await expect(bar).toBeVisible();
   const tab = bar.getByRole('tab', name, { exact: true });
   // Native iOS snapshots expose the same UITabBar item as tab or button.
@@ -23,7 +23,10 @@ export async function startFromOnboarding(app: App, screen: Screen) {
 // Use a fresh e2e rectangle when the visible target is known but mobile
 // hit-testing reports an overlapping accessibility element.
 export async function tapVisibleControl(screen: Screen, locator: Locator) {
-  const box = await locator.boundingBox();
+  await scrollToControl(screen, locator);
+  await expect(locator).toBeVisible();
+  await expect(locator).toBeEnabled();
+  const box = await stableBox(locator);
   await screen.tapAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
 }
 
@@ -36,10 +39,14 @@ export async function tapEditorControl(screen: Screen, id: string) {
 // can land on the fixed command bar when Dynamic Type makes that bar tall.
 export async function scrollToControl(screen: Screen, locator: Locator, direction: 'up' | 'down' = 'down', bottom?: number) {
   const scrollView = screen.getByRole('scroll-view').nth(0);
+  if (await locator.count() === 0) await scrollView.scrollUntilVisible(locator, { direction });
   const scrollBox = await scrollView.boundingBox();
-  const tabBar = await screen.getByRole('tablist').boundingBox();
+  const tabBar = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
   const visibleTop = scrollBox.y + 2;
-  const visibleBottom = Math.min(tabBar.y - 8, bottom ?? tabBar.y);
+  const keyboard = screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
+  const keyboardTop = await keyboard.count() === 1 ? (await keyboard.boundingBox()).y : tabBar.y;
+  const viewportBottom = Math.min(tabBar.y - 8, keyboardTop - 8, bottom ?? tabBar.y);
+  const visibleBottom = Math.min(viewportBottom, scrollBox.y + scrollBox.height - 2);
   const swipeBottom = Math.min(visibleBottom - 20, scrollBox.y + scrollBox.height * 0.76);
   const swipeTop = Math.max(scrollBox.y + 48, scrollBox.y + scrollBox.height * 0.30);
   const swipeMid = (swipeBottom + swipeTop) / 2;
@@ -51,8 +58,9 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   for (let attempt = 0; attempt < 24; attempt += 1) {
     if (await locator.count() > 0) {
       const box = await stableBox(locator);
-      if (box && box.y >= visibleTop && box.y + box.height <= visibleBottom) return;
-      if (!box) continue;
+      const inScrollView = await scrollView.filter({ has: locator }).count() > 0;
+      const targetBottom = inScrollView ? visibleBottom : viewportBottom;
+      if (box.y >= visibleTop && box.y + box.height <= targetBottom) return;
       lastDirection = box.y < visibleTop ? 'up' : 'down';
     }
     if (lastDirection === 'up') await screen.swipe({ from: { x, y: swipeTo }, to: { x, y: swipeFrom } });
@@ -66,29 +74,71 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
 
 async function stableBox(locator: Locator) {
   let box = await locator.boundingBox();
-  for (let settle = 0; settle < 10; settle += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    if (await locator.count() === 0) return undefined;
+  let stableSamples = 0;
+  await expect.poll(async () => {
     const next = await locator.boundingBox();
-    if (next.x === box.x && next.y === box.y) return next;
+    const stable = next.x === box.x && next.y === box.y
+      && next.width === box.width && next.height === box.height;
     box = next;
-  }
+    stableSamples = stable ? stableSamples + 1 : 0;
+    return stableSamples >= 3;
+  }).toBe(true);
   return box;
 }
 
-export async function dismissKeyboard(screen: Screen, id: string) {
-  const done = screen.getByTestId(id);
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    if (await done.count() === 0) return;
+export async function dismissKeyboard(screen: Screen, id?: string) {
+  const keyboard = screen.getByTestId('delete', { visible: true });
+  const done = screen.getByTestId(id ?? /\.keyboardDone$/, { visible: true });
+  if (await done.count() === 1) {
     const box = await stableBox(done);
-    if (!box) return;
     await screen.tapAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
-    try {
-      await expect(done).toBeHidden({ timeout: 3_000 });
-      return;
-    } catch {}
+    await expect(done).toBeHidden();
+    await expect(keyboard).toBeHidden();
+    return;
   }
-  await expect(done).toBeHidden();
+  if (await keyboard.count() === 0) return;
+  const scrollView = screen.getByRole('scroll-view').first();
+  const box = await stableBox(scrollView);
+  const keyboardBox = await screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true }).boundingBox();
+  const top = box.y + 32;
+  const bottom = Math.min(box.y + box.height, keyboardBox.y) - 48;
+  expect(bottom).toBeGreaterThan(top);
+  const x = box.x + 4;
+  await screen.tapAt({ x, y: top });
+  if (await keyboard.count() > 0) {
+    await screen.swipe({ from: { x, y: bottom }, to: { x, y: top } });
+  }
+  if (await keyboard.count() > 0 && await screen.getByTestId('shootFolio.cancelEdit').count() === 1) {
+    const section = await screen.getByTestId('shootFolio.script.editor').count() === 1 ? 'Scenes' : 'Script';
+    await scrollToControl(screen, screen.getByRole('button', section, { exact: true }), 'up');
+    await tapVisibleControl(screen, screen.getByRole('button', section, { exact: true }));
+  }
+  await expect(keyboard).toBeHidden();
+}
+
+export async function clearThenType(screen: Screen, editor: Locator, text: string) {
+  await scrollToControl(screen, editor);
+  try {
+    await editor.clear();
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('text entry verification failed')) throw error;
+    if (await editor.inputValue() !== '') {
+      await editor.longPress();
+      const selectAll = screen.getByText('Select All', { exact: true, visible: true });
+      await expect(selectAll).toBeVisible();
+      await selectAll.tap();
+      await screen.getByTestId('delete', { visible: true }).tap();
+    }
+  }
+  await expect(editor).toHaveValue('');
+  await typeInChunks(editor, text);
+}
+
+export async function typeInChunks(editor: Locator, text: string) {
+  if (text.length > 0) {
+    await editor.pressSequentially(text, { delay: 0, timeout: Math.max(25_000, text.length * 250) });
+  }
+  await expect(editor).toHaveValue(text);
 }
 
 export type LoopScenario = 'initial' | 'ready' | 'line-script' | 'blank-copy' | 'stale-pointer' | 'legacy-cache' | 'old-decision';
@@ -125,8 +175,8 @@ export async function openLoopEditor(screen: Screen) {
   await expect(screen.getByTestId('shootFolio.cancelEdit')).toBeVisible();
 }
 
-export async function saveLoopEditor(screen: Screen, device: Device) {
-  await device.dismissKeyboard();
+export async function saveLoopEditor(screen: Screen, _device: Device) {
+  await dismissKeyboard(screen);
   await tapEditorControl(screen, 'shootFolio.saveEdits');
   await expect(screen.getByTestId('shootFolio.edit')).toBeVisible();
 }
@@ -148,25 +198,24 @@ export async function finishLoopFilming(screen: Screen) {
 
 export async function openLoopPlanDay(screen: Screen, index: number) {
   await selectTab(screen, 'Plan');
-  await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
+  await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
   const day = screen.getByTestId(/^plan\.sevenDaySelector\.day\./).nth(index);
-  await day.tap();
+  await tapVisibleControl(screen, day);
   await expect(day).toBeSelected();
   return day;
 }
 
 export async function requestLoopReplacement(screen: Screen, idea = 1) {
-  await screen.scrollUntilVisible(screen.getByTestId('plan.package.replaceIdea'));
-  await screen.getByTestId('plan.package.replaceIdea').tap();
-  await screen.scrollUntilVisible(screen.getByTestId(`plan.daygen.idea.${idea}`), { direction: 'up' });
-  await screen.getByTestId(`plan.daygen.idea.${idea}`).tap();
+  await tapVisibleControl(screen, screen.getByTestId('plan.package.replaceIdea'));
+  await scrollToControl(screen, screen.getByTestId(`plan.daygen.idea.${idea}`), 'up');
+  await tapVisibleControl(screen, screen.getByTestId(`plan.daygen.idea.${idea}`));
   await expect(screen.getByRole('button', 'Overwrite', { exact: true })).toBeVisible();
   await screen.getByRole('button', 'Overwrite', { exact: true }).tap();
 }
 
 export async function approveLoopPackage(screen: Screen) {
   const approve = screen.getByTestId('daily.availableOnToday');
-  await screen.scrollUntilVisible(approve);
+  await scrollToControl(screen, approve);
   await expect(approve).toBeEnabled({ timeout: 45_000 });
   await approve.tap();
   await expect(approve).toBeHidden();

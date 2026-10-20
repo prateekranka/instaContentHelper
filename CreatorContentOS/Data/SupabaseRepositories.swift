@@ -4,6 +4,11 @@ import Supabase
 struct SupabaseTodayCardRepository: TodayCardRepository {
     let client: SupabaseClient
 
+    func creatorDays(for context: WorkspaceContext) async throws -> [SupabaseCreatorDayRow]? {
+        let response: SupabaseCreatorDaysResponse = try await client.readContent(.days, context: context)
+        return response.days
+    }
+
     func todayCard(for context: WorkspaceContext) async throws -> DailyCard {
         let todayDate = SupabaseDateFormatting.todayDateString()
         let response: SupabaseTodayReadResponse = try await client.readContent(
@@ -34,9 +39,12 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
         decision: DailyDecision,
         context: WorkspaceContext
     ) async throws -> ArchiveEntry {
-        try await client.writeContent(
+        let response = try await client.writeContent(
             .completeToday(card: card, decision: decision, context: context)
         )
+        if let entry = response.archiveEntry {
+            return entry.domainEntry(fallbackCard: card)
+        }
 
         let archiveDate = card.scheduledDate ?? SupabaseDateFormatting.todayDateString()
         return ArchiveEntry(
@@ -1200,7 +1208,8 @@ private extension SupabaseClient {
         }
     }
 
-    func writeContent(_ request: SupabaseWriteContentRequest) async throws {
+    @discardableResult
+    func writeContent(_ request: SupabaseWriteContentRequest) async throws -> SupabaseWriteContentResponse {
         var attempts = 0
         while true {
             do {
@@ -1211,7 +1220,7 @@ private extension SupabaseClient {
                 if let error = response.error?.nilIfBlank {
                     throw RepositoryError.edgeFunction(error)
                 }
-                return
+                return response
             } catch {
                 if let code = SupabaseFunctionErrorMapper.errorCode(from: error) {
                     throw RepositoryError.edgeFunction(code)

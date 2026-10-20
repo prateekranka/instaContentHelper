@@ -97,6 +97,7 @@ enum RepositoryError: LocalizedError {
 }
 
 protocol TodayCardRepository: Sendable {
+    func creatorDays(for context: WorkspaceContext) async throws -> [SupabaseCreatorDayRow]?
     func todayCard(for context: WorkspaceContext) async throws -> DailyCard
     func weekCards(for context: WorkspaceContext) async throws -> [DailyCard]
     func completeToday(
@@ -130,12 +131,15 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
 
         let dateParser = DateFormatter()
         dateParser.locale = Locale(identifier: "en_US_POSIX")
+        dateParser.timeZone = TimeZone(secondsFromGMT: 0)
         dateParser.dateFormat = "yyyy-MM-dd"
         let weekdayFormatter = DateFormatter()
         weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        weekdayFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         weekdayFormatter.dateFormat = "EEE"
         let dayFormatter = DateFormatter()
         dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dayFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         dayFormatter.dateFormat = "d"
 
         let days: [WeeklyDay] = expectedDates.map { dateString in
@@ -185,12 +189,15 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
 
         let dateParser = DateFormatter()
         dateParser.locale = Locale(identifier: "en_US_POSIX")
+        dateParser.timeZone = TimeZone(secondsFromGMT: 0)
         dateParser.dateFormat = "yyyy-MM-dd"
         let weekdayFormatter = DateFormatter()
         weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        weekdayFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         weekdayFormatter.dateFormat = "EEE"
         let dayFormatter = DateFormatter()
         dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dayFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         dayFormatter.dateFormat = "d"
 
         let days: [WeeklyDay] = expectedDates.map { dateString in
@@ -791,4 +798,9 @@ struct RuntimeHealthReport: Hashable, Sendable {
 
 protocol RuntimeHealthRepository: Sendable {
     func checkHealth(for context: WorkspaceContext) async throws -> RuntimeHealthReport
+}
+
+
+extension TodayCardRepository {
+    func creatorDays(for context: WorkspaceContext) async throws -> [SupabaseCreatorDayRow]? { nil }
 }

@@ -37,23 +37,15 @@ struct AppRuntime {
             )
         )
 #if DEBUG
-        if !DebugLaunchFlags.forceEmptyToday {
-            // Seed the same generated package used by Plan into Today. The
-            // package keeps one ID and one date across the native e2e relaunch.
-            var draft = services.loadTodayFromCache()
-                ? GeneratedDailyCardDraft(fromPublishedCard: services.todayCard)
-                : DebugLaunchFlags.fixtureDailyCardDraft
+        let restored = services.loadTodayFromCache()
+        if !DebugLaunchFlags.forceEmptyToday, !restored {
+            var draft = DebugLaunchFlags.fixtureDailyCardDraft
             if DebugLaunchFlags.uiFixtureData != .demo {
                 draft = DebugLaunchFlags.uiFixtureData.applying(to: draft)
             }
             draft.scheduledDate = services.currentTodayDateString
-            draft.status = "ready"
-            services.dayBriefGeneratedCards[services.currentTodayDateString] = draft
-            services.todayCard = draft.dailyCard(completionState: services.todayCard.completionState)
-            services.weekCards = services.weekCards.map { card in
-                guard card.scheduledDate == services.currentTodayDateString else { return card }
-                return services.todayCard
-            }
+            draft.status = "published"
+            try? services.dayStore.receive(draft)
         }
 #endif
         return AppRuntime(

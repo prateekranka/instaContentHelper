@@ -247,6 +247,10 @@ struct SupabaseWriteArchiveEntryResponse: Decodable, Hashable, Sendable {
     var decision: String
     var outputLine: String?
     var hasPostThumbnail: Bool
+    var revisionID: UUID?
+    var titleSnapshot: String?
+    var captionSnapshot: String?
+    var decisionAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -255,6 +259,27 @@ struct SupabaseWriteArchiveEntryResponse: Decodable, Hashable, Sendable {
         case decision
         case outputLine = "output_line"
         case hasPostThumbnail = "has_post_thumbnail"
+        case revisionID = "revision_id"
+        case titleSnapshot = "title_snapshot"
+        case captionSnapshot = "caption_snapshot"
+        case decisionAt = "decision_at"
+    }
+
+    func domainEntry(fallbackCard: DailyCard) -> ArchiveEntry {
+        var entry = ArchiveEntry(
+            id: id,
+            dailyCardID: revisionID ?? dailyCardID,
+            day: SupabaseDateFormatting.weekdayAbbreviation(for: archiveDate),
+            date: SupabaseDateFormatting.shortDate(for: archiveDate),
+            cardTitle: titleSnapshot ?? fallbackCard.title,
+            decision: CompletionState(supabaseStatus: decision) ?? .skippedIntentionally,
+            outputLine: outputLine ?? decision.displayTitle,
+            hasPostThumbnail: hasPostThumbnail
+        )
+        entry.captionSnapshot = captionSnapshot ?? fallbackCard.caption
+        entry.scheduledDate = archiveDate
+        entry.decisionAt = decisionAt
+        return entry
     }
 }
 

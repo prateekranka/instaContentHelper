@@ -3,6 +3,7 @@ import Foundation
 struct SupabaseReadContentRequest: Encodable, Sendable {
     enum Action: String, Encodable, Sendable {
         case today
+        case days
         case weekly
         case archive
         case creatorProfile = "creator_profile"
@@ -111,5 +112,37 @@ struct SupabaseIntelligenceReadResponse: Decodable, Hashable, Sendable {
         case trends
         case audioOptions = "audio_options"
         case ideas
+    }
+}
+
+
+struct SupabaseCreatorDaysResponse: Decodable, Sendable {
+    var days: [SupabaseCreatorDayRow]
+}
+
+struct SupabaseCreatorDayRow: Decodable, Sendable {
+    struct Generation: Decodable, Sendable {
+        var generationID: UUID
+        var status: String
+        var idempotencyKey: String?
+
+        enum CodingKeys: String, CodingKey {
+            case generationID = "generation_id"
+            case status
+            case idempotencyKey = "idempotency_key"
+        }
+    }
+
+    var scheduledDate: String
+    var currentRevisionID: UUID?
+    var revision: SupabaseDailyCardRow?
+    var generation: Generation?
+    var updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case scheduledDate = "scheduled_date"
+        case currentRevisionID = "current_revision_id"
+        case revision, generation
+        case updatedAt = "updated_at"
     }
 }

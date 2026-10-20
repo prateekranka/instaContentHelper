@@ -44,6 +44,13 @@ struct PlanHubView: View {
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .accessibilityIdentifier("plan.generation.backgroundHint")
                 }
+                if isSelectedDayUnavailable {
+                    PocketSheetFeedbackBanner(message: "This day is unavailable. Try again to load its saved state.", kind: .issue)
+                    PocketSheetSecondaryAction(title: "Try again") {
+                        services.refreshFromRepositories()
+                    }
+                    .disabled(services.isRefreshingRepository)
+                }
                 if shouldShowIdeaLauncher {
                     if services.voiceGateOpen {
                         Text("Set up Creator voice before generating more ideas.")
@@ -203,7 +210,7 @@ struct PlanHubView: View {
                   !SupabaseDateFormatting.isDatePast(persisted, todayString: services.currentTodayDateString) {
             candidate = persisted
         } else {
-            candidate = nil
+            candidate = services.currentTodayDateString
         }
         guard let candidate, let date = Self.parseLocalDate(candidate) else { return }
         selectedDate = date
@@ -238,7 +245,7 @@ struct PlanHubView: View {
 
     /// Empty eligible day: idea launcher. After idea select / while generating / with a package: hide it.
     private var shouldShowIdeaLauncher: Bool {
-        guard isSelectedDayEligible else { return false }
+        guard isSelectedDayEligible, !isSelectedDayUnavailable else { return false }
         if isGeneratingSelectedDay || hasDispatchedGeneration {
             return false
         }
@@ -283,8 +290,13 @@ struct PlanHubView: View {
         selectedDate >= Self.startOfToday()
     }
 
+    private var isSelectedDayUnavailable: Bool {
+        services.dayStore.day(for: scheduledDateString)?.lifecycle == .unavailable
+    }
+
     private var isGeneratingSelectedDay: Bool {
-        services.generatingDayBriefDates.contains(scheduledDateString)
+        if case .generating = services.dayStore.day(for: scheduledDateString)?.lifecycle { return true }
+        return services.generatingDayBriefDates.contains(scheduledDateString)
     }
 
     private var otherDayGeneratingLabel: String? {
@@ -324,7 +336,8 @@ struct PlanHubView: View {
     }
 
     private var displayedCard: GeneratedDailyCardDraft? {
-        services.dayPackage(for: scheduledDateString)
+        guard !isSelectedDayUnavailable else { return nil }
+        return services.dayPackage(for: scheduledDateString)
     }
 
     // MARK: - Sections
@@ -683,7 +696,7 @@ struct PlanHubView: View {
     // MARK: - Date helpers
 
     private func shortLabel(for dateString: String) -> String {
-        if dateString == Self.dateString(from: Date()) {
+        if dateString == services.currentTodayDateString {
             return "today"
         }
         guard let date = Self.parseLocalDate(dateString) else {
@@ -691,17 +704,19 @@ struct PlanHubView: View {
         }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "EEE d MMM"
         return formatter.string(from: date)
     }
 
     private static func startOfToday() -> Date {
-        Calendar(identifier: .gregorian).startOfDay(for: Date())
+        PlanDayDateFormatting.startOfToday
     }
 
     private static func dateString(from date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
     }
@@ -794,7 +809,7 @@ private struct PlanSevenDaySelector: View {
     }
 
     private var sevenDayDates: [Date] {
-        let calendar = Calendar(identifier: .gregorian)
+        let calendar = PlanDayDateFormatting.calendar
         return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: today) }
     }
 
@@ -803,7 +818,7 @@ private struct PlanSevenDaySelector: View {
         let state = PlanCalendarDayState.from(packageStatus: packageStatusForDate(dateString))
         let isSelected = dateString == Self.dateString(from: selectedDate)
         let isToday = dateString == Self.dateString(from: today)
-        let calendar = Calendar(identifier: .gregorian)
+        let calendar = PlanDayDateFormatting.calendar
         let dayNumber = calendar.component(.day, from: date)
         let month = monthLabel(for: date)
         let weekday = weekdayLabel(for: date)
@@ -849,7 +864,7 @@ private struct PlanSevenDaySelector: View {
         let state = PlanCalendarDayState.from(packageStatus: packageStatusForDate(dateString))
         let isSelected = dateString == Self.dateString(from: selectedDate)
         let isToday = dateString == Self.dateString(from: today)
-        let calendar = Calendar(identifier: .gregorian)
+        let calendar = PlanDayDateFormatting.calendar
         let dayNumber = calendar.component(.day, from: date)
         let month = monthLabel(for: date)
         let weekday = weekdayLabel(for: date)
@@ -951,6 +966,7 @@ private struct PlanSevenDaySelector: View {
     private func weekdayLabel(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_GB")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "EEE"
         return formatter.string(from: date)
     }
@@ -958,6 +974,7 @@ private struct PlanSevenDaySelector: View {
     private func monthLabel(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_GB")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "MMM"
         return formatter.string(from: date)
     }
@@ -965,6 +982,7 @@ private struct PlanSevenDaySelector: View {
     private static func dateString(from date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
     }

@@ -20,47 +20,75 @@ final class AppServices {
     private let todayCache: any TodayCacheStoring
     private let notifications: any TodayNotificationScheduling
 
+    let dayStore: DayStore
+    private var isLoadingToday = false
+    private var weeklyPlanLayout: WeeklyPlan
+    private var generationSummaryMetadata: GeneratedWeekDraft?
+    private var generationSummaryDates: Set<String> = []
+
     var todayCard: DailyCard {
-        didSet {
-            let currentIDs = Set(todayCard.scenes.map(\.id))
-            if oldValue.id != todayCard.id {
-                shotSceneIDs.removeAll()
-            } else {
-                let previousShotScenes = oldValue.scenes.filter { shotSceneIDs.contains($0.id) }
-                let keptShotIDs = previousShotScenes.map(\.id).filter(currentIDs.contains)
-                let replacedShotKeys = previousShotScenes
-                    .filter { !currentIDs.contains($0.id) }
-                    .map(Self.sceneProgressKey)
-                let currentScenesByKey = Dictionary(
-                    grouping: todayCard.scenes,
-                    by: Self.sceneProgressKey
-                )
-                shotSceneIDs = Set(
-                    keptShotIDs + replacedShotKeys.compactMap { key in
-                        guard let matches = currentScenesByKey[key], matches.count == 1 else {
-                            return nil
-                        }
-                        return matches[0].id
-                    }
-                )
-            }
-            if todayCard.completionState == .shot || todayCard.completionState == .posted {
-                shotSceneIDs.formUnion(currentIDs)
-            }
+        get {
+            if let day = dayStore.day(for: currentTodayDateString), day.lifecycle.exposesReadyPackage,
+               let revision = day.revision { return revision.dailyCard }
+            return DailyCard(
+                id: context.creatorID,
+                title: "No ready package",
+                context: SupabaseDateFormatting.contextLine(for: currentTodayDateString),
+                effortLabel: "",
+                whyToday: "Generate or make a draft available.",
+                scheduledDate: currentTodayDateString,
+                scenes: []
+            )
+        }
+        set {
+            do { try dayStore.receivePublished(newValue) }
+            catch { lastRepositoryError = error.localizedDescription }
         }
     }
-    var shotSceneIDs: Set<UUID>
-    var archiveEntries: [ArchiveEntry]
-    var weeklyPlan: WeeklyPlan
+
+    var shotSceneIDs: Set<UUID> {
+        get { dayStore.day(for: currentTodayDateString)?.revision?.filmingProgress.shotSceneIDs ?? [] }
+        set {
+            do { try dayStore.transition(.markShots(newValue), on: currentTodayDateString) }
+            catch { lastRepositoryError = error.localizedDescription }
+        }
+    }
+
+    var archiveEntries: [ArchiveEntry] {
+        get { dayStore.archiveEntries }
+        set { dayStore.mergeArchive(newValue, authoritative: true) }
+    }
+
+    var weeklyPlan: WeeklyPlan {
+        get {
+            var plan = weeklyPlanLayout
+            plan.days = plan.days.map { day in
+                guard let date = day.scheduledDate, let package = dayStore.packages[date] else { return day }
+                return package.weeklyDay
+            }
+            return plan
+        }
+        set { weeklyPlanLayout = newValue }
+    }
     var weeklyBriefDraftText: String
     var weeklyIdeas: [WeeklyIdea]
     var intelligenceHome: IntelligenceHome
     var creatorProfileSummary: CreatorProfileSummary
     var creatorOnboardingPresentation: CreatorOnboardingPresentation = .loading
-    var weekCards: [DailyCard]
+    var weekCards: [DailyCard] {
+        get { dayStore.readyCards }
+        set {
+            for card in newValue {
+                do { try dayStore.receivePublished(card) }
+                catch { lastRepositoryError = error.localizedDescription }
+            }
+        }
+    }
     var lastRepositoryError: String?
     var lastTodayDecisionSyncError: String?
-    private(set) var unsyncedTodayDecision: UnsyncedTodayDecision?
+    private(set) var unsyncedTodayDecision: UnsyncedTodayDecision? {
+        didSet { dayStore.pendingDecisionRevisionID = unsyncedTodayDecision?.cardID }
+    }
     var lastRepositoryRefreshAttemptAt: Date?
     var lastRepositoryRefreshAt: Date?
     var isRefreshingRepository = false
@@ -71,7 +99,31 @@ final class AppServices {
     var isCheckingRuntimeHealth = false
     var lastRuntimeHealthCheckedAt: Date?
     var lastRuntimeHealthError: String?
-    var todayContentState: TodayContentState
+    var todayContentState: TodayContentState {
+        get {
+            guard let day = dayStore.day(for: currentTodayDateString) else {
+                return isLoadingToday ? .loading : .unavailable
+            }
+            switch day.lifecycle {
+            case .ready, .filming, .decided: return .ready
+            case .empty, .draft: return .missingPublishedCard(date: currentTodayDateString)
+            case .generating: return .loading
+            case .unavailable: return isLoadingToday ? .loading : .unavailable
+            }
+        }
+        set {
+            isLoadingToday = newValue == .loading
+            switch newValue {
+            case .missingPublishedCard(let date):
+                try? dayStore.transition(.missingReady, on: date)
+            case .unavailable:
+                if dayStore.day(for: currentTodayDateString) == nil {
+                    try? dayStore.transition(.unavailable, on: currentTodayDateString)
+                }
+            case .ready, .loading: break
+            }
+        }
+    }
     var lastNotificationSchedule: TodayNotificationSchedule?
     var lastNotificationError: String?
     var isPublishingWeek = false
@@ -92,14 +144,37 @@ final class AppServices {
     var regenerationDayErrors: [String: String] = [:]
     var generatingDayBriefDates: Set<String> = []
     var dayBriefGenerationErrors: [String: String] = [:]
-    var dayBriefGeneratedCards: [String: GeneratedDailyCardDraft] = [:]
+    var dayBriefGeneratedCards: [String: GeneratedDailyCardDraft] { dayStore.packages }
     /// Cached Plan empty-day idea one-liners keyed by `yyyy-MM-dd` (fingerprint inside entry).
-    var planDayIdeasByDate: [String: PlanDayIdeasCacheEntry] = [:]
+    var planDayIdeasByDate: [String: PlanDayIdeasCacheEntry] {
+        get { dayStore.ideaSuggestions }
+        set { dayStore.ideaSuggestions = newValue }
+    }
     var loadingPlanDayIdeaDates: Set<String> = []
     var generatingStoryboardThumbnailCardIDs: Set<UUID> = []
     var storyboardThumbnailErrors: [UUID: String] = [:]
     var generationError: String?
-    var latestGenerationSummary: GeneratedWeekDraft?
+    var latestGenerationSummary: GeneratedWeekDraft? {
+        get {
+            guard var summary = generationSummaryMetadata else { return nil }
+            summary.dailyCards = generationSummaryDates.sorted().compactMap { dayStore.packages[$0] }
+            return summary
+        }
+        set { setGenerationSummary(newValue) }
+    }
+
+    private func setGenerationSummary(_ summary: GeneratedWeekDraft?, importingCards: Bool = true, readVersion: Int? = nil) {
+        generationSummaryDates = Set(summary?.dailyCards.map(\.scheduledDate) ?? [])
+        generationSummaryMetadata = summary
+        generationSummaryMetadata?.dailyCards = []
+        if importingCards {
+            for package in summary?.dailyCards ?? [] {
+                do { try dayStore.receive(package, readVersion: readVersion) }
+                catch { lastRepositoryError = error.localizedDescription }
+            }
+        }
+    }
+
     var referenceImportPreview: ReferenceImportPreview?
     var referenceImportConfirmResult: ReferenceImportConfirmResult?
     var referenceReviewResult: ReferenceReviewResult?
@@ -123,10 +198,7 @@ final class AppServices {
 
     /// Resolves the Plan package for a date from session cards or the latest draft summary.
     func dayPackage(for scheduledDate: String) -> GeneratedDailyCardDraft? {
-        if let card = dayBriefGeneratedCards[scheduledDate] {
-            return card
-        }
-        return latestGenerationSummary?.dailyCards.first { $0.scheduledDate == scheduledDate }
+        dayStore.day(for: scheduledDate)?.revision?.content
     }
 
     /// Today Shoot Folio card with Gemini storyboard thumbnails from Plan when Today is missing them.
@@ -155,25 +227,7 @@ final class AppServices {
             return card.storyboardThumbnailAssets ?? []
         }
 
-        let scheduledDate = card.scheduledDate ?? currentTodayDateString
-        if let package = dayPackage(for: scheduledDate),
-           Self.hasUsableStoryboardThumbnails(package.storyboardThumbnailAssets) {
-            return package.storyboardThumbnailAssets
-        }
-
-        if let summaryCard = latestGenerationSummary?.dailyCards.first(where: {
-            $0.id == card.id || $0.scheduledDate == scheduledDate
-        }), Self.hasUsableStoryboardThumbnails(summaryCard.storyboardThumbnailAssets) {
-            return summaryCard.storyboardThumbnailAssets
-        }
-
-        if let weekCard = weekCards.first(where: {
-            $0.id == card.id || $0.scheduledDate == scheduledDate
-        }), Self.hasUsableStoryboardThumbnails(weekCard.storyboardThumbnailAssets) {
-            return weekCard.storyboardThumbnailAssets ?? []
-        }
-
-        return card.storyboardThumbnailAssets ?? []
+        return dayStore.card(revisionID: card.id)?.storyboardThumbnailAssets ?? card.storyboardThumbnailAssets ?? []
     }
 
     /// Copies Plan Gemini thumbnails onto `todayCard` so Shoot Folio can render them.
@@ -242,19 +296,21 @@ final class AppServices {
             creatorID: repositories.context.creatorID
         )
         self.aiConsentAllowsOutbound = AIConsentPolicy.allowsOutbound(self.aiConsentStore.load())
-        self.todayCard = todayCard
-        shotSceneIDs = todayCard.completionState == .shot || todayCard.completionState == .posted
-            ? Set(todayCard.scenes.map(\.id))
-            : []
-        self.archiveEntries = archiveEntries
-        self.weeklyPlan = weeklyPlan
+        self.dayStore = DayStore(context: repositories.context)
+        self.weeklyPlanLayout = weeklyPlan
         weeklyBriefDraftText = weeklyPlan.weeklyBriefText
         self.weeklyIdeas = weeklyIdeas
         self.intelligenceHome = intelligenceHome
         self.creatorProfileSummary = creatorProfileSummary
-        self.weekCards = weekCards
-        self.todayContentState = todayContentState
+        isLoadingToday = todayContentState == .loading
+        if case .missingPublishedCard(let date) = todayContentState {
+            try? dayStore.transition(.missingReady, on: date)
+        }
+        for card in weekCards { try? dayStore.receivePublished(card) }
+        if todayContentState == .ready { try? dayStore.receivePublished(todayCard) }
+        dayStore.mergeArchive(archiveEntries)
         if isLiveSupabaseRuntime {
+            _ = loadTodayFromCache()
             supabaseHealthStatus = .unknown
             geminiHealthStatus = .unknown
         } else {
@@ -427,7 +483,7 @@ final class AppServices {
               !shotSceneIDs.contains(scene.id) else { return }
         shotSceneIDs.insert(scene.id)
         lastActionMessage = "Scene \(scene.number) marked shot."
-        if areAllScenesShot, todayCard.completionState == nil {
+        if areAllScenesShot, dayStore.day(for: currentTodayDateString)?.revision?.decision == nil {
             completeToday(with: DailyDecision.shot)
         } else {
             saveTodaySnapshot(source: "shot-progress")
@@ -437,8 +493,10 @@ final class AppServices {
     func markAllScenesShot() {
         shotSceneIDs.formUnion(todayCard.scenes.map(\.id))
         lastActionMessage = "All scenes marked shot."
-        if todayCard.completionState == nil {
+        if dayStore.day(for: currentTodayDateString)?.revision?.decision == nil {
             completeToday(with: DailyDecision.shot)
+        } else {
+            saveTodaySnapshot(source: "shot-progress")
         }
     }
 
@@ -474,14 +532,26 @@ final class AppServices {
     func completeToday(with decision: DailyDecision) {
         let isFilmingDecision = decision.completionState == .shot || decision.completionState == .posted
         guard isFilmingDecision || canChooseEasierOption else { return }
+        guard canApplyTodayDecision(decision) else { return }
         let pendingSync = prepareTodayDecisionSync(decision)
         _ = enqueueTodayDecisionSync(pendingSync)
     }
 
     @discardableResult
     func completeTodayImmediately(with decision: DailyDecision) async -> ArchiveEntry {
+        guard canApplyTodayDecision(decision) else {
+            return makeArchiveEntry(for: todayCard, decision: decision)
+        }
         let pendingSync = prepareTodayDecisionSync(decision)
         return await enqueueTodayDecisionSync(pendingSync).value
+    }
+
+    private func canApplyTodayDecision(_ decision: DailyDecision) -> Bool {
+        guard var day = dayStore.day(for: currentTodayDateString) else { return false }
+        do {
+            try day.transition(.decide(decision))
+            return true
+        } catch { return false }
     }
 
     private func enqueueTodayDecisionSync(
@@ -501,7 +571,8 @@ final class AppServices {
 
     @discardableResult
     private func applyLocalTodayDecision(_ decision: DailyDecision) -> (card: DailyCard, entry: ArchiveEntry) {
-        todayCard.completionState = decision.completionState
+        do { try dayStore.transition(.decide(decision), on: currentTodayDateString) }
+        catch { lastRepositoryError = error.localizedDescription }
         let localEntry = makeArchiveEntry(for: todayCard, decision: decision)
         upsertLocalArchiveEntry(localEntry, for: todayCard)
         saveTodaySnapshot(source: "decision")
@@ -557,7 +628,7 @@ final class AppServices {
                 archiveEntries = refreshedEntries
             }
             // Fixture archives ignore persist; keep the synced entry visible locally.
-            upsertLocalArchiveEntry(entry, for: pendingSync.card)
+            upsertLocalArchiveEntry(entry, for: pendingSync.card, authoritative: true)
             guard isCurrentTodayDecisionSync(pendingSync) else {
                 return pendingSync.localEntry
             }
@@ -600,13 +671,14 @@ final class AppServices {
             completeToday(with: unsynced.decision)
             return
         }
+        guard let card = dayStore.card(revisionID: unsynced.cardID) ?? unsynced.card else { return }
         latestTodayDecisionSyncID += 1
         _ = enqueueTodayDecisionSync(
             PendingTodayDecisionSync(
                 id: latestTodayDecisionSyncID,
-                card: unsynced.card,
+                card: card,
                 decision: unsynced.decision,
-                localEntry: makeArchiveEntry(for: unsynced.card, decision: unsynced.decision)
+                localEntry: makeArchiveEntry(for: card, decision: unsynced.decision)
             )
         )
     }
@@ -780,14 +852,17 @@ final class AppServices {
     ) -> [WeeklyDay] {
         let dateParser = DateFormatter()
         dateParser.locale = Locale(identifier: "en_US_POSIX")
+        dateParser.timeZone = TimeZone(secondsFromGMT: 0)
         dateParser.dateFormat = "yyyy-MM-dd"
 
         let weekdayFormatter = DateFormatter()
         weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        weekdayFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         weekdayFormatter.dateFormat = "EEE"
 
         let dayFormatter = DateFormatter()
         dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dayFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         dayFormatter.dateFormat = "d"
 
         let cardsByDate = cards.reduce(into: [String: GeneratedDailyCardDraft]()) { result, card in
@@ -868,6 +943,12 @@ final class AppServices {
             throw RepositoryError.edgeFunction(message)
         }
 
+        if case .generating = dayStore.day(for: scheduledDate)?.lifecycle {
+            throw RepositoryError.edgeFunction("generation_already_running")
+        }
+        let request = DayGenerationRun(requestID: UUID(), generationID: nil)
+        try dayStore.transition(.generate(request, replacing: dayPackage(for: scheduledDate) != nil), on: scheduledDate)
+        saveTodaySnapshot(source: "regeneration-started")
         regeneratingDayDates.insert(scheduledDate)
         regenerationDayErrors[scheduledDate] = nil
         defer { regeneratingDayDates.remove(scheduledDate) }
@@ -890,6 +971,16 @@ final class AppServices {
             logGeneration("regenerate_day completed scheduled_date=\(scheduledDate) daily_card_id=\(result.dailyCard.id)")
             return result.dailyCard
         } catch {
+            if case .generating(let active) = dayStore.day(for: scheduledDate)?.lifecycle, active.requestID == request.requestID {
+                if let run = acceptedGenerationStore.load(scheduledDate: scheduledDate), run.creatorID == context.creatorID {
+                    try? dayStore.transition(.generate(DayGenerationRun(requestID: run.generationID, generationID: run.generationID), replacing: true), on: scheduledDate)
+                } else if let content = dayPackage(for: scheduledDate) {
+                    try? dayStore.receive(content)
+                } else {
+                    try? dayStore.transition(.unavailable, on: scheduledDate)
+                }
+                saveTodaySnapshot(source: "regeneration-interrupted")
+            }
             let message = DayGenerationErrorDisplay.message(for: error)
             regenerationDayErrors[scheduledDate] = message
             generationError = message
@@ -1127,6 +1218,8 @@ final class AppServices {
             return try await resumeAcceptedDayGeneration(acceptedRun)
         }
 
+        try dayStore.transition(.generate(DayGenerationRun(requestID: UUID(), generationID: nil), replacing: dayPackage(for: scheduledDate) != nil), on: scheduledDate)
+        saveTodaySnapshot(source: "generation-started")
         generatingDayBriefDates.insert(scheduledDate)
         dayBriefGenerationErrors[scheduledDate] = nil
         defer { generatingDayBriefDates.remove(scheduledDate) }
@@ -1141,6 +1234,13 @@ final class AppServices {
             )
             return try applyDayGenerationResult(result, scheduledDate: scheduledDate)
         } catch {
+            if let run = acceptedGenerationStore.load(scheduledDate: scheduledDate), run.creatorID == context.creatorID {
+                try? dayStore.transition(.generate(DayGenerationRun(requestID: run.generationID, generationID: run.generationID), replacing: true), on: scheduledDate)
+            } else {
+                if let content = dayPackage(for: scheduledDate) { try? dayStore.receive(content) }
+                else { try? dayStore.transition(.unavailable, on: scheduledDate) }
+            }
+            saveTodaySnapshot(source: "generation-interrupted")
             let message = DayGenerationErrorDisplay.message(for: error)
             dayBriefGenerationErrors[scheduledDate] = message
             logGeneration(
@@ -1191,17 +1291,23 @@ final class AppServices {
         }
 
         do {
+            try dayStore.transition(.generate(DayGenerationRun(requestID: run.generationID, generationID: run.generationID), replacing: true), on: run.scheduledDate)
+            saveTodaySnapshot(source: "generation-resumed")
             logGeneration("generate_day resume scheduled_date=\(run.scheduledDate) generation_id=\(run.generationID)")
-            let result = try await repositories.dailyGeneration.resumeAcceptedDayGeneration(
+            var result = try await repositories.dailyGeneration.resumeAcceptedDayGeneration(
                 generationID: run.generationID,
                 creatorID: run.creatorID,
                 context: context
             )
+            if !isLiveSupabaseRuntime { result.generationID = run.generationID }
             acceptedGenerationStore.remove(scheduledDate: run.scheduledDate)
             return try applyDayGenerationResult(result, scheduledDate: run.scheduledDate)
         } catch {
             if Self.acceptedRunHasEnded(run, after: error) {
                 acceptedGenerationStore.remove(scheduledDate: run.scheduledDate)
+                if let content = dayPackage(for: run.scheduledDate) { try? dayStore.receive(content) }
+                else { try? dayStore.transition(.unavailable, on: run.scheduledDate) }
+                saveTodaySnapshot(source: "generation-ended")
             }
             let message = DayGenerationErrorDisplay.message(for: error)
             dayBriefGenerationErrors[run.scheduledDate] = message
@@ -1229,11 +1335,18 @@ final class AppServices {
                 )
                 throw RepositoryError.edgeFunction("invalid_generated_day")
             }
-            dayBriefGeneratedCards[scheduledDate] = result.dailyCard
+            if case .generating(let run) = dayStore.day(for: scheduledDate)?.lifecycle {
+                guard run.generationID == nil || run.generationID == result.generationID else {
+                    throw DayTransitionError.staleAnswer
+                }
+                try dayStore.transition(.generated(result.dailyCard), on: scheduledDate)
+            } else {
+                try dayStore.receive(result.dailyCard)
+            }
+            saveTodaySnapshot(source: "generated-day")
             let integratesWithCurrentWeeklyReview = result.weeklyPlanID == weeklyPlan.id
                 && weeklyPlan.days.contains(where: { $0.scheduledDate == scheduledDate })
             if integratesWithCurrentWeeklyReview {
-                applyRegeneratedDay(result.dailyCard)
                 Task { @MainActor in
                     await reconcileGeneratedDayCardFromCurrentWeeklyContent(
                         scheduledDate: scheduledDate,
@@ -1318,50 +1431,24 @@ final class AppServices {
     }
 
     func applyRegeneratedDay(_ card: GeneratedDailyCardDraft) {
-        if var draft = latestGenerationSummary,
-           draft.weeklyPlanID == weeklyPlan.id {
-            if draft.replaceDailyCard(card) {
-                latestGenerationSummary = draft
+        do {
+            if case .generating = dayStore.day(for: card.scheduledDate)?.lifecycle {
+                try dayStore.transition(.generated(card), on: card.scheduledDate)
+            } else {
+                try dayStore.receive(card)
             }
-        }
-
-        if let dayIndex = weeklyPlan.days.firstIndex(where: {
-            $0.id == card.id || $0.scheduledDate == card.scheduledDate
-        }) {
-            weeklyPlan.days[dayIndex] = card.weeklyDay
-            weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
-        }
+            saveTodaySnapshot(source: "generated-day")
+        } catch { lastRepositoryError = error.localizedDescription }
     }
 
     func applyStoryboardThumbnailAssets(
         _ assets: [StoryboardThumbnailAsset],
         toDailyCardID dailyCardID: UUID
     ) {
-        let matchingScheduledDates = dayBriefGeneratedCards.compactMap { scheduledDate, card in
-            card.id == dailyCardID ? scheduledDate : nil
-        }
-        for scheduledDate in matchingScheduledDates {
-            guard var updatedCard = dayBriefGeneratedCards[scheduledDate] else { continue }
-            updatedCard.storyboardThumbnailAssets = assets
-            dayBriefGeneratedCards[scheduledDate] = updatedCard
-        }
-
-        if var draft = latestGenerationSummary,
-           let index = draft.dailyCards.firstIndex(where: { $0.id == dailyCardID }) {
-            draft.dailyCards[index].storyboardThumbnailAssets = assets
-            latestGenerationSummary = draft
-        }
-
-        if todayCard.id == dailyCardID
-            || matchingScheduledDates.contains(todayCard.scheduledDate ?? "")
-            || matchingScheduledDates.contains(currentTodayDateString) {
-            todayCard.storyboardThumbnailAssets = assets
+        do {
+            try dayStore.updateThumbnails(assets, revisionID: dailyCardID)
             saveTodaySnapshot(source: "storyboard-thumbnail-apply")
-        }
-
-        if let weekIndex = weekCards.firstIndex(where: { $0.id == dailyCardID }) {
-            weekCards[weekIndex].storyboardThumbnailAssets = assets
-        }
+        } catch { lastRepositoryError = error.localizedDescription }
     }
 
     private func logGeneration(_ message: String) {
@@ -1400,13 +1487,11 @@ final class AppServices {
         weeklyPlan.days[dayIndex].state = state
         weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
 
-        if var draft = latestGenerationSummary,
-           draft.weeklyPlanID == weeklyPlan.id,
-           let cardIndex = draft.dailyCards.firstIndex(where: {
-               $0.id == dailyCardID || $0.scheduledDate == day.scheduledDate
-           }) {
-            draft.dailyCards[cardIndex].status = state.generatedDraftStatus
-            latestGenerationSummary = draft
+        let previousPackage = day.scheduledDate.flatMap { dayPackage(for: $0) }
+        if var package = previousPackage {
+            package.status = state.generatedDraftStatus
+            do { try dayStore.transition(.edit(package), on: package.scheduledDate) }
+            catch { lastRepositoryError = error.localizedDescription; return false }
         }
 
         generationError = nil
@@ -1417,6 +1502,7 @@ final class AppServices {
                 reviewState: state.generatedDraftStatus,
                 context: context
             )
+            saveTodaySnapshot(source: "day-review-state")
             lastRepositoryError = nil
             return true
         } catch {
@@ -1425,13 +1511,8 @@ final class AppServices {
             }
             weeklyPlan.days[dayIndex].state = previousState
             weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
-            if var draft = latestGenerationSummary,
-               draft.weeklyPlanID == weeklyPlan.id,
-               let cardIndex = draft.dailyCards.firstIndex(where: {
-                   $0.id == dailyCardID || $0.scheduledDate == day.scheduledDate
-               }) {
-                draft.dailyCards[cardIndex].status = previousState.generatedDraftStatus
-                latestGenerationSummary = draft
+            if let previousPackage {
+                try? dayStore.transition(.edit(previousPackage), on: previousPackage.scheduledDate)
             }
             lastRepositoryError = error.localizedDescription
             return false
@@ -1903,8 +1984,7 @@ final class AppServices {
             weekCards = result.weekCards
             if let draft = latestGenerationSummary, draft.weeklyPlanID == result.weeklyPlan.id {
                 latestGenerationSummary = draft.markedPublished
-                hydrateDayBriefGeneratedCardsFromLatestDraft()
-            }
+                }
             if let todayCard = result.todayCard {
                 self.todayCard = todayCard
             }
@@ -1944,34 +2024,19 @@ final class AppServices {
                 context: context
             )
 
-            if var localDraft = dayBriefGeneratedCards[scheduledDate] {
-                localDraft.status = "published"
-                dayBriefGeneratedCards[scheduledDate] = localDraft
+            guard result.scheduledDate == scheduledDate,
+                  result.dailyCardID == draftCard?.id || draftCard == nil else {
+                throw DayTransitionError.mismatchedRevision
             }
-            if var summary = latestGenerationSummary,
-               let index = summary.dailyCards.firstIndex(where: { $0.scheduledDate == scheduledDate }) {
-                var card = summary.dailyCards[index]
-                card.status = "published"
-                summary.dailyCards[index] = card
-                latestGenerationSummary = summary
+            if draftCard != nil {
+                try dayStore.transition(.makeReady, on: scheduledDate)
             }
-
             let isLocalToday = scheduledDate == currentTodayDateString
-            if isLocalToday {
-                let preservedAssets = draftCard?.storyboardThumbnailAssets ?? []
-                if let draftCard {
-                    todayCard = draftCard.dailyCard(completionState: nil)
-                    todayContentState = .ready
-                }
+            if draftCard == nil || isLocalToday {
                 await refreshPublishedContentAfterPublishImmediately(skipTodayCard: draftCard != nil)
-                if !Self.hasUsableStoryboardThumbnails(todayCard.storyboardThumbnailAssets),
-                   Self.hasUsableStoryboardThumbnails(preservedAssets) {
-                    todayCard.storyboardThumbnailAssets = preservedAssets
-                }
-                hydrateTodayStoryboardThumbnailsFromPlanPackage()
-                saveTodaySnapshot(source: "day-available")
-                await scheduleTodayNotificationIfNeededImmediately()
             }
+            saveTodaySnapshot(source: "day-available")
+            if isLocalToday { await scheduleTodayNotificationIfNeededImmediately() }
 
             lastActionMessage = isLocalToday
                 ? "Ready for Today."
@@ -2008,35 +2073,17 @@ final class AppServices {
                 context: context
             )
 
-            if var localCard = dayBriefGeneratedCards[scheduledDate] {
-                localCard.status = "draft"
-                dayBriefGeneratedCards[scheduledDate] = localCard
+            guard result.scheduledDate == scheduledDate, result.dailyCardID == card?.id || card == nil else {
+                throw DayTransitionError.mismatchedRevision
             }
-            if var summary = latestGenerationSummary,
-               let index = summary.dailyCards.firstIndex(where: { $0.scheduledDate == scheduledDate }) {
-                var draftCard = summary.dailyCards[index]
-                draftCard.status = "draft"
-                summary.dailyCards[index] = draftCard
-                latestGenerationSummary = summary
+            if card != nil {
+                try dayStore.transition(.returnToDraft, on: scheduledDate)
+            } else {
+                try dayStore.transition(.missingReady, on: scheduledDate)
             }
-
-            let isLocalToday = scheduledDate == currentTodayDateString
-            if isLocalToday {
-                todayContentState = .missingPublishedCard(date: scheduledDate)
-                weekCards.removeAll { $0.scheduledDate == scheduledDate }
-                if todayCard.scheduledDate == scheduledDate {
-                    todayCard = DailyCard(
-                        id: UUID(),
-                        title: "No ready package",
-                        context: SupabaseDateFormatting.contextLine(for: scheduledDate),
-                        effortLabel: "",
-                        whyToday: "Unpublished. Generate or make a draft available again.",
-                        scheduledDate: scheduledDate,
-                        scenes: []
-                    )
-                }
-                await refreshPublishedContentAfterPublishImmediately()
-                saveTodaySnapshot(source: "day-unpublish")
+            saveTodaySnapshot(source: "day-unpublish")
+            if scheduledDate == currentTodayDateString {
+                await cancelTodayNotification()
             }
 
             lastActionMessage = "Unpublished — back to draft."
@@ -2078,53 +2125,9 @@ final class AppServices {
                 context: context
             )
 
-            if var localCard = dayBriefGeneratedCards[scheduledDate] {
-                if let title = package.title?.nilIfBlank { localCard.title = title }
-                if let whyToday = package.whyToday?.nilIfBlank { localCard.whyToday = whyToday }
-                if let caption = package.caption { localCard.caption = caption }
-                if let script = package.script { localCard.script = script }
-                if let backupStory = package.backupStory { localCard.backupStory = backupStory }
-                if let backupCaptionOnly = package.backupCaptionOnly {
-                    localCard.backupCaptionOnly = backupCaptionOnly
-                }
-                if let shootability = package.shootability { localCard.shootability = shootability }
-                if let minutes = package.estimatedShootMinutes {
-                    localCard.estimatedShootMinutes = minutes
-                }
-                if let sceneList = package.sceneList {
-                    localCard.sceneList = sceneList
-                }
-                // Keep ready status — light edit must not demote.
-                dayBriefGeneratedCards[scheduledDate] = localCard
-            }
-
-            let isLocalToday = scheduledDate == currentTodayDateString
-            if isLocalToday {
-                if let title = package.title?.nilIfBlank {
-                    todayCard.title = title
-                }
-                if let whyToday = package.whyToday?.nilIfBlank {
-                    todayCard.whyToday = whyToday
-                }
-                if let caption = package.caption {
-                    todayCard.caption = caption
-                }
-                if let script = package.script {
-                    todayCard.script = script
-                }
-                if let sceneList = package.sceneList {
-                    todayCard.scenes = sceneList
-                }
-                if var localCard = dayBriefGeneratedCards[scheduledDate] {
-                    todayCard = localCard.dailyCard(completionState: todayCard.completionState)
-                }
-                todayContentState = .ready
-                if let index = weekCards.firstIndex(where: { $0.scheduledDate == scheduledDate }) {
-                    weekCards[index] = todayCard
-                }
-                await refreshPublishedContentAfterPublishImmediately()
-                saveTodaySnapshot(source: "ready-day-edit")
-            }
+            guard result.scheduledDate == scheduledDate, result.dailyCardID == resolvedCardID else { throw DayTransitionError.mismatchedRevision }
+            try dayStore.updatePackage(on: scheduledDate, revisionID: result.dailyCardID, patch: package, title: result.title, caption: result.caption)
+            saveTodaySnapshot(source: "ready-day-edit")
 
             lastActionMessage = "Ready package updated."
             lastRepositoryError = nil
@@ -2167,41 +2170,14 @@ final class AppServices {
         scheduledDate: String,
         suppressRepositoryErrorOnFailure: Bool = false
     ) async {
+        let version = dayStore.changeVersion
         do {
             let content = try await repositories.weeklyPlans.currentWeeklyContent(for: context)
-            guard let draft = content.generatedDraft,
-                  draft.weeklyPlanID == weeklyPlan.id,
-                  let canonicalCard = draft.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
-            else {
-                return
-            }
-
-            if var localDraft = latestGenerationSummary {
-                if localDraft.weeklyPlanID == draft.weeklyPlanID {
-                    localDraft.replaceDailyCard(canonicalCard)
-                    latestGenerationSummary = localDraft
-                }
-            } else {
-                latestGenerationSummary = draft
-            }
-
-            if let dayIndex = weeklyPlan.days.firstIndex(where: {
-                $0.id == canonicalCard.id || $0.scheduledDate == canonicalCard.scheduledDate
-            }) {
-                weeklyPlan.days[dayIndex] = canonicalCard.weeklyDay
-                weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
-            }
-
-            dayBriefGeneratedCards[scheduledDate] = canonicalCard
-            lastRepositoryError = nil
+            guard let card = content.generatedDraft?.dailyCards.first(where: { $0.scheduledDate == scheduledDate }) else { return }
+            try dayStore.receive(card, readVersion: version)
+            saveTodaySnapshot(source: "generation-reconciled")
         } catch {
-            if suppressRepositoryErrorOnFailure {
-                logGeneration(
-                    "reconcile_generated_day_card_failed scheduled_date=\(scheduledDate) error=\(error.localizedDescription)"
-                )
-            } else {
-                lastRepositoryError = error.localizedDescription
-            }
+            if !suppressRepositoryErrorOnFailure { lastRepositoryError = error.localizedDescription }
         }
     }
 
@@ -2397,16 +2373,9 @@ final class AppServices {
             guard let snapshot = try todayCache.loadSnapshot(for: context) else {
                 return false
             }
-            guard !SupabaseDateFormatting.isDatePast(
-                snapshot.todayCard.scheduledDate ?? currentTodayDateString,
-                todayString: currentTodayDateString
-            ) else {
-                unsyncedTodayDecision = unsyncedTodayDecision ?? snapshot.unsyncedDecision
-                return false
-            }
-
             apply(snapshot: snapshot)
-            return true
+            guard let day = dayStore.day(for: currentTodayDateString) else { return false }
+            return day.lifecycle != .unavailable
         } catch {
             lastRepositoryError = error.localizedDescription
             return false
@@ -2448,29 +2417,32 @@ final class AppServices {
             )
         }
 
+        let dayReadVersion = dayStore.changeVersion
+        var usedDaySnapshot = false
         do {
-            todayCard = try await repositories.today.todayCard(for: context)
-            todayContentState = .ready
+            if let rows = try await repositories.today.creatorDays(for: context) {
+                try dayStore.reconcile(rows, today: currentTodayDateString, readVersion: dayReadVersion)
+                usedDaySnapshot = true
+            } else {
+                do {
+                    let card = try await repositories.today.todayCard(for: context)
+                    try dayStore.receivePublished(card, readVersion: dayReadVersion)
+                } catch RepositoryError.noPublishedTodayCard(let date) {
+                    isMissingPublishedTodayCard = true
+                    if !dayStore.changed(date, since: dayReadVersion) { applyMissingPublishedTodayCardState(date: date) }
+                }
+                let weekReadVersion = dayStore.changeVersion
+                let cards = try await repositories.today.weekCards(for: context)
+                for card in cards { try dayStore.receivePublished(card, readVersion: weekReadVersion) }
+            }
+            isLoadingToday = false
             saveTodaySnapshot(source: "repository-refresh")
             await scheduleTodayNotificationIfNeededImmediately()
-        } catch RepositoryError.noPublishedTodayCard(let date) {
-            isMissingPublishedTodayCard = true
-            applyMissingPublishedTodayCardState(date: date)
         } catch {
             refreshError = error
-            if loadTodayFromCache() {
-                todayContentState = .ready
-                await scheduleTodayNotificationIfNeededImmediately()
-            } else {
-                todayContentState = .unavailable
-                lastRepositoryError = error.localizedDescription
-            }
-        }
-
-        do {
-            weekCards = try await repositories.today.weekCards(for: context)
-        } catch {
-            refreshError = refreshError ?? error
+            if dayStore.day(for: currentTodayDateString) == nil { _ = loadTodayFromCache() }
+            todayContentState = .unavailable
+            lastRepositoryError = error.localizedDescription
         }
 
         do {
@@ -2479,12 +2451,12 @@ final class AppServices {
             refreshError = refreshError ?? error
         }
 
+        let weeklyReadVersion = dayStore.changeVersion
         do {
             let weeklyContent = try await repositories.weeklyPlans.currentWeeklyContent(for: context)
             weeklyPlan = weeklyContent.workingPlan ?? weeklyContent.publishedPlan
             weeklyBriefDraftText = weeklyPlan.weeklyBriefText
-            latestGenerationSummary = weeklyContent.generatedDraft
-            hydrateDayBriefGeneratedCardsFromLatestDraft()
+            setGenerationSummary(weeklyContent.generatedDraft, importingCards: !usedDaySnapshot, readVersion: weeklyReadVersion)
             weeklyIdeas = weeklyContent.ideaBank
         } catch {
             refreshError = refreshError ?? error
@@ -2492,7 +2464,7 @@ final class AppServices {
 
         for package in await repositories.dailyGeneration.persistedDayPackages(context: context)
         where dayBriefGeneratedCards[package.scheduledDate] == nil {
-            dayBriefGeneratedCards[package.scheduledDate] = package
+            try? dayStore.receive(package)
         }
 
         do {
@@ -2521,6 +2493,7 @@ final class AppServices {
 #endif
 
         normalizeManagerWeekStartIfStale()
+        saveTodaySnapshot(source: "repository-refresh-complete")
         restoreAcceptedDayGenerationsIfNeeded()
         await checkRuntimeHealthImmediately()
     }
@@ -2535,36 +2508,29 @@ final class AppServices {
     /// manager week state and creator Today state come from the same source of truth.
     /// This prevents local reviewed-draft state from diverging from published rows.
     func refreshPublishedContentAfterPublishImmediately(skipTodayCard: Bool = false) async {
-        var refreshError: Error?
-
-        if !skipTodayCard {
-            do {
-                todayCard = try await repositories.today.todayCard(for: context)
-                todayContentState = .ready
-            } catch RepositoryError.noPublishedTodayCard(let date) {
-                todayContentState = .missingPublishedCard(date: date)
-                lastNotificationSchedule = nil
-                lastNotificationError = nil
-            } catch {
-                refreshError = error
+        let version = dayStore.changeVersion
+        do {
+            if let rows = try await repositories.today.creatorDays(for: context) {
+                try dayStore.reconcile(rows, today: currentTodayDateString, readVersion: version)
+            } else {
+                if !skipTodayCard {
+                    do {
+                        let card = try await repositories.today.todayCard(for: context)
+                        try dayStore.receivePublished(card, readVersion: version)
+                    } catch RepositoryError.noPublishedTodayCard(let date) {
+                        if !dayStore.changed(date, since: version) { applyMissingPublishedTodayCardState(date: date) }
+                    }
+                }
+                for card in try await repositories.today.weekCards(for: context) {
+                    try dayStore.receivePublished(card, readVersion: version)
+                }
             }
-        }
-
-        do {
-            weekCards = try await repositories.today.weekCards(for: context)
-        } catch {
-            refreshError = refreshError ?? error
-        }
-
-        do {
             weeklyPlan = try await repositories.weeklyPlans.currentPublishedPlan(for: context)
             weeklyBriefDraftText = weeklyPlan.weeklyBriefText
-        } catch {
-            refreshError = refreshError ?? error
-        }
-
+            lastRepositoryRefreshError = nil
+            saveTodaySnapshot(source: "published-refresh")
+        } catch { lastRepositoryRefreshError = error.localizedDescription }
         resumeUnsyncedTodayDecisionIfNeeded()
-        lastRepositoryRefreshError = refreshError?.localizedDescription
     }
 
     func refreshIntelligenceHomeImmediately() async {
@@ -2577,14 +2543,14 @@ final class AppServices {
     }
 
     private func refreshWeeklyDataFromRepositories() async {
+        let readVersion = dayStore.changeVersion
         var refreshError: Error?
 
         do {
             let weeklyContent = try await repositories.weeklyPlans.currentWeeklyContent(for: context)
             weeklyPlan = weeklyContent.workingPlan ?? weeklyContent.publishedPlan
             weeklyBriefDraftText = weeklyPlan.weeklyBriefText
-            latestGenerationSummary = weeklyContent.generatedDraft
-            hydrateDayBriefGeneratedCardsFromLatestDraft()
+            setGenerationSummary(weeklyContent.generatedDraft, readVersion: readVersion)
             weeklyIdeas = weeklyContent.ideaBank
         } catch {
             refreshError = error
@@ -2598,20 +2564,6 @@ final class AppServices {
         }
     }
 
-    private func hydrateDayBriefGeneratedCardsFromLatestDraft() {
-        var hydratedCards = dayBriefGeneratedCards.filter { generatingDayBriefDates.contains($0.key) }
-
-        guard let draft = latestGenerationSummary else {
-            return
-        }
-
-        for card in draft.dailyCards where card.status.lowercased() != "published" {
-            guard !generatingDayBriefDates.contains(card.scheduledDate) else { continue }
-            hydratedCards[card.scheduledDate] = card
-        }
-
-        dayBriefGeneratedCards = hydratedCards
-    }
 
     func scheduleTodayNotificationIfNeeded() {
         Task {
@@ -2620,6 +2572,10 @@ final class AppServices {
     }
 
     func scheduleTodayNotificationIfNeededImmediately() async {
+        guard case .ready = todayContentState else {
+            await cancelTodayNotification()
+            return
+        }
         do {
             lastNotificationSchedule = try await notifications.scheduleTodayReminder(
                 for: todayCard,
@@ -2742,29 +2698,21 @@ final class AppServices {
     }
 
     private func apply(snapshot: CachedTodaySnapshot) {
-        todayCard = snapshot.todayCard
-        weekCards = snapshot.weekCards
-        if let savedIDs = snapshot.shotSceneIDs {
-            shotSceneIDs.formUnion(savedIDs.intersection(Set(todayCard.scenes.map(\.id))))
-        }
+        dayStore.restore(snapshot.migratedStore(for: context))
         unsyncedTodayDecision = snapshot.unsyncedDecision
+        if let card = unsyncedTodayDecision?.card { try? dayStore.retainPendingCard(card) }
     }
 
     private func saveTodaySnapshot(source: String) {
         let snapshot = CachedTodaySnapshot(
-            todayCard: todayCard,
-            weekCards: weekCards,
+            dayStore: dayStore.snapshot,
             cachedAt: Date(),
             source: source,
-            shotSceneIDs: shotSceneIDs,
             unsyncedDecision: unsyncedTodayDecision
         )
-
         do {
             try todayCache.saveSnapshot(snapshot, for: context)
-        } catch {
-            lastRepositoryError = error.localizedDescription
-        }
+        } catch { lastRepositoryError = error.localizedDescription }
     }
 
     private func makeArchiveEntry(
@@ -2772,7 +2720,7 @@ final class AppServices {
         decision: DailyDecision
     ) -> ArchiveEntry {
         let archiveDate = card.scheduledDate ?? SupabaseDateFormatting.todayDateString()
-        return ArchiveEntry(
+        var entry = ArchiveEntry(
             dailyCardID: card.id,
             day: SupabaseDateFormatting.weekdayAbbreviation(for: archiveDate),
             date: SupabaseDateFormatting.shortDate(for: archiveDate),
@@ -2781,21 +2729,14 @@ final class AppServices {
             outputLine: decision.outputLine,
             hasPostThumbnail: decision.hasPostThumbnail
         )
+        entry.captionSnapshot = card.caption
+        entry.scheduledDate = archiveDate
+        entry.decisionAt = ISO8601DateFormatter().string(from: Date())
+        return entry
     }
 
-    private func upsertLocalArchiveEntry(_ entry: ArchiveEntry, for card: DailyCard) {
-        let archiveDate = card.scheduledDate ?? currentTodayDateString
-        if let index = archiveEntries.firstIndex(where: { archiveEntry in
-            if let dailyCardID = archiveEntry.dailyCardID {
-                return dailyCardID == card.id
-            }
-            return archiveEntry.cardTitle == card.title
-                && archiveEntry.date == SupabaseDateFormatting.shortDate(for: archiveDate)
-        }) {
-            archiveEntries[index] = entry
-        } else {
-            archiveEntries.insert(entry, at: 0)
-        }
+    private func upsertLocalArchiveEntry(_ entry: ArchiveEntry, for card: DailyCard, authoritative: Bool = false) {
+        dayStore.mergeArchive([entry], authoritative: authoritative)
     }
 
     private func cancelTodayNotification() async {
