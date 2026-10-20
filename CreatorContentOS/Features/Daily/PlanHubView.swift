@@ -18,6 +18,7 @@ struct PlanHubView: View {
     @State private var isOtherIdeaOpen = false
     @State private var otherIdeaText = ""
     @State private var lightEditCaption = ""
+    @State private var didApplyInitialSelectedDate = false
     /// Reveals the idea launcher when a package already exists (overwrite / replace).
     @State private var showReplaceIdeaLauncher = false
     /// When true (DEBUG Admin Daily), show Admin “Creator mode” chrome. Creator Plan passes false.
@@ -192,12 +193,14 @@ struct PlanHubView: View {
 
     private func applyPendingPlanDateSelection() {
         let candidate: String?
-        if let initial = initialSelectedDate?.nilIfBlank {
+        if !didApplyInitialSelectedDate, let initial = initialSelectedDate?.nilIfBlank {
+            didApplyInitialSelectedDate = true
             appState.preparePlan(selecting: initial)
             candidate = initial
         } else if let pending = appState.consumePlanSelectedDate() {
             candidate = pending
-        } else if let persisted = appState.persistedPlanSelectedDate() {
+        } else if let persisted = appState.persistedPlanSelectedDate(),
+                  !SupabaseDateFormatting.isDatePast(persisted, todayString: services.currentTodayDateString) {
             candidate = persisted
         } else {
             candidate = nil
@@ -612,6 +615,7 @@ struct PlanHubView: View {
                     dayBrief: brief,
                     confirmOverwrite: confirmOverwrite
                 )
+                guard scheduledDateString == dateString else { return }
                 isOtherIdeaOpen = false
                 otherIdeaText = ""
                 lightEditCaption = services.dayPackage(for: dateString)?.caption ?? ""
@@ -631,6 +635,7 @@ struct PlanHubView: View {
                 if shouldOpenToday {
                     navigateToTodayAfterAvailable()
                 }
+                guard scheduledDateString == dateString else { return }
                 lightEditCaption = services.dayPackage(for: dateString)?.caption ?? ""
             } catch {
                 // Surfaced via services.lastMakeDayAvailableError; stay on Plan.
@@ -652,6 +657,7 @@ struct PlanHubView: View {
         Task { @MainActor in
             do {
                 _ = try await services.unpublishDay(scheduledDate: dateString)
+                guard scheduledDateString == dateString else { return }
                 lightEditCaption = services.dayPackage(for: dateString)?.caption ?? ""
             } catch {
                 // Surfaced via services.lastUnpublishDayError.

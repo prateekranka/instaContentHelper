@@ -171,15 +171,13 @@ enum PackageCopyText {
         script(fromStored: card.script.nilIfBlank, rows: GeneratedStoryboardBreakdown.rows(for: card))
     }
 
-    static func caption(for card: DailyCard) -> String {
-        card.caption?.nilIfBlank ?? missingCaptionFallback
+    static func caption(for card: DailyCard) -> String? {
+        card.caption?.nilIfBlank
     }
 
-    static func caption(for card: GeneratedDailyCardDraft) -> String {
-        card.caption.nilIfBlank ?? missingCaptionFallback
+    static func caption(for card: GeneratedDailyCardDraft) -> String? {
+        card.caption.nilIfBlank
     }
-
-    private static let missingCaptionFallback = "No caption recorded for today."
 
     private static func script(fromStored stored: String?, rows: [GeneratedStoryboardBreakdownRow]) -> String {
         if let script = stored {

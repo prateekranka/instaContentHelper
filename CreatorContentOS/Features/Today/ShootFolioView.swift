@@ -44,9 +44,9 @@ struct ShootFolioView: View {
                             draftScript: $draftScript
                         )
                     case .caption:
-                        CopyBlock(title: "Caption", bodyText: PackageCopyText.caption(for: services.todayCard))
+                        CopyBlock(title: "Caption", bodyText: PackageCopyText.caption(for: services.todayCard), emptyText: "No caption recorded for today.")
                     case .audio:
-                        CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes ?? "No audio notes recorded for today.")
+                        CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes?.nilIfBlank, emptyText: "No audio notes recorded for today.")
                     }
                 } else {
                     ShootFolioEmptyState(state: services.todayContentState)
@@ -536,7 +536,8 @@ private enum SceneGuidance {
 
 struct CopyBlock: View {
     let title: String
-    let bodyText: String
+    let bodyText: String?
+    let emptyText: String
     @State private var didCopy = false
 
     var body: some View {
@@ -545,12 +546,14 @@ struct CopyBlock: View {
                 Text(title)
                     .font(PocketSheetType.sectionLabel)
                     .foregroundStyle(PocketSheetTheme.Color.inverseInk)
-                Text(bodyText)
+                Text(bodyText ?? emptyText)
                     .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .foregroundStyle(bodyText == nil ? PocketSheetTheme.Color.inkMuted : PocketSheetTheme.Color.ink)
                     .lineSpacing(5)
-                PocketSheetSecondaryAction(title: didCopy ? "Copied" : "Copy") {
-                    copyBodyText()
+                if let bodyText {
+                    PocketSheetSecondaryAction(title: didCopy ? "Copied" : "Copy") {
+                        copy(bodyText)
+                    }
                 }
             }
         }
@@ -559,9 +562,9 @@ struct CopyBlock: View {
         }
     }
 
-    private func copyBodyText() {
+    private func copy(_ text: String) {
         #if canImport(UIKit)
-        UIPasteboard.general.string = bodyText
+        UIPasteboard.general.string = text
         #endif
         didCopy = true
     }
@@ -603,7 +606,7 @@ struct ScriptTimelineCopyBlock: View {
                     }
                 }
             } else if rows.isEmpty {
-                CopyBlock(title: "Script", bodyText: "No script recorded for today.")
+                CopyBlock(title: "Script", bodyText: nil, emptyText: "No script recorded for today.")
             } else {
                 PocketSheetCard {
                     VStack(alignment: .leading, spacing: PocketSheetSpace.s) {

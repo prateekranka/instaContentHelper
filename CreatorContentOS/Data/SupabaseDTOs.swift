@@ -1269,34 +1269,43 @@ struct SupabaseRuntimeHealthResponse: Decodable, Hashable, Sendable {
 }
 
 enum SupabaseDateFormatting {
-    static func contextLine(for rawDate: String) -> String {
-        guard let date = parseDate(rawDate) else { return rawDate }
+    private static var utcCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    private static func calendarDayFormatter() -> DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }
+
+    static func contextLine(for rawDate: String) -> String {
+        guard let date = parseDate(rawDate) else { return rawDate }
+        let formatter = calendarDayFormatter()
         formatter.dateFormat = "EEEE"
         return formatter.string(from: date)
     }
 
     static func weekdayAbbreviation(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return "DAY" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let formatter = calendarDayFormatter()
         formatter.dateFormat = "EEE"
         return formatter.string(from: date).uppercased()
     }
 
     static func dayNumber(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return "--" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let formatter = calendarDayFormatter()
         formatter.dateFormat = "dd"
         return formatter.string(from: date)
     }
 
     static func shortDate(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return rawDate }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let formatter = calendarDayFormatter()
         formatter.dateFormat = "d MMM"
         return formatter.string(from: date).uppercased()
     }
@@ -1323,7 +1332,7 @@ enum SupabaseDateFormatting {
     static func weekEndDate(starting rawDate: String) -> String {
         guard
             let start = parseDate(rawDate),
-            let end = Calendar(identifier: .gregorian).date(byAdding: .day, value: 6, to: start)
+            let end = utcCalendar.date(byAdding: .day, value: 6, to: start)
         else {
             return rawDate
         }
@@ -1335,7 +1344,7 @@ enum SupabaseDateFormatting {
         guard
             let start = parseDate(rawStartDate),
             let requestedEnd = parseDate(rawEndDate),
-            let maxEnd = Calendar(identifier: .gregorian).date(byAdding: .day, value: 6, to: start)
+            let maxEnd = utcCalendar.date(byAdding: .day, value: 6, to: start)
         else {
             return weekEndDate(starting: rawStartDate)
         }
@@ -1357,7 +1366,7 @@ enum SupabaseDateFormatting {
         }
 
         return (-daysBefore...daysAfter).compactMap { offset in
-            Calendar(identifier: .gregorian)
+            utcCalendar
                 .date(byAdding: .day, value: offset, to: date)
                 .map { dateString(from: $0) }
         }
@@ -1369,7 +1378,7 @@ enum SupabaseDateFormatting {
         }
 
         return (0..<dayCount).compactMap { offset in
-            Calendar(identifier: .gregorian)
+            utcCalendar
                 .date(byAdding: .day, value: offset, to: start)
                 .map { dateString(from: $0) }
         }
@@ -1389,12 +1398,11 @@ enum SupabaseDateFormatting {
             return []
         }
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let formatter = calendarDayFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
 
         return (0..<7).compactMap { offset in
-            Calendar(identifier: .gregorian)
+            utcCalendar
                 .date(byAdding: .day, value: offset, to: start)
                 .map { formatter.string(from: $0) }
         }

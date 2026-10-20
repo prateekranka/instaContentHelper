@@ -25,15 +25,17 @@ final class AppServices {
             if oldValue.id != todayCard.id {
                 shotSceneIDs.removeAll()
             } else {
-                let previousShotKeys = oldValue.scenes
-                    .filter { shotSceneIDs.contains($0.id) }
+                let previousShotScenes = oldValue.scenes.filter { shotSceneIDs.contains($0.id) }
+                let keptShotIDs = previousShotScenes.map(\.id).filter(currentIDs.contains)
+                let replacedShotKeys = previousShotScenes
+                    .filter { !currentIDs.contains($0.id) }
                     .map(Self.sceneProgressKey)
                 let currentScenesByKey = Dictionary(
                     grouping: todayCard.scenes,
                     by: Self.sceneProgressKey
                 )
                 shotSceneIDs = Set(
-                    previousShotKeys.compactMap { key in
+                    keptShotIDs + replacedShotKeys.compactMap { key in
                         guard let matches = currentScenesByKey[key], matches.count == 1 else {
                             return nil
                         }
@@ -53,7 +55,7 @@ final class AppServices {
     var weeklyIdeas: [WeeklyIdea]
     var intelligenceHome: IntelligenceHome
     var creatorProfileSummary: CreatorProfileSummary
-    var creatorOnboardingPresentation: CreatorOnboardingPresentation = .new
+    var creatorOnboardingPresentation: CreatorOnboardingPresentation = .loading
     var weekCards: [DailyCard]
     var lastRepositoryError: String?
     var lastTodayDecisionSyncError: String?
@@ -463,7 +465,13 @@ final class AppServices {
         return (areAllScenesShot || todayCard.isNonFilmingPost) && todayCard.completionState != .posted
     }
 
+    var canChooseEasierOption: Bool {
+        todayCard.completionState != .shot && todayCard.completionState != .posted
+    }
+
     func completeToday(with decision: DailyDecision) {
+        let isFilmingDecision = decision.completionState == .shot || decision.completionState == .posted
+        guard isFilmingDecision || canChooseEasierOption else { return }
         let pendingSync = prepareTodayDecisionSync(decision)
         _ = enqueueTodayDecisionSync(pendingSync)
     }
@@ -1040,7 +1048,8 @@ final class AppServices {
             throw RepositoryError.edgeFunction(message)
         }
 
-        if let acceptedRun = acceptedGenerationStore.load(scheduledDate: scheduledDate) {
+        if let acceptedRun = acceptedGenerationStore.load(scheduledDate: scheduledDate),
+           acceptedRun.creatorID == context.creatorID {
             return try await resumeAcceptedDayGeneration(acceptedRun)
         }
 
@@ -1069,7 +1078,7 @@ final class AppServices {
 
     /// Rehydrates persisted accepted runs after relaunch and resumes status polling — no new POST.
     func restoreAcceptedDayGenerationsIfNeeded() {
-        for run in acceptedGenerationStore.loadAll() {
+        for run in acceptedGenerationStore.loadAll() where run.creatorID == context.creatorID {
             guard !recoveringAcceptedGenerationDates.contains(run.scheduledDate) else { continue }
             recoveringAcceptedGenerationDates.insert(run.scheduledDate)
             generatingDayBriefDates.insert(run.scheduledDate)
@@ -1117,6 +1126,9 @@ final class AppServices {
             acceptedGenerationStore.remove(scheduledDate: run.scheduledDate)
             return try applyDayGenerationResult(result, scheduledDate: run.scheduledDate)
         } catch {
+            if !(error is CancellationError) {
+                acceptedGenerationStore.remove(scheduledDate: run.scheduledDate)
+            }
             let message = DayGenerationErrorDisplay.message(for: error)
             dayBriefGenerationErrors[run.scheduledDate] = message
             throw RepositoryError.edgeFunction(message)
@@ -2251,6 +2263,22 @@ final class AppServices {
         defer { isRefreshingRepository = false }
 
         do {
+            creatorProfileSummary = try await repositories.creatorProfile.activeProfileSummary(for: context)
+            creatorOnboardingPresentation = CreatorOnboardingPresentationMapper.presentation(
+                from: creatorProfileSummary,
+                loadFailed: false,
+                previousPresentation: creatorOnboardingPresentation
+            )
+        } catch {
+            refreshError = refreshError ?? error
+            creatorOnboardingPresentation = CreatorOnboardingPresentationMapper.presentation(
+                from: creatorProfileSummary,
+                loadFailed: true,
+                previousPresentation: creatorOnboardingPresentation
+            )
+        }
+
+        do {
             todayCard = try await repositories.today.todayCard(for: context)
             todayContentState = .ready
             saveTodaySnapshot(source: "repository-refresh")
@@ -2300,22 +2328,6 @@ final class AppServices {
             intelligenceHome = try await repositories.intelligence.home(for: context)
         } catch {
             refreshError = refreshError ?? error
-        }
-
-        do {
-            creatorProfileSummary = try await repositories.creatorProfile.activeProfileSummary(for: context)
-            creatorOnboardingPresentation = CreatorOnboardingPresentationMapper.presentation(
-                from: creatorProfileSummary,
-                loadFailed: false,
-                previousPresentation: creatorOnboardingPresentation
-            )
-        } catch {
-            refreshError = refreshError ?? error
-            creatorOnboardingPresentation = CreatorOnboardingPresentationMapper.presentation(
-                from: creatorProfileSummary,
-                loadFailed: true,
-                previousPresentation: creatorOnboardingPresentation
-            )
         }
 
         if refreshError == nil {

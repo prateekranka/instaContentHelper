@@ -522,11 +522,10 @@ struct InstagramCaptionPostContent: View {
             GeneratedReadOnlyField(title: "Cover text", value: card.coverText)
             GeneratedReadOnlyField(title: "Post instructions", value: card.postInstructions)
             GeneratedReadOnlyField(title: "Hashtags", value: hashtagSummary)
-            PackageCopyButton(
-                title: "Copy caption",
-                text: PackageCopyText.caption(for: card)
-            )
-            .accessibilityIdentifier("plan.package.copyCaption")
+            if let caption = PackageCopyText.caption(for: card) {
+                PackageCopyButton(title: "Copy caption", text: caption)
+                    .accessibilityIdentifier("plan.package.copyCaption")
+            }
         }
     }
 

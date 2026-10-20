@@ -22,7 +22,9 @@ struct TodayView: View {
                 }
                 if dynamicTypeSize.isAccessibilitySize, case .ready = services.todayContentState {
                     primaryAction
-                    notEasierAction
+                    if services.canChooseEasierOption {
+                        notEasierAction
+                    }
                 }
                 switch services.todayContentState {
                 case .ready:
@@ -43,7 +45,9 @@ struct TodayView: View {
             if case .ready = services.todayContentState {
                 PocketSheetCommandBar {
                     primaryAction
-                    notEasierAction
+                    if services.canChooseEasierOption {
+                        notEasierAction
+                    }
                 }
             }
         }

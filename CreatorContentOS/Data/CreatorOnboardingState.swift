@@ -17,6 +17,7 @@ enum CreatorProfileOnboardingState: String, Codable, Hashable, Sendable {
 
 /// Client presentation state for onboarding gating.
 enum CreatorOnboardingPresentation: Equatable, Hashable, Sendable {
+    case loading
     case new
     case partial
     case established
@@ -26,7 +27,7 @@ enum CreatorOnboardingPresentation: Equatable, Hashable, Sendable {
         switch self {
         case .new, .partial:
             return true
-        case .established, .loadFailed:
+        case .loading, .established, .loadFailed:
             return false
         }
     }

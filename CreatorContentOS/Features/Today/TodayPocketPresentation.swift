@@ -481,9 +481,9 @@ struct TodayPostPreparationView: View {
                     editor.disabled(isSavingEdits)
                 } else {
                     if !services.todayCard.isNonFilmingPost || services.todayCard.script?.nilIfBlank != nil {
-                        copyBlock(title: "Script", text: services.todayCard.script?.nilIfBlank ?? "No script recorded.", didCopy: $didCopyScript)
+                        copyBlock(title: "Script", text: services.todayCard.script?.nilIfBlank, emptyText: "No script recorded.", didCopy: $didCopyScript)
                     }
-                    copyBlock(title: "Caption", text: services.todayCard.caption ?? "No caption recorded.", didCopy: $didCopyCaption)
+                    copyBlock(title: "Caption", text: services.todayCard.caption?.nilIfBlank, emptyText: "No caption recorded.", didCopy: $didCopyCaption)
                 }
             }
         } bottomBar: {
@@ -570,24 +570,26 @@ struct TodayPostPreparationView: View {
         }
     }
 
-    private func copyBlock(title: String, text: String, didCopy: Binding<Bool>) -> some View {
+    private func copyBlock(title: String, text: String?, emptyText: String, didCopy: Binding<Bool>) -> some View {
         PocketSheetCard {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 Text(title)
                     .font(PocketSheetType.sectionLabel)
                     .foregroundStyle(PocketSheetTheme.Color.inverseInk)
-                Text(text)
+                Text(text ?? emptyText)
                     .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .foregroundStyle(text == nil ? PocketSheetTheme.Color.inkMuted : PocketSheetTheme.Color.ink)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("post.\(title.lowercased()).text")
-                PocketSheetSecondaryAction(title: didCopy.wrappedValue ? "Copied" : "Copy") {
-                    #if canImport(UIKit)
-                    UIPasteboard.general.string = text
-                    #endif
-                    didCopy.wrappedValue = true
+                if let text {
+                    PocketSheetSecondaryAction(title: didCopy.wrappedValue ? "Copied" : "Copy") {
+                        #if canImport(UIKit)
+                        UIPasteboard.general.string = text
+                        #endif
+                        didCopy.wrappedValue = true
+                    }
+                    .accessibilityIdentifier("post.copy.\(title.lowercased())")
                 }
-                .accessibilityIdentifier("post.copy.\(title.lowercased())")
             }
         }
     }
