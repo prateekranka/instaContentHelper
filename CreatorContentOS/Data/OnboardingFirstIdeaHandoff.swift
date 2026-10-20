@@ -74,6 +74,7 @@ enum OnboardingFirstIdeaHandoffPlanner {
         let brief = OnboardingFirstIdeaBriefBuilder.buildDayBrief(from: record)
         let fingerprint = OnboardingFirstIdeaBriefBuilder.fingerprint(for: brief)
         let isRetryAfterFailure = firstIdeaHandoffStatus == OnboardingFirstIdeaHandoffStatus.failed.rawValue
+            || firstIdeaHandoffStatus == OnboardingFirstIdeaHandoffStatus.preparing.rawValue
         let isDraftLike = DayPackageLifecycleStatus.isDraftPackage(existingPackageStatus)
         let confirmOverwrite = isRetryAfterFailure && isDraftLike
 

@@ -512,7 +512,9 @@ final class AppServices {
     }
 
     private func prepareTodayDecisionSync(_ decision: DailyDecision) -> PendingTodayDecisionSync {
-        unsyncedTodayDecision = UnsyncedTodayDecision(cardID: todayCard.id, decision: decision)
+        var decidedCard = todayCard
+        decidedCard.completionState = decision.completionState
+        unsyncedTodayDecision = UnsyncedTodayDecision(cardID: todayCard.id, decision: decision, card: decidedCard)
         let localDecision = applyLocalTodayDecision(decision)
         lastTodayDecisionSyncError = nil
         latestTodayDecisionSyncID += 1
@@ -568,7 +570,9 @@ final class AppServices {
             guard isCurrentTodayDecisionSync(pendingSync) else {
                 return pendingSync.localEntry
             }
-            applyMissingPublishedTodayCardState(date: date)
+            if pendingSync.card.id == todayCard.id {
+                applyMissingPublishedTodayCardState(date: date)
+            }
             unsyncedTodayDecision = nil
             saveTodaySnapshot(source: "decision-dropped")
             lastRepositoryError = nil
@@ -591,13 +595,20 @@ final class AppServices {
     }
 
     private func resumeUnsyncedTodayDecisionIfNeeded() {
-        guard let unsynced = unsyncedTodayDecision, case .ready = todayContentState else { return }
-        guard unsynced.cardID == todayCard.id else {
-            unsyncedTodayDecision = nil
-            saveTodaySnapshot(source: "decision-dropped")
+        guard let unsynced = unsyncedTodayDecision else { return }
+        if case .ready = todayContentState, unsynced.cardID == todayCard.id {
+            completeToday(with: unsynced.decision)
             return
         }
-        completeToday(with: unsynced.decision)
+        latestTodayDecisionSyncID += 1
+        _ = enqueueTodayDecisionSync(
+            PendingTodayDecisionSync(
+                id: latestTodayDecisionSyncID,
+                card: unsynced.card,
+                decision: unsynced.decision,
+                localEntry: makeArchiveEntry(for: unsynced.card, decision: unsynced.decision)
+            )
+        )
     }
 
     var nextOpenWeeklyDay: WeeklyDay? {
@@ -1082,9 +1093,23 @@ final class AppServices {
         previousShotSceneIDs: Set<UUID>
     ) async {
         guard (try? await makeDayAvailable(scheduledDate: scheduledDate)) != nil else { return }
-        guard let previousTodayCard, todayCard.id == previousTodayCard.id else { return }
-        shotSceneIDs.formUnion(previousShotSceneIDs.intersection(Set(todayCard.scenes.map(\.id))))
-        saveTodaySnapshot(source: "overwrite-restored")
+        guard let previousTodayCard, todayCard.scheduledDate == scheduledDate else { return }
+        let shotKeys = Set(
+            previousTodayCard.scenes
+                .filter { previousShotSceneIDs.contains($0.id) }
+                .map(Self.sceneProgressKey)
+        )
+        shotSceneIDs.formUnion(
+            todayCard.scenes
+                .filter { shotKeys.contains(Self.sceneProgressKey($0)) }
+                .map(\.id)
+        )
+        if let previousState = previousTodayCard.completionState {
+            let outputLine = archiveEntries.first { $0.dailyCardID == previousTodayCard.id }?.outputLine
+            completeToday(with: DailyDecision(completionState: previousState, outputLine: outputLine))
+        } else {
+            saveTodaySnapshot(source: "overwrite-restored")
+        }
     }
 
     private func generateDayCardAfterOverwriteCheck(
@@ -1175,13 +1200,20 @@ final class AppServices {
             acceptedGenerationStore.remove(scheduledDate: run.scheduledDate)
             return try applyDayGenerationResult(result, scheduledDate: run.scheduledDate)
         } catch {
-            if !(error is CancellationError) {
+            if Self.acceptedRunHasEnded(run, after: error) {
                 acceptedGenerationStore.remove(scheduledDate: run.scheduledDate)
             }
             let message = DayGenerationErrorDisplay.message(for: error)
             dayBriefGenerationErrors[run.scheduledDate] = message
             throw RepositoryError.edgeFunction(message)
         }
+    }
+
+    private static func acceptedRunHasEnded(_ run: AcceptedDayGenerationRun, after error: Error) -> Bool {
+        if error is CancellationError { return false }
+        if (error as NSError).domain == NSURLErrorDomain { return false }
+        guard error.localizedDescription.contains("generation_timeout") else { return true }
+        return Date().timeIntervalSince(run.acceptedAt) > 2 * 60 * 60
     }
 
     @discardableResult
@@ -2362,12 +2394,14 @@ final class AppServices {
     @discardableResult
     func loadTodayFromCache() -> Bool {
         do {
-            guard let snapshot = try todayCache.loadSnapshot(for: context),
-                  !SupabaseDateFormatting.isDatePast(
-                    snapshot.todayCard.scheduledDate ?? currentTodayDateString,
-                    todayString: currentTodayDateString
-                  )
-            else {
+            guard let snapshot = try todayCache.loadSnapshot(for: context) else {
+                return false
+            }
+            guard !SupabaseDateFormatting.isDatePast(
+                snapshot.todayCard.scheduledDate ?? currentTodayDateString,
+                todayString: currentTodayDateString
+            ) else {
+                unsyncedTodayDecision = unsyncedTodayDecision ?? snapshot.unsyncedDecision
                 return false
             }
 
@@ -2379,9 +2413,16 @@ final class AppServices {
         }
     }
 
-    var isTodayCardFromPastDay: Bool {
-        guard let scheduledDate = todayCard.scheduledDate else { return false }
-        return SupabaseDateFormatting.isDatePast(scheduledDate, todayString: currentTodayDateString)
+    var isTodayStale: Bool {
+        switch todayContentState {
+        case .missingPublishedCard(let date):
+            return SupabaseDateFormatting.isDatePast(date, todayString: currentTodayDateString)
+        case .unavailable:
+            return true
+        case .loading, .ready:
+            guard let scheduledDate = todayCard.scheduledDate else { return false }
+            return SupabaseDateFormatting.isDatePast(scheduledDate, todayString: currentTodayDateString)
+        }
     }
 
     func refreshFromRepositoriesImmediately() async {

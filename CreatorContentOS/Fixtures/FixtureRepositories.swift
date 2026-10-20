@@ -97,6 +97,12 @@ actor FixturePublishedContentStore {
             }
     }
 
+    func replaceGeneratedDraft(with card: DailyCard) {
+        guard let date = card.scheduledDate, generatedDrafts[date]?.id == card.id else { return }
+        generatedDrafts[date] = card
+        persist()
+    }
+
     func saveGeneratedDraft(_ draft: GeneratedDailyCardDraft) {
         generatedDrafts[draft.scheduledDate] = draft.dailyCard(completionState: nil)
         persist()
@@ -458,6 +464,7 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
             card.scenes = sceneList
         }
         cards[index] = card
+        await publishedStore?.replaceGeneratedDraft(with: card)
 
         let today = SupabaseDateFormatting.todayDateString()
         let todayCard = cards.first { $0.scheduledDate == today }
@@ -954,7 +961,7 @@ struct FixtureArchiveRepository: ArchiveRepository {
         guard let store else { return }
         var entries = await store.entries() ?? ArchiveEntry.fixtures
         if let index = entries.firstIndex(where: { archiveEntry in
-            archiveEntry.dailyCardID == card.id || archiveEntry.cardTitle == card.title
+            archiveEntry.dailyCardID == card.id
         }) {
             entries[index] = entry
         } else {
@@ -971,7 +978,7 @@ struct FixtureArchiveRepository: ArchiveRepository {
         try await persistDecision(entry, for: card, context: context)
         var entries = try await self.entries(for: context)
         if let index = entries.firstIndex(where: { archiveEntry in
-            archiveEntry.dailyCardID == card.id || archiveEntry.cardTitle == card.title
+            archiveEntry.dailyCardID == card.id
         }) {
             entries[index] = entry
         } else {

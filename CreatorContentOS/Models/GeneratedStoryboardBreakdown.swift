@@ -66,8 +66,12 @@ enum GeneratedStoryboardBreakdown {
         guard rowCount > 0 else { return [] }
 
         let derivedTimecodes = timecodes(for: card.sceneList)
-        let scriptLines = lines(of: card.script)
-        let scriptLinesPerRow = scriptLines.count > 1 ? scriptLines : []
+        let spokenTimeline = card.voiceoverTimeline
+            .compactMap { firstPresent($0.voiceover, $0.detail, $0.title) }
+            .joined(separator: " ")
+        let scriptReplacesTimeline = !spokenTimeline.isEmpty
+            && card.script.nilIfBlank != nil
+            && normalizedWords(card.script) != normalizedWords(spokenTimeline)
         let thumbnailsByRow = card.storyboardThumbnailAssets.reduce(into: [Int: StoryboardThumbnailAsset]()) { result, asset in
             result[asset.rowIndex] = asset
         }
@@ -103,13 +107,14 @@ enum GeneratedStoryboardBreakdown {
                     shot?.title,
                     scene?.title
                 ) ?? "Show the main action clearly.",
-                audioDialogue: firstPresent(
-                    element(at: index, in: scriptLinesPerRow),
-                    voiceover?.voiceover,
-                    voiceover?.detail,
-                    voiceover?.title,
-                    scriptLine(from: card.script, at: index)
-                ) ?? "No voiceover specified.",
+                audioDialogue: (scriptReplacesTimeline
+                    ? scriptLine(from: card.script, at: index)
+                    : firstPresent(
+                        voiceover?.voiceover,
+                        voiceover?.detail,
+                        voiceover?.title,
+                        scriptLine(from: card.script, at: index)
+                    )) ?? "No voiceover specified.",
                 onScreenText: firstPresent(
                     text?.onScreenText,
                     text?.title,
@@ -130,6 +135,12 @@ enum GeneratedStoryboardBreakdown {
 
     private static func element<T>(at index: Int, in values: [T]) -> T? {
         values.indices.contains(index) ? values[index] : nil
+    }
+
+    private static func normalizedWords(_ text: String) -> String {
+        text.lowercased()
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 
     private static func lines(of script: String) -> [String] {

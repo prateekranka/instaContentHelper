@@ -15,7 +15,7 @@ struct CreatorContentOSApp: App {
     private func refreshIfTodayIsStale() {
         guard appState.authenticationPhase == .live else { return }
         let services = appState.runtime.services
-        guard services.isTodayCardFromPastDay, !services.isRefreshingRepository else { return }
+        guard services.isTodayStale, !services.isRefreshingRepository else { return }
         Task { await services.refreshFromRepositoriesImmediately() }
     }
 

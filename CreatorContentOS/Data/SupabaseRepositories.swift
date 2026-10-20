@@ -523,12 +523,13 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
                         acceptedAt: Date()
                     )
                 )
-                defer { acceptedGenerationStore.remove(scheduledDate: scheduledDate) }
-                return try await pollDailyGeneration(
+                let result = try await pollDailyGeneration(
                     generationID: status.generationID,
                     creatorID: creatorID,
                     logAction: .generateDay
                 )
+                acceptedGenerationStore.remove(scheduledDate: scheduledDate)
+                return result
             case .failed(let status):
                 logGeneration("generate_day initial_failed \(statusSummary(status))")
                 throw RepositoryError.edgeFunction(status.error ?? "invalid_generated_day")

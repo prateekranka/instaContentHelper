@@ -13,6 +13,7 @@ struct CachedTodaySnapshot: Codable, Hashable, Sendable {
 struct UnsyncedTodayDecision: Codable, Hashable, Sendable {
     var cardID: UUID
     var decision: DailyDecision
+    var card: DailyCard
 }
 
 protocol TodayCacheStoring {
