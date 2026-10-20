@@ -87,7 +87,7 @@ async function stableBox(locator: Locator) {
 }
 
 export async function dismissKeyboard(screen: Screen, id?: string) {
-  const keyboard = screen.getByTestId('delete', { visible: true });
+  const keyboard = screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
   const done = screen.getByTestId(id ?? /\.keyboardDone$/, { visible: true });
   if (await done.count() === 1) {
     const box = await stableBox(done);
@@ -97,18 +97,7 @@ export async function dismissKeyboard(screen: Screen, id?: string) {
     return;
   }
   if (await keyboard.count() === 0) return;
-  const scrollView = screen.getByRole('scroll-view').first();
-  const box = await stableBox(scrollView);
-  const keyboardBox = await screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true }).boundingBox();
-  const top = box.y + 32;
-  const bottom = Math.min(box.y + box.height, keyboardBox.y) - 48;
-  expect(bottom).toBeGreaterThan(top);
-  const x = box.x + 4;
-  await screen.tapAt({ x, y: top });
-  if (await keyboard.count() > 0) {
-    await screen.swipe({ from: { x, y: bottom }, to: { x, y: top } });
-  }
-  if (await keyboard.count() > 0 && await screen.getByTestId('shootFolio.cancelEdit').count() === 1) {
+  if (await screen.getByTestId('shootFolio.cancelEdit').count() === 1) {
     const section = await screen.getByTestId('shootFolio.script.editor').count() === 1 ? 'Scenes' : 'Script';
     await scrollToControl(screen, screen.getByRole('button', section, { exact: true }), 'up');
     await tapVisibleControl(screen, screen.getByRole('button', section, { exact: true }));
@@ -116,29 +105,38 @@ export async function dismissKeyboard(screen: Screen, id?: string) {
   await expect(keyboard).toBeHidden();
 }
 
+async function editableValue(editor: Locator) {
+  const placeholder = await editor.getAttribute('placeholder');
+  const value = await editor.inputValue();
+  return placeholder && value === placeholder ? '' : value;
+}
+
 export async function clearThenType(screen: Screen, editor: Locator, text: string) {
   await scrollToControl(screen, editor);
-  try {
-    await editor.clear();
-  } catch (error) {
-    if (!(error instanceof Error) || !error.message.includes('text entry verification failed')) throw error;
-    if (await editor.inputValue() !== '') {
-      await editor.longPress();
-      const selectAll = screen.getByText('Select All', { exact: true, visible: true });
-      await expect(selectAll).toBeVisible();
-      await selectAll.tap();
-      await screen.getByTestId('delete', { visible: true }).tap();
+  let remaining = await editableValue(editor);
+  while (remaining.length > 0) {
+    const previousLength = remaining.length;
+    try {
+      await editor.clear();
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('text entry verification failed')) throw error;
     }
+    await expect.poll(async () => {
+      remaining = await editableValue(editor);
+      return remaining.length;
+    }).toBeLessThan(previousLength);
   }
-  await expect(editor).toHaveValue('');
+  await expect.poll(() => editableValue(editor)).toBe('');
   await typeInChunks(editor, text);
 }
 
 export async function typeInChunks(editor: Locator, text: string) {
   if (text.length > 0) {
-    await editor.pressSequentially(text, { delay: 0, timeout: Math.max(25_000, text.length * 250) });
+    await editor.pressSequentially(text, { timeout: Math.max(25_000, text.length * 250) });
+    await expect(editor).toHaveValue(text);
+  } else {
+    await expect.poll(() => editableValue(editor)).toBe('');
   }
-  await expect(editor).toHaveValue(text);
 }
 
 export type LoopScenario = 'initial' | 'ready' | 'line-script' | 'blank-copy' | 'stale-pointer' | 'legacy-cache' | 'old-decision';

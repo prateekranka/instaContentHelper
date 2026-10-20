@@ -15,8 +15,10 @@ struct CreatorContentOSApp: App {
     private func refreshIfTodayIsStale() {
         guard appState.authenticationPhase == .live else { return }
         let services = appState.runtime.services
-        guard services.isTodayStale, !services.isRefreshingRepository else { return }
-        Task { await services.refreshFromRepositoriesImmediately() }
+        Task {
+            if !services.isRefreshingRepository { await services.refreshFromRepositoriesImmediately() }
+            else { await services.replayOutboxImmediately() }
+        }
     }
 
     var body: some Scene {

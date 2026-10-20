@@ -463,7 +463,7 @@ struct TodayPostPreparationView: View {
                             Label("Posted", systemImage: "checkmark.circle.fill")
                                 .font(PocketSheetType.rowTitle)
                                 .foregroundStyle(PocketSheetTheme.Color.ink)
-                            Text(services.unsyncedTodayDecision == nil
+                            Text(!services.hasPendingTodayDecision
                                 ? "Posted status is saved for this card. You can undo it while keeping all completed shots."
                                 : "Posted on this phone. It is not saved to your account yet.")
                                 .font(PocketSheetType.rowSubtitle)
@@ -481,6 +481,12 @@ struct TodayPostPreparationView: View {
 
                 if isEditing {
                     editor.disabled(isSavingEdits)
+                    if draftScript.nilIfBlank == nil || draftCaption.nilIfBlank == nil {
+                        Text("Keep some text in Script and Caption before saving.")
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 } else {
                     if !services.todayCard.isNonFilmingPost || services.todayCard.script?.nilIfBlank != nil {
                         copyBlock(title: "Script", text: services.todayCard.script?.nilIfBlank, emptyText: "No script recorded.", didCopy: $didCopyScript)
@@ -499,7 +505,7 @@ struct TodayPostPreparationView: View {
                             title: services.isUpdatingReadyDayPackage ? "Saving…" : "Save",
                             systemImage: "checkmark"
                         ) { saveEdits() }
-                            .disabled(isSavingEdits || services.isUpdatingReadyDayPackage)
+                            .disabled(isSavingEdits || services.isUpdatingReadyDayPackage || draftScript.nilIfBlank == nil || draftCaption.nilIfBlank == nil)
                             .accessibilityIdentifier("post.save")
                     }
                 } else {
@@ -614,8 +620,7 @@ struct TodayPostPreparationView: View {
 
     private func saveEdits() {
         guard !isSavingEdits else { return }
-        if (draftScript.nilIfBlank == nil && services.todayCard.script?.nilIfBlank != nil)
-            || (draftCaption.nilIfBlank == nil && services.todayCard.caption?.nilIfBlank != nil) {
+        if draftScript.nilIfBlank == nil || draftCaption.nilIfBlank == nil {
             saveError = "Keep some text in Script and Caption before saving."
             return
         }

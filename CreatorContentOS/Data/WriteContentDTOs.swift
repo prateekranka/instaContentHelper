@@ -1,6 +1,7 @@
 import Foundation
 
 enum SupabaseWriteContentRequest: Encodable, Sendable {
+    case queuedDecision(ContentIntent, context: WorkspaceContext)
     case completeToday(card: DailyCard, decision: DailyDecision, context: WorkspaceContext)
     case upsertArchiveDecision(ArchiveEntry, for: DailyCard, context: WorkspaceContext)
     case selectIdeaForNextOpenDay(idea: WeeklyIdea, plan: WeeklyPlan, context: WorkspaceContext)
@@ -11,6 +12,8 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case action
+        case idempotencyKey = "idempotency_key"
+        case intentAction = "intent_action"
         case creatorID = "creator_id"
         case dailyCardID = "daily_card_id"
         case decision
@@ -49,6 +52,16 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
 
         switch self {
+        case .queuedDecision(let intent, let context):
+            guard let decision = intent.decision else { throw DayTransitionError.incompletePackage }
+            try container.encode("complete_today", forKey: .action)
+            try container.encode(context.creatorID, forKey: .creatorID)
+            try container.encode(intent.revisionID, forKey: .dailyCardID)
+            try container.encode(SupabaseWriteDecisionRequest(decision: decision), forKey: .decision)
+            try container.encode(intent.archiveSnapshot?.decisionAt ?? ISO8601DateFormatter().string(from: intent.createdAt), forKey: .decisionAt)
+            try container.encode(intent.id, forKey: .idempotencyKey)
+            try container.encode(intent.undoPosted ? "undoPosted" : "decide", forKey: .intentAction)
+
         case .completeToday(let card, let decision, let context):
             try container.encode("complete_today", forKey: .action)
             try container.encode(context.creatorID, forKey: .creatorID)

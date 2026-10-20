@@ -25,6 +25,12 @@ struct ShootFolioView: View {
                     if let saveError {
                         PocketSheetFeedbackBanner(message: saveError, kind: .issue)
                     }
+                    if isEditing, draftScript.nilIfBlank == nil {
+                        Text("Enter a script before saving.")
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     sectionTabs
 
                     switch selection {
@@ -200,8 +206,8 @@ struct ShootFolioView: View {
     }
 
     private var hasDraftChanges: Bool {
-        draftScenes != services.todayCard.scenes
-            || draftScript != (services.todayCard.script ?? "")
+        draftScript.nilIfBlank != nil
+            && (draftScenes != services.todayCard.scenes || draftScript != (services.todayCard.script ?? ""))
     }
 
     private var sectionTabs: some View {
@@ -246,6 +252,7 @@ struct ShootFolioView: View {
     }
 
     private func saveEdits() {
+        guard hasDraftChanges, !services.isUpdatingReadyDayPackage else { return }
         let dateString = planDateForReadyCard
         let scenes = draftScenes
         let script = draftScript

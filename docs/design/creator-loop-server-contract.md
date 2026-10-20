@@ -1,6 +1,7 @@
 # Creator loop server contract
 
-Phase 1 implementation. Local changes only. No live migration or deployment is authorized.
+Phase 1 implementation, with the posted-undo correction after phase 3. Local changes only.
+No live migration or deployment is authorized.
 The approved scope is section 3 of `creator-loop-redesign.md`.
 
 ## Records and invariants
@@ -16,7 +17,10 @@ The approved scope is section 3 of `creator-loop-redesign.md`.
 - Historical revision content and identity cannot be changed. Thumbnail completion can still attach assets to its exact revision.
 - `archive_entries.daily_card_id` remains the exact revision ID. Its unique constraint remains the decision upsert key.
 - `archive_entries.title_snapshot`, `caption_snapshot`, and `decision_at` record the package at the decision.
-- A posted archive entry is frozen. A repeat posted decision returns the stored entry, including its original timestamp and text.
+- A current revision permits Undo posted: `posted` changes to `shot` with a new `decision_at`.
+- Undo keeps the archive entry ID and its title and caption snapshots, even if the current package text has changed.
+- A repeat posted decision on the current revision returns the stored entry, including its original timestamp and text.
+- Once a revision is replaced, its archive entry is frozen for every decision type. Exact retries return the saved entry without writes.
 - A replacement without a prior decision creates an archive entry with `decision = replaced`. It does not claim the content was posted.
 - Current Today and Plan reads filter on `is_current`. Archive reads use snapshots and do not join mutable card text.
 
@@ -148,10 +152,21 @@ It keeps its `daily_card` result and adds `archive_entry`.
 Both results add `title_snapshot`, `caption_snapshot`, and `decision_at` to that entry.
 
 The revision ID is the upsert key. Replays do not create duplicate archive entries.
-Posted entries use first-write-wins semantics. Attempts to change a posted decision to another decision
-return HTTP 409, `posted_revision_immutable`.
-A late decision for a historical revision updates only that revision's archive entry.
-It never applies the decision to the new current revision.
+Both actions permit a decision change on the current revision, including `posted` to `shot`.
+For that undo, the archive entry keeps its ID, title snapshot, and caption snapshot.
+It receives a new `decision_at`. An omitted time uses the server clock, not the previous card decision time.
+`complete_today` changes the current card and its archive entry in the same transaction.
+`upsert_archive_decision` keeps its archive-only write behavior.
+A same-decision retry keeps the stored decision time. A repeated current `posted` decision keeps the entire stored archive entry.
+
+A replaced revision cannot receive an undo, a different decision, or changed archive metadata.
+Changes to a replaced posted entry return HTTP 409, `posted_revision_immutable`.
+Changes to any other replaced entry return HTTP 409, `historical_revision_immutable`.
+This includes a late first decision for an entry whose stored decision is `replaced`.
+An exact historical retry must match the saved decision, archive date, output line, thumbnail flag,
+and decision time when supplied. It returns the saved archive entry without updating either revision.
+Decision writes lock the day before the revision, in the same order as replacement.
+Replacement and undo therefore cannot change the archive at the same time.
 
 Other write actions keep their existing contracts.
 The previous SQL implementation is retained as a private helper for those unrelated actions.
@@ -218,6 +233,9 @@ The start RPCs can return `invalid_generation_payload` (400), `weekly_plan_not_f
 Persistence can return `generation_run_not_found` (404) and `generation_run_closed` (409).
 Database guards raise `generation_run_closed`, `revision_identity_immutable`,
 `historical_revision_immutable`, or `archive_revision_immutable` when a caller attempts a prohibited direct mutation.
+The archive guard also rejects direct updates and deletes of replaced entries.
+The correction is in `20261020162000_allow_current_revision_posted_undo.sql`.
+The phase 1 migrations remain unchanged.
 
 ## Proposed movement of existing live rows
 
@@ -244,7 +262,7 @@ The conversion does not invent missing history.
 Run Deno checks from the repository root:
 
 ```sh
-deno test --allow-env --allow-read --allow-net=0.0.0.0:8000,127.0.0.1:8000,localhost:8000 supabase/functions
+deno task ci:backend
 ```
 
 If Docker and a local Supabase stack are available, run `supabase start` and `supabase db reset --local`.
@@ -256,6 +274,10 @@ MCO_LOCAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
 ```
 
 The database test refuses remote URLs. It rolls back its fixture data.
-It checks revision insertion, exact archive snapshots, posted replay, replacement rollback, filming data,
-key conflicts, persistence replay, run closure, the day pointer, and service-only RPC grants.
+It checks current posted undo through both decision actions, new undo timestamps, retained text snapshots,
+and safe retries. It rejects decision changes and metadata changes for replaced posted and shot revisions.
+It also checks direct archive mutation and deletion guards, frozen posted snapshots, late undecided writes,
+revision insertion, replacement rollback, filming data, key conflicts, persistence replay, run closure,
+the day pointer, and service-only RPC grants.
 Without `MCO_LOCAL_DATABASE_URL`, it is reported as ignored. This is not proof that migrations applied.
+If the local URL cannot be reached, report that result separately. Do not use a live project as a fallback.

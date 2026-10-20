@@ -29,7 +29,6 @@ struct AppRuntime {
         let services = AppServices.fixtureBacked(
             todayCache: todayCache,
             notifications: notifications,
-            acceptedGenerationStore: UserDefaultsAcceptedDayGenerationStore(defaults: DebugLaunchConfiguration.fixtureDefaults),
             aiConsentStore: UserDefaultsAIConsentStore(
                 workspaceID: WorkspaceContext.creatorFixture.workspaceID,
                 creatorID: WorkspaceContext.creatorFixture.creatorID,
@@ -383,7 +382,7 @@ enum DebugLaunchFlags {
                     cachedAt: Date(),
                     source: "loop-\(scenario)",
                     shotSceneIDs: isLegacy ? Set(card.scenes.map(\.id)) : [],
-                    unsyncedDecision: UnsyncedTodayDecision(
+                    unsyncedDecision: LegacyTodayDecision(
                         cardID: pendingCard.id,
                         decision: isLegacy ? .shot : .posted,
                         card: pendingCard

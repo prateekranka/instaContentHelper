@@ -1,7 +1,8 @@
 const localURL = Deno.env.get("MCO_LOCAL_DATABASE_URL");
 
 Deno.test({
-  name: "local database creator loop transactions and immutable history",
+  name:
+    "local database creator loop transactions, current posted undo, and frozen replaced revisions",
   ignore: !localURL,
   async fn() {
     const parsed = new URL(localURL!);
@@ -22,8 +23,9 @@ Deno.test({
         PGCONNECT_TIMEOUT: "5",
         PGPASSFILE: "/dev/null",
         PGSERVICEFILE: "/dev/null",
+        PGOPTIONS: "-c statement_timeout=15000 -c lock_timeout=5000",
       },
-      args: [localURL!, "-X", "-v", "ON_ERROR_STOP=1", "-q"],
+      args: [localURL!, "-X", "--no-password", "-v", "ON_ERROR_STOP=1", "-q"],
       stdin: "piped",
       stdout: "piped",
       stderr: "piped",

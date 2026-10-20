@@ -31,6 +31,14 @@ async function archiveHas(screen: Screen, title: string) {
   await expect(screen.getByText(title, { exact: true })).toHaveCount(1);
 }
 
+async function copyPlanCaption(screen: Screen) {
+  const tab = screen.getByTestId('plan.package.tab.caption');
+  await scrollToControl(screen, tab, 'up');
+  await tapVisibleControl(screen, tab);
+  await expect(tab).toBeSelected();
+  await tapVisibleControl(screen, screen.getByRole('button', 'Copy caption', { exact: true }));
+}
+
 test('loop R1-1: renaming a filmed scene keeps its mark after relaunch', async ({ app, screen, device }) => {
   const session = await ready(screen, device);
   await screen.getByTestId('today.startFilming').tap();
@@ -82,9 +90,7 @@ test('loop R1-3: script and caption copy exactly the saved text', async ({ scree
   await scrollToControl(screen, screen.getByTestId('daily.ready.edit.caption'));
   const caption = await screen.getByTestId('daily.ready.edit.caption').inputValue();
   expect(caption.length).toBeGreaterThan(0);
-  await scrollToControl(screen, screen.getByTestId('plan.package.tab.caption'), 'up');
-  await tapVisibleControl(screen, screen.getByTestId('plan.package.tab.caption'));
-  await tapVisibleControl(screen, screen.getByTestId('plan.package.copyCaption'));
+  await copyPlanCaption(screen);
   expect(await device.clipboard()).toBe(caption);
 });
 
@@ -359,14 +365,11 @@ test('loop R3-C3: edit, unpublish, and make ready never resurrect Posted', { tim
   await screen.getByTestId('post.markPosted').tap();
   await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
   await openLoopPlanDay(screen, 0);
-  await screen.scrollUntilVisible(screen.getByTestId('daily.ready.edit.caption'));
-  await screen.getByTestId('daily.ready.edit.caption').fill('An edited caption for the same revision.');
-  await device.dismissKeyboard();
-  await screen.getByTestId('daily.ready.edit.save').tap();
+  await clearThenType(screen, screen.getByTestId('daily.ready.edit.caption'), 'An edited caption for the same revision.');
+  await tapVisibleControl(screen, screen.getByTestId('daily.ready.edit.save'));
   await expect(screen.getByTestId('daily.ready.edit.save')).toHaveText('Save caption');
   await expect(screen.getByTestId('daily.ready.edit.save')).toBeDisabled();
-  await screen.scrollUntilVisible(screen.getByTestId('daily.unpublish'));
-  await screen.getByTestId('daily.unpublish').tap();
+  await tapVisibleControl(screen, screen.getByTestId('daily.unpublish'));
   await screen.getByRole('button', 'Unpublish', { exact: true }).tap();
   await approveLoopPackage(screen);
   await relaunchLoopSession(device, session);
@@ -412,7 +415,6 @@ test('loop R2-7: a future caption edit is displayed, copied, and restored', asyn
   await openLoopPlanDay(screen, 1);
   const caption = 'Saved future loop caption.';
   await clearThenType(screen, screen.getByTestId('daily.ready.edit.caption'), caption);
-  await dismissKeyboard(screen);
   await tapVisibleControl(screen, screen.getByTestId('daily.ready.edit.save'));
   await expect(screen.getByTestId('daily.ready.edit.save')).toHaveText('Save caption');
   await expect(screen.getByTestId('daily.ready.edit.save')).toBeDisabled();
@@ -420,9 +422,7 @@ test('loop R2-7: a future caption edit is displayed, copied, and restored', asyn
   await openLoopPlanDay(screen, 1);
   await scrollToControl(screen, screen.getByTestId('daily.ready.edit.caption'));
   await expect(screen.getByTestId('daily.ready.edit.caption')).toHaveValue(caption);
-  await scrollToControl(screen, screen.getByTestId('plan.package.tab.caption'), 'up');
-  await tapVisibleControl(screen, screen.getByTestId('plan.package.tab.caption'));
-  await tapVisibleControl(screen, screen.getByTestId('plan.package.copyCaption'));
+  await copyPlanCaption(screen);
   expect(await device.clipboard()).toBe(caption);
   await relaunchLoopSession(device, session);
   await openLoopPlanDay(screen, 1);
@@ -437,7 +437,7 @@ test('loop R3-C7: Plan blocks a blank caption save', async ({ screen, device }) 
   const editor = screen.getByTestId('daily.ready.edit.caption');
   const original = await editor.inputValue();
   await clearThenType(screen, editor, '   ');
-  await dismissKeyboard(screen);
+  await scrollToControl(screen, screen.getByTestId('daily.ready.edit.save'));
   await expect(screen.getByTestId('daily.ready.edit.save')).toBeDisabled();
   await openLoopPlanDay(screen, 2);
   await openLoopPlanDay(screen, 1);

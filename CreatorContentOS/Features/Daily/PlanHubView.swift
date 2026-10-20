@@ -522,6 +522,12 @@ struct PlanHubView: View {
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 72)
                     .accessibilityIdentifier("daily.ready.edit.caption")
+                if lightEditCaption.nilIfBlank == nil {
+                    Text("Enter a caption before saving.")
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 PocketSheetSecondaryAction(
                     title: services.isUpdatingReadyDayPackage ? "Saving…" : "Save caption"
                 ) {
@@ -536,6 +542,7 @@ struct PlanHubView: View {
 
     private var canSaveLightEdit: Bool {
         canLightEditReadyPackage
+            && lightEditCaption.nilIfBlank != nil
             && lightEditCaption != (displayedCard?.caption ?? "")
     }
 

@@ -34,6 +34,21 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
         return response.weekCards.map { $0.domainCard() }
     }
 
+    func replayDecision(_ intent: ContentIntent, context: WorkspaceContext) async throws -> ArchiveEntry {
+        guard let card = intent.cardSnapshot else { throw DayTransitionError.incompletePackage }
+        do {
+            let response: SupabaseWriteContentResponse = try await client.functions.invoke(
+                "write-content", options: FunctionInvokeOptions(body: SupabaseWriteContentRequest.queuedDecision(intent, context: context))
+            )
+            if let error = response.error { throw RepositoryError.edgeFunction(error) }
+            guard let entry = response.archiveEntry else { throw RepositoryError.edgeFunction("complete_today_missing_archive") }
+            return entry.domainEntry(fallbackCard: card)
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) { throw RepositoryError.edgeFunction(code) }
+            throw error
+        }
+    }
+
     func completeToday(
         card: DailyCard,
         decision: DailyDecision,
@@ -183,6 +198,41 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
             todayCard: DailyCard.bestTodayCard(from: cards),
             summary: "Published \(response.dailyCardCount) cards to Creator Today."
         )
+    }
+
+    func replayPackage(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxReplayResult {
+        do {
+            switch intent.packageAction {
+            case .makeReady:
+                let response: SupabaseMakeDayAvailableResponse = try await client.functions.invoke("make-day-available", options: FunctionInvokeOptions(body: SupabaseMakeDayAvailableRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion)))
+                return .available(DayAvailabilityResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, weeklyPlanID: response.weeklyPlanID, weekIsSoftLocked: response.weekIsSoftLocked))
+            case .returnToDraft:
+                let response: SupabaseUnpublishDayResponse = try await client.functions.invoke("unpublish-day", options: FunctionInvokeOptions(body: SupabaseUnpublishDayRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion)))
+                return .unpublished(DayUnpublishResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, previousStatus: response.previousStatus, clearedLiveDecision: response.clearedLiveDecision, archiveRetained: response.archiveRetained, weeklyPlanID: response.weeklyPlanID))
+            case .update:
+                guard let package = intent.package else { throw DayTransitionError.incompletePackage }
+                try package.validate()
+                let response: SupabaseUpdateReadyDayPackageResponse = try await client.functions.invoke("update-ready-day-package", options: FunctionInvokeOptions(body: SupabaseUpdateReadyDayPackageRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, package: package, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion)))
+                return .package(DayPackageUpdateResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, weeklyPlanID: response.weeklyPlanID, title: response.title, caption: response.caption))
+            case nil: throw DayTransitionError.illegalMove
+            }
+        } catch {
+            let code = SupabaseFunctionErrorMapper.errorCode(from: error) ?? error.localizedDescription
+            if code == "daily_card_not_draft" && intent.packageAction == .makeReady
+                || code == "daily_card_already_draft" && intent.packageAction == .returnToDraft {
+                let response: SupabaseCreatorDaysResponse = try await client.readContent(.days, context: context)
+                if let row = response.days.first(where: { $0.scheduledDate == intent.scheduledDate && $0.currentRevisionID == intent.revisionID }), let card = row.revision {
+                    if intent.packageAction == .makeReady, DayPackageLifecycleStatus.requiresOverwriteConfirmation(card.status) {
+                        return .available(DayAvailabilityResult(dailyCardID: card.id, scheduledDate: card.scheduledDate, status: card.status, weeklyPlanID: card.weeklyPlanID, weekIsSoftLocked: false))
+                    }
+                    if intent.packageAction == .returnToDraft, card.status == "draft" {
+                        return .unpublished(DayUnpublishResult(dailyCardID: card.id, scheduledDate: card.scheduledDate, status: "draft", previousStatus: "draft", clearedLiveDecision: false, archiveRetained: true, weeklyPlanID: card.weeklyPlanID))
+                    }
+                }
+            }
+            if SupabaseFunctionErrorMapper.errorCode(from: error) != nil { throw RepositoryError.edgeFunction(code) }
+            throw error
+        }
     }
 
     func makeDayAvailable(
@@ -436,7 +486,52 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
 
     let client: SupabaseClient
     var runtimeConfiguration: SupabaseRuntimeConfiguration?
-    var acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared
+
+    func replayGeneration(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxGenerationResponse {
+        do {
+            let invocation: SupabaseDailyGenerationInvocation
+            if let generationID = intent.generationID {
+                invocation = try await invokeDailyGeneration(statusRequest(generationID: generationID, creatorID: intent.creatorID))
+            } else if intent.kind == .replaceDay {
+                invocation = try await client.functions.invoke(
+                    "replace-day",
+                    options: FunctionInvokeOptions(body: SupabaseReplaceDayRequest(
+                        creatorID: intent.creatorID,
+                        scheduledDate: intent.scheduledDate,
+                        dailyCardID: intent.revisionID,
+                        dayBrief: intent.dayBrief ?? "",
+                        idempotencyKey: intent.id
+                    ))
+                ) { data, _ in try SupabaseDailyGenerationInvocation.decode(data) }
+            } else if let planID = intent.weeklyPlanID, let preserve = intent.preserveManualEdits {
+                invocation = try await invokeDailyGeneration(SupabaseRegenerateDayRequest(
+                    creatorID: intent.creatorID,
+                    weeklyPlanID: planID,
+                    scheduledDate: intent.scheduledDate,
+                    preserveManualEdits: preserve,
+                    responseMode: .async,
+                    dayGuidance: intent.dayGuidance,
+                    idempotencyKey: intent.id
+                ))
+            } else {
+                invocation = try await invokeDailyGeneration(SupabaseDailyGenerationRequest(
+                    creatorID: intent.creatorID,
+                    scheduledDate: intent.scheduledDate,
+                    dayBrief: intent.dayBrief ?? "",
+                    responseMode: .async,
+                    idempotencyKey: intent.id
+                ))
+            }
+            switch invocation {
+            case .completed(let response): return .completed(response.domainResult)
+            case .running(let status): return .running(status.generationID, pollAfterSeconds: status.pollAfterSeconds ?? 3)
+            case .failed(let status): return .failed(status.error ?? "invalid_generated_day")
+            }
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) { throw RepositoryError.edgeFunction(code) }
+            throw error
+        }
+    }
 
     func regenerateDay(
         creatorID: UUID,
@@ -523,20 +618,11 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
                 return response.domainResult
             case .running(let status):
                 logGeneration("generate_day polling_start \(statusSummary(status))")
-                acceptedGenerationStore.save(
-                    AcceptedDayGenerationRun(
-                        scheduledDate: scheduledDate,
-                        generationID: status.generationID,
-                        creatorID: creatorID,
-                        acceptedAt: Date()
-                    )
-                )
                 let result = try await pollDailyGeneration(
                     generationID: status.generationID,
                     creatorID: creatorID,
                     logAction: .generateDay
                 )
-                acceptedGenerationStore.remove(scheduledDate: scheduledDate)
                 return result
             case .failed(let status):
                 logGeneration("generate_day initial_failed \(statusSummary(status))")
@@ -929,7 +1015,7 @@ enum SupabaseGenerationRetryPolicy {
     }
 }
 
-private enum SupabaseFunctionErrorMapper {
+enum SupabaseFunctionErrorMapper {
     static func errorCode(from error: Error) -> String? {
         guard let httpError = functionHTTPError(error) else {
             return nil

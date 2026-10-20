@@ -14,25 +14,50 @@ actor FixtureFailureState {
 }
 #endif
 
+private struct FixtureOutboxRun: Codable {
+    var request: ContentIntent
+    var generationID: UUID = UUID()
+    var revisionID: UUID = UUID()
+    var result: DailyGenerationResult?
+
+    func matches(_ intent: ContentIntent) -> Bool {
+        request.kind == intent.kind && request.creatorID == intent.creatorID
+            && request.workspaceID == intent.workspaceID && request.scheduledDate == intent.scheduledDate
+            && request.revisionID == intent.revisionID && request.dayBrief == intent.dayBrief
+            && request.weeklyPlanID == intent.weeklyPlanID && request.preserveManualEdits == intent.preserveManualEdits
+            && request.dayGuidance == intent.dayGuidance
+    }
+}
+
 private struct FixturePublishedContentSnapshot: Codable {
     private enum CodingKeys: String, CodingKey {
         case weekCards
         case todayCard
         case generatedDrafts
+        case outboxRuns, historicalCards, decisions
     }
 
     var weekCards: [DailyCard]
     var todayCard: DailyCard?
     var generatedDrafts: [String: DailyCard]
+    var outboxRuns: [String: FixtureOutboxRun] = [:]
+    var historicalCards: [UUID: DailyCard] = [:]
+    var decisions: [UUID: ArchiveEntry] = [:]
 
     init(
         weekCards: [DailyCard],
         todayCard: DailyCard?,
-        generatedDrafts: [String: DailyCard] = [:]
+        generatedDrafts: [String: DailyCard] = [:],
+        outboxRuns: [String: FixtureOutboxRun] = [:],
+        historicalCards: [UUID: DailyCard] = [:],
+        decisions: [UUID: ArchiveEntry] = [:]
     ) {
         self.weekCards = weekCards
         self.todayCard = todayCard
         self.generatedDrafts = generatedDrafts
+        self.outboxRuns = outboxRuns
+        self.historicalCards = historicalCards
+        self.decisions = decisions
     }
 
     init(from decoder: Decoder) throws {
@@ -43,6 +68,9 @@ private struct FixturePublishedContentSnapshot: Codable {
             [String: DailyCard].self,
             forKey: .generatedDrafts
         ) ?? [:]
+        outboxRuns = try container.decodeIfPresent([String: FixtureOutboxRun].self, forKey: .outboxRuns) ?? [:]
+        historicalCards = try container.decodeIfPresent([UUID: DailyCard].self, forKey: .historicalCards) ?? [:]
+        decisions = try container.decodeIfPresent([UUID: ArchiveEntry].self, forKey: .decisions) ?? [:]
     }
 }
 
@@ -52,6 +80,9 @@ actor FixturePublishedContentStore {
     private var weekCards: [DailyCard] = []
     private var todayCard: DailyCard?
     private var generatedDrafts: [String: DailyCard] = [:]
+    private var outboxRuns: [String: FixtureOutboxRun] = [:]
+    private var historicalCards: [UUID: DailyCard] = [:]
+    private var decisions: [UUID: ArchiveEntry] = [:]
     private let defaults: UserDefaults?
     private let persistenceKey = "published-content"
 
@@ -67,6 +98,9 @@ actor FixturePublishedContentStore {
                 weekCards = snapshot.weekCards
                 todayCard = snapshot.todayCard
                 generatedDrafts = snapshot.generatedDrafts
+                outboxRuns = snapshot.outboxRuns
+                historicalCards = snapshot.historicalCards
+                decisions = snapshot.decisions
             }
         } else {
             defaults = nil
@@ -131,13 +165,80 @@ actor FixturePublishedContentStore {
         persist()
     }
 
+    fileprivate func claimGeneration(_ intent: ContentIntent) throws -> FixtureOutboxRun {
+        if let run = outboxRuns[intent.id] {
+            guard run.matches(intent) else { throw RepositoryError.edgeFunction("idempotency_key_conflict") }
+            return run
+        }
+        if intent.generationID != nil { throw RepositoryError.edgeFunction("generation_run_not_found") }
+        if intent.kind == .replaceDay {
+            let current = weekCards.first { $0.scheduledDate == intent.scheduledDate }
+                ?? generatedDrafts[intent.scheduledDate]
+            guard let current, current.id == intent.revisionID else { throw RepositoryError.edgeFunction("daily_card_not_found") }
+            historicalCards[current.id] = current
+            weekCards.removeAll { $0.id == current.id }
+            if todayCard?.id == current.id { todayCard = nil }
+            generatedDrafts.removeValue(forKey: intent.scheduledDate)
+        }
+        let run = FixtureOutboxRun(request: intent)
+        outboxRuns[intent.id] = run
+        persist()
+        return run
+    }
+
+    fileprivate func finishGeneration(_ result: DailyGenerationResult, key: String) {
+        guard var run = outboxRuns[key] else { return }
+        if let previous = generatedDrafts[result.targetScheduledDate], previous.id != result.dailyCard.id {
+            historicalCards[previous.id] = previous
+        }
+        run.result = result
+        outboxRuns[key] = run
+        generatedDrafts[result.targetScheduledDate] = result.dailyCard.dailyCard(completionState: nil)
+        persist()
+    }
+
+    func readDecisions() -> [ArchiveEntry] { Array(decisions.values) }
+
+    func saveDecision(_ intent: ContentIntent) throws -> ArchiveEntry {
+        guard let card = intent.cardSnapshot, let decision = intent.decision else { throw DayTransitionError.incompletePackage }
+        if let existing = decisions[card.id], existing.decision == .posted {
+            guard decision.completionState == .posted else { throw RepositoryError.edgeFunction("posted_revision_immutable") }
+            return existing
+        }
+        var entry = intent.archiveSnapshot ?? ArchiveEntry(
+            dailyCardID: card.id,
+            day: SupabaseDateFormatting.weekdayAbbreviation(for: intent.scheduledDate),
+            date: SupabaseDateFormatting.shortDate(for: intent.scheduledDate),
+            cardTitle: card.title,
+            decision: decision.completionState,
+            outputLine: decision.outputLine,
+            hasPostThumbnail: decision.hasPostThumbnail
+        )
+        entry.captionSnapshot = card.caption
+        entry.scheduledDate = intent.scheduledDate
+        entry.decisionAt = entry.decisionAt ?? ISO8601DateFormatter().string(from: intent.createdAt)
+        decisions[card.id] = entry
+        if let index = weekCards.firstIndex(where: { $0.id == card.id }) {
+            weekCards[index].completionState = decision.completionState
+            if todayCard?.id == card.id { todayCard?.completionState = decision.completionState }
+        } else if !weekCards.contains(where: { $0.scheduledDate == intent.scheduledDate }) && historicalCards[card.id] == nil {
+            weekCards.append(card)
+            if intent.scheduledDate == SupabaseDateFormatting.todayDateString() { todayCard = card }
+        }
+        persist()
+        return entry
+    }
+
     private func persist() {
         guard let defaults,
               let data = try? JSONEncoder().encode(
                   FixturePublishedContentSnapshot(
                       weekCards: weekCards,
                       todayCard: todayCard,
-                      generatedDrafts: generatedDrafts
+                      generatedDrafts: generatedDrafts,
+                      outboxRuns: outboxRuns,
+                      historicalCards: historicalCards,
+                      decisions: decisions
                   )
               )
         else {
@@ -200,6 +301,18 @@ struct FixtureTodayCardRepository: TodayCardRepository {
         }
 #endif
         return DailyCard.weekFixtures
+    }
+
+    func replayDecision(_ intent: ContentIntent, context: WorkspaceContext) async throws -> ArchiveEntry {
+#if DEBUG
+        if DebugLaunchFlags.failTodayDecisionSyncOnce,
+           await FixtureFailureState.shared.consume("today-decision-sync") {
+            throw RepositoryError.edgeFunction("fixture_today_decision_sync_failed")
+        }
+#endif
+        if let publishedStore { return try await publishedStore.saveDecision(intent) }
+        guard let card = intent.cardSnapshot, let decision = intent.decision else { throw DayTransitionError.incompletePackage }
+        return try await completeToday(card: card, decision: decision, context: context)
     }
 
     func completeToday(
@@ -363,6 +476,9 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         dailyCardID: UUID?,
         context: WorkspaceContext
     ) async throws -> DayAvailabilityResult {
+        if let existing = await publishedStore?.readWeekCards().first(where: { $0.id == dailyCardID && $0.scheduledDate == scheduledDate }) {
+            return DayAvailabilityResult(dailyCardID: existing.id, scheduledDate: scheduledDate, status: existing.completionState?.supabaseStatus ?? "published", weeklyPlanID: plan.id, weekIsSoftLocked: false)
+        }
         let generatedDraft = await publishedStore?.readGeneratedDraft(for: scheduledDate)
         let generatedCard = generatedDraft
         let cardID = dailyCardID ?? generatedCard?.id ?? UUID()
@@ -413,10 +529,16 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
             if let dailyCardID { return card.id == dailyCardID }
             return card.scheduledDate == scheduledDate
         }
+        if existing == nil, let draft = await publishedStore?.readGeneratedDraft(for: scheduledDate), draft.id == dailyCardID {
+            return DayUnpublishResult(dailyCardID: draft.id, scheduledDate: scheduledDate, status: "draft", previousStatus: "draft", clearedLiveDecision: false, archiveRetained: true, weeklyPlanID: plan.id)
+        }
         guard let existing else {
             throw RepositoryError.edgeFunction("daily_card_not_found")
         }
 
+        var draft = existing
+        draft.completionState = nil
+        await publishedStore?.saveGeneratedDraft(GeneratedDailyCardDraft(fromPublishedCard: draft, status: "draft"))
         cards.removeAll { $0.id == existing.id }
         let today = SupabaseDateFormatting.todayDateString()
         let todayCard = cards.first { $0.scheduledDate == today }
@@ -439,6 +561,7 @@ actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
         package: ReadyDayPackageUpdate,
         context: WorkspaceContext
     ) async throws -> DayPackageUpdateResult {
+        try package.validate()
         var cards = await publishedStore?.readWeekCards() ?? []
         guard let index = cards.firstIndex(where: { card in
             if let dailyCardID { return card.id == dailyCardID }
@@ -500,6 +623,28 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
     func persistedDayPackages(context: WorkspaceContext) async -> [GeneratedDailyCardDraft] {
         _ = context
         return await publishedStore?.readGeneratedDrafts() ?? []
+    }
+
+    func replayGeneration(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxGenerationResponse {
+#if DEBUG
+        if DebugLaunchFlags.failFirstIdea { throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed") }
+        if DebugLaunchFlags.failFirstIdeaOnce, await FixtureFailureState.shared.consume("first-idea-generation") {
+            throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed_once")
+        }
+#endif
+        guard let publishedStore else {
+            return .completed(try await generateDay(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dayBrief: intent.dayBrief ?? intent.dayGuidance ?? "", context: context))
+        }
+        let run = try await publishedStore.claimGeneration(intent)
+        if let result = run.result { return .completed(result) }
+        try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
+        var result = makeResult(scheduledDate: intent.scheduledDate, dayBrief: intent.dayBrief ?? intent.dayGuidance ?? "Regenerated fixture day for \(intent.scheduledDate).", revisionID: run.revisionID)
+        result.generationID = run.generationID
+        result.dailyCard.sceneList = result.dailyCard.sceneList.map { scene in
+            ShotScene(id: ShotScene.stableID(revisionID: run.revisionID, number: scene.number), number: scene.number, title: scene.title, duration: scene.duration, symbol: scene.symbol)
+        }
+        await publishedStore.finishGeneration(result, key: intent.id)
+        return .completed(result)
     }
 
     func generateDay(
@@ -568,7 +713,7 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
         return result
     }
 
-    private func makeResult(scheduledDate: String, dayBrief: String) -> DailyGenerationResult {
+    private func makeResult(scheduledDate: String, dayBrief: String, revisionID: UUID = UUID()) -> DailyGenerationResult {
         let trimmedBrief = dayBrief.trimmingCharacters(in: .whitespacesAndNewlines)
         let pillar = inferredContentPillar(from: trimmedBrief)
         let title = synthesizedTitle(from: trimmedBrief, pillar: pillar)
@@ -577,7 +722,7 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
         let duration = format == "Post" ? nil : requestedDuration(from: trimmedBrief) ?? (format == "Story" ? 10 : 12)
         let scenes = fixtureScenes(for: pillar, format: format, duration: duration)
         var dailyCard = GeneratedDailyCardDraft(
-            id: UUID(),
+            id: revisionID,
             scheduledDate: scheduledDate,
             status: "draft",
             title: title,
@@ -822,6 +967,12 @@ struct FixtureCreatorProfileRepository: CreatorProfileRepository {
 
 actor FixtureCreatorProfileStore {
     private var profile: CreatorProfileSummary = .creatorFixture
+    private let defaults: UserDefaults?
+
+    init() {
+        defaults = DebugLaunchConfiguration.fixtureSession == nil ? nil : DebugLaunchConfiguration.fixtureDefaults
+        if let data = defaults?.data(forKey: "creator-profile"), let saved = try? JSONDecoder().decode(CreatorProfileSummary.self, from: data) { profile = saved }
+    }
 
     func read() -> CreatorProfileSummary {
         profile
@@ -829,6 +980,7 @@ actor FixtureCreatorProfileStore {
 
     func apply(_ update: CreatorProfileUpdate) -> CreatorProfileSummary {
         profile = Self.mergedProfile(existing: profile, update: update)
+        if let data = try? JSONEncoder().encode(profile) { defaults?.set(data, forKey: "creator-profile") }
         return profile
     }
 

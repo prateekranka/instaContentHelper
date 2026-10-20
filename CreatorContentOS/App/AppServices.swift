@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Network
 
 typealias TodayDateProvider = @Sendable () -> String
 
@@ -86,8 +87,8 @@ final class AppServices {
     }
     var lastRepositoryError: String?
     var lastTodayDecisionSyncError: String?
-    private(set) var unsyncedTodayDecision: UnsyncedTodayDecision? {
-        didSet { dayStore.pendingDecisionRevisionID = unsyncedTodayDecision?.cardID }
+    var hasPendingTodayDecision: Bool {
+        dayStore.outbox.contains { $0.kind == .decide && $0.revisionID == todayCard.id }
     }
     var lastRepositoryRefreshAttemptAt: Date?
     var lastRepositoryRefreshAt: Date?
@@ -189,12 +190,10 @@ final class AppServices {
     var testerAccessMessage: String?
     var lastActionMessage: String?
     private let todayDate: TodayDateProvider
-    private let acceptedGenerationStore: any AcceptedDayGenerationStoring
     let aiConsentStore: any AIConsentStoring
     var isAIConsentSheetPresented = false
     var aiConsentAllowsOutbound = false
     var aiConsentEpoch = 0
-    private var recoveringAcceptedGenerationDates: Set<String> = []
 
     /// Resolves the Plan package for a date from session cards or the latest draft summary.
     func dayPackage(for scheduledDate: String) -> GeneratedDailyCardDraft? {
@@ -255,15 +254,12 @@ final class AppServices {
         return assets.contains { $0.publicURL?.nilIfBlank != nil }
     }
 
-    private var latestTodayDecisionSyncID = 0
-    private var todayDecisionSyncTask: Task<ArchiveEntry, Never>?
-
-    private struct PendingTodayDecisionSync {
-        let id: Int
-        let card: DailyCard
-        let decision: DailyDecision
-        let localEntry: ArchiveEntry
-    }
+    private var outboxReplayTask: Task<Void, Never>?
+    private var outboxNeedsReplay = false
+    private var outboxResults: [String: OutboxReplayResult] = [:]
+    private var outboxErrors: [String: Error] = [:]
+    private let networkMonitor = NWPathMonitor()
+    private var networkWasAvailable: Bool?
 
     init(
         repositories: AppRepositories,
@@ -280,7 +276,6 @@ final class AppServices {
         creatorProfileSummary: CreatorProfileSummary,
         weekCards: [DailyCard],
         todayContentState: TodayContentState = .ready,
-        acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared,
         aiConsentStore: (any AIConsentStoring)? = nil
     ) {
         self.context = repositories.context
@@ -290,7 +285,6 @@ final class AppServices {
         self.todayCache = todayCache
         self.notifications = notifications
         self.todayDate = todayDate
-        self.acceptedGenerationStore = acceptedGenerationStore
         self.aiConsentStore = aiConsentStore ?? UserDefaultsAIConsentStore(
             workspaceID: repositories.context.workspaceID,
             creatorID: repositories.context.creatorID
@@ -317,7 +311,19 @@ final class AppServices {
             supabaseHealthStatus = .sample
             geminiHealthStatus = .sample
         }
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            let available = path.status == .satisfied
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let returned = available && self.networkWasAvailable == false
+                self.networkWasAvailable = available
+                if returned { await self.replayOutboxImmediately() }
+            }
+        }
+        networkMonitor.start(queue: DispatchQueue(label: "contenthelper.outbox.network"))
     }
+
+    deinit { networkMonitor.cancel() }
 
     var canManageTesterAccess: Bool {
         isLiveSupabaseRuntime && memberRole == "owner"
@@ -375,7 +381,6 @@ final class AppServices {
         todayCache: any TodayCacheStoring = FileTodayCacheStore(),
         notifications: any TodayNotificationScheduling = NoopTodayNotificationScheduler(),
         todayDate: @escaping TodayDateProvider = { SupabaseDateFormatting.todayDateString() },
-        acceptedGenerationStore: any AcceptedDayGenerationStoring = UserDefaultsAcceptedDayGenerationStore.shared,
         aiConsentStore: (any AIConsentStoring)? = nil
     ) -> AppServices {
         let services = AppServices(
@@ -392,7 +397,6 @@ final class AppServices {
             intelligenceHome: .raceWeekLibrary,
             creatorProfileSummary: .creatorFixture,
             weekCards: DailyCard.weekFixtures,
-            acceptedGenerationStore: acceptedGenerationStore,
             aiConsentStore: aiConsentStore
         )
         return services
@@ -533,154 +537,46 @@ final class AppServices {
         let isFilmingDecision = decision.completionState == .shot || decision.completionState == .posted
         guard isFilmingDecision || canChooseEasierOption else { return }
         guard canApplyTodayDecision(decision) else { return }
-        let pendingSync = prepareTodayDecisionSync(decision)
-        _ = enqueueTodayDecisionSync(pendingSync)
+        guard prepareTodayDecision(decision) != nil else { return }
+        Task { await replayOutboxImmediately() }
     }
 
     @discardableResult
     func completeTodayImmediately(with decision: DailyDecision) async -> ArchiveEntry {
-        guard canApplyTodayDecision(decision) else {
-            return makeArchiveEntry(for: todayCard, decision: decision)
-        }
-        let pendingSync = prepareTodayDecisionSync(decision)
-        return await enqueueTodayDecisionSync(pendingSync).value
+        let fallback = makeArchiveEntry(for: todayCard, decision: decision)
+        guard canApplyTodayDecision(decision), let intent = prepareTodayDecision(decision) else { return fallback }
+        await replayOutboxImmediately()
+        if case .decision(let entry) = outboxResults[intent.id] { return entry }
+        return intent.archiveSnapshot ?? fallback
     }
 
     private func canApplyTodayDecision(_ decision: DailyDecision) -> Bool {
         guard var day = dayStore.day(for: currentTodayDateString) else { return false }
-        do {
-            try day.transition(.decide(decision))
-            return true
-        } catch { return false }
+        do { try day.transition(.decide(decision)); return true }
+        catch { return false }
     }
 
-    private func enqueueTodayDecisionSync(
-        _ pendingSync: PendingTodayDecisionSync
-    ) -> Task<ArchiveEntry, Never> {
-        let previousTask = todayDecisionSyncTask
-        let task = Task { [weak self, previousTask, pendingSync] in
-            if let previousTask {
-                _ = await previousTask.value
-            }
-            guard let self else { return pendingSync.localEntry }
-            return await self.syncTodayDecision(pendingSync)
-        }
-        todayDecisionSyncTask = task
-        return task
-    }
-
-    @discardableResult
-    private func applyLocalTodayDecision(_ decision: DailyDecision) -> (card: DailyCard, entry: ArchiveEntry) {
-        do { try dayStore.transition(.decide(decision), on: currentTodayDateString) }
-        catch { lastRepositoryError = error.localizedDescription }
-        let localEntry = makeArchiveEntry(for: todayCard, decision: decision)
-        upsertLocalArchiveEntry(localEntry, for: todayCard)
-        saveTodaySnapshot(source: "decision")
-        Task {
-            await cancelTodayNotification()
-        }
-        return (todayCard, localEntry)
-    }
-
-    private func prepareTodayDecisionSync(_ decision: DailyDecision) -> PendingTodayDecisionSync {
-        var decidedCard = todayCard
+    private func prepareTodayDecision(_ decision: DailyDecision) -> ContentIntent? {
+        let card = todayCard
+        var decidedCard = card
         decidedCard.completionState = decision.completionState
-        unsyncedTodayDecision = UnsyncedTodayDecision(cardID: todayCard.id, decision: decision, card: decidedCard)
-        let localDecision = applyLocalTodayDecision(decision)
-        lastTodayDecisionSyncError = nil
-        latestTodayDecisionSyncID += 1
-        return PendingTodayDecisionSync(
-            id: latestTodayDecisionSyncID,
-            card: localDecision.card,
-            decision: decision,
-            localEntry: localDecision.entry
-        )
-    }
-
-    private func isCurrentTodayDecisionSync(_ pendingSync: PendingTodayDecisionSync) -> Bool {
-        pendingSync.id == latestTodayDecisionSyncID && !Task.isCancelled
-    }
-
-    @discardableResult
-    private func syncTodayDecision(_ pendingSync: PendingTodayDecisionSync) async -> ArchiveEntry {
-        guard isCurrentTodayDecisionSync(pendingSync) else {
-            return pendingSync.localEntry
-        }
-
+        var intent = ContentIntent(kind: .decide, context: context, scheduledDate: card.scheduledDate ?? currentTodayDateString, revisionID: card.id)
+        intent.decision = decision
+        intent.undoPosted = card.completionState == .posted && decision.completionState == .shot
+        intent.cardSnapshot = decidedCard
+        intent.archiveSnapshot = makeArchiveEntry(for: card, decision: decision)
         do {
-            let entry = try await repositories.today.completeToday(
-                card: pendingSync.card,
-                decision: pendingSync.decision,
-                context: context
-            )
-            guard isCurrentTodayDecisionSync(pendingSync) else {
-                return pendingSync.localEntry
-            }
-            try await repositories.archive.persistDecision(
-                entry,
-                for: pendingSync.card,
-                context: context
-            )
-            guard isCurrentTodayDecisionSync(pendingSync) else {
-                return pendingSync.localEntry
-            }
-            if let refreshedEntries = try? await repositories.archive.entries(for: context) {
-                archiveEntries = refreshedEntries
-            }
-            // Fixture archives ignore persist; keep the synced entry visible locally.
-            upsertLocalArchiveEntry(entry, for: pendingSync.card, authoritative: true)
-            guard isCurrentTodayDecisionSync(pendingSync) else {
-                return pendingSync.localEntry
-            }
-            unsyncedTodayDecision = nil
-            saveTodaySnapshot(source: "decision-synced")
-            lastRepositoryError = nil
+            try enqueueIntent(intent)
+            try dayStore.transition(.decide(decision), on: intent.scheduledDate)
+            if let entry = intent.archiveSnapshot { dayStore.mergeArchive([entry]) }
+            try persistDaySnapshot(source: "decision")
             lastTodayDecisionSyncError = nil
-            return entry
-        } catch RepositoryError.noPublishedTodayCard(let date) {
-            guard isCurrentTodayDecisionSync(pendingSync) else {
-                return pendingSync.localEntry
-            }
-            if pendingSync.card.id == todayCard.id {
-                applyMissingPublishedTodayCardState(date: date)
-            }
-            unsyncedTodayDecision = nil
-            saveTodaySnapshot(source: "decision-dropped")
-            lastRepositoryError = nil
-            lastTodayDecisionSyncError = nil
-            return pendingSync.localEntry
+            Task { await cancelTodayNotification() }
+            return intent
         } catch {
-            guard isCurrentTodayDecisionSync(pendingSync) else {
-                return pendingSync.localEntry
-            }
-            if error is CancellationError {
-                return pendingSync.localEntry
-            }
-            if (error as NSError).domain == NSURLErrorDomain,
-               (error as NSError).code == NSURLErrorCancelled {
-                return pendingSync.localEntry
-            }
-            lastTodayDecisionSyncError = TodayDecisionErrorDisplay.message(for: error)
-            return pendingSync.localEntry
+            lastTodayDecisionSyncError = error.localizedDescription
+            return nil
         }
-    }
-
-    private func resumeUnsyncedTodayDecisionIfNeeded() {
-        guard let unsynced = unsyncedTodayDecision else { return }
-        if case .ready = todayContentState, unsynced.cardID == todayCard.id {
-            completeToday(with: unsynced.decision)
-            return
-        }
-        guard let card = dayStore.card(revisionID: unsynced.cardID) ?? unsynced.card else { return }
-        latestTodayDecisionSyncID += 1
-        _ = enqueueTodayDecisionSync(
-            PendingTodayDecisionSync(
-                id: latestTodayDecisionSyncID,
-                card: card,
-                decision: unsynced.decision,
-                localEntry: makeArchiveEntry(for: card, decision: unsynced.decision)
-            )
-        )
     }
 
     var nextOpenWeeklyDay: WeeklyDay? {
@@ -943,49 +839,23 @@ final class AppServices {
             throw RepositoryError.edgeFunction(message)
         }
 
-        if case .generating = dayStore.day(for: scheduledDate)?.lifecycle {
-            throw RepositoryError.edgeFunction("generation_already_running")
+        if let pending = dayStore.outbox.first(where: { $0.isGeneration && $0.scheduledDate == scheduledDate }) {
+            guard pending.weeklyPlanID == weeklyPlan.id, pending.preserveManualEdits == preserveManualEdits, pending.dayGuidance == dayGuidance else { throw RepositoryError.edgeFunction("generation_already_running") }
+            await replayOutboxImmediately()
+            return try generatedResult(for: pending)
         }
-        let request = DayGenerationRun(requestID: UUID(), generationID: nil)
-        try dayStore.transition(.generate(request, replacing: dayPackage(for: scheduledDate) != nil), on: scheduledDate)
-        saveTodaySnapshot(source: "regeneration-started")
-        regeneratingDayDates.insert(scheduledDate)
-        regenerationDayErrors[scheduledDate] = nil
-        defer { regeneratingDayDates.remove(scheduledDate) }
-
+        var intent = ContentIntent(kind: .generate, context: context, scheduledDate: scheduledDate, revisionID: dayPackage(for: scheduledDate)?.id ?? UUID())
+        intent.requestedRevisionID = UUID()
+        intent.weeklyPlanID = weeklyPlan.id
+        intent.preserveManualEdits = preserveManualEdits
+        intent.dayGuidance = dayGuidance
         do {
-            logGeneration(
-                "regenerate_day started scheduled_date=\(scheduledDate) preserve_manual_edits=\(preserveManualEdits) guidance_chars=\(dayGuidance?.count ?? 0)"
-            )
-            let result = try await repositories.dailyGeneration.regenerateDay(
-                creatorID: context.creatorID,
-                weeklyPlanID: weeklyPlan.id,
-                scheduledDate: scheduledDate,
-                preserveManualEdits: preserveManualEdits,
-                dayGuidance: dayGuidance,
-                context: context
-            )
-            applyRegeneratedDay(result.dailyCard)
-            generationError = nil
-            lastRepositoryError = nil
-            logGeneration("regenerate_day completed scheduled_date=\(scheduledDate) daily_card_id=\(result.dailyCard.id)")
-            return result.dailyCard
+            try enqueueGeneration(intent)
+            await replayOutboxImmediately()
+            return try generatedResult(for: intent)
         } catch {
-            if case .generating(let active) = dayStore.day(for: scheduledDate)?.lifecycle, active.requestID == request.requestID {
-                if let run = acceptedGenerationStore.load(scheduledDate: scheduledDate), run.creatorID == context.creatorID {
-                    try? dayStore.transition(.generate(DayGenerationRun(requestID: run.generationID, generationID: run.generationID), replacing: true), on: scheduledDate)
-                } else if let content = dayPackage(for: scheduledDate) {
-                    try? dayStore.receive(content)
-                } else {
-                    try? dayStore.transition(.unavailable, on: scheduledDate)
-                }
-                saveTodaySnapshot(source: "regeneration-interrupted")
-            }
-            let message = DayGenerationErrorDisplay.message(for: error)
-            regenerationDayErrors[scheduledDate] = message
-            generationError = message
-            logGeneration("regenerate_day failed scheduled_date=\(scheduledDate) error=\(message)")
-            throw RepositoryError.edgeFunction(message)
+            regenerationDayErrors[scheduledDate] = DayGenerationErrorDisplay.message(for: error)
+            throw error
         }
     }
 
@@ -1096,15 +966,6 @@ final class AppServices {
         }
     }
 
-    /// Day-at-a-time generation: one storyboard + caption card for an explicit
-    /// target date, driven entirely by the supplied day brief (which can also
-    /// carry one-off asks like brand deliverables). The server sends the
-    /// creator profile, references, and this brief to the AI provider.
-    ///
-    /// When the date already has a ready package or Decision, pass
-    /// `confirmOverwrite: true` after an explicit Overwrite confirmation.
-    /// That unpublishes first (clearing live Decision, keeping Archive), then
-    /// regenerates as a new draft.
     @discardableResult
     func generateDayCard(
         scheduledDate: String,
@@ -1136,190 +997,27 @@ final class AppServices {
 
         try requireAIConsent(for: .generateDay(scheduledDate: scheduledDate))
 
-        let existingStatus = dayBriefGeneratedCards[scheduledDate]?.status
-            ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })?.status
-        var didUnpublishLiveDay = false
-        let previousTodayCard = todayCard.scheduledDate == scheduledDate ? todayCard : nil
-        let previousShotSceneIDs = shotSceneIDs
-        // Any existing package — draft or live — must be explicitly confirmed before it is replaced.
-        if existingStatus != nil {
-            guard confirmOverwrite else {
-                let error = "ready_package_overwrite_required"
-                dayBriefGenerationErrors[scheduledDate] = DayLifecycleErrorDisplay.message(forCode: error)
-                pendingOverwriteGenerateDate = scheduledDate
-                throw RepositoryError.edgeFunction(error)
-            }
-            // Only live packages (published / decision) need unpublishing;
-            // a draft has nothing live to unpublish.
-            if DayPackageLifecycleStatus.requiresOverwriteConfirmation(existingStatus) {
-                do {
-                    _ = try await unpublishDay(scheduledDate: scheduledDate)
-                    didUnpublishLiveDay = true
-                } catch {
-                    let message = DayLifecycleErrorDisplay.message(for: error)
-                    dayBriefGenerationErrors[scheduledDate] = message
-                    throw RepositoryError.edgeFunction(message)
-                }
-            }
+        if let pending = dayStore.outbox.first(where: { $0.isGeneration && $0.scheduledDate == scheduledDate }) {
+            guard pending.dayBrief == brief else { throw RepositoryError.edgeFunction("generation_already_running") }
+            await replayOutboxImmediately()
+            return try generatedResult(for: pending)
+        }
+        let existing = dayPackage(for: scheduledDate)
+        if existing != nil && !confirmOverwrite {
+            pendingOverwriteGenerateDate = scheduledDate
+            throw RepositoryError.edgeFunction("ready_package_overwrite_required")
         }
         pendingOverwriteGenerateDate = nil
-
+        var intent = ContentIntent(kind: existing == nil ? .generate : .replaceDay, context: context, scheduledDate: scheduledDate, revisionID: existing?.id ?? UUID())
+        intent.dayBrief = brief
         do {
-            return try await generateDayCardAfterOverwriteCheck(scheduledDate: scheduledDate, brief: brief)
+            try enqueueGeneration(intent)
+            await replayOutboxImmediately()
+            return try generatedResult(for: intent)
         } catch {
-            if didUnpublishLiveDay {
-                await restoreDayAfterFailedOverwrite(
-                    scheduledDate: scheduledDate,
-                    previousTodayCard: previousTodayCard,
-                    previousShotSceneIDs: previousShotSceneIDs
-                )
-            }
+            dayBriefGenerationErrors[scheduledDate] = DayGenerationErrorDisplay.message(for: error)
             throw error
         }
-    }
-
-    private func restoreDayAfterFailedOverwrite(
-        scheduledDate: String,
-        previousTodayCard: DailyCard?,
-        previousShotSceneIDs: Set<UUID>
-    ) async {
-        guard (try? await makeDayAvailable(scheduledDate: scheduledDate)) != nil else { return }
-        guard let previousTodayCard, todayCard.scheduledDate == scheduledDate else { return }
-        let shotKeys = Set(
-            previousTodayCard.scenes
-                .filter { previousShotSceneIDs.contains($0.id) }
-                .map(Self.sceneProgressKey)
-        )
-        shotSceneIDs.formUnion(
-            todayCard.scenes
-                .filter { shotKeys.contains(Self.sceneProgressKey($0)) }
-                .map(\.id)
-        )
-        if let previousState = previousTodayCard.completionState {
-            let outputLine = archiveEntries.first { $0.dailyCardID == previousTodayCard.id }?.outputLine
-            completeToday(with: DailyDecision(completionState: previousState, outputLine: outputLine))
-        } else {
-            saveTodaySnapshot(source: "overwrite-restored")
-        }
-    }
-
-    private func generateDayCardAfterOverwriteCheck(
-        scheduledDate: String,
-        brief: String
-    ) async throws -> GeneratedDailyCardDraft {
-        guard !generatingDayBriefDates.contains(scheduledDate) else {
-            let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
-            dayBriefGenerationErrors[scheduledDate] = message
-            throw RepositoryError.edgeFunction(message)
-        }
-
-        if let acceptedRun = acceptedGenerationStore.load(scheduledDate: scheduledDate),
-           acceptedRun.creatorID == context.creatorID {
-            return try await resumeAcceptedDayGeneration(acceptedRun)
-        }
-
-        try dayStore.transition(.generate(DayGenerationRun(requestID: UUID(), generationID: nil), replacing: dayPackage(for: scheduledDate) != nil), on: scheduledDate)
-        saveTodaySnapshot(source: "generation-started")
-        generatingDayBriefDates.insert(scheduledDate)
-        dayBriefGenerationErrors[scheduledDate] = nil
-        defer { generatingDayBriefDates.remove(scheduledDate) }
-
-        do {
-            logGeneration("generate_day started scheduled_date=\(scheduledDate) brief_chars=\(brief.count)")
-            let result = try await repositories.dailyGeneration.generateDay(
-                creatorID: context.creatorID,
-                scheduledDate: scheduledDate,
-                dayBrief: brief,
-                context: context
-            )
-            return try applyDayGenerationResult(result, scheduledDate: scheduledDate)
-        } catch {
-            if let run = acceptedGenerationStore.load(scheduledDate: scheduledDate), run.creatorID == context.creatorID {
-                try? dayStore.transition(.generate(DayGenerationRun(requestID: run.generationID, generationID: run.generationID), replacing: true), on: scheduledDate)
-            } else {
-                if let content = dayPackage(for: scheduledDate) { try? dayStore.receive(content) }
-                else { try? dayStore.transition(.unavailable, on: scheduledDate) }
-            }
-            saveTodaySnapshot(source: "generation-interrupted")
-            let message = DayGenerationErrorDisplay.message(for: error)
-            dayBriefGenerationErrors[scheduledDate] = message
-            logGeneration(
-                "generate_day failed scheduled_date=\(scheduledDate) user_message=\(message) error_type=\(String(describing: type(of: error))) localized=\(error.localizedDescription) dump=\(String(describing: error))"
-            )
-            throw RepositoryError.edgeFunction(message)
-        }
-    }
-
-    /// Rehydrates persisted accepted runs after relaunch and resumes status polling — no new POST.
-    func restoreAcceptedDayGenerationsIfNeeded() {
-        for run in acceptedGenerationStore.loadAll() where run.creatorID == context.creatorID {
-            guard !recoveringAcceptedGenerationDates.contains(run.scheduledDate) else { continue }
-            recoveringAcceptedGenerationDates.insert(run.scheduledDate)
-            generatingDayBriefDates.insert(run.scheduledDate)
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                defer {
-                    self.recoveringAcceptedGenerationDates.remove(run.scheduledDate)
-                    self.generatingDayBriefDates.remove(run.scheduledDate)
-                }
-                _ = try? await self.resumeAcceptedDayGeneration(run, fromRecovery: true)
-            }
-        }
-    }
-
-    private func resumeAcceptedDayGeneration(
-        _ run: AcceptedDayGenerationRun,
-        fromRecovery: Bool = false
-    ) async throws -> GeneratedDailyCardDraft {
-        if !fromRecovery {
-            guard !generatingDayBriefDates.contains(run.scheduledDate) else {
-                let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
-                dayBriefGenerationErrors[run.scheduledDate] = message
-                throw RepositoryError.edgeFunction(message)
-            }
-        }
-
-        let manageGeneratingFlag = !fromRecovery && !generatingDayBriefDates.contains(run.scheduledDate)
-        if manageGeneratingFlag {
-            generatingDayBriefDates.insert(run.scheduledDate)
-        }
-        dayBriefGenerationErrors[run.scheduledDate] = nil
-        defer {
-            if manageGeneratingFlag {
-                generatingDayBriefDates.remove(run.scheduledDate)
-            }
-        }
-
-        do {
-            try dayStore.transition(.generate(DayGenerationRun(requestID: run.generationID, generationID: run.generationID), replacing: true), on: run.scheduledDate)
-            saveTodaySnapshot(source: "generation-resumed")
-            logGeneration("generate_day resume scheduled_date=\(run.scheduledDate) generation_id=\(run.generationID)")
-            var result = try await repositories.dailyGeneration.resumeAcceptedDayGeneration(
-                generationID: run.generationID,
-                creatorID: run.creatorID,
-                context: context
-            )
-            if !isLiveSupabaseRuntime { result.generationID = run.generationID }
-            acceptedGenerationStore.remove(scheduledDate: run.scheduledDate)
-            return try applyDayGenerationResult(result, scheduledDate: run.scheduledDate)
-        } catch {
-            if Self.acceptedRunHasEnded(run, after: error) {
-                acceptedGenerationStore.remove(scheduledDate: run.scheduledDate)
-                if let content = dayPackage(for: run.scheduledDate) { try? dayStore.receive(content) }
-                else { try? dayStore.transition(.unavailable, on: run.scheduledDate) }
-                saveTodaySnapshot(source: "generation-ended")
-            }
-            let message = DayGenerationErrorDisplay.message(for: error)
-            dayBriefGenerationErrors[run.scheduledDate] = message
-            throw RepositoryError.edgeFunction(message)
-        }
-    }
-
-    private static func acceptedRunHasEnded(_ run: AcceptedDayGenerationRun, after error: Error) -> Bool {
-        if error is CancellationError { return false }
-        if (error as NSError).domain == NSURLErrorDomain { return false }
-        guard error.localizedDescription.contains("generation_timeout") else { return true }
-        return Date().timeIntervalSince(run.acceptedAt) > 2 * 60 * 60
     }
 
     @discardableResult
@@ -1639,271 +1337,37 @@ final class AppServices {
         }
     }
 
-    private struct PendingFirstIdea: Codable {
-        var creatorID: UUID
-        var scheduledDate: String
-        var completedData: OnboardingCompletedData
-    }
-
-    private static let pendingFirstIdeaKey = "ch-pending-first-idea"
-    private var isResumingFirstIdea = false
-
-    private func loadPendingFirstIdea() -> PendingFirstIdea? {
-        guard let data = UserDefaults.standard.data(forKey: Self.pendingFirstIdeaKey) else { return nil }
-        return try? JSONDecoder().decode(PendingFirstIdea.self, from: data)
-    }
-
-    private func clearPendingFirstIdea() {
-        UserDefaults.standard.removeObject(forKey: Self.pendingFirstIdeaKey)
-    }
-
-    private func resumePendingFirstIdeaIfNeeded() {
-        guard !isResumingFirstIdea, let pending = loadPendingFirstIdea() else { return }
-        guard creatorOnboardingPresentation == .established else { return }
-        let status = creatorProfileSummary.firstIdeaHandoff["status"]
-        let isUnfinished = status == OnboardingFirstIdeaHandoffStatus.preparing.rawValue
-            || status == OnboardingFirstIdeaHandoffStatus.failed.rawValue
-        guard pending.creatorID == context.creatorID,
-              pending.scheduledDate == currentTodayDateString,
-              isUnfinished
-        else {
-            clearPendingFirstIdea()
-            return
-        }
-        if case .ready = todayContentState {
-            clearPendingFirstIdea()
-            return
-        }
-        isResumingFirstIdea = true
-        Task { @MainActor [weak self] in
-            defer { self?.isResumingFirstIdea = false }
-            _ = await self?.confirmOnboardingAndPrepareFirstIdea(
-                completedData: pending.completedData,
-                scheduledDate: pending.scheduledDate
-            )
-        }
-    }
-
     func confirmOnboardingAndPrepareFirstIdea(
         completedData: OnboardingCompletedData,
         scheduledDate: String
     ) async -> OnboardingFirstIdeaHandoffResult {
-        let pending = PendingFirstIdea(
-            creatorID: context.creatorID,
-            scheduledDate: scheduledDate,
-            completedData: completedData
-        )
-        if let data = try? JSONEncoder().encode(pending) {
-            UserDefaults.standard.set(data, forKey: Self.pendingFirstIdeaKey)
-        }
-        let result = await prepareFirstIdeaAfterOnboarding(
-            completedData: completedData,
-            scheduledDate: scheduledDate
-        )
-        switch result {
-        case .completed, .skippedExistingReady:
-            clearPendingFirstIdea()
-        case .persistFailed, .generationFailed:
-            break
-        }
-        return result
-    }
-
-    private func prepareFirstIdeaAfterOnboarding(
-        completedData: OnboardingCompletedData,
-        scheduledDate: String
-    ) async -> OnboardingFirstIdeaHandoffResult {
-        let record = OnboardingRecord(completedData: completedData)
-        let completedAt = SupabaseDateFormatting.isoTimestampString()
-        let existingPackage = firstIdeaPackage(for: scheduledDate)
-        let plan = OnboardingFirstIdeaHandoffPlanner.plan(
-            scheduledDate: scheduledDate,
-            record: record,
-            existingPackageStatus: existingPackage?.status,
-            hasUserEditedPackage: hasUserEditedFirstIdeaPackage(for: scheduledDate),
-            firstIdeaHandoffStatus: creatorProfileSummary.firstIdeaHandoff["status"],
-            existingDraftIsComplete: isFirstIdeaDraftComplete(existingPackage)
-        )
-
-        let preparingHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
-            scheduledDate: scheduledDate,
-            status: .preparing,
-            briefFingerprint: plan.briefFingerprint
-        )
-        var establishedUpdate = OnboardingProfileMapper.profileUpdate(
-            from: record,
-            onboardingState: .established,
-            onboardingStep: nil,
-            onboardingCompletedAt: completedAt,
-            firstIdeaHandoff: preparingHandoff
-        )
-
-        guard await updateCreatorProfileImmediately(establishedUpdate) else {
-            var partialUpdate = establishedUpdate
-            partialUpdate.onboardingState = .partial
-            partialUpdate.onboardingCompletedAt = nil
-            _ = await updateCreatorProfileImmediately(partialUpdate)
-            return .persistFailed
-        }
-
-        if !plan.shouldGenerate {
-            if plan.makeAvailableOnly {
-                do {
-                    let navigatedToday = try await makeDayAvailable(scheduledDate: scheduledDate)
-                    return await completeFirstIdeaHandoff(
-                        record: record,
-                        scheduledDate: scheduledDate,
-                        completedAt: completedAt,
-                        briefFingerprint: plan.briefFingerprint,
-                        navigatedToday: navigatedToday
-                    )
-                } catch {
-                    return await failFirstIdeaHandoff(
-                        record: record,
-                        scheduledDate: scheduledDate,
-                        completedAt: completedAt,
-                        briefFingerprint: plan.briefFingerprint,
-                        error: error
-                    )
-                }
-            }
-
-            return await skipFirstIdeaHandoffForExistingReady(
+        var intent: ContentIntent
+        if let pending = dayStore.outbox.first(where: { $0.kind == .firstIdea && $0.scheduledDate == scheduledDate }) {
+            intent = pending
+        } else {
+            let record = OnboardingRecord(completedData: completedData)
+            let existing = firstIdeaPackage(for: scheduledDate)
+            let plan = OnboardingFirstIdeaHandoffPlanner.plan(
+                scheduledDate: scheduledDate,
                 record: record,
-                scheduledDate: scheduledDate,
-                completedAt: completedAt,
-                briefFingerprint: plan.briefFingerprint,
-                skipReason: plan.skipReason
+                existingPackageStatus: existing?.status,
+                hasUserEditedPackage: hasUserEditedFirstIdeaPackage(for: scheduledDate),
+                firstIdeaHandoffStatus: creatorProfileSummary.firstIdeaHandoff["status"],
+                existingDraftIsComplete: isFirstIdeaDraftComplete(existing)
             )
+            intent = ContentIntent(kind: .firstIdea, context: context, scheduledDate: scheduledDate, revisionID: plan.makeAvailableOnly ? existing?.id ?? UUID() : UUID())
+            intent.completedData = completedData
+            intent.priorRevisionID = existing?.id
+            intent.dayBrief = plan.dayBrief
+            intent.firstIdeaSkipped = !plan.shouldGenerate && !plan.makeAvailableOnly
+            if plan.makeAvailableOnly { intent.generatedRevisionID = existing?.id }
+            do { try enqueueIntent(intent) }
+            catch { return .persistFailed }
         }
-
-        if hasUsableReadyTodayPackage(for: scheduledDate) {
-            return await skipFirstIdeaHandoffForExistingReady(
-                record: record,
-                scheduledDate: scheduledDate,
-                completedAt: completedAt,
-                briefFingerprint: plan.briefFingerprint,
-                skipReason: .skippedExistingReady
-            )
-        }
-
-        do {
-            _ = try await generateDayCard(
-                scheduledDate: scheduledDate,
-                dayBrief: plan.dayBrief,
-                confirmOverwrite: plan.confirmOverwrite,
-                allowDeferredVoice: completedData.voiceDeferred
-            )
-            let navigatedToday = try await makeDayAvailable(scheduledDate: scheduledDate)
-            return await completeFirstIdeaHandoff(
-                record: record,
-                scheduledDate: scheduledDate,
-                completedAt: completedAt,
-                briefFingerprint: plan.briefFingerprint,
-                navigatedToday: navigatedToday
-            )
-        } catch {
-            if Self.isReadyPackageOverwriteRequired(error) {
-                return await skipFirstIdeaHandoffForExistingReady(
-                    record: record,
-                    scheduledDate: scheduledDate,
-                    completedAt: completedAt,
-                    briefFingerprint: plan.briefFingerprint,
-                    skipReason: .skippedExistingReady
-                )
-            }
-            return await failFirstIdeaHandoff(
-                record: record,
-                scheduledDate: scheduledDate,
-                completedAt: completedAt,
-                briefFingerprint: plan.briefFingerprint,
-                error: error
-            )
-        }
-    }
-
-    private func skipFirstIdeaHandoffForExistingReady(
-        record: OnboardingRecord,
-        scheduledDate: String,
-        completedAt: String,
-        briefFingerprint: String,
-        skipReason: OnboardingFirstIdeaHandoffStatus?
-    ) async -> OnboardingFirstIdeaHandoffResult {
-        let skippedHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
-            scheduledDate: scheduledDate,
-            status: skipReason ?? .skippedExistingReady,
-            briefFingerprint: briefFingerprint
-        )
-        var skippedUpdate = OnboardingProfileMapper.profileUpdate(
-            from: record,
-            onboardingState: .established,
-            onboardingCompletedAt: completedAt,
-            firstIdeaHandoff: skippedHandoff
-        )
-        _ = await updateCreatorProfileImmediately(skippedUpdate)
-        return .skippedExistingReady
-    }
-
-    private func completeFirstIdeaHandoff(
-        record: OnboardingRecord,
-        scheduledDate: String,
-        completedAt: String,
-        briefFingerprint: String,
-        navigatedToday: Bool
-    ) async -> OnboardingFirstIdeaHandoffResult {
-        let completedHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
-            scheduledDate: scheduledDate,
-            status: .completed,
-            briefFingerprint: briefFingerprint
-        )
-        var completedUpdate = OnboardingProfileMapper.profileUpdate(
-            from: record,
-            onboardingState: .established,
-            onboardingCompletedAt: completedAt,
-            firstIdeaHandoff: completedHandoff
-        )
-        _ = await updateCreatorProfileImmediately(completedUpdate)
-        return .completed(navigatedToday: navigatedToday)
-    }
-
-    private func failFirstIdeaHandoff(
-        record: OnboardingRecord,
-        scheduledDate: String,
-        completedAt: String,
-        briefFingerprint: String,
-        error: Error
-    ) async -> OnboardingFirstIdeaHandoffResult {
-        let failedHandoff = OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
-            scheduledDate: scheduledDate,
-            status: .failed,
-            briefFingerprint: briefFingerprint
-        )
-        var failedUpdate = OnboardingProfileMapper.profileUpdate(
-            from: record,
-            onboardingState: .established,
-            onboardingCompletedAt: completedAt,
-            firstIdeaHandoff: failedHandoff
-        )
-        _ = await updateCreatorProfileImmediately(failedUpdate)
-        return .generationFailed(message: Self.firstIdeaHandoffErrorMessage(for: error))
-    }
-
-    private static let todayCardLoadingTitles: Set<String> = [
-        "Checking today's plan"
-    ]
-
-    private func hasUsableReadyTodayPackage(for scheduledDate: String) -> Bool {
-        guard scheduledDate == currentTodayDateString else { return false }
-        let title = todayCard.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, !Self.todayCardLoadingTitles.contains(title) else { return false }
-        return !todayCard.scenes.isEmpty
-    }
-
-    private static func isReadyPackageOverwriteRequired(_ error: Error) -> Bool {
-        if case RepositoryError.edgeFunction(let code) = error {
-            return code == "ready_package_overwrite_required"
-        }
-        return error.localizedDescription.contains("ready_package_overwrite_required")
+        await replayOutboxImmediately()
+        if case .firstIdea(let result) = outboxResults[intent.id] { return result }
+        if dayStore.outbox.first(where: { $0.id == intent.id })?.profileSaved == false { return .persistFailed }
+        return .generationFailed(message: Self.firstIdeaHandoffErrorMessage(for: outboxErrors[intent.id] ?? RepositoryError.edgeFunction("generation_pending")))
     }
 
     private static func firstIdeaHandoffErrorMessage(for error: Error) -> String {
@@ -1929,10 +1393,6 @@ final class AppServices {
     private func firstIdeaPackage(for scheduledDate: String) -> GeneratedDailyCardDraft? {
         dayBriefGeneratedCards[scheduledDate]
             ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
-    }
-
-    private func existingFirstIdeaPackageStatus(for scheduledDate: String) -> String? {
-        firstIdeaPackage(for: scheduledDate)?.status
     }
 
     private func hasUserEditedFirstIdeaPackage(for scheduledDate: String) -> Bool {
@@ -2000,142 +1460,62 @@ final class AppServices {
         }
     }
 
-    /// Promotes one draft day to a ready package. Returns `true` when the date is
-    /// device-local today and Today was refreshed with that card (caller should
-    /// navigate to Creator Today). On failure, throws after setting
-    /// `lastMakeDayAvailableError` and does not navigate.
     @discardableResult
     func makeDayAvailable(scheduledDate: String) async throws -> Bool {
-        guard !isMakingDayAvailable else {
-            throw RepositoryError.edgeFunction("make_day_available_already_running")
-        }
-
+        guard !isMakingDayAvailable else { throw RepositoryError.edgeFunction("make_day_available_already_running") }
         isMakingDayAvailable = true
         lastMakeDayAvailableError = nil
         defer { isMakingDayAvailable = false }
-
-        let draftCard = dayBriefGeneratedCards[scheduledDate]
-            ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
-
         do {
-            let result = try await repositories.weeklyPlans.makeDayAvailable(
-                scheduledDate: scheduledDate,
-                dailyCardID: draftCard?.id,
-                context: context
-            )
-
-            guard result.scheduledDate == scheduledDate,
-                  result.dailyCardID == draftCard?.id || draftCard == nil else {
-                throw DayTransitionError.mismatchedRevision
-            }
-            if draftCard != nil {
-                try dayStore.transition(.makeReady, on: scheduledDate)
-            }
-            let isLocalToday = scheduledDate == currentTodayDateString
-            if draftCard == nil || isLocalToday {
-                await refreshPublishedContentAfterPublishImmediately(skipTodayCard: draftCard != nil)
-            }
-            saveTodaySnapshot(source: "day-available")
-            if isLocalToday { await scheduleTodayNotificationIfNeededImmediately() }
-
-            lastActionMessage = isLocalToday
-                ? "Ready for Today."
-                : "Ready package saved for \(SupabaseDateFormatting.displayDate(for: scheduledDate))."
-            lastRepositoryError = nil
-            _ = result
-            return isLocalToday
+            let intent = try packageIntent(on: scheduledDate, action: .makeReady)
+            try enqueueIntent(intent)
+            await replayOutboxImmediately()
+            guard case .available = outboxResults[intent.id] else { throw replayError(for: intent) }
+            lastActionMessage = scheduledDate == currentTodayDateString ? "Ready for Today." : "Ready package saved for \(SupabaseDateFormatting.displayDate(for: scheduledDate))."
+            return scheduledDate == currentTodayDateString
         } catch {
-            let message = DayAvailabilityErrorDisplay.message(for: error)
-            lastMakeDayAvailableError = message
-            throw RepositoryError.edgeFunction(message)
+            lastMakeDayAvailableError = DayAvailabilityErrorDisplay.message(for: error)
+            throw error
         }
     }
 
-    /// Demotes a ready/decision package to draft. Clears live Decision state locally
-    /// and empties Today when the date is device-local today. Archive entries stay.
     @discardableResult
     func unpublishDay(scheduledDate: String) async throws -> DayUnpublishResult {
-        guard !isUnpublishingDay else {
-            throw RepositoryError.edgeFunction("unpublish_day_already_running")
-        }
-
+        guard !isUnpublishingDay else { throw RepositoryError.edgeFunction("unpublish_day_already_running") }
         isUnpublishingDay = true
         lastUnpublishDayError = nil
         defer { isUnpublishingDay = false }
-
-        let card = dayBriefGeneratedCards[scheduledDate]
-            ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
-
         do {
-            let result = try await repositories.weeklyPlans.unpublishDay(
-                scheduledDate: scheduledDate,
-                dailyCardID: card?.id,
-                context: context
-            )
-
-            guard result.scheduledDate == scheduledDate, result.dailyCardID == card?.id || card == nil else {
-                throw DayTransitionError.mismatchedRevision
-            }
-            if card != nil {
-                try dayStore.transition(.returnToDraft, on: scheduledDate)
-            } else {
-                try dayStore.transition(.missingReady, on: scheduledDate)
-            }
-            saveTodaySnapshot(source: "day-unpublish")
-            if scheduledDate == currentTodayDateString {
-                await cancelTodayNotification()
-            }
-
+            let intent = try packageIntent(on: scheduledDate, action: .returnToDraft)
+            try enqueueIntent(intent)
+            await replayOutboxImmediately()
+            guard case .unpublished(let result) = outboxResults[intent.id] else { throw replayError(for: intent) }
             lastActionMessage = "Unpublished — back to draft."
-            lastRepositoryError = nil
             return result
         } catch {
-            let message = DayLifecycleErrorDisplay.message(for: error)
-            lastUnpublishDayError = message
-            throw RepositoryError.edgeFunction(message)
+            lastUnpublishDayError = DayLifecycleErrorDisplay.message(for: error)
+            throw error
         }
     }
 
-    /// Light-edits a ready package in place (status stays ready). Refreshes Today when local today.
     @discardableResult
-    func updateReadyDayPackage(
-        scheduledDate: String,
-        package: ReadyDayPackageUpdate
-    ) async throws -> DayPackageUpdateResult {
-        guard !isUpdatingReadyDayPackage else {
-            throw RepositoryError.edgeFunction("update_ready_day_package_already_running")
-        }
-
+    func updateReadyDayPackage(scheduledDate: String, package: ReadyDayPackageUpdate) async throws -> DayPackageUpdateResult {
+        guard !isUpdatingReadyDayPackage else { throw RepositoryError.edgeFunction("update_ready_day_package_already_running") }
         isUpdatingReadyDayPackage = true
         lastReadyDayPackageEditError = nil
         defer { isUpdatingReadyDayPackage = false }
-
-        let card = dayBriefGeneratedCards[scheduledDate]
-            ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })
-
-        let resolvedCardID = card?.id
-            ?? weekCards.first(where: { $0.scheduledDate == scheduledDate })?.id
-            ?? (scheduledDate == currentTodayDateString ? todayCard.id : nil)
-
         do {
-            let result = try await repositories.weeklyPlans.updateReadyDayPackage(
-                scheduledDate: scheduledDate,
-                dailyCardID: resolvedCardID,
-                package: package,
-                context: context
-            )
-
-            guard result.scheduledDate == scheduledDate, result.dailyCardID == resolvedCardID else { throw DayTransitionError.mismatchedRevision }
-            try dayStore.updatePackage(on: scheduledDate, revisionID: result.dailyCardID, patch: package, title: result.title, caption: result.caption)
-            saveTodaySnapshot(source: "ready-day-edit")
-
+            try package.validate()
+            var intent = try packageIntent(on: scheduledDate, action: .update)
+            intent.package = package
+            try enqueueIntent(intent)
+            await replayOutboxImmediately()
+            guard case .package(let result) = outboxResults[intent.id] else { throw replayError(for: intent) }
             lastActionMessage = "Ready package updated."
-            lastRepositoryError = nil
             return result
         } catch {
-            let message = DayLifecycleErrorDisplay.message(for: error)
-            lastReadyDayPackageEditError = message
-            throw RepositoryError.edgeFunction(message)
+            lastReadyDayPackageEditError = DayLifecycleErrorDisplay.message(for: error)
+            throw error
         }
     }
 
@@ -2473,8 +1853,7 @@ final class AppServices {
             refreshError = refreshError ?? error
         }
 
-        resumeUnsyncedTodayDecisionIfNeeded()
-        resumePendingFirstIdeaIfNeeded()
+        await replayOutboxImmediately()
 
         if refreshError == nil {
             lastRepositoryRefreshAt = Date()
@@ -2494,7 +1873,6 @@ final class AppServices {
 
         normalizeManagerWeekStartIfStale()
         saveTodaySnapshot(source: "repository-refresh-complete")
-        restoreAcceptedDayGenerationsIfNeeded()
         await checkRuntimeHealthImmediately()
     }
 
@@ -2530,7 +1908,6 @@ final class AppServices {
             lastRepositoryRefreshError = nil
             saveTodaySnapshot(source: "published-refresh")
         } catch { lastRepositoryRefreshError = error.localizedDescription }
-        resumeUnsyncedTodayDecisionIfNeeded()
     }
 
     func refreshIntelligenceHomeImmediately() async {
@@ -2699,20 +2076,327 @@ final class AppServices {
 
     private func apply(snapshot: CachedTodaySnapshot) {
         dayStore.restore(snapshot.migratedStore(for: context))
-        unsyncedTodayDecision = snapshot.unsyncedDecision
-        if let card = unsyncedTodayDecision?.card { try? dayStore.retainPendingCard(card) }
+        for intent in dayStore.outbox {
+            if let card = intent.cardSnapshot { try? dayStore.retainPendingCard(card) }
+        }
     }
 
     private func saveTodaySnapshot(source: String) {
-        let snapshot = CachedTodaySnapshot(
-            dayStore: dayStore.snapshot,
-            cachedAt: Date(),
-            source: source,
-            unsyncedDecision: unsyncedTodayDecision
-        )
+        do { try persistDaySnapshot(source: source) }
+        catch { lastRepositoryError = error.localizedDescription }
+    }
+
+    private func persistDaySnapshot(source: String) throws {
+        try todayCache.saveSnapshot(CachedTodaySnapshot(dayStore: dayStore.snapshot, cachedAt: Date(), source: source), for: context)
+    }
+
+    private func migrateLegacyOutbox() {
+        let defaults = isLiveSupabaseRuntime ? UserDefaults.standard : DebugLaunchConfiguration.fixtureDefaults
+        let firstKey = "ch-pending-first-idea"
+        let generationKey = "ch-accepted-day-generations"
+        var changed = false
+        if let data = defaults.data(forKey: firstKey),
+           let legacy = try? JSONDecoder().decode(LegacyFirstIdeaMigration.self, from: data), legacy.creatorID == context.creatorID {
+            if !dayStore.outbox.contains(where: { $0.kind == .firstIdea && $0.scheduledDate == legacy.scheduledDate }) {
+                var intent = ContentIntent(kind: .firstIdea, context: context, scheduledDate: legacy.scheduledDate)
+                intent.completedData = legacy.completedData
+                intent.dayBrief = OnboardingFirstIdeaBriefBuilder.buildDayBrief(from: OnboardingRecord(completedData: legacy.completedData))
+                if let existing = dayPackage(for: legacy.scheduledDate), isFirstIdeaDraftComplete(existing) {
+                    intent.generatedRevisionID = existing.id
+                    intent.firstIdeaSkipped = DayPackageLifecycleStatus.requiresOverwriteConfirmation(existing.status)
+                }
+                dayStore.enqueue(intent)
+            }
+            changed = true
+        }
+        let runs = defaults.data(forKey: generationKey).flatMap { try? JSONDecoder().decode([LegacyGenerationMigration].self, from: $0) } ?? []
+        for run in runs where run.creatorID == context.creatorID {
+            if let pending = dayStore.outbox.first(where: { $0.isGeneration && $0.scheduledDate == run.scheduledDate }) {
+                if pending.generationID == nil {
+                    var pending = pending
+                    pending.generationID = run.generationID
+                    dayStore.updateIntent(pending)
+                }
+            } else {
+                var intent = ContentIntent(kind: .generate, context: context, scheduledDate: run.scheduledDate)
+                intent.generationID = run.generationID
+                intent.createdAt = run.acceptedAt
+                dayStore.enqueue(intent)
+            }
+            changed = true
+        }
+        guard changed else { return }
         do {
-            try todayCache.saveSnapshot(snapshot, for: context)
+            try persistDaySnapshot(source: "outbox-migrated")
+            if let data = defaults.data(forKey: firstKey), let legacy = try? JSONDecoder().decode(LegacyFirstIdeaMigration.self, from: data), legacy.creatorID == context.creatorID {
+                defaults.removeObject(forKey: firstKey)
+            }
+            if !runs.isEmpty, runs.allSatisfy({ $0.creatorID == context.creatorID }) { defaults.removeObject(forKey: generationKey) }
         } catch { lastRepositoryError = error.localizedDescription }
+    }
+
+    private func enqueueIntent(_ intent: ContentIntent) throws {
+        if dayStore.outbox.contains(where: { $0.id == intent.id }) { return }
+        dayStore.enqueue(intent)
+        do { try persistDaySnapshot(source: "outbox-enqueued") }
+        catch { dayStore.finishIntent(intent.id); throw error }
+    }
+
+    private func enqueueGeneration(_ requested: ContentIntent) throws {
+        var intent = requested
+        intent.priorRevisionID = dayPackage(for: intent.scheduledDate)?.id
+        guard !dayStore.outbox.contains(where: { $0.isGeneration && $0.scheduledDate == intent.scheduledDate }) else {
+            throw RepositoryError.edgeFunction("generation_already_running")
+        }
+        if case .generating = dayStore.day(for: intent.scheduledDate)?.lifecycle { throw RepositoryError.edgeFunction("generation_already_running") }
+        try enqueueIntent(intent)
+        try dayStore.transition(.generate(DayGenerationRun(requestID: intent.requestedRevisionID, generationID: nil), replacing: dayPackage(for: intent.scheduledDate) != nil), on: intent.scheduledDate)
+        try persistDaySnapshot(source: "outbox-generation")
+    }
+
+    private func packageIntent(on date: String, action: PackageIntentAction) throws -> ContentIntent {
+        guard let day = dayStore.day(for: date), let revision = day.revision else { throw DayTransitionError.mismatchedRevision }
+        if let existing = dayStore.outbox.first(where: { $0.kind == .editPackage && $0.revisionID == revision.id && $0.packageAction == action && action != .update }) { return existing }
+        var intent = ContentIntent(kind: .editPackage, context: context, scheduledDate: date, revisionID: revision.id)
+        intent.packageAction = action
+        intent.expectedVersion = day.serverUpdatedAt
+        return intent
+    }
+
+    private func replayError(for intent: ContentIntent) -> Error {
+        outboxErrors[intent.id] ?? RepositoryError.edgeFunction("Your request is saved. It will retry when the connection returns.")
+    }
+
+    private func generatedResult(for intent: ContentIntent) throws -> GeneratedDailyCardDraft {
+        if case .generated(let card) = outboxResults[intent.id] { return card }
+        throw replayError(for: intent)
+    }
+
+    func replayOutboxImmediately() async {
+        migrateLegacyOutbox()
+        if let task = outboxReplayTask {
+            outboxNeedsReplay = true
+            await task.value
+            return
+        }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            repeat {
+                self.outboxNeedsReplay = false
+                await self.drainOutbox()
+            } while self.outboxNeedsReplay
+        }
+        outboxReplayTask = task
+        await task.value
+        outboxReplayTask = nil
+    }
+
+    private func drainOutbox() async {
+        var attempted: Set<String> = []
+        var blocked: Set<UUID> = []
+        while let intent = dayStore.outbox.first(where: { candidate in
+            !attempted.contains(candidate.id) && !blocked.contains(candidate.revisionID)
+                && (candidate.isGeneration || !dayStore.outbox.contains { $0.isGeneration && $0.requestedRevisionID == candidate.revisionID && $0.generatedRevisionID == nil })
+        }) {
+            if Task.isCancelled { return }
+            attempted.insert(intent.id)
+            outboxErrors[intent.id] = nil
+            if intent.isGeneration { generatingDayBriefDates.insert(intent.scheduledDate) }
+            do {
+                let result = try await replayIntent(intent)
+                let pending = dayStore.outbox
+                dayStore.finishIntent(intent.id)
+                do { try persistDaySnapshot(source: "outbox-done") }
+                catch { dayStore.restoreOutbox(pending); throw error }
+                outboxResults[intent.id] = result
+                if intent.kind == .decide { lastTodayDecisionSyncError = nil }
+                lastRepositoryError = nil
+            } catch {
+                outboxErrors[intent.id] = error
+                let code = SupabaseFunctionErrorMapper.errorCode(from: error) ?? error.localizedDescription
+                if code == "daily_card_not_found" {
+                    let pending = dayStore.outbox
+                    do {
+                        if intent.kind == .firstIdea { try await saveFirstIdeaProfile(intent, status: .failed) }
+                        dayStore.finishIntent(intent.id)
+                        try persistDaySnapshot(source: "outbox-revision-removed")
+                    } catch { dayStore.restoreOutbox(pending) }
+                } else if case OutboxTerminalFailure.server = error {
+                    let pending = dayStore.outbox
+                    do {
+                        if intent.kind == .firstIdea { try await saveFirstIdeaProfile(intent, status: .failed) }
+                        dayStore.finishIntent(intent.id)
+                        try persistDaySnapshot(source: "outbox-terminal-failure")
+                    } catch { dayStore.restoreOutbox(pending) }
+                } else {
+                    blocked.insert(intent.revisionID)
+                    if intent.isGeneration { await reconcileInterruptedGeneration(intent) }
+                }
+                if intent.kind == .decide { lastTodayDecisionSyncError = TodayDecisionErrorDisplay.message(for: error) }
+                if intent.isGeneration { dayBriefGenerationErrors[intent.scheduledDate] = DayGenerationErrorDisplay.message(for: error) }
+                if intent.kind == .firstIdea, let current = dayStore.outbox.first(where: { $0.id == intent.id }), current.profileSaved {
+                    try? await saveFirstIdeaProfile(current, status: .failed)
+                }
+            }
+            if intent.isGeneration { generatingDayBriefDates.remove(intent.scheduledDate) }
+        }
+    }
+
+    private func reconcileInterruptedGeneration(_ intent: ContentIntent) async {
+        let version = dayStore.changeVersion
+        do {
+            if let rows = try await repositories.today.creatorDays(for: context) {
+                let matches = rows.filter { $0.scheduledDate == intent.scheduledDate }
+                if !matches.isEmpty { try dayStore.reconcile(matches, today: intent.scheduledDate, readVersion: version) }
+            } else if let card = try await repositories.today.weekCards(for: context).first(where: { $0.scheduledDate == intent.scheduledDate }) {
+                try dayStore.receivePublished(card, readVersion: version)
+            }
+            try persistDaySnapshot(source: "outbox-generation-reconciled")
+        } catch { lastRepositoryError = error.localizedDescription }
+    }
+
+    private func replayIntent(_ original: ContentIntent) async throws -> OutboxReplayResult {
+        switch original.kind {
+        case .decide:
+            let entry = try await repositories.today.replayDecision(original, context: context)
+            guard entry.dailyCardID == original.revisionID else { throw DayTransitionError.mismatchedRevision }
+            dayStore.mergeArchive([entry], authoritative: true)
+            return .decision(entry)
+        case .editPackage:
+            let result = try await repositories.weeklyPlans.replayPackage(original, context: context)
+            try await applyPackageReply(result, intent: original)
+            return result
+        case .generate, .replaceDay:
+            return .generated(try await replayGeneration(original))
+        case .firstIdea:
+            var intent = original
+            if let code = intent.terminalFailureCode {
+                try await saveFirstIdeaProfile(intent, status: .failed)
+                throw OutboxTerminalFailure.server(code)
+            }
+            try await saveFirstIdeaProfile(intent, status: .preparing)
+            if !intent.profileSaved {
+                intent.profileSaved = true
+                dayStore.updateIntent(intent)
+                try persistDaySnapshot(source: "outbox-first-idea-profile")
+            }
+            if intent.firstIdeaSkipped {
+                try await saveFirstIdeaProfile(intent, status: .skippedExistingReady)
+                return .firstIdea(.skippedExistingReady)
+            }
+            if intent.generatedRevisionID == nil {
+                let card = try await replayGeneration(intent)
+                intent = dayStore.outbox.first { $0.id == intent.id } ?? intent
+                intent.generatedRevisionID = card.id
+                dayStore.updateIntent(intent)
+                try persistDaySnapshot(source: "outbox-first-idea-draft")
+            }
+            guard let revisionID = intent.generatedRevisionID else { throw DayTransitionError.mismatchedRevision }
+            var approval = intent
+            approval.kind = .editPackage
+            approval.revisionID = revisionID
+            approval.packageAction = .makeReady
+            approval.idempotencyKey = intent.id + ":ready"
+            let result = try await repositories.weeklyPlans.replayPackage(approval, context: context)
+            try await applyPackageReply(result, intent: approval)
+            try persistDaySnapshot(source: "outbox-first-idea-ready")
+            try await saveFirstIdeaProfile(intent, status: .completed)
+            return .firstIdea(.completed(navigatedToday: intent.scheduledDate == currentTodayDateString))
+        }
+    }
+
+    private func replayGeneration(_ original: ContentIntent) async throws -> GeneratedDailyCardDraft {
+        var intent = original
+        if intent.generatedRevisionID == nil && intent.supersededByServer != true {
+            try dayStore.transition(.generate(DayGenerationRun(requestID: intent.requestedRevisionID, generationID: intent.generationID), replacing: dayPackage(for: intent.scheduledDate) != nil), on: intent.scheduledDate)
+            try persistDaySnapshot(source: "outbox-generating")
+        }
+        while !Task.isCancelled {
+            try requireAIConsent(for: .generateDay(scheduledDate: intent.scheduledDate))
+            let response = try await repositories.dailyGeneration.replayGeneration(intent, context: context)
+            intent = dayStore.outbox.first { $0.id == intent.id } ?? intent
+            switch response {
+            case .running(let generationID, let delay):
+                intent.generationID = generationID
+                dayStore.updateIntent(intent)
+                if intent.supersededByServer != true {
+                    try dayStore.transition(.generate(DayGenerationRun(requestID: intent.requestedRevisionID, generationID: generationID), replacing: true), on: intent.scheduledDate)
+                }
+                try persistDaySnapshot(source: "outbox-generation-accepted")
+                try await Task.sleep(nanoseconds: UInt64(max(1, min(delay, 15))) * 1_000_000_000)
+            case .completed(let result):
+                guard result.targetScheduledDate == intent.scheduledDate, result.dailyCard.scheduledDate == intent.scheduledDate else { throw DayTransitionError.mismatchedRevision }
+                let card: GeneratedDailyCardDraft
+                if intent.supersededByServer == true {
+                    if dayStore.day(for: intent.scheduledDate)?.revision?.id != result.dailyCard.id {
+                        try dayStore.transition(.retain(result.dailyCard, nil), on: intent.scheduledDate)
+                    }
+                    card = result.dailyCard
+                } else if let existing = dayStore.day(for: intent.scheduledDate)?.revision, existing.id == result.dailyCard.id {
+                    try dayStore.receive(existing.content, completion: existing.decision?.completionState, authoritativeDecision: true)
+                    card = existing.content
+                } else {
+                    card = try applyDayGenerationResult(result, scheduledDate: intent.scheduledDate)
+                }
+                intent.generatedRevisionID = card.id
+                dayStore.updateIntent(intent)
+                dayStore.bindRevision(requestedID: intent.requestedRevisionID, to: card.id)
+                try persistDaySnapshot(source: "outbox-generation-completed")
+                return card
+            case .failed(let code):
+                intent.terminalFailureCode = code
+                dayStore.updateIntent(intent)
+                if intent.supersededByServer != true, case .generating(let run) = dayStore.day(for: intent.scheduledDate)?.lifecycle,
+                   run.requestID == intent.requestedRevisionID || run.generationID == intent.generationID && intent.generationID != nil {
+                    try dayStore.transition(.generationFailed, on: intent.scheduledDate)
+                }
+                try persistDaySnapshot(source: "outbox-generation-failed")
+                throw OutboxTerminalFailure.server(code)
+            }
+        }
+        throw CancellationError()
+    }
+
+    private func applyPackageReply(_ result: OutboxReplayResult, intent: ContentIntent) async throws {
+        let current = dayStore.day(for: intent.scheduledDate)?.revision?.id == intent.revisionID
+        switch result {
+        case .available(let reply):
+            guard reply.dailyCardID == intent.revisionID, reply.scheduledDate == intent.scheduledDate else { throw DayTransitionError.mismatchedRevision }
+            if current, var content = dayStore.day(for: intent.scheduledDate)?.revision?.content {
+                content.status = reply.status
+                try dayStore.receive(content, completion: CompletionState(supabaseStatus: reply.status), authoritativeDecision: true)
+            }
+            if current, intent.scheduledDate == currentTodayDateString { await scheduleTodayNotificationIfNeededImmediately() }
+        case .unpublished(let reply):
+            guard reply.dailyCardID == intent.revisionID, reply.scheduledDate == intent.scheduledDate else { throw DayTransitionError.mismatchedRevision }
+            if current, dayStore.day(for: intent.scheduledDate)?.lifecycle.exposesReadyPackage == true { try dayStore.transition(.returnToDraft, on: intent.scheduledDate) }
+            if current, intent.scheduledDate == currentTodayDateString { await cancelTodayNotification() }
+        case .package(let reply):
+            guard reply.dailyCardID == intent.revisionID, reply.scheduledDate == intent.scheduledDate else { throw DayTransitionError.mismatchedRevision }
+            if current, let patch = intent.package { try dayStore.updatePackage(on: intent.scheduledDate, revisionID: reply.dailyCardID, patch: patch, title: reply.title, caption: reply.caption) }
+        default: throw DayTransitionError.mismatchedRevision
+        }
+    }
+
+    private func saveFirstIdeaProfile(_ intent: ContentIntent, status: OnboardingFirstIdeaHandoffStatus) async throws {
+        guard let data = intent.completedData else { throw DayTransitionError.incompletePackage }
+        let brief = intent.dayBrief ?? ""
+        var update = OnboardingProfileMapper.profileUpdate(
+            from: OnboardingRecord(completedData: data),
+            onboardingState: .established,
+            onboardingCompletedAt: ISO8601DateFormatter().string(from: intent.createdAt),
+            firstIdeaHandoff: OnboardingFirstIdeaHandoffPlanner.firstIdeaHandoffPayload(
+                scheduledDate: intent.scheduledDate,
+                status: status,
+                briefFingerprint: OnboardingFirstIdeaBriefBuilder.fingerprint(for: brief)
+            )
+        )
+        if intent.profileSaved {
+            update = CreatorProfileUpdate(firstIdeaHandoff: update.firstIdeaHandoff)
+        }
+        guard await updateCreatorProfileImmediately(update) else {
+            throw RepositoryError.edgeFunction(creatorProfileEditError ?? "creator_profile_save_failed")
+        }
     }
 
     private func makeArchiveEntry(

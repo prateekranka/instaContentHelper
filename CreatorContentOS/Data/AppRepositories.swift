@@ -100,6 +100,7 @@ protocol TodayCardRepository: Sendable {
     func creatorDays(for context: WorkspaceContext) async throws -> [SupabaseCreatorDayRow]?
     func todayCard(for context: WorkspaceContext) async throws -> DailyCard
     func weekCards(for context: WorkspaceContext) async throws -> [DailyCard]
+    func replayDecision(_ intent: ContentIntent, context: WorkspaceContext) async throws -> ArchiveEntry
     func completeToday(
         card: DailyCard,
         decision: DailyDecision,
@@ -234,6 +235,8 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
 }
 
 protocol WeeklyPlanRepository: Sendable {
+    func replayPackage(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxReplayResult
+
     func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan
     func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft?
     func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea]
@@ -291,6 +294,8 @@ protocol WeeklyPlanRepository: Sendable {
 }
 
 protocol DayGenerationRepository: Sendable {
+    func replayGeneration(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxGenerationResponse
+
     func generateDay(
         creatorID: UUID,
         scheduledDate: String,
@@ -342,6 +347,17 @@ extension PlanDayIdeaRepository {
 }
 
 extension DayGenerationRepository {
+    func replayGeneration(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxGenerationResponse {
+        if let generationID = intent.generationID {
+            return .completed(try await resumeAcceptedDayGeneration(generationID: generationID, creatorID: intent.creatorID, context: context))
+        }
+        if let planID = intent.weeklyPlanID, let preserve = intent.preserveManualEdits {
+            return .completed(try await regenerateDay(creatorID: intent.creatorID, weeklyPlanID: planID, scheduledDate: intent.scheduledDate, preserveManualEdits: preserve, dayGuidance: intent.dayGuidance, context: context))
+        }
+        guard intent.kind != .replaceDay else { throw RepositoryError.notConfigured("replace_day_not_configured") }
+        return .completed(try await generateDay(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dayBrief: intent.dayBrief ?? "", context: context))
+    }
+
     func generateDay(
         creatorID: UUID,
         scheduledDate: String,
@@ -516,7 +532,7 @@ struct DayUnpublishResult: Hashable, Sendable {
     var weeklyPlanID: UUID
 }
 
-struct ReadyDayPackageUpdate: Hashable, Sendable {
+struct ReadyDayPackageUpdate: Codable, Hashable, Sendable {
     var title: String?
     var whyToday: String?
     var caption: String?
@@ -526,6 +542,15 @@ struct ReadyDayPackageUpdate: Hashable, Sendable {
     var shootability: String?
     var estimatedShootMinutes: Int?
     var sceneList: [ShotScene]?
+}
+
+extension ReadyDayPackageUpdate {
+    func validate() throws {
+        let text = [title, whyToday, caption, script, backupStory, backupCaptionOnly, shootability]
+        guard !text.contains(where: { $0 != nil && $0?.nilIfBlank == nil }) else {
+            throw RepositoryError.edgeFunction("blank_package_text")
+        }
+    }
 }
 
 struct DayPackageUpdateResult: Hashable, Sendable {
@@ -572,7 +597,7 @@ enum DayPackageLifecycleStatus {
     }
 }
 
-struct CreatorProfileSummary: Hashable, Sendable {
+struct CreatorProfileSummary: Codable, Hashable, Sendable {
     var displayName: String
     var positioning: String
     var voiceLine: String
@@ -704,6 +729,10 @@ struct CreatorProfileUpdate: Sendable {
         self.languagePreferences = languagePreferences
     }
 
+    init(firstIdeaHandoff: [String: String]?) {
+        self.firstIdeaHandoff = firstIdeaHandoff
+    }
+
     init(summary: CreatorProfileSummary) {
         positioning = summary.positioning
         voiceRules = summary.voiceRules.isEmpty
@@ -803,4 +832,27 @@ protocol RuntimeHealthRepository: Sendable {
 
 extension TodayCardRepository {
     func creatorDays(for context: WorkspaceContext) async throws -> [SupabaseCreatorDayRow]? { nil }
+}
+
+extension TodayCardRepository {
+    func replayDecision(_ intent: ContentIntent, context: WorkspaceContext) async throws -> ArchiveEntry {
+        guard let card = intent.cardSnapshot, let decision = intent.decision else { throw DayTransitionError.mismatchedRevision }
+        return try await completeToday(card: card, decision: decision, context: context)
+    }
+}
+
+extension WeeklyPlanRepository {
+    func replayPackage(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxReplayResult {
+        switch intent.packageAction {
+        case .makeReady:
+            return .available(try await makeDayAvailable(scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, context: context))
+        case .returnToDraft:
+            return .unpublished(try await unpublishDay(scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, context: context))
+        case .update:
+            guard let package = intent.package else { throw DayTransitionError.incompletePackage }
+            try package.validate()
+            return .package(try await updateReadyDayPackage(scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, package: package, context: context))
+        case nil: throw DayTransitionError.illegalMove
+        }
+    }
 }

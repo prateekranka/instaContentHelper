@@ -1085,6 +1085,7 @@ function allowedRoles(_action: WriteAction): string[] {
 function stableWriteError(value: unknown, action: WriteAction): string {
   if (
     value === "posted_revision_immutable" ||
+    value === "historical_revision_immutable" ||
     value === "creator_not_found" ||
     value === "daily_card_not_found" ||
     value === "idea_not_found" ||

@@ -114,7 +114,7 @@ struct TodayView: View {
             NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
                 Label("Plan", systemImage: "calendar")
             }
-            if dynamicTypeSize.isAccessibilitySize {
+            if dynamicTypeSize.isAccessibilitySize && services.canChooseEasierOption {
                 Button {
                     sheet = .notToday
                 } label: {

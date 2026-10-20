@@ -38,6 +38,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
     var action = "regenerate_day"
     var dayGuidance: String?
     var clientContext: SupabaseGenerationClientContext? = nil
+    var idempotencyKey: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
@@ -49,6 +50,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
         case action
         case dayGuidance = "day_guidance"
         case clientContext = "client_context"
+        case idempotencyKey = "idempotency_key"
     }
 }
 
@@ -64,6 +66,7 @@ struct SupabaseDailyGenerationRequest: Encodable, Sendable {
     var mock: Bool?
     var action = "generate_day"
     var clientContext: SupabaseGenerationClientContext? = nil
+    var idempotencyKey: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
@@ -73,6 +76,7 @@ struct SupabaseDailyGenerationRequest: Encodable, Sendable {
         case mock
         case action
         case clientContext = "client_context"
+        case idempotencyKey = "idempotency_key"
     }
 }
 
@@ -114,7 +118,7 @@ struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
     }
 }
 
-struct DailyGenerationResult: Hashable, Sendable {
+struct DailyGenerationResult: Codable, Hashable, Sendable {
     var generationID: UUID
     var weeklyPlanID: UUID
     var status: String
@@ -573,5 +577,23 @@ private extension ProductionTimelineItem {
             object["duration_seconds"] = .number(Double(durationSeconds))
         }
         return .object(object)
+    }
+}
+
+struct SupabaseReplaceDayRequest: Encodable, Sendable {
+    var creatorID: UUID
+    var scheduledDate: String
+    var dailyCardID: UUID
+    var dayBrief: String
+    var idempotencyKey: String
+    var responseMode: GenerationResponseMode = .async
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case scheduledDate = "scheduled_date"
+        case dailyCardID = "daily_card_id"
+        case dayBrief = "day_brief"
+        case idempotencyKey = "idempotency_key"
+        case responseMode = "response_mode"
     }
 }

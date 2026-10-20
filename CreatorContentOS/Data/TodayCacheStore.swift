@@ -4,21 +4,25 @@ import Observation
 struct DayStoreSnapshot: Codable, Hashable, Sendable {
     var days: [Day] = []
     var archiveEntries: [ArchiveEntry] = []
+    var outbox: [ContentIntent] = []
 
-    init(days: [Day] = [], archiveEntries: [ArchiveEntry] = []) {
+    init(days: [Day] = [], archiveEntries: [ArchiveEntry] = [], outbox: [ContentIntent] = []) {
         self.days = days
         self.archiveEntries = archiveEntries
+        self.outbox = outbox
     }
 
     enum CodingKeys: String, CodingKey {
         case days
         case archiveEntries
+        case outbox
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         days = try values.decodeIfPresent([Day].self, forKey: .days) ?? []
         archiveEntries = try values.decodeIfPresent([ArchiveEntry].self, forKey: .archiveEntries) ?? []
+        outbox = try values.decodeIfPresent([ContentIntent].self, forKey: .outbox) ?? []
     }
 }
 
@@ -31,14 +35,14 @@ final class DayStore {
     private var dayVersions: [String: Int] = [:]
     private(set) var archiveEntries: [ArchiveEntry] = []
     var ideaSuggestions: [String: PlanDayIdeasCacheEntry] = [:]
-    var pendingDecisionRevisionID: UUID?
+    private(set) var outbox: [ContentIntent] = []
 
     init(context: WorkspaceContext) {
         self.context = context
     }
 
     var snapshot: DayStoreSnapshot {
-        DayStoreSnapshot(days: days.values.sorted { $0.identity.scheduledDate < $1.identity.scheduledDate }, archiveEntries: archiveEntries)
+        DayStoreSnapshot(days: days.values.sorted { $0.identity.scheduledDate < $1.identity.scheduledDate }, archiveEntries: archiveEntries, outbox: outbox)
     }
 
     var packages: [String: GeneratedDailyCardDraft] {
@@ -67,8 +71,34 @@ final class DayStore {
             changeVersion += 1
             dayVersions[day.identity.scheduledDate] = changeVersion
         }
+        outbox = snapshot.outbox.filter { $0.workspaceID == context.workspaceID && $0.creatorID == context.creatorID }
         archiveEntries.removeAll()
         mergeArchive(snapshot.archiveEntries)
+    }
+
+    func enqueue(_ intent: ContentIntent) {
+        guard intent.workspaceID == context.workspaceID, intent.creatorID == context.creatorID,
+              !outbox.contains(where: { $0.id == intent.id }) else { return }
+        outbox.append(intent)
+    }
+
+    func restoreOutbox(_ intents: [ContentIntent]) {
+        outbox = intents
+    }
+
+    func updateIntent(_ intent: ContentIntent) {
+        guard let index = outbox.firstIndex(where: { $0.id == intent.id }) else { return }
+        outbox[index] = intent
+    }
+
+    func finishIntent(_ id: String) {
+        outbox.removeAll { $0.id == id }
+    }
+
+    func bindRevision(requestedID: UUID, to revisionID: UUID) {
+        for index in outbox.indices where !outbox[index].isGeneration && outbox[index].revisionID == requestedID {
+            outbox[index].revisionID = revisionID
+        }
     }
 
     func changed(_ date: String, since version: Int) -> Bool { (dayVersions[date] ?? 0) > version }
@@ -84,10 +114,11 @@ final class DayStore {
     func receive(_ package: GeneratedDailyCardDraft, completion: CompletionState? = nil, updatedAt: String? = nil, readVersion: Int? = nil, authoritativeDecision: Bool = false) throws {
         if let readVersion, changed(package.scheduledDate, since: readVersion) { return }
         let localDecision = days[package.scheduledDate]?.revision
-        let keepsDecision = localDecision?.id == package.id
-            && (localDecision?.id == pendingDecisionRevisionID || !authoritativeDecision && DayPackageLifecycleStatus.requiresOverwriteConfirmation(package.status))
-        let resolvedCompletion = completion ?? CompletionState(supabaseStatus: package.status)
-            ?? (keepsDecision ? localDecision?.decision?.completionState : nil)
+        let pending = outbox.last { $0.kind == .decide && $0.revisionID == package.id }
+        let keepsDecision = localDecision?.id == package.id && !authoritativeDecision
+            && DayPackageLifecycleStatus.requiresOverwriteConfirmation(package.status)
+        let resolvedCompletion = pending?.decision?.completionState
+            ?? (keepsDecision ? localDecision?.decision?.completionState : completion ?? CompletionState(supabaseStatus: package.status))
         try transition(.reconcile(package, resolvedCompletion, updatedAt), on: package.scheduledDate)
     }
 
@@ -123,8 +154,20 @@ final class DayStore {
             } else {
                 throw DayTransitionError.mismatchedRevision
             }
-            if let run = row.generation, run.status == "running" {
-                try transition(.generate(DayGenerationRun(requestID: run.generationID, generationID: run.generationID), replacing: true), on: row.scheduledDate)
+            if let run = row.generation {
+                for index in outbox.indices where outbox[index].isGeneration && outbox[index].scheduledDate == row.scheduledDate {
+                    if run.idempotencyKey == outbox[index].id || run.generationID == outbox[index].generationID {
+                        outbox[index].generationID = run.generationID
+                        if run.status == "completed" { outbox[index].generatedRevisionID = row.currentRevisionID }
+                    } else if run.idempotencyKey != nil,
+                              outbox[index].generationID != nil || row.currentRevisionID != nil && row.currentRevisionID != outbox[index].priorRevisionID {
+                        outbox[index].supersededByServer = true
+                    }
+                }
+                if run.status == "running" {
+                    let requestID = outbox.first { $0.generationID == run.generationID }?.requestedRevisionID ?? run.generationID
+                    try transition(.generate(DayGenerationRun(requestID: requestID, generationID: run.generationID), replacing: true), on: row.scheduledDate)
+                }
             }
         }
         if !rows.contains(where: { $0.scheduledDate == today }), !changed(today, since: readVersion) {
@@ -184,31 +227,30 @@ final class DayStore {
 }
 
 struct CachedTodaySnapshot: Codable, Hashable, Sendable {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
     var schemaVersion: Int = currentSchemaVersion
     var dayStore: DayStoreSnapshot?
     var cachedAt: Date
     var source: String
-    var unsyncedDecision: UnsyncedTodayDecision?
+    private var legacyDecision: LegacyTodayDecision?
     private var todayCard: DailyCard?
     private var weekCards: [DailyCard] = []
     private var shotSceneIDs: Set<UUID> = []
 
-    init(dayStore: DayStoreSnapshot, cachedAt: Date, source: String, unsyncedDecision: UnsyncedTodayDecision?) {
+    init(dayStore: DayStoreSnapshot, cachedAt: Date, source: String) {
         self.dayStore = dayStore
         self.cachedAt = cachedAt
         self.source = source
-        self.unsyncedDecision = unsyncedDecision
     }
 
-    init(todayCard: DailyCard, weekCards: [DailyCard], cachedAt: Date, source: String, shotSceneIDs: Set<UUID>? = nil, unsyncedDecision: UnsyncedTodayDecision? = nil) {
+    init(todayCard: DailyCard, weekCards: [DailyCard], cachedAt: Date, source: String, shotSceneIDs: Set<UUID>? = nil, unsyncedDecision: LegacyTodayDecision? = nil) {
         schemaVersion = 1
         self.todayCard = todayCard
         self.weekCards = weekCards
         self.cachedAt = cachedAt
         self.source = source
         self.shotSceneIDs = shotSceneIDs ?? []
-        self.unsyncedDecision = unsyncedDecision
+        self.legacyDecision = unsyncedDecision
     }
 
     enum CodingKeys: String, CodingKey {
@@ -227,9 +269,9 @@ struct CachedTodaySnapshot: Codable, Hashable, Sendable {
         todayCard = try values.decodeIfPresent(DailyCard.self, forKey: .todayCard)
         weekCards = try values.decodeIfPresent([DailyCard].self, forKey: .weekCards) ?? []
         shotSceneIDs = try values.decodeIfPresent(Set<UUID>.self, forKey: .shotSceneIDs) ?? []
-        unsyncedDecision = try values.decodeIfPresent(UnsyncedTodayDecision.self, forKey: .unsyncedDecision)
-        if unsyncedDecision?.card == nil, let id = unsyncedDecision?.cardID {
-            unsyncedDecision?.card = ([todayCard].compactMap { $0 } + weekCards).first { $0.id == id }
+        legacyDecision = try values.decodeIfPresent(LegacyTodayDecision.self, forKey: .unsyncedDecision)
+        if legacyDecision?.card == nil, let id = legacyDecision?.cardID {
+            legacyDecision?.card = ([todayCard].compactMap { $0 } + weekCards).first { $0.id == id }
                 ?? dayStore?.days.compactMap(\.revision).first { $0.id == id }?.dailyCard
         }
     }
@@ -240,7 +282,7 @@ struct CachedTodaySnapshot: Codable, Hashable, Sendable {
         try values.encodeIfPresent(dayStore, forKey: .dayStore)
         try values.encode(cachedAt, forKey: .cachedAt)
         try values.encode(source, forKey: .source)
-        try values.encodeIfPresent(unsyncedDecision, forKey: .unsyncedDecision)
+        if dayStore == nil { try values.encodeIfPresent(legacyDecision, forKey: .unsyncedDecision) }
         if dayStore == nil {
             try values.encodeIfPresent(todayCard, forKey: .todayCard)
             try values.encode(weekCards, forKey: .weekCards)
@@ -249,7 +291,10 @@ struct CachedTodaySnapshot: Codable, Hashable, Sendable {
     }
 
     func migratedStore(for context: WorkspaceContext) -> DayStoreSnapshot {
-        if let dayStore { return dayStore }
+        if var dayStore {
+            migrateDecision(into: &dayStore, context: context)
+            return dayStore
+        }
         var days: [String: Day] = [:]
         for card in weekCards + [todayCard].compactMap({ $0 }) {
             guard let date = card.scheduledDate else { continue }
@@ -266,11 +311,24 @@ struct CachedTodaySnapshot: Codable, Hashable, Sendable {
                 days[date] = day
             }
         }
-        return DayStoreSnapshot(days: Array(days.values))
+        var snapshot = DayStoreSnapshot(days: Array(days.values))
+        migrateDecision(into: &snapshot, context: context)
+        return snapshot
     }
+    private func migrateDecision(into snapshot: inout DayStoreSnapshot, context: WorkspaceContext) {
+        guard let legacyDecision else { return }
+        let card = legacyDecision.card ?? snapshot.days.compactMap(\.revision).first { $0.id == legacyDecision.cardID }?.dailyCard
+        guard let card, let date = card.scheduledDate,
+              !snapshot.outbox.contains(where: { $0.kind == .decide && $0.revisionID == card.id }) else { return }
+        var intent = ContentIntent(kind: .decide, context: context, scheduledDate: date, revisionID: card.id)
+        intent.decision = legacyDecision.decision
+        intent.cardSnapshot = card
+        snapshot.outbox.append(intent)
+    }
+
 }
 
-struct UnsyncedTodayDecision: Codable, Hashable, Sendable {
+struct LegacyTodayDecision: Codable, Hashable, Sendable {
     var cardID: UUID
     var decision: DailyDecision
     var card: DailyCard?
