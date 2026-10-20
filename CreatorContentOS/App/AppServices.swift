@@ -7,6 +7,7 @@ enum TodayContentState: Equatable, Hashable, Sendable {
     case loading
     case ready
     case missingPublishedCard(date: String)
+    case unavailable
 }
 
 @MainActor
@@ -59,6 +60,7 @@ final class AppServices {
     var weekCards: [DailyCard]
     var lastRepositoryError: String?
     var lastTodayDecisionSyncError: String?
+    private(set) var unsyncedTodayDecision: UnsyncedTodayDecision?
     var lastRepositoryRefreshAttemptAt: Date?
     var lastRepositoryRefreshAt: Date?
     var isRefreshingRepository = false
@@ -510,6 +512,7 @@ final class AppServices {
     }
 
     private func prepareTodayDecisionSync(_ decision: DailyDecision) -> PendingTodayDecisionSync {
+        unsyncedTodayDecision = UnsyncedTodayDecision(cardID: todayCard.id, decision: decision)
         let localDecision = applyLocalTodayDecision(decision)
         lastTodayDecisionSyncError = nil
         latestTodayDecisionSyncID += 1
@@ -556,6 +559,7 @@ final class AppServices {
             guard isCurrentTodayDecisionSync(pendingSync) else {
                 return pendingSync.localEntry
             }
+            unsyncedTodayDecision = nil
             saveTodaySnapshot(source: "decision-synced")
             lastRepositoryError = nil
             lastTodayDecisionSyncError = nil
@@ -565,6 +569,8 @@ final class AppServices {
                 return pendingSync.localEntry
             }
             applyMissingPublishedTodayCardState(date: date)
+            unsyncedTodayDecision = nil
+            saveTodaySnapshot(source: "decision-dropped")
             lastRepositoryError = nil
             lastTodayDecisionSyncError = nil
             return pendingSync.localEntry
@@ -582,6 +588,16 @@ final class AppServices {
             lastTodayDecisionSyncError = TodayDecisionErrorDisplay.message(for: error)
             return pendingSync.localEntry
         }
+    }
+
+    private func resumeUnsyncedTodayDecisionIfNeeded() {
+        guard let unsynced = unsyncedTodayDecision, case .ready = todayContentState else { return }
+        guard unsynced.cardID == todayCard.id else {
+            unsyncedTodayDecision = nil
+            saveTodaySnapshot(source: "decision-dropped")
+            return
+        }
+        completeToday(with: unsynced.decision)
     }
 
     var nextOpenWeeklyDay: WeeklyDay? {
@@ -1020,6 +1036,9 @@ final class AppServices {
 
         let existingStatus = dayBriefGeneratedCards[scheduledDate]?.status
             ?? latestGenerationSummary?.dailyCards.first(where: { $0.scheduledDate == scheduledDate })?.status
+        var didUnpublishLiveDay = false
+        let previousTodayCard = todayCard.scheduledDate == scheduledDate ? todayCard : nil
+        let previousShotSceneIDs = shotSceneIDs
         // Any existing package — draft or live — must be explicitly confirmed before it is replaced.
         if existingStatus != nil {
             guard confirmOverwrite else {
@@ -1033,6 +1052,7 @@ final class AppServices {
             if DayPackageLifecycleStatus.requiresOverwriteConfirmation(existingStatus) {
                 do {
                     _ = try await unpublishDay(scheduledDate: scheduledDate)
+                    didUnpublishLiveDay = true
                 } catch {
                     let message = DayLifecycleErrorDisplay.message(for: error)
                     dayBriefGenerationErrors[scheduledDate] = message
@@ -1042,6 +1062,35 @@ final class AppServices {
         }
         pendingOverwriteGenerateDate = nil
 
+        do {
+            return try await generateDayCardAfterOverwriteCheck(scheduledDate: scheduledDate, brief: brief)
+        } catch {
+            if didUnpublishLiveDay {
+                await restoreDayAfterFailedOverwrite(
+                    scheduledDate: scheduledDate,
+                    previousTodayCard: previousTodayCard,
+                    previousShotSceneIDs: previousShotSceneIDs
+                )
+            }
+            throw error
+        }
+    }
+
+    private func restoreDayAfterFailedOverwrite(
+        scheduledDate: String,
+        previousTodayCard: DailyCard?,
+        previousShotSceneIDs: Set<UUID>
+    ) async {
+        guard (try? await makeDayAvailable(scheduledDate: scheduledDate)) != nil else { return }
+        guard let previousTodayCard, todayCard.id == previousTodayCard.id else { return }
+        shotSceneIDs.formUnion(previousShotSceneIDs.intersection(Set(todayCard.scenes.map(\.id))))
+        saveTodaySnapshot(source: "overwrite-restored")
+    }
+
+    private func generateDayCardAfterOverwriteCheck(
+        scheduledDate: String,
+        brief: String
+    ) async throws -> GeneratedDailyCardDraft {
         guard !generatingDayBriefDates.contains(scheduledDate) else {
             let message = DayGenerationErrorDisplay.message(forCode: "generation_already_running")
             dayBriefGenerationErrors[scheduledDate] = message
@@ -1477,7 +1526,77 @@ final class AppServices {
         }
     }
 
+    private struct PendingFirstIdea: Codable {
+        var creatorID: UUID
+        var scheduledDate: String
+        var completedData: OnboardingCompletedData
+    }
+
+    private static let pendingFirstIdeaKey = "ch-pending-first-idea"
+    private var isResumingFirstIdea = false
+
+    private func loadPendingFirstIdea() -> PendingFirstIdea? {
+        guard let data = UserDefaults.standard.data(forKey: Self.pendingFirstIdeaKey) else { return nil }
+        return try? JSONDecoder().decode(PendingFirstIdea.self, from: data)
+    }
+
+    private func clearPendingFirstIdea() {
+        UserDefaults.standard.removeObject(forKey: Self.pendingFirstIdeaKey)
+    }
+
+    private func resumePendingFirstIdeaIfNeeded() {
+        guard !isResumingFirstIdea, let pending = loadPendingFirstIdea() else { return }
+        guard creatorOnboardingPresentation == .established else { return }
+        let status = creatorProfileSummary.firstIdeaHandoff["status"]
+        let isUnfinished = status == OnboardingFirstIdeaHandoffStatus.preparing.rawValue
+            || status == OnboardingFirstIdeaHandoffStatus.failed.rawValue
+        guard pending.creatorID == context.creatorID,
+              pending.scheduledDate == currentTodayDateString,
+              isUnfinished
+        else {
+            clearPendingFirstIdea()
+            return
+        }
+        if case .ready = todayContentState {
+            clearPendingFirstIdea()
+            return
+        }
+        isResumingFirstIdea = true
+        Task { @MainActor [weak self] in
+            defer { self?.isResumingFirstIdea = false }
+            _ = await self?.confirmOnboardingAndPrepareFirstIdea(
+                completedData: pending.completedData,
+                scheduledDate: pending.scheduledDate
+            )
+        }
+    }
+
     func confirmOnboardingAndPrepareFirstIdea(
+        completedData: OnboardingCompletedData,
+        scheduledDate: String
+    ) async -> OnboardingFirstIdeaHandoffResult {
+        let pending = PendingFirstIdea(
+            creatorID: context.creatorID,
+            scheduledDate: scheduledDate,
+            completedData: completedData
+        )
+        if let data = try? JSONEncoder().encode(pending) {
+            UserDefaults.standard.set(data, forKey: Self.pendingFirstIdeaKey)
+        }
+        let result = await prepareFirstIdeaAfterOnboarding(
+            completedData: completedData,
+            scheduledDate: scheduledDate
+        )
+        switch result {
+        case .completed, .skippedExistingReady:
+            clearPendingFirstIdea()
+        case .persistFailed, .generationFailed:
+            break
+        }
+        return result
+    }
+
+    private func prepareFirstIdeaAfterOnboarding(
         completedData: OnboardingCompletedData,
         scheduledDate: String
     ) async -> OnboardingFirstIdeaHandoffResult {
@@ -2243,7 +2362,12 @@ final class AppServices {
     @discardableResult
     func loadTodayFromCache() -> Bool {
         do {
-            guard let snapshot = try todayCache.loadSnapshot(for: context) else {
+            guard let snapshot = try todayCache.loadSnapshot(for: context),
+                  !SupabaseDateFormatting.isDatePast(
+                    snapshot.todayCard.scheduledDate ?? currentTodayDateString,
+                    todayString: currentTodayDateString
+                  )
+            else {
                 return false
             }
 
@@ -2253,6 +2377,11 @@ final class AppServices {
             lastRepositoryError = error.localizedDescription
             return false
         }
+    }
+
+    var isTodayCardFromPastDay: Bool {
+        guard let scheduledDate = todayCard.scheduledDate else { return false }
+        return SupabaseDateFormatting.isDatePast(scheduledDate, todayString: currentTodayDateString)
     }
 
     func refreshFromRepositoriesImmediately() async {
@@ -2292,6 +2421,7 @@ final class AppServices {
                 todayContentState = .ready
                 await scheduleTodayNotificationIfNeededImmediately()
             } else {
+                todayContentState = .unavailable
                 lastRepositoryError = error.localizedDescription
             }
         }
@@ -2329,6 +2459,9 @@ final class AppServices {
         } catch {
             refreshError = refreshError ?? error
         }
+
+        resumeUnsyncedTodayDecisionIfNeeded()
+        resumePendingFirstIdeaIfNeeded()
 
         if refreshError == nil {
             lastRepositoryRefreshAt = Date()
@@ -2389,6 +2522,7 @@ final class AppServices {
             refreshError = refreshError ?? error
         }
 
+        resumeUnsyncedTodayDecisionIfNeeded()
         lastRepositoryRefreshError = refreshError?.localizedDescription
     }
 
@@ -2572,6 +2706,7 @@ final class AppServices {
         if let savedIDs = snapshot.shotSceneIDs {
             shotSceneIDs.formUnion(savedIDs.intersection(Set(todayCard.scenes.map(\.id))))
         }
+        unsyncedTodayDecision = snapshot.unsyncedDecision
     }
 
     private func saveTodaySnapshot(source: String) {
@@ -2580,7 +2715,8 @@ final class AppServices {
             weekCards: weekCards,
             cachedAt: Date(),
             source: source,
-            shotSceneIDs: shotSceneIDs
+            shotSceneIDs: shotSceneIDs,
+            unsyncedDecision: unsyncedTodayDecision
         )
 
         do {

@@ -12,6 +12,13 @@ struct CreatorContentOSApp: App {
         BenchmarkBackgroundTask.register()
     }
 
+    private func refreshIfTodayIsStale() {
+        guard appState.authenticationPhase == .live else { return }
+        let services = appState.runtime.services
+        guard services.isTodayCardFromPastDay, !services.isRefreshingRepository else { return }
+        Task { await services.refreshFromRepositoriesImmediately() }
+    }
+
     var body: some Scene {
         WindowGroup {
             CreatorContentOSAppView()
@@ -22,6 +29,12 @@ struct CreatorContentOSApp: App {
                 }
                 .task {
                     await appState.observeAuthenticationChanges()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+                    refreshIfTodayIsStale()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    refreshIfTodayIsStale()
                 }
                 .task(id: appState.runtime.mode) {
                     guard appState.authenticationPhase == .live else { return }

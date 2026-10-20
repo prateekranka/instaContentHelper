@@ -7,6 +7,12 @@ struct CachedTodaySnapshot: Codable, Hashable, Sendable {
     var source: String
     /// Optional for compatibility with snapshots created before per-shot progress.
     var shotSceneIDs: Set<UUID>? = nil
+    var unsyncedDecision: UnsyncedTodayDecision? = nil
+}
+
+struct UnsyncedTodayDecision: Codable, Hashable, Sendable {
+    var cardID: UUID
+    var decision: DailyDecision
 }
 
 protocol TodayCacheStoring {

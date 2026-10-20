@@ -449,7 +449,7 @@ struct TodayPostPreparationView: View {
 
                 PocketSheetFeedbackBanner(message: services.lastActionMessage, kind: .ready)
                 if let error = services.lastTodayDecisionSyncError?.nilIfBlank {
-                    PocketSheetFeedbackBanner(message: "Could not save the posting decision — \(error)", kind: .issue)
+                    PocketSheetFeedbackBanner(message: "Not saved to your account yet. \(error) ContentHelper tries again each time it refreshes.", kind: .issue)
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("post.syncError")
                 }
@@ -463,7 +463,9 @@ struct TodayPostPreparationView: View {
                             Label("Posted", systemImage: "checkmark.circle.fill")
                                 .font(PocketSheetType.rowTitle)
                                 .foregroundStyle(PocketSheetTheme.Color.ink)
-                            Text("Posted status is saved for this card. You can undo it while keeping all completed shots.")
+                            Text(services.unsyncedTodayDecision == nil
+                                ? "Posted status is saved for this card. You can undo it while keeping all completed shots."
+                                : "Posted on this phone. It is not saved to your account yet.")
                                 .font(PocketSheetType.rowSubtitle)
                                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         }

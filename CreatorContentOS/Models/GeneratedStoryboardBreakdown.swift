@@ -66,6 +66,8 @@ enum GeneratedStoryboardBreakdown {
         guard rowCount > 0 else { return [] }
 
         let derivedTimecodes = timecodes(for: card.sceneList)
+        let scriptLines = lines(of: card.script)
+        let scriptLinesPerRow = scriptLines.count > 1 ? scriptLines : []
         let thumbnailsByRow = card.storyboardThumbnailAssets.reduce(into: [Int: StoryboardThumbnailAsset]()) { result, asset in
             result[asset.rowIndex] = asset
         }
@@ -102,6 +104,7 @@ enum GeneratedStoryboardBreakdown {
                     scene?.title
                 ) ?? "Show the main action clearly.",
                 audioDialogue: firstPresent(
+                    element(at: index, in: scriptLinesPerRow),
                     voiceover?.voiceover,
                     voiceover?.detail,
                     voiceover?.title,
@@ -129,13 +132,15 @@ enum GeneratedStoryboardBreakdown {
         values.indices.contains(index) ? values[index] : nil
     }
 
-    private static func scriptLine(from script: String, at index: Int) -> String? {
-        let lines = script
+    private static func lines(of script: String) -> [String] {
+        script
             .split(whereSeparator: \.isNewline)
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
 
-        if let line = element(at: index, in: lines) {
+    private static func scriptLine(from script: String, at index: Int) -> String? {
+        if let line = element(at: index, in: lines(of: script)) {
             return line
         }
 

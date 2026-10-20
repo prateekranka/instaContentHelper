@@ -16,7 +16,7 @@ struct TodayView: View {
                 PocketSheetFeedbackBanner(message: services.lastActionMessage, kind: .ready)
                 if let decisionError = services.lastTodayDecisionSyncError?.nilIfBlank {
                     PocketSheetFeedbackBanner(
-                        message: "Couldn't save your decision — \(decisionError)",
+                        message: "Not saved to your account yet. \(decisionError) ContentHelper tries again each time it refreshes.",
                         kind: .issue
                     )
                 }
@@ -38,6 +38,10 @@ struct TodayView: View {
                 case .missingPublishedCard(let date):
                     MissingTodayCardView(date: date) {
                         appState.preparePlan(selecting: date)
+                    }
+                case .unavailable:
+                    TodayUnavailableView(isRetrying: services.isRefreshingRepository) {
+                        Task { await services.refreshFromRepositoriesImmediately() }
                     }
                 }
             }
@@ -253,6 +257,30 @@ private struct TodayLoadingCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityIdentifier("today.loading")
+    }
+}
+
+private struct TodayUnavailableView: View {
+    let isRetrying: Bool
+    let onRetry: () -> Void
+
+    var body: some View {
+        PocketSheetCard {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
+                    Text("Can't load today")
+                        .font(PocketSheetType.rowTitle)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                    Text("Check your connection, then try again.")
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                }
+                PocketSheetPrimaryAction(title: isRetrying ? "Trying again" : "Try again", action: onRetry)
+                    .disabled(isRetrying)
+                    .accessibilityIdentifier("today.retryLoad")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 

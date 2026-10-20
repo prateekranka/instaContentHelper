@@ -297,6 +297,8 @@ private struct ShootFolioEmptyState: View {
             "Today's ready card does not include shoot scenes."
         case .missingPublishedCard(let date):
             "There is no published daily card for \(date), so there are no scenes to shoot yet."
+        case .unavailable:
+            "Today could not load. Go back to Today and try again."
         }
     }
 }
