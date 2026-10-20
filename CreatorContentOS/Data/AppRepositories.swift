@@ -545,6 +545,27 @@ struct ReadyDayPackageUpdate: Codable, Hashable, Sendable {
 }
 
 extension ReadyDayPackageUpdate {
+    func owningShotLines(in content: GeneratedDailyCardDraft?) -> ReadyDayPackageUpdate {
+        guard let content else { return self }
+        var update = self
+        if let sceneList {
+            update.sceneList = sceneList.map { scene in
+                var scene = scene
+                if scene.dialogue == nil {
+                    scene.dialogue = content.sceneList.first { $0.id == scene.id || $0.number == scene.number }?.dialogue ?? ""
+                }
+                return scene
+            }
+        }
+        if let script, sceneList?.allSatisfy({ $0.dialogue != nil }) != true {
+            update.sceneList = ShotScript.editing(script, scenes: update.sceneList ?? content.sceneList)
+        }
+        if let scenes = update.sceneList, !scenes.isEmpty {
+            update.script = ShotScript.text(for: scenes)
+        }
+        return update
+    }
+
     func validate() throws {
         let text = [title, whyToday, caption, script, backupStory, backupCaptionOnly, shootability]
         guard !text.contains(where: { $0 != nil && $0?.nilIfBlank == nil }) else {

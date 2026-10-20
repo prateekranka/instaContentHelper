@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// DEBUG-only launch controls for native e2e runs.
 ///
@@ -67,7 +68,10 @@ enum DebugLaunchConfiguration {
 
     static var fixtureDefaults: UserDefaults {
         let name = "com.contenthelper.fixture.\(fixtureSession ?? "default")"
-        return UserDefaults(suiteName: name) ?? .standard
+        guard let defaults = UserDefaults(suiteName: name) else {
+            preconditionFailure("Cannot open fixture session defaults")
+        }
+        return defaults
     }
 
     static var onboardingDefaults: UserDefaults {
@@ -117,6 +121,8 @@ private extension String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
         let scalarString = unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
         let trimmed = String(scalarString.prefix(80))
-        return trimmed.isEmpty ? "default" : trimmed
+        if trimmed == self, !trimmed.isEmpty { return trimmed }
+        let digest = SHA256.hash(data: Data(utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+        return "\(trimmed.isEmpty ? "default" : trimmed)-\(digest)"
     }
 }

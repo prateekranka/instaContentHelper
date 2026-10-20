@@ -499,7 +499,9 @@ struct SupabaseDraftDailyCardPublishRequest: Encodable, Sendable {
                 number: scene.number,
                 title: scene.title,
                 duration: scene.duration,
-                symbol: scene.symbol
+                symbol: scene.symbol,
+                id: scene.id,
+                dialogue: scene.dialogue
             )
         }
         shotTimeline = card.shotTimeline

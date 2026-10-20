@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
 export async function selectTab(screen: Screen, name: 'Today' | 'Plan' | 'You') {
   const bar = screen.getByRole('tablist', 'Tab Bar', { exact: true });
   await expect(bar).toBeVisible();
+  if (await bar.getByRole('tab', name, { exact: true, selected: true }).count() === 1
+    || await bar.getByRole('button', name, { exact: true, selected: true }).count() === 1) return;
   const tab = bar.getByRole('tab', name, { exact: true });
   // Native iOS snapshots expose the same UITabBar item as tab or button.
   if (await tab.count() === 1) await tab.tap();
@@ -38,22 +40,22 @@ export async function tapEditorControl(screen: Screen, id: string) {
 // Scroll through the actual app scroll view. A screen-wide synthesized scroll
 // can land on the fixed command bar when Dynamic Type makes that bar tall.
 export async function scrollToControl(screen: Screen, locator: Locator, direction: 'up' | 'down' = 'down', bottom?: number) {
-  const scrollView = screen.getByRole('scroll-view').nth(0);
+  const scrollView = screen.getByTestId(/^shell\.tab\./, { visible: true }).getByRole('scroll-view').first();
   if (await locator.count() === 0) await scrollView.scrollUntilVisible(locator, { direction });
   const scrollBox = await scrollView.boundingBox();
   const tabBar = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
-  const visibleTop = scrollBox.y + 2;
+  const visibleTop = Math.max(8, scrollBox.y + 2);
   const keyboard = screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
   const keyboardTop = await keyboard.count() === 1 ? (await keyboard.boundingBox()).y : tabBar.y;
   const viewportBottom = Math.min(tabBar.y - 8, keyboardTop - 8, bottom ?? tabBar.y);
   const visibleBottom = Math.min(viewportBottom, scrollBox.y + scrollBox.height - 2);
-  const swipeBottom = Math.min(visibleBottom - 20, scrollBox.y + scrollBox.height * 0.76);
-  const swipeTop = Math.max(scrollBox.y + 48, scrollBox.y + scrollBox.height * 0.30);
-  const swipeMid = (swipeBottom + swipeTop) / 2;
-  const swipeDelta = Math.min(88, Math.max(24, (swipeBottom - swipeTop) * 0.34));
+  const swipeMid = (visibleBottom + visibleTop) / 2;
+  const swipeDelta = Math.min(88, Math.max(0, (visibleBottom - visibleTop) * 0.34));
   const swipeFrom = swipeMid + swipeDelta / 2;
   const swipeTo = swipeMid - swipeDelta / 2;
-  const x = scrollBox.x + scrollBox.width / 2;
+  const swipeLeft = Math.max(tabBar.x + 8, scrollBox.x + 8);
+  const swipeRight = Math.min(tabBar.x + tabBar.width - 8, scrollBox.x + scrollBox.width - 8);
+  const x = (swipeLeft + swipeRight) / 2;
   let lastDirection: 'up' | 'down' = direction;
   for (let attempt = 0; attempt < 24; attempt += 1) {
     if (await locator.count() > 0) {
@@ -63,6 +65,8 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
       if (box.y >= visibleTop && box.y + box.height <= targetBottom) return;
       lastDirection = box.y < visibleTop ? 'up' : 'down';
     }
+    expect(visibleBottom).toBeGreaterThan(visibleTop);
+    expect(swipeRight).toBeGreaterThan(swipeLeft);
     if (lastDirection === 'up') await screen.swipe({ from: { x, y: swipeTo }, to: { x, y: swipeFrom } });
     else await screen.swipe({ from: { x, y: swipeFrom }, to: { x, y: swipeTo } });
   }

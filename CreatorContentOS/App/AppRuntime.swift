@@ -35,16 +35,13 @@ struct AppRuntime {
                 defaults: DebugLaunchConfiguration.fixtureDefaults
             )
         )
+        services.creatorProfileSummary = FakeServer.shared.initialProfile
 #if DEBUG
         let restored = services.loadTodayFromCache()
-        if !DebugLaunchFlags.forceEmptyToday, !restored {
-            var draft = DebugLaunchFlags.fixtureDailyCardDraft
-            if DebugLaunchFlags.uiFixtureData != .demo {
-                draft = DebugLaunchFlags.uiFixtureData.applying(to: draft)
+        if !restored {
+            for draft in FakeServer.shared.initialDayPackages {
+                try? services.dayStore.receive(draft, completion: CompletionState(supabaseStatus: draft.status), authoritativeDecision: true)
             }
-            draft.scheduledDate = services.currentTodayDateString
-            draft.status = "published"
-            try? services.dayStore.receive(draft)
         }
 #endif
         return AppRuntime(
@@ -326,14 +323,12 @@ enum DebugLaunchFlags {
         slowFirstIdea ? 20_000_000_000 : 450_000_000
     }
 
-    static func seedLoopScenario() {
+    static let loopScenarioCards: [DailyCard]? = {
         guard forceFixtureUI,
               DebugLaunchConfiguration.fixtureSession != nil,
               let scenario = DebugLaunchConfiguration.value(for: "MCO_LOOP_SCENARIO"),
               ["ready", "line-script", "blank-copy", "stale-pointer", "legacy-cache", "old-decision"].contains(scenario)
-        else { return }
-        let defaults = DebugLaunchConfiguration.fixtureDefaults
-        guard !defaults.bool(forKey: "loop-scenario-seeded") else { return }
+        else { return nil }
         let today = SupabaseDateFormatting.todayDateString()
         var draft = fixtureDailyCardDraft
         draft.scheduledDate = today
@@ -342,7 +337,7 @@ enum DebugLaunchFlags {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
-        guard let date = formatter.date(from: today) else { return }
+        guard let date = formatter.date(from: today) else { return nil }
         let hasPastCard = scenario == "stale-pointer" || scenario == "old-decision"
         let adjacentDate = formatter.string(from: date.addingTimeInterval(hasPastCard ? -86_400 : 86_400))
         let adjacent = DailyCard(
@@ -359,14 +354,17 @@ enum DebugLaunchFlags {
             caption: card.caption,
             audioOptionNotes: card.audioOptionNotes
         )
-        let snapshot = LoopFixtureSnapshot(
-            weekCards: [card, adjacent],
-            todayCard: scenario == "stale-pointer" ? adjacent : card,
-            generatedDrafts: [today: card, adjacentDate: adjacent]
-        )
+        return [card, adjacent]
+    }()
+
+    static func seedLoopScenario() {
+        guard let cards = loopScenarioCards,
+              let scenario = DebugLaunchConfiguration.value(for: "MCO_LOOP_SCENARIO") else { return }
+        let defaults = DebugLaunchConfiguration.fixtureDefaults
+        guard !defaults.bool(forKey: "loop-scenario-seeded") else { return }
+        let card = cards[0]
+        let adjacent = cards[1]
         do {
-            let data = try JSONEncoder().encode(snapshot)
-            defaults.set(data, forKey: "published-content")
             if scenario == "legacy-cache" || scenario == "old-decision" {
                 guard let directory = DebugLaunchConfiguration.fixtureCacheDirectory else {
                     preconditionFailure("Cannot locate loop fixture cache")
@@ -408,11 +406,6 @@ enum DebugLaunchFlags {
         }
     }
 
-    private struct LoopFixtureSnapshot: Encodable {
-        var weekCards: [DailyCard]
-        var todayCard: DailyCard
-        var generatedDrafts: [String: DailyCard]
-    }
 }
 #else
 enum DebugLaunchFlags {

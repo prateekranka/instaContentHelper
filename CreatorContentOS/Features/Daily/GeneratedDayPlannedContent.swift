@@ -28,24 +28,18 @@ enum SceneTiming {
         var cursor = 0
         return scenes.map { scene in
             let start = cursor
-            cursor += seconds(from: scene.duration) ?? 0
+            cursor += scene.durationSeconds
             return "\(timecode(start))-\(timecode(cursor))"
         }
     }
 
     static func totalSeconds(for scenes: [ShotScene]) -> Int? {
-        let durations = scenes.compactMap { seconds(from: $0.duration) }
-        guard durations.count == scenes.count else { return nil }
-        return durations.reduce(0, +)
+        scenes.reduce(0) { $0 + $1.durationSeconds }
     }
 
     static func sceneTitle(for scenes: [ShotScene], index: Int) -> String? {
         guard let scene = scenes[safe: index] else { return nil }
         return "Scene \(String(format: "%02d", scene.number)): \(scene.title)"
-    }
-
-    private static func seconds(from duration: String) -> Int? {
-        Int(duration.prefix { $0.isNumber })
     }
 
     private static func timecode(_ seconds: Int) -> String {
@@ -491,11 +485,11 @@ struct InstagramExecutionSummary: View {
 
     private var durationLabel: String {
         if card.format?.lowercased() == "post" { return "Photo / carousel" }
-        if let durationSeconds = card.durationSeconds, durationSeconds > 0 {
-            return "\(durationSeconds.formatted()) sec edit"
-        }
         if let seconds = SceneTiming.totalSeconds(for: card.sceneList), seconds > 0 {
             return "\(seconds.formatted()) sec edit"
+        }
+        if let durationSeconds = card.durationSeconds, durationSeconds > 0 {
+            return "\(durationSeconds.formatted()) sec edit"
         }
         return "\(card.estimatedShootMinutes) min shoot"
     }

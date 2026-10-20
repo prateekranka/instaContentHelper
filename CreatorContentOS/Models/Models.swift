@@ -18,7 +18,14 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     var voiceoverTimeline: [ProductionTimelineItem]?
     var onScreenTextTimeline: [ProductionTimelineItem]?
     var completionState: CompletionState?
-    var script: String?
+    private var legacyScript: String?
+    var script: String? {
+        get {
+            !scenes.isEmpty && scenes.allSatisfy { $0.dialogue != nil }
+                ? ShotScript.text(for: scenes) : legacyScript
+        }
+        set { legacyScript = newValue }
+    }
     var noVoiceoverVersion: String?
     var onScreenText: [String]?
     var caption: String?
@@ -71,6 +78,42 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         case storyboardThumbnailAssets
     }
 
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(title, forKey: .title)
+        try values.encode(context, forKey: .context)
+        try values.encode(effortLabel, forKey: .effortLabel)
+        try values.encode(whyToday, forKey: .whyToday)
+        try values.encodeIfPresent(hook, forKey: .hook)
+        try values.encodeIfPresent(sourceNote, forKey: .sourceNote)
+        try values.encodeIfPresent(scheduledDate, forKey: .scheduledDate)
+        try values.encodeIfPresent(format, forKey: .format)
+        try values.encodeIfPresent(primarySurface, forKey: .primarySurface)
+        try values.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try values.encode(scenes, forKey: .scenes)
+        try values.encodeIfPresent(shotTimeline, forKey: .shotTimeline)
+        try values.encodeIfPresent(voiceoverTimeline, forKey: .voiceoverTimeline)
+        try values.encodeIfPresent(onScreenTextTimeline, forKey: .onScreenTextTimeline)
+        try values.encodeIfPresent(completionState, forKey: .completionState)
+        try values.encodeIfPresent(script, forKey: .script)
+        try values.encodeIfPresent(noVoiceoverVersion, forKey: .noVoiceoverVersion)
+        try values.encodeIfPresent(onScreenText, forKey: .onScreenText)
+        try values.encodeIfPresent(caption, forKey: .caption)
+        try values.encodeIfPresent(cta, forKey: .cta)
+        try values.encodeIfPresent(hashtags, forKey: .hashtags)
+        try values.encodeIfPresent(coverText, forKey: .coverText)
+        try values.encodeIfPresent(postInstructions, forKey: .postInstructions)
+        try values.encodeIfPresent(brandEventNotes, forKey: .brandEventNotes)
+        try values.encodeIfPresent(backupStory, forKey: .backupStory)
+        try values.encodeIfPresent(backupCaptionOnly, forKey: .backupCaptionOnly)
+        try values.encodeIfPresent(audioOptionNotes, forKey: .audioOptionNotes)
+        try values.encodeIfPresent(creatorFitScore, forKey: .creatorFitScore)
+        try values.encodeIfPresent(riskNotes, forKey: .riskNotes)
+        try values.encodeIfPresent(assumptions, forKey: .assumptions)
+        try values.encodeIfPresent(storyboardThumbnailAssets, forKey: .storyboardThumbnailAssets)
+    }
+
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
@@ -89,7 +132,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         voiceoverTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .voiceoverTimeline)
         onScreenTextTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .onScreenTextTimeline)
         completionState = try values.decodeIfPresent(CompletionState.self, forKey: .completionState)
-        script = try values.decodeIfPresent(String.self, forKey: .script)
+        legacyScript = try values.decodeIfPresent(String.self, forKey: .script)
         noVoiceoverVersion = try values.decodeIfPresent(String.self, forKey: .noVoiceoverVersion)
         onScreenText = try values.decodeIfPresent([String].self, forKey: .onScreenText)
         caption = try values.decodeIfPresent(String.self, forKey: .caption)
@@ -105,6 +148,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         riskNotes = try values.decodeIfPresent([String].self, forKey: .riskNotes)
         assumptions = try values.decodeIfPresent([String].self, forKey: .assumptions)
         storyboardThumbnailAssets = try values.decodeIfPresent([StoryboardThumbnailAsset].self, forKey: .storyboardThumbnailAssets)
+        normalizeShotContent()
     }
 
     init(
@@ -157,7 +201,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.voiceoverTimeline = voiceoverTimeline
         self.onScreenTextTimeline = onScreenTextTimeline
         self.completionState = completionState
-        self.script = script
+        self.legacyScript = script
         self.noVoiceoverVersion = noVoiceoverVersion
         self.onScreenText = onScreenText
         self.caption = caption
@@ -173,6 +217,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.riskNotes = riskNotes
         self.assumptions = assumptions
         self.storyboardThumbnailAssets = storyboardThumbnailAssets
+        normalizeShotContent()
     }
 }
 
@@ -198,6 +243,11 @@ struct ShotScene: Identifiable, Codable, Hashable, Sendable {
     var title: String
     var duration: String
     let symbol: String
+    var dialogue: String?
+
+    var durationSeconds: Int {
+        max(Int(duration.trimmingCharacters(in: .whitespacesAndNewlines).prefix { $0.isNumber }) ?? 0, 0)
+    }
 
     static func stableID(revisionID: UUID, number: Int) -> UUID {
         UUID(uuidString: String(revisionID.uuidString.prefix(24)) + String(format: "%012x", number))!
@@ -208,13 +258,114 @@ struct ShotScene: Identifiable, Codable, Hashable, Sendable {
         number: Int,
         title: String,
         duration: String,
-        symbol: String
+        symbol: String,
+        dialogue: String? = nil
     ) {
         self.id = id
         self.number = number
         self.title = title
         self.duration = duration
         self.symbol = symbol
+        self.dialogue = dialogue
+    }
+}
+
+enum ShotScript {
+    static let editorGuidance = "Each line edits the same numbered shot. A blank line clears its dialogue. Shorter text keeps later shots. Extra lines join the last shot."
+
+    static func text(for scenes: [ShotScene]) -> String {
+        scenes.map { scene in
+            (scene.dialogue ?? "").components(separatedBy: .newlines).joined(separator: " ")
+        }.joined(separator: "\n")
+    }
+
+    static func editing(_ text: String, scenes: [ShotScene]) -> [ShotScene] {
+        guard !scenes.isEmpty else { return scenes }
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+        var updated = scenes
+        for index in updated.indices where index < lines.count {
+            updated[index].dialogue = index == updated.count - 1
+                ? lines[index...].joined(separator: " ")
+                : lines[index]
+        }
+        return updated
+    }
+
+    static func migrate(
+        scenes: [ShotScene],
+        revisionID: UUID,
+        script: String,
+        shots: [ProductionTimelineItem],
+        voiceover: [ProductionTimelineItem],
+        overlays: [ProductionTimelineItem]
+    ) -> [ShotScene] {
+        if !scenes.isEmpty, scenes.allSatisfy({ $0.dialogue != nil }) { return scenes }
+        let count = max(scenes.count, shots.count, voiceover.count, overlays.count)
+        guard count > 0 else { return scenes }
+        var migrated = scenes
+        while migrated.count < count {
+            let index = migrated.count
+            let item = shots.indices.contains(index) ? shots[index]
+                : voiceover.indices.contains(index) ? voiceover[index] : overlays[index]
+            migrated.append(ShotScene(
+                id: ShotScene.stableID(revisionID: revisionID, number: index + 1),
+                number: index + 1,
+                title: item.shot?.nilIfBlank ?? item.title.nilIfBlank ?? "Shot \(index + 1)",
+                duration: "\(item.durationSeconds ?? legacyDuration(item.timestamp)) sec",
+                symbol: "camera"
+            ))
+        }
+        for index in migrated.indices where migrated[index].dialogue == nil {
+            migrated[index].dialogue = voiceover.indices.contains(index)
+                ? voiceover[index].voiceover?.nilIfBlank ?? voiceover[index].detail.nilIfBlank ?? voiceover[index].title.nilIfBlank ?? ""
+                : ""
+        }
+        let timedText = text(for: migrated)
+        let words: (String) -> [Substring] = { $0.split(whereSeparator: \.isWhitespace) }
+        if script.nilIfBlank != nil, words(script) != words(timedText) {
+            let edited = editing(script, scenes: migrated)
+            for index in migrated.indices where !scenes.indices.contains(index) || scenes[index].dialogue == nil {
+                migrated[index].dialogue = edited[index].dialogue
+            }
+        }
+        return migrated
+    }
+
+    static func timecodes(for scenes: [ShotScene]) -> [String] {
+        var cursor = 0
+        return scenes.map { scene in
+            let start = cursor
+            cursor += scene.durationSeconds
+            return "\(start)-\(cursor) sec"
+        }
+    }
+
+    private static func legacyDuration(_ timestamp: String) -> Int {
+        let bounds = timestamp.replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+            .components(separatedBy: "-")
+        guard bounds.count == 2 else { return 0 }
+        let seconds: (String) -> Int = { value in
+            let parts = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                .prefix { $0.isNumber || $0 == ":" }.split(separator: ":")
+            return parts.reduce(0) { $0 * 60 + (Int($1) ?? 0) }
+        }
+        return max(seconds(bounds[1]) - seconds(bounds[0]), 0)
+    }
+}
+
+extension DailyCard {
+    mutating func normalizeShotContent() {
+        scenes = ShotScript.migrate(
+            scenes: scenes, revisionID: id, script: script ?? "", shots: shotTimeline ?? [],
+            voiceover: voiceoverTimeline ?? [], overlays: onScreenTextTimeline ?? []
+        )
+        if !scenes.isEmpty {
+            script = ShotScript.text(for: scenes)
+            durationSeconds = scenes.reduce(0) { $0 + $1.durationSeconds }
+        }
     }
 }
 
@@ -972,7 +1123,14 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
     var voiceoverTimeline: [ProductionTimelineItem]
     var onScreenTextTimeline: [ProductionTimelineItem]
     var silentVersionTimeline: [ProductionTimelineItem]
-    var script: String
+    private var legacyScript: String
+    var script: String {
+        get {
+            !sceneList.isEmpty && sceneList.allSatisfy { $0.dialogue != nil }
+                ? ShotScript.text(for: sceneList) : legacyScript
+        }
+        set { legacyScript = newValue }
+    }
     var noVoiceoverVersion: String
     var onScreenText: [String]
     var caption: String
@@ -1035,6 +1193,50 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
         case storyboardThumbnailAssets
     }
 
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(scheduledDate, forKey: .scheduledDate)
+        try values.encode(status, forKey: .status)
+        try values.encode(title, forKey: .title)
+        try values.encode(whyToday, forKey: .whyToday)
+        try values.encode(growthJob, forKey: .growthJob)
+        try values.encode(contentPillar, forKey: .contentPillar)
+        try values.encode(shootability, forKey: .shootability)
+        try values.encode(estimatedShootMinutes, forKey: .estimatedShootMinutes)
+        try values.encode(energyRequired, forKey: .energyRequired)
+        try values.encode(languageMode, forKey: .languageMode)
+        try values.encodeIfPresent(format, forKey: .format)
+        try values.encodeIfPresent(primarySurface, forKey: .primarySurface)
+        try values.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try values.encodeIfPresent(hook, forKey: .hook)
+        try values.encodeIfPresent(saveShareReason, forKey: .saveShareReason)
+        try values.encode(sceneList, forKey: .sceneList)
+        try values.encode(shotTimeline, forKey: .shotTimeline)
+        try values.encode(voiceoverTimeline, forKey: .voiceoverTimeline)
+        try values.encode(onScreenTextTimeline, forKey: .onScreenTextTimeline)
+        try values.encode(silentVersionTimeline, forKey: .silentVersionTimeline)
+        try values.encode(script, forKey: .script)
+        try values.encode(noVoiceoverVersion, forKey: .noVoiceoverVersion)
+        try values.encode(onScreenText, forKey: .onScreenText)
+        try values.encode(caption, forKey: .caption)
+        try values.encode(cta, forKey: .cta)
+        try values.encode(hashtags, forKey: .hashtags)
+        try values.encode(coverText, forKey: .coverText)
+        try values.encode(postInstructions, forKey: .postInstructions)
+        try values.encode(brandEventNotes, forKey: .brandEventNotes)
+        try values.encode(backupStory, forKey: .backupStory)
+        try values.encode(backupCaptionOnly, forKey: .backupCaptionOnly)
+        try values.encode(backupStoryDetail, forKey: .backupStoryDetail)
+        try values.encodeIfPresent(captionBackupDetail, forKey: .captionBackupDetail)
+        try values.encode(audioOptionNotes, forKey: .audioOptionNotes)
+        try values.encode(creatorFitScore, forKey: .creatorFitScore)
+        try values.encode(riskNotes, forKey: .riskNotes)
+        try values.encode(assumptions, forKey: .assumptions)
+        try values.encode(sourceNote, forKey: .sourceNote)
+        try values.encode(storyboardThumbnailAssets, forKey: .storyboardThumbnailAssets)
+    }
+
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
@@ -1058,7 +1260,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
         voiceoverTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .voiceoverTimeline) ?? []
         onScreenTextTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .onScreenTextTimeline) ?? []
         silentVersionTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .silentVersionTimeline) ?? []
-        script = try values.decodeIfPresent(String.self, forKey: .script) ?? ""
+        legacyScript = try values.decodeIfPresent(String.self, forKey: .script) ?? ""
         noVoiceoverVersion = try values.decodeIfPresent(String.self, forKey: .noVoiceoverVersion) ?? ""
         onScreenText = try values.decodeIfPresent([String].self, forKey: .onScreenText) ?? []
         caption = try values.decodeIfPresent(String.self, forKey: .caption) ?? ""
@@ -1077,6 +1279,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
         assumptions = try values.decodeIfPresent([String].self, forKey: .assumptions) ?? []
         sourceNote = try values.decodeIfPresent(String.self, forKey: .sourceNote) ?? ""
         storyboardThumbnailAssets = try values.decodeIfPresent([StoryboardThumbnailAsset].self, forKey: .storyboardThumbnailAssets) ?? []
+        normalizeShotContent()
     }
 
     init(
@@ -1142,7 +1345,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
         self.voiceoverTimeline = voiceoverTimeline
         self.onScreenTextTimeline = onScreenTextTimeline
         self.silentVersionTimeline = silentVersionTimeline
-        self.script = script
+        self.legacyScript = script
         self.noVoiceoverVersion = noVoiceoverVersion
         self.onScreenText = onScreenText
         self.caption = caption
@@ -1161,10 +1364,22 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
         self.assumptions = assumptions
         self.sourceNote = sourceNote
         self.storyboardThumbnailAssets = storyboardThumbnailAssets
+        normalizeShotContent()
     }
 }
 
 extension GeneratedDailyCardDraft {
+    mutating func normalizeShotContent() {
+        sceneList = ShotScript.migrate(
+            scenes: sceneList, revisionID: id, script: script, shots: shotTimeline,
+            voiceover: voiceoverTimeline, overlays: onScreenTextTimeline
+        )
+        if !sceneList.isEmpty {
+            script = ShotScript.text(for: sceneList)
+            durationSeconds = sceneList.reduce(0) { $0 + $1.durationSeconds }
+        }
+    }
+
     var weeklyDay: WeeklyDay {
         WeeklyDay(
             id: id,
@@ -2012,6 +2227,8 @@ struct Day: Codable, Hashable, Sendable, Identifiable {
     }
 
     private mutating func install(_ content: GeneratedDailyCardDraft) throws {
+        var content = content
+        content.normalizeShotContent()
         guard content.scheduledDate == identity.scheduledDate else { throw DayTransitionError.mismatchedRevision }
         guard content.title.nilIfBlank != nil,
               !["Checking today's plan", "No ready package"].contains(content.title),

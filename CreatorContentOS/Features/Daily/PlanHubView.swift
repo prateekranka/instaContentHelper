@@ -18,6 +18,8 @@ struct PlanHubView: View {
     @State private var isOtherIdeaOpen = false
     @State private var otherIdeaText = ""
     @State private var lightEditCaption = ""
+    @State private var lightEditScript = ""
+    @State private var lightEditScenes: [ShotScene] = []
     @State private var didApplyInitialSelectedDate = false
     /// Reveals the idea launcher when a package already exists (overwrite / replace).
     @State private var showReplaceIdeaLauncher = false
@@ -163,12 +165,12 @@ struct PlanHubView: View {
             Text("This replaces the current draft or package for this day with a new draft. Any live Decision clears; Archive history stays. You will need to approve again.")
         }
         .onChange(of: displayedCard?.id) { _, _ in
-            lightEditCaption = displayedCard?.caption ?? ""
+            resetLightEdit(displayedCard)
         }
         .onChange(of: selectedDate) { _, newDate in
             visibleMonth = newDate
             resetIdeaLauncherState()
-            lightEditCaption = displayedCard?.caption ?? ""
+            resetLightEdit(displayedCard)
             syncPersistedPlanDate()
             refreshDayIdeasIfNeeded()
         }
@@ -183,7 +185,7 @@ struct PlanHubView: View {
         .onAppear {
             applyPendingPlanDateSelection()
             visibleMonth = selectedDate
-            lightEditCaption = displayedCard?.caption ?? ""
+            resetLightEdit(displayedCard)
             if isGeneratingSelectedDay {
                 hasDispatchedGeneration = true
             }
@@ -516,6 +518,30 @@ struct PlanHubView: View {
                 Text("Edits keep this day ready — no Unpublish required.")
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                if hasEditableScript {
+                    Text("Script")
+                        .font(PocketSheetType.sectionLabel)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                    Text(ShotScript.editorGuidance)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    TextEditor(text: $lightEditScript)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 150)
+                        .accessibilityIdentifier("plan.package.script.editor")
+                    if lightEditScript.nilIfBlank == nil {
+                        Text("Enter a script before saving.")
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Text("Caption")
+                    .font(PocketSheetType.sectionLabel)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
                 TextEditor(text: $lightEditCaption)
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
@@ -529,7 +555,7 @@ struct PlanHubView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 PocketSheetSecondaryAction(
-                    title: services.isUpdatingReadyDayPackage ? "Saving…" : "Save caption"
+                    title: services.isUpdatingReadyDayPackage ? "Saving…" : (hasScriptEdit ? "Save edits" : "Save caption")
                 ) {
                     saveLightEdit()
                 }
@@ -543,7 +569,17 @@ struct PlanHubView: View {
     private var canSaveLightEdit: Bool {
         canLightEditReadyPackage
             && lightEditCaption.nilIfBlank != nil
-            && lightEditCaption != (displayedCard?.caption ?? "")
+            && (!hasEditableScript || lightEditScript.nilIfBlank != nil)
+            && (lightEditCaption != (displayedCard?.caption ?? "")
+                || hasScriptEdit)
+    }
+
+    private var hasScriptEdit: Bool {
+        lightEditScript != (displayedCard.map { PackageCopyText.script(for: $0) } ?? "")
+    }
+
+    private var hasEditableScript: Bool {
+        !lightEditScenes.isEmpty || displayedCard?.script.nilIfBlank != nil
     }
 
     private var approveDock: some View {
@@ -638,7 +674,7 @@ struct PlanHubView: View {
                 guard scheduledDateString == dateString else { return }
                 isOtherIdeaOpen = false
                 otherIdeaText = ""
-                lightEditCaption = services.dayPackage(for: dateString)?.caption ?? ""
+                resetLightEdit(services.dayPackage(for: dateString))
             } catch {
                 if !isGeneratingSelectedDay {
                     hasDispatchedGeneration = false
@@ -656,7 +692,7 @@ struct PlanHubView: View {
                     navigateToTodayAfterAvailable()
                 }
                 guard scheduledDateString == dateString else { return }
-                lightEditCaption = services.dayPackage(for: dateString)?.caption ?? ""
+                resetLightEdit(services.dayPackage(for: dateString))
             } catch {
                 // Surfaced via services.lastMakeDayAvailableError; stay on Plan.
             }
@@ -678,7 +714,7 @@ struct PlanHubView: View {
             do {
                 _ = try await services.unpublishDay(scheduledDate: dateString)
                 guard scheduledDateString == dateString else { return }
-                lightEditCaption = services.dayPackage(for: dateString)?.caption ?? ""
+                resetLightEdit(services.dayPackage(for: dateString))
             } catch {
                 // Surfaced via services.lastUnpublishDayError.
             }
@@ -686,18 +722,33 @@ struct PlanHubView: View {
     }
 
     private func saveLightEdit() {
+        guard canSaveLightEdit else { return }
         let dateString = scheduledDateString
         let caption = lightEditCaption
+        let scenes = ShotScript.editing(lightEditScript, scenes: lightEditScenes)
+        let script = scenes.isEmpty ? lightEditScript : ShotScript.text(for: scenes)
         Task { @MainActor in
             do {
                 _ = try await services.updateReadyDayPackage(
                     scheduledDate: dateString,
-                    package: ReadyDayPackageUpdate(caption: caption)
+                    package: ReadyDayPackageUpdate(
+                        caption: caption,
+                        script: script.nilIfBlank,
+                        sceneList: scenes.isEmpty ? nil : scenes
+                    )
                 )
+                guard scheduledDateString == dateString else { return }
+                resetLightEdit(services.dayPackage(for: dateString))
             } catch {
                 // Surfaced via services.lastReadyDayPackageEditError.
             }
         }
+    }
+
+    private func resetLightEdit(_ card: GeneratedDailyCardDraft?) {
+        lightEditCaption = card?.caption ?? ""
+        lightEditScenes = card?.sceneList ?? []
+        lightEditScript = card.map { PackageCopyText.script(for: $0) } ?? ""
     }
 
     // MARK: - Date helpers

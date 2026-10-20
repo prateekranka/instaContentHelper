@@ -1,936 +1,1150 @@
 import Foundation
 
-#if DEBUG
-/// Process-local one-shot failures used by native e2e recovery checks.
-actor FixtureFailureState {
-    static let shared = FixtureFailureState()
-    private var consumed: Set<String> = []
+private typealias FakeObject = [String: SupabaseJSONValue]
 
-    func consume(_ key: String) -> Bool {
-        guard !consumed.contains(key) else { return false }
-        consumed.insert(key)
-        return true
+private enum FakeJSON {
+    static func value(_ value: some Encodable) throws -> SupabaseJSONValue {
+        try JSONDecoder().decode(SupabaseJSONValue.self, from: JSONEncoder().encode(value))
+    }
+
+    static func object(_ value: some Encodable) throws -> FakeObject {
+        guard let object = try self.value(value).objectValue else { throw RepositoryError.edgeFunction("invalid_write_payload") }
+        return object
+    }
+
+    static func decode<T: Decodable>(_ value: SupabaseJSONValue, as type: T.Type = T.self) throws -> T {
+        try JSONDecoder().decode(type, from: JSONEncoder().encode(value))
     }
 }
-#endif
 
-private struct FixtureOutboxRun: Codable {
-    var request: ContentIntent
-    var generationID: UUID = UUID()
+private extension Dictionary where Key == String, Value == SupabaseJSONValue {
+    func text(_ key: String) -> String? {
+        guard case .string(let text) = self[key] else { return nil }
+        return text
+    }
+
+    func uuid(_ key: String) -> UUID? { text(key).flatMap(UUID.init(uuidString:)) }
+    func flag(_ key: String) -> Bool { self[key] == .bool(true) }
+}
+
+struct FakeServerResponse: Sendable {
+    var statusCode: Int
+    var body: SupabaseJSONValue
+}
+
+private struct FakeServerDay: Codable, Sendable {
+    var currentRevisionID: UUID?
+    var generationKey: String?
+    var updatedAt: String = SupabaseDateFormatting.isoTimestampString()
+}
+
+private struct FakeServerRun: Codable, Sendable {
+    var id: UUID = UUID()
     var revisionID: UUID = UUID()
-    var result: DailyGenerationResult?
+    var planID: UUID
+    var scheduledDate: String
+    var identity: FakeObject
+    var replacedRevisionID: UUID?
+    var status: String = "running"
+    var error: String?
+    var readyAt: Date
+    var updatedAt: Date = Date()
+    var completedAt: String?
+    var result: SupabaseJSONValue?
+}
 
-    func matches(_ intent: ContentIntent) -> Bool {
-        request.kind == intent.kind && request.creatorID == intent.creatorID
-            && request.workspaceID == intent.workspaceID && request.scheduledDate == intent.scheduledDate
-            && request.revisionID == intent.revisionID && request.dayBrief == intent.dayBrief
-            && request.weeklyPlanID == intent.weeklyPlanID && request.preserveManualEdits == intent.preserveManualEdits
-            && request.dayGuidance == intent.dayGuidance
+private struct FakeServerSnapshot: Codable, Sendable {
+    var schemaVersion = 1
+    var revisions: [UUID: FakeObject] = [:]
+    var days: [String: FakeServerDay] = [:]
+    var archives: [UUID: FakeObject] = [:]
+    var runs: [String: FakeServerRun] = [:]
+    var profile: FakeObject = [:]
+    var plans: [UUID: WeeklyPlan] = [:]
+    var plan: WeeklyPlan = .raceWeek
+    var ideas: [FakeObject] = []
+    var consumedFailures: Set<String> = []
+}
+
+actor FakeServer {
+    static let shared = FakeServer()
+    nonisolated let initialDayPackages: [GeneratedDailyCardDraft]
+    nonisolated let initialArchiveEntries: [ArchiveEntry]
+    nonisolated let initialProfile: CreatorProfileSummary
+    private var state: FakeServerSnapshot
+    private let defaults: UserDefaults?
+    private let context: WorkspaceContext
+    private static let persistenceKey = "fake-server-v1"
+    private static let readyStatuses = DayPackageLifecycleStatus.readyOrDecision
+    private static let decisions: Set<String> = ["shot", "posted", "used_backup", "saved_for_tomorrow", "skipped_intentionally"]
+
+    init(context: WorkspaceContext = .creatorFixture, defaults: UserDefaults? = DebugLaunchConfiguration.fixtureSession == nil ? nil : DebugLaunchConfiguration.fixtureDefaults) {
+        self.context = context
+        self.defaults = defaults
+        do {
+            var snapshot: FakeServerSnapshot
+            if let data = defaults?.data(forKey: Self.persistenceKey) {
+                snapshot = try JSONDecoder().decode(FakeServerSnapshot.self, from: data)
+            } else {
+                snapshot = try Self.seed(context: context, defaults: defaults)
+            }
+            for (date, day) in snapshot.days {
+                guard let id = day.currentRevisionID, let row = snapshot.revisions[id],
+                      row.text("script")?.nilIfBlank == nil, row.text("caption")?.nilIfBlank == nil else { continue }
+                if case .array(let scenes) = row["scene_list"], !scenes.isEmpty { continue }
+                snapshot.days[date]?.currentRevisionID = nil
+                snapshot.revisions[id]?["is_current"] = .bool(false)
+            }
+            if let defaults { defaults.set(try JSONEncoder().encode(snapshot), forKey: Self.persistenceKey) }
+            state = snapshot
+            initialDayPackages = try snapshot.days.values.compactMap { day in
+                guard let id = day.currentRevisionID, let row = snapshot.revisions[id] else { return nil }
+                return try FakeJSON.decode(.object(row), as: SupabaseDailyCardRow.self).generatedDailyCardDraft()
+            }
+            initialArchiveEntries = try snapshot.archives.values.filter { $0.text("decision") != "replaced" }.map { row in
+                try FakeJSON.decode(.object(row), as: SupabaseArchiveEntryRow.self).domainEntry()
+            }
+            initialProfile = try FakeJSON.decode(.object(snapshot.profile), as: SupabaseCreatorProfileRow.self).summary()
+        } catch {
+            preconditionFailure("Cannot load fake server: \(error.localizedDescription)")
+        }
+    }
+
+    func invoke<Request: Encodable & Sendable, Response: Decodable & Sendable>(
+        _ function: String, body: Request, context: WorkspaceContext,
+        delayNanoseconds: UInt64 = DebugLaunchFlags.fixtureFirstIdeaDelayNanoseconds
+    ) async throws -> Response {
+        let response = try await request(function, body: body, context: context, delayNanoseconds: delayNanoseconds)
+        if response.statusCode >= 400 {
+            throw RepositoryError.edgeFunction(response.body.objectValue?.text("error") ?? "fake_server_request_failed")
+        }
+        return try FakeJSON.decode(response.body)
+    }
+
+    func generation<Request: Encodable & Sendable>(
+        _ function: String, body: Request, context: WorkspaceContext, delayNanoseconds: UInt64
+    ) async throws -> SupabaseDailyGenerationInvocation {
+        let response = try await request(function, body: body, context: context, delayNanoseconds: delayNanoseconds)
+        if response.statusCode >= 400 {
+            throw RepositoryError.edgeFunction(response.body.objectValue?.text("error") ?? "invalid_generation_payload")
+        }
+        return try SupabaseDailyGenerationInvocation.decode(JSONEncoder().encode(response.body))
+    }
+
+    func request<Request: Encodable & Sendable>(
+        _ function: String, body: Request, context: WorkspaceContext,
+        delayNanoseconds: UInt64 = DebugLaunchFlags.fixtureFirstIdeaDelayNanoseconds
+    ) async throws -> FakeServerResponse {
+        let payload = try FakeJSON.object(body)
+        guard context.workspaceID == self.context.workspaceID,
+              context.creatorID == self.context.creatorID,
+              payload.uuid("creator_id") == context.creatorID else {
+            return Self.failure("creator_not_found", status: 404)
+        }
+        let before = state
+        let response: FakeServerResponse
+        do {
+            switch function {
+            case "read-content":
+                try completeDueRuns()
+                response = try read(payload)
+            case "generate-week", "replace-day":
+                response = try generate(payload, replacing: function == "replace-day", delayNanoseconds: delayNanoseconds)
+            case "make-day-available", "unpublish-day", "update-ready-day-package", "publish-day":
+                response = try lifecycle(function, payload: payload)
+            case "write-content": response = try write(payload)
+            case "generate-plan-ideas":
+                let date = payload.text("scheduled_date") ?? SupabaseDateFormatting.todayDateString()
+                let setup = PlanDaySetupSummary(
+                    contentPillars: payload["content_pillars"]?.decoded([String].self) ?? [],
+                    voiceIsConfigured: payload.flag("voice_configured"),
+                    confirmedReferenceCount: payload["reference_count"]?.intValue ?? 0,
+                    totalReferenceCount: payload["reference_count"]?.intValue ?? 0,
+                    positioning: payload.text("positioning") ?? "", voiceRulesText: payload.text("voice_rules") ?? "",
+                    captionStyle: payload.text("caption_style") ?? "", noGoTopicsText: payload.text("no_go_topics") ?? "",
+                    confirmedReferenceLabels: payload["reference_labels"]?.decoded([String].self) ?? [])
+                response = Self.success(["ideas": .array(PlanDayIdeaBuilder.buildIdeas(scheduledDate: date, setup: setup).map { .object(["title": .string($0.title), "summary": .string($0.summary), "day_brief": .string($0.dayBrief)]) })])
+            default: response = Self.failure("unsupported_action", status: 400)
+            }
+            try persist()
+        } catch {
+            state = before
+            throw error
+        }
+        if payload.text("action") != "status", payload.text("response_mode") != "async", response.statusCode == 202,
+           let id = response.body.objectValue?.uuid("generation_id"),
+           let key = state.runs.first(where: { $0.value.id == id })?.key {
+            try await Task.sleep(nanoseconds: delayNanoseconds)
+            try finishRun(key)
+            try persist()
+            return runResponse(key, replayed: false)
+        }
+        return response
+    }
+
+    private func read(_ payload: FakeObject) throws -> FakeServerResponse {
+        switch payload.text("action") {
+        case "days":
+            let days = state.days.sorted { $0.key < $1.key }.map { date, day -> SupabaseJSONValue in
+                var value: FakeObject = [
+                    "scheduled_date": .string(date),
+                    "current_revision_id": day.currentRevisionID.map { .string($0.uuidString) } ?? .null,
+                    "revision": day.currentRevisionID.flatMap { state.revisions[$0] }.map(SupabaseJSONValue.object) ?? .null,
+                    "updated_at": .string(day.updatedAt), "generation": .null, "generation_id": .null
+                ]
+                if let key = day.generationKey, let run = state.runs[key] {
+                    value["generation_id"] = .string(run.id.uuidString)
+                    value["generation"] = .object([
+                        "generation_id": .string(run.id.uuidString), "status": .string(run.status),
+                        "idempotency_key": .string(key), "error_code": run.error.map(SupabaseJSONValue.string) ?? .null,
+                        "completed_at": run.completedAt.map(SupabaseJSONValue.string) ?? .null
+                    ])
+                }
+                return .object(value)
+            }
+            return Self.success(["days": .array(days)])
+        case "today":
+            let date = payload.text("today_date") ?? SupabaseDateFormatting.todayDateString()
+            let cards = currentRows().filter { Self.readyStatuses.contains($0.text("status") ?? "") }
+            let today = cards.first { $0.text("scheduled_date") == date }
+            return Self.success([
+                "today_card": today.map(SupabaseJSONValue.object) ?? .null,
+                "week_cards": .array(cards.prefix(14).map(SupabaseJSONValue.object)),
+                "today_date": .string(date), "today_status": .string(today == nil ? "missing_published_card" : "published")
+            ])
+        case "archive":
+            let entries = state.archives.values.filter { $0.text("decision") != "replaced" }.sorted {
+                ($0.text("archive_date") ?? "", $0.text("decision_at") ?? "") > ($1.text("archive_date") ?? "", $1.text("decision_at") ?? "")
+            }
+            return Self.success(["entries": .array(entries.map { entry in
+                var row = entry
+                row["revision_id"] = row["daily_card_id"]
+                row["daily_cards"] = .object(["title": row["title_snapshot"] ?? .null, "caption": row["caption_snapshot"] ?? .null])
+                return .object(row)
+            })])
+        case "creator_profile": return Self.success(["profile": .object(state.profile)])
+        case "weekly":
+            let plan = state.plan
+            let planRow = try Self.planRow(plan, context: context)
+            let cards = currentRows().filter { $0.uuid("weekly_plan_id") == plan.id }
+            return Self.success([
+                "weekly_plan": planRow, "daily_cards": .array(cards.map(SupabaseJSONValue.object)),
+                "idea_bank": .array(state.ideas.map(SupabaseJSONValue.object)), "published_weekly_plan": plan.isSoftLocked ? planRow : .null,
+                "published_daily_cards": .array(plan.isSoftLocked ? cards.map(SupabaseJSONValue.object) : []),
+                "weekly_setup": .object(["id": .string(plan.id.uuidString), "notes": .string(plan.weeklyBriefText)])
+            ])
+        default: return Self.failure("unsupported_action", status: 400)
+        }
+    }
+
+    private func lifecycle(_ function: String, payload: FakeObject) throws -> FakeServerResponse {
+        let invalid = function == "make-day-available" ? "invalid_make_day_available_payload"
+            : function == "unpublish-day" ? "invalid_unpublish_day_payload" : "invalid_update_ready_day_package_payload"
+        guard payload.uuid("daily_card_id") != nil || payload.text("scheduled_date") != nil else { return Self.failure(invalid, status: 400) }
+        if payload["daily_card_id"] != nil, payload.uuid("daily_card_id") == nil { return Self.failure(invalid, status: 400) }
+        if let date = payload.text("scheduled_date"), !Self.validDate(date) { return Self.failure(invalid, status: 400) }
+        let patch: FakeObject
+        if payload["package"] == nil || payload["package"] == .null { patch = [:] }
+        else if let object = payload["package"]?.objectValue { patch = object }
+        else { return Self.failure(invalid, status: 400) }
+        let fields = ["title", "why_today", "caption", "script", "backup_story", "backup_caption_only", "shootability"]
+        if function == "update-ready-day-package" {
+            for field in fields where patch[field] != nil {
+                guard let text = patch.text(field) else { return Self.failure("invalid_package_text", status: 400, field: field) }
+                guard text.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{FEFF}"))).isEmpty == false else {
+                    return Self.failure("blank_package_text", status: 400, field: field)
+                }
+            }
+        }
+        guard var row = currentRow(payload) else { return Self.failure("daily_card_not_found", status: 404) }
+        let id = row.uuid("id")!
+        let date = row.text("scheduled_date")!
+        let oldStatus = row.text("status")!
+        var result: FakeObject = ["daily_card_id": .string(id.uuidString), "scheduled_date": .string(date), "weekly_plan_id": row["weekly_plan_id"]!]
+        switch function {
+        case "make-day-available":
+            guard oldStatus == "draft" else { return Self.failure("daily_card_not_draft", status: 409) }
+            guard row.text("title")?.nilIfBlank != nil else { return Self.failure("daily_card_incomplete", status: 400) }
+            row["status"] = .string("published")
+            result["status"] = .string("published")
+            result["week_is_soft_locked"] = .bool(row.uuid("weekly_plan_id").flatMap { state.plans[$0] }?.isSoftLocked ?? false)
+        case "unpublish-day":
+            guard oldStatus != "draft" else { return Self.failure("daily_card_already_draft", status: 409) }
+            guard Self.readyStatuses.contains(oldStatus) else { return Self.failure("daily_card_not_ready", status: 409) }
+            row["status"] = .string("draft")
+            row["decision_at"] = .null
+            row["completed_by_member_id"] = .null
+            result["status"] = .string("draft")
+            result["previous_status"] = .string(oldStatus)
+            result["cleared_live_decision"] = .bool(oldStatus != "published" || state.revisions[id]?["decision_at"] != nil && state.revisions[id]?["decision_at"] != .null)
+            result["archive_retained"] = .bool(state.archives[id] != nil)
+        case "publish-day":
+            guard oldStatus == "draft" || oldStatus == "published" else { return Self.failure("daily_card_not_publishable", status: 409) }
+            row["status"] = .string("published")
+            result["published_at"] = .string(SupabaseDateFormatting.isoTimestampString())
+            result["archived_card_count"] = .number(0)
+        default:
+            guard Self.readyStatuses.contains(oldStatus) else { return Self.failure("daily_card_not_ready", status: 409) }
+            for field in fields {
+                if let text = patch.text(field) { row[field] = .string(text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            }
+            if let minutes = patch["estimated_shoot_minutes"], minutes != .null { row["estimated_shoot_minutes"] = minutes }
+            if case .array(let scenes) = patch["scene_list"] {
+                let stored = row["scene_list"]?.decoded([SupabaseShotSceneDTO].self) ?? []
+                row["scene_list"] = .array(scenes.map { value in
+                    guard var scene = value.objectValue, scene["id"] == nil,
+                          let number = scene["number"]?.intValue,
+                          let id = stored.first(where: { $0.number == number })?.id else { return value }
+                    scene["id"] = .string(id.uuidString)
+                    return .object(scene)
+                })
+            }
+            guard row.text("title")?.nilIfBlank != nil else { return Self.failure("daily_card_incomplete", status: 400) }
+            result["status"] = .string(oldStatus)
+            result["title"] = row["title"]
+            result["caption"] = row["caption"] ?? .null
+        }
+        state.revisions[id] = row
+        state.days[date]?.updatedAt = SupabaseDateFormatting.isoTimestampString()
+        return Self.success(result)
+    }
+
+    private func write(_ payload: FakeObject) throws -> FakeServerResponse {
+        switch payload.text("action") {
+        case "complete_today", "upsert_archive_decision": return try decide(payload)
+        case "update_creator_profile":
+            for (key, value) in payload where key != "action" && key != "creator_id" { state.profile[key] = value }
+            return Self.success(["action": .string("update_creator_profile"), "creator_profile": .object(state.profile)])
+        case "update_daily_card_review_state":
+            guard let id = payload.uuid("daily_card_id"), state.revisions[id] != nil else { return Self.failure("daily_card_not_found", status: 404) }
+            guard state.revisions[id]?.flag("is_current") == true else { return Self.failure("historical_revision_immutable", status: 409) }
+            state.revisions[id]?["review_state"] = payload["review_state"]
+            return Self.success(["daily_card_id": .string(id.uuidString), "review_state": payload["review_state"] ?? .null])
+        case "update_weekly_setup":
+            guard payload.uuid("weekly_plan_id") == state.plan.id else { return Self.failure("weekly_plan_not_found", status: 404) }
+            if case .array(let sections) = payload["setup_sections"] {
+                if let brief = sections.compactMap(\.objectValue).first(where: { $0.text("title") == "weekly_brief" })?.text("value") {
+                    state.plan.weeklyBriefText = brief
+                } else {
+                    state.plan.setupSections = sections.map { value in
+                        let section = value.objectValue ?? [:]
+                        return WeeklySetupSection(id: section.uuid("id") ?? UUID(), systemImage: section.text("system_image") ?? "circle", title: section.text("title") ?? "", summary: section.text("summary") ?? "", state: section.text("state") ?? "")
+                    }
+                }
+                state.plans[state.plan.id] = state.plan
+            }
+            return Self.success(["action": .string("update_weekly_setup")])
+        case "select_idea_for_next_open_day":
+            guard let id = payload.uuid("idea_id"), let index = state.ideas.firstIndex(where: { $0.uuid("id") == id }) else { return Self.failure("idea_not_found", status: 404) }
+            if let day = state.plan.days.firstIndex(where: { $0.state == .open }) {
+                let idea = state.ideas[index]
+                state.plan.days[day].title = idea.text("title") ?? ""
+                state.plan.days[day].reason = idea.text("summary") ?? ""
+                state.plan.days[day].state = .planned
+                state.ideas[index]["selected_day"] = .string(state.plan.days[day].weekday)
+                state.plans[state.plan.id] = state.plan
+            }
+            return Self.success(["idea": .object(["id": .string(id.uuidString), "status": .string("selected")])])
+        default: return Self.failure("unsupported_action", status: 400)
+        }
+    }
+
+    private func decide(_ payload: FakeObject) throws -> FakeServerResponse {
+#if DEBUG
+        if DebugLaunchFlags.failTodayDecisionSyncOnce, !state.consumedFailures.contains("today-decision-sync") {
+            state.consumedFailures.insert("today-decision-sync")
+            return Self.failure("fixture_today_decision_sync_failed", status: 503)
+        }
+#endif
+        guard let id = payload.uuid("daily_card_id"), var card = state.revisions[id] else { return Self.failure("daily_card_not_found", status: 404) }
+        let complete = payload.text("action") == "complete_today"
+        let decisionPayload = complete ? payload["decision"]?.objectValue ?? [:] : payload
+        let decision = complete ? decisionPayload.text("status") : payload.text("decision")
+        let date = complete ? card.text("scheduled_date") : payload.text("archive_date")
+        guard let decision, Self.decisions.contains(decision), let date else { return Self.failure("invalid_write_payload", status: 400) }
+        let output = decisionPayload["output_line"] ?? .null
+        let thumbnail = decisionPayload.flag("has_post_thumbnail")
+        let existing = state.archives[id]
+        let current = state.days[card.text("scheduled_date") ?? ""]?.currentRevisionID == id
+        if !current {
+            guard let existing, existing.text("decision") == decision, existing.text("archive_date") == date,
+                  (existing["output_line"] ?? .null) == output, existing.flag("has_post_thumbnail") == thumbnail,
+                  payload.text("decision_at") == nil || Self.sameTimestamp(payload.text("decision_at"), existing.text("decision_at")) else {
+                return Self.failure(existing?.text("decision") == "posted" ? "posted_revision_immutable" : "historical_revision_immutable", status: 409)
+            }
+            return Self.success(decisionReply(payload, card: card, archive: existing))
+        }
+        if let existing, existing.text("decision") == "posted", decision == "posted" {
+            return Self.success(decisionReply(payload, card: card, archive: existing))
+        }
+        let same = existing?.text("decision") == decision
+        let keepText = same || existing?.text("decision") == "posted"
+        var time = same ? existing?.text("decision_at") : payload.text("decision_at") ?? SupabaseDateFormatting.isoTimestampString()
+        if !same, Self.sameTimestamp(time, existing?.text("decision_at")) {
+            let previous = Self.timestamp(existing?.text("decision_at")) ?? .distantPast
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            time = formatter.string(from: max(Date(), previous.addingTimeInterval(0.001)))
+        }
+        var archive: FakeObject = [
+            "id": existing?["id"] ?? .string(UUID().uuidString), "daily_card_id": .string(id.uuidString),
+            "archive_date": .string(date), "decision": .string(decision), "output_line": output,
+            "has_post_thumbnail": .bool(thumbnail), "decision_at": time.map(SupabaseJSONValue.string) ?? .null,
+            "title_snapshot": keepText ? existing?["title_snapshot"] ?? card["title"]! : card["title"]!,
+            "caption_snapshot": keepText ? existing?["caption_snapshot"] ?? .null : card["caption"] ?? .null
+        ]
+        archive["revision_id"] = .string(id.uuidString)
+        state.archives[id] = archive
+        if complete {
+            card["status"] = .string(decision)
+            card["decision_at"] = archive["decision_at"]
+            card["completed_by_member_id"] = .string(context.memberID.uuidString)
+            state.revisions[id] = card
+            state.days[card.text("scheduled_date")!]?.updatedAt = SupabaseDateFormatting.isoTimestampString()
+        }
+        return Self.success(decisionReply(payload, card: card, archive: archive))
+    }
+
+    private func decisionReply(_ payload: FakeObject, card: FakeObject, archive: FakeObject) -> FakeObject {
+        var result: FakeObject = ["action": payload["action"]!, "archive_entry": .object(archive)]
+        if payload.text("action") == "complete_today" {
+            result["daily_card"] = .object([
+                "id": card["id"]!, "status": archive["decision"]!,
+                "decision_at": archive["decision_at"] ?? .null,
+                "completed_by_member_id": card["completed_by_member_id"] ?? .null
+            ])
+        }
+        return result
+    }
+
+    private func generate(_ payload: FakeObject, replacing: Bool, delayNanoseconds: UInt64) throws -> FakeServerResponse {
+        if payload.text("action") == "status", !replacing {
+            guard let id = payload.uuid("generation_id"), let key = state.runs.first(where: { $0.value.id == id })?.key else {
+                return Self.failure("generation_run_not_found", status: 404)
+            }
+            try refreshRun(key)
+            return runResponse(key, replayed: false)
+        }
+        let action = replacing ? "replace_day" : payload.text("action") ?? ""
+        let isReplacement = action == "replace_day"
+        if ["generate_week", "retry_day", "cancel_generation"].contains(action) {
+            return Self.failure("full_week_generation_retired", status: 400)
+        }
+        guard ["generate_day", "regenerate_day", "replace_day"].contains(action),
+              let date = payload.text("scheduled_date"), Self.validDate(date),
+              payload["response_mode"] == nil || ["sync", "async"].contains(payload.text("response_mode") ?? "") else {
+            return Self.failure("invalid_generation_payload", status: 400)
+        }
+        if payload["daily_card_id"] != nil, payload.uuid("daily_card_id") == nil { return Self.failure("invalid_generation_payload", status: 400) }
+        let key: String
+        if let supplied = payload["idempotency_key"] {
+            guard case .string(let raw) = supplied else { return Self.failure("invalid_idempotency_key", status: 400) }
+            key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty, key.utf16.count <= 200 else { return Self.failure("invalid_idempotency_key", status: 400) }
+        } else { key = UUID().uuidString }
+        let brief = String((payload.text(action == "regenerate_day" ? "day_guidance" : "day_brief") ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(2_000))
+        if action != "regenerate_day", brief.isEmpty { return Self.failure("day_brief_required", status: 400) }
+        var identity: FakeObject = [
+            "action": .string(action), "creator_id": payload["creator_id"]!, "scheduled_date": .string(date),
+            "mock": .bool(payload.flag("mock")), "daily_card_id": payload["daily_card_id"] ?? .null
+        ]
+        if action == "regenerate_day" {
+            guard let planID = payload.uuid("weekly_plan_id") else { return Self.failure("invalid_generation_payload", status: 400) }
+            identity["weekly_plan_id"] = .string(planID.uuidString)
+            identity["preserve_manual_edits"] = .bool(payload["preserve_manual_edits"] != .bool(false))
+            if payload.text("day_guidance")?.isEmpty == false { identity["day_guidance"] = .string(brief) }
+            if let overrides = payload["input_overrides"], overrides.objectValue != nil { identity["input_overrides"] = overrides }
+        } else { identity["day_brief"] = .string(brief) }
+        if let previous = state.runs[key] {
+            guard previous.identity == identity else { return Self.failure("idempotency_key_conflict", status: 409) }
+            try refreshRun(key)
+            return runResponse(key, replayed: true)
+        }
+        guard date >= Self.serverTodayDate else { return Self.failure("past_generation_date_not_allowed", status: 400) }
+#if DEBUG
+        if DebugLaunchFlags.failFirstIdea { return Self.failure("fixture_first_idea_generation_failed", status: 503) }
+        if DebugLaunchFlags.failFirstIdeaOnce, !state.consumedFailures.contains("first-idea-generation") {
+            state.consumedFailures.insert("first-idea-generation")
+            return Self.failure("fixture_first_idea_generation_failed_once", status: 503)
+        }
+#endif
+        let existing = state.days[date]?.currentRevisionID.flatMap { state.revisions[$0] }
+        let plan: WeeklyPlan
+        if isReplacement {
+            guard let existing, payload.uuid("daily_card_id") == nil || payload.uuid("daily_card_id") == existing.uuid("id") else { return Self.failure("daily_card_not_found", status: 404) }
+            guard let found = existing.uuid("weekly_plan_id").flatMap({ state.plans[$0] }) else { return Self.failure("weekly_plan_not_found", status: 404) }
+            plan = found
+        } else if action == "regenerate_day" {
+            guard let found = payload.uuid("weekly_plan_id").flatMap({ state.plans[$0] }) else { return Self.failure("weekly_plan_not_found", status: 404) }
+            plan = found
+        } else {
+            plan = state.plans.values.first { $0.weekStartDate.map { $0 <= date && date <= SupabaseDateFormatting.weekEndDate(starting: $0) } == true }
+                ?? Self.emptyPlan(for: date)
+        }
+        guard let start = plan.weekStartDate, start <= date, date <= SupabaseDateFormatting.weekEndDate(starting: start) else { return Self.failure("date_not_in_plan", status: 400) }
+        if !isReplacement {
+            guard !plan.isSoftLocked else { return Self.failure("existing_published_week_locked", status: 409) }
+            if let existing, existing.text("status") != "draft" { return Self.failure("replace_day_required", status: 409) }
+        }
+        if let previous = state.days[date]?.generationKey, state.runs[previous]?.status == "running" { failRun(previous, code: "generation_superseded") }
+        if isReplacement, let existing { archiveRevision(existing, superseded: false) }
+        state.plans[plan.id] = plan
+        state.plan = plan
+        let run = FakeServerRun(planID: plan.id, scheduledDate: date, identity: identity,
+                                replacedRevisionID: isReplacement ? existing?.uuid("id") : nil,
+                                readyAt: Date().addingTimeInterval(Double(delayNanoseconds) / 1_000_000_000))
+        state.runs[key] = run
+        state.days[date] = FakeServerDay(currentRevisionID: existing?.uuid("id"), generationKey: key)
+        return runResponse(key, replayed: false)
+    }
+
+    private func refreshRun(_ key: String) throws {
+        guard let run = state.runs[key], run.status == "running" else { return }
+        if Date().timeIntervalSince(run.updatedAt) > 600 { failRun(key, code: "generation_stale") }
+        else if Date() >= run.readyAt { try finishRun(key) }
+    }
+
+    private func completeDueRuns() throws {
+        for key in Array(state.runs.keys) { try refreshRun(key) }
+    }
+
+    private func failRun(_ key: String, code: String) {
+        guard state.runs[key]?.status == "running" else { return }
+        state.runs[key]?.status = "failed"
+        state.runs[key]?.error = code
+        state.runs[key]?.completedAt = SupabaseDateFormatting.isoTimestampString()
+        state.runs[key]?.updatedAt = Date()
+    }
+
+    private func finishRun(_ key: String) throws {
+        guard var run = state.runs[key] else { throw RepositoryError.edgeFunction("generation_run_not_found") }
+        if run.result != nil { return }
+        guard run.status == "running", state.days[run.scheduledDate]?.generationKey == key else { throw RepositoryError.edgeFunction("generation_run_closed") }
+        var result = FakeGenerationOutput().makeResult(scheduledDate: run.scheduledDate,
+            dayBrief: run.identity.text("day_brief") ?? run.identity.text("day_guidance") ?? "Regenerated fixture day for \(run.scheduledDate).", revisionID: run.revisionID)
+        result.generationID = run.id
+        result.weeklyPlanID = run.planID
+        result.dailyCard.sceneList = result.dailyCard.sceneList.map { scene in
+            ShotScene(id: ShotScene.stableID(revisionID: run.revisionID, number: scene.number), number: scene.number,
+                      title: scene.title, duration: scene.duration, symbol: scene.symbol, dialogue: scene.dialogue)
+        }
+        if let oldID = state.days[run.scheduledDate]?.currentRevisionID, let old = state.revisions[oldID] { archiveRevision(old) }
+        let row = try Self.revision(result.dailyCard, planID: run.planID, context: context, generationID: run.id)
+        state.revisions[run.revisionID] = row
+        state.days[run.scheduledDate]?.currentRevisionID = run.revisionID
+        state.days[run.scheduledDate]?.updatedAt = SupabaseDateFormatting.isoTimestampString()
+        run.status = "completed"
+        run.completedAt = SupabaseDateFormatting.isoTimestampString()
+        run.updatedAt = Date()
+        run.result = .object([
+            "generation_id": .string(run.id.uuidString), "weekly_plan_id": .string(run.planID.uuidString), "status": .string("draft"),
+            "target_scheduled_date": .string(run.scheduledDate), "daily_card": .object(row),
+            "warnings": try FakeJSON.value(result.warnings), "assumptions": try FakeJSON.value(result.assumptions),
+            "source_summary": .string(result.sourceSummary), "generated_at": .string(result.generatedAt)
+        ])
+        state.runs[key] = run
+    }
+
+    private func runResponse(_ key: String, replayed: Bool) -> FakeServerResponse {
+        guard let run = state.runs[key] else { return Self.failure("generation_run_not_found", status: 404) }
+        var object = run.result?.objectValue ?? [
+            "generation_id": .string(run.id.uuidString), "weekly_plan_id": .string(run.planID.uuidString),
+            "target_scheduled_date": .string(run.scheduledDate), "status": .string(run.status),
+            "poll_after_seconds": run.status == "running" ? .number(1) : .null
+        ]
+        if let card = object["daily_card"]?.objectValue {
+            object["daily_card"] = .object(Self.generatedCard(card))
+        }
+        object["idempotency_key"] = .string(key)
+        object["replaced_daily_card_id"] = run.replacedRevisionID.map { .string($0.uuidString) } ?? .null
+        if let error = run.error { object["error"] = .string(error) }
+        if replayed { object["replayed"] = .bool(true) }
+        return Self.success(object, status: run.status == "running" ? 202 : 200)
+    }
+
+    private static func generatedCard(_ row: FakeObject) -> FakeObject {
+        var card = row
+        let instructions = row["post_instructions"]?.objectValue ?? [:]
+        for field in ["format", "primary_surface", "duration_seconds", "hook", "save_share_reason",
+                      "shot_timeline", "voiceover_timeline", "silent_version_timeline", "on_screen_text_timeline"] {
+            if let value = instructions[field] { card[field] = value }
+        }
+        card["post_instructions"] = .string(instructions.text("instructions") ?? row.text("post_instructions") ?? "")
+        card["backup_story"] = .string(row["backup_story"]?.displayText ?? "")
+        card["backup_caption_only"] = .string(row["backup_caption_only"]?.displayText ?? "")
+        card["backup_story_detail"] = row["backup_story"]?.objectValue?["detail"] ?? row["backup_story_detail"] ?? .array([])
+        card["caption_backup_detail"] = instructions["caption_backup_detail"]
+            ?? row["backup_caption_only"]?.objectValue?["detail"] ?? row["caption_backup_detail"] ?? .string("")
+        card["audio_option_notes"] = instructions["audio_option_notes"] ?? row["audio_option_notes"] ?? .string("")
+        return card
+    }
+
+    private func archiveRevision(_ row: FakeObject, superseded: Bool = true) {
+        let id = row.uuid("id")!
+        if state.archives[id] == nil {
+            let decision = row.text("status").flatMap { Self.decisions.contains($0) ? $0 : nil } ?? "replaced"
+            state.archives[id] = [
+                "id": .string(UUID().uuidString), "daily_card_id": .string(id.uuidString),
+                "archive_date": row["scheduled_date"]!, "decision": .string(decision), "output_line": row["title"]!,
+                "has_post_thumbnail": .bool(false), "title_snapshot": row["title"]!,
+                "caption_snapshot": row["caption"] ?? .null, "decision_at": row["decision_at"] ?? .string(SupabaseDateFormatting.isoTimestampString())
+            ]
+        }
+        state.revisions[id]?["status"] = .string("archived")
+        state.revisions[id]?["is_current"] = .bool(!superseded)
+    }
+
+    private func currentRows() -> [FakeObject] {
+        state.days.values.compactMap { $0.currentRevisionID.flatMap { state.revisions[$0] } }
+            .sorted { ($0.text("scheduled_date") ?? "") < ($1.text("scheduled_date") ?? "") }
+    }
+
+    private func currentRow(_ payload: FakeObject) -> FakeObject? {
+        if let id = payload.uuid("daily_card_id"), let row = state.revisions[id],
+           let date = row.text("scheduled_date"), state.days[date]?.currentRevisionID == id,
+           payload.text("scheduled_date") == nil || payload.text("scheduled_date") == date { return row }
+        if payload["daily_card_id"] != nil { return nil }
+        return payload.text("scheduled_date").flatMap { state.days[$0]?.currentRevisionID }.flatMap { state.revisions[$0] }
+    }
+
+    private func persist() throws {
+        if let defaults { defaults.set(try JSONEncoder().encode(state), forKey: Self.persistenceKey) }
+    }
+
+    private static func success(_ object: FakeObject, status: Int = 200) -> FakeServerResponse {
+        FakeServerResponse(statusCode: status, body: .object(object))
+    }
+
+    private static func failure(_ error: String, status: Int, field: String? = nil) -> FakeServerResponse {
+        var body: FakeObject = ["error": .string(error)]
+        if let field { body["field"] = .string(field) }
+        return FakeServerResponse(statusCode: status, body: .object(body))
+    }
+
+    private static func revision(_ draft: GeneratedDailyCardDraft, planID: UUID, context: WorkspaceContext, generationID: UUID? = nil) throws -> FakeObject {
+        var row = try FakeJSON.object(SupabaseDraftDailyCardPublishRequest(card: draft))
+        row["workspace_id"] = .string(context.workspaceID.uuidString)
+        row["creator_id"] = .string(context.creatorID.uuidString)
+        row["weekly_plan_id"] = .string(planID.uuidString)
+        row["status"] = .string(DayPackageLifecycleStatus.isDraftPackage(draft.status) ? "draft" : draft.status)
+        row["is_current"] = .bool(true)
+        row["generation_run_id"] = generationID.map { .string($0.uuidString) } ?? .null
+        row["scene_list"] = try FakeJSON.value(draft.sceneList)
+        return row
+    }
+
+    private static func profile(_ summary: CreatorProfileSummary, context: WorkspaceContext) throws -> FakeObject {
+        let update = CreatorProfileUpdate(positioning: summary.positioning, voiceRules: summary.voiceRules,
+            contentPillars: summary.contentPillars, captionStyle: summary.captionStyle ?? "", noGoTopics: summary.noGoTopics,
+            recurringFormats: summary.recurringFormats, onboardingState: summary.onboardingState, onboardingStep: summary.onboardingStep,
+            onboardingCompletedAt: summary.onboardingCompletedAt, startingPoint: summary.startingPoint, customSubjects: summary.customSubjects,
+            tasteExampleIDs: summary.tasteExampleIDs, productionFormats: summary.productionFormats, timeToCreate: summary.timeToCreate,
+            onCameraRestrictions: summary.onCameraRestrictions, recentContext: summary.recentContext, creatorNote: summary.creatorNote,
+            firstIdeaHandoff: summary.firstIdeaHandoff, languagePreferences: ["primary": summary.contentLanguage])
+        var result = try FakeJSON.object(SupabaseWriteContentRequest.updateCreatorProfile(update, context: context))
+        result.removeValue(forKey: "action")
+        result["display_name"] = .string(summary.displayName)
+        result["onboarding_version"] = .number(Double(summary.onboardingVersion))
+        return result
+    }
+
+    private static func planRow(_ plan: WeeklyPlan, context: WorkspaceContext) throws -> SupabaseJSONValue {
+        .object([
+            "id": .string(plan.id.uuidString), "workspace_id": .string(context.workspaceID.uuidString), "creator_id": .string(context.creatorID.uuidString),
+            "week_start_date": .string(plan.weekStartDate ?? ""), "status": .string(plan.isSoftLocked ? "published" : "draft"),
+            "is_soft_locked": .bool(plan.isSoftLocked), "warnings": .array([]), "assumptions": .array([]),
+            "strategy_summary": .string(plan.weeklyBriefText)
+        ])
+    }
+
+    private static func timestamp(_ text: String?) -> Date? {
+        guard let text else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: text) ?? ISO8601DateFormatter().date(from: text)
+    }
+
+    private static func sameTimestamp(_ lhs: String?, _ rhs: String?) -> Bool {
+        guard let lhs = timestamp(lhs), let rhs = timestamp(rhs) else { return false }
+        return lhs == rhs
+    }
+
+    private static var serverTodayDate: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+
+    private static func validDate(_ value: String) -> Bool {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+        return formatter.date(from: value).map { formatter.string(from: $0) == value } ?? false
+    }
+
+    private static func emptyPlan(for date: String) -> WeeklyPlan {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let day = formatter.date(from: date)!
+        let offset = (calendar.component(.weekday, from: day) + 5) % 7
+        let start = formatter.string(from: calendar.date(byAdding: .day, value: -offset, to: day)!)
+        var plan = WeeklyPlan(title: "Generate a Week", eyebrow: "MANAGER WEEKLY CONTROL", weekRange: SupabaseDateFormatting.weekRange(starting: start),
+            weekStartDate: start, weekEndDate: SupabaseDateFormatting.weekEndDate(starting: start), readinessLine: "0 ready, 0 backup, 7 open", isSoftLocked: false, days: [], setupSections: WeeklyPlan.raceWeek.setupSections)
+        plan.days = SupabaseDateFormatting.weekDates(starting: start).map { date in
+            WeeklyDay(weekday: SupabaseDateFormatting.weekdayAbbreviation(for: date), date: SupabaseDateFormatting.dayNumber(for: date), scheduledDate: date,
+                title: "Open", reason: "", source: .open, state: .open, isSoftLocked: false)
+        }
+        return plan
+    }
+
+    private static func seed(context: WorkspaceContext, defaults: UserDefaults?) throws -> FakeServerSnapshot {
+        var snapshot = FakeServerSnapshot()
+        let savedProfile = defaults?.data(forKey: "creator-profile").flatMap { try? JSONDecoder().decode(CreatorProfileSummary.self, from: $0) }
+        snapshot.profile = try profile(savedProfile ?? .creatorFixture, context: context)
+        snapshot.plans[snapshot.plan.id] = snapshot.plan
+        snapshot.ideas = WeeklyIdea.raceWeekBank.map { idea in
+            ["id": .string(idea.id.uuidString), "title": .string(idea.title), "summary": .string(idea.reason),
+             "suggested_use": .string(idea.source.rawValue), "shootability": .string(idea.effortLabel), "status": .string("candidate")]
+        }
+        var cards = DailyCard.weekFixtures
+        var drafts: [String: DailyCard] = [:]
+#if DEBUG
+        let loopCards = DebugLaunchFlags.loopScenarioCards
+#else
+        let loopCards: [DailyCard]? = nil
+#endif
+        if let data = defaults?.data(forKey: "published-content"),
+           let legacy = try? JSONDecoder().decode(LegacyFixtureContent.self, from: data) {
+            cards = legacy.weekCards
+            drafts = legacy.generatedDrafts
+            if let today = legacy.todayCard, !cards.contains(where: { $0.id == today.id }) { cards.append(today) }
+            for card in legacy.historicalCards.values {
+                guard let date = card.scheduledDate else { continue }
+                let plan = emptyPlan(for: date)
+                snapshot.plans[plan.id] = plan
+                var row = try revision(GeneratedDailyCardDraft(fromPublishedCard: card, status: "archived"), planID: plan.id, context: context)
+                row["is_current"] = .bool(false)
+                snapshot.revisions[card.id] = row
+            }
+            for entry in legacy.decisions.values {
+                let date = entry.scheduledDate ?? cards.first(where: { $0.id == entry.dailyCardID })?.scheduledDate ?? SupabaseDateFormatting.todayDateString()
+                let id = entry.dailyCardID ?? UUID()
+                snapshot.archives[id] = archiveSeed(entry, revisionID: id, date: date)
+            }
+        } else if let loopCards {
+            cards = loopCards
+        } else if !DebugLaunchFlags.forceEmptyToday {
+#if DEBUG
+            var draft = DebugLaunchFlags.forceFixtureUI ? DebugLaunchFlags.fixtureDailyCardDraft : GeneratedDailyCardDraft(fromPublishedCard: .raceWeekToday)
+#else
+            var draft = GeneratedDailyCardDraft(fromPublishedCard: .raceWeekToday)
+#endif
+            draft.scheduledDate = SupabaseDateFormatting.todayDateString()
+            draft.status = "published"
+            cards.removeAll { $0.scheduledDate == draft.scheduledDate }
+            cards.append(draft.dailyCard(completionState: nil))
+        }
+        for card in cards { if let date = card.scheduledDate { drafts.removeValue(forKey: date) } }
+        for card in Array(drafts.values) + cards {
+            guard let date = card.scheduledDate else { continue }
+            let plan = snapshot.plans.values.first { $0.weekStartDate.map { $0 <= date && date <= SupabaseDateFormatting.weekEndDate(starting: $0) } == true } ?? emptyPlan(for: date)
+            snapshot.plans[plan.id] = plan
+            let status = cards.contains(where: { $0.id == card.id }) ? card.completionState?.supabaseStatus ?? "published" : "draft"
+            snapshot.revisions[card.id] = try revision(GeneratedDailyCardDraft(fromPublishedCard: card, status: status), planID: plan.id, context: context)
+            snapshot.days[date] = FakeServerDay(currentRevisionID: card.id)
+        }
+        let archiveEntries: [ArchiveEntry]
+        if let saved = defaults?.data(forKey: "archive"), let entries = try? JSONDecoder().decode([ArchiveEntry].self, from: saved) {
+            archiveEntries = entries
+        } else {
+#if DEBUG
+            switch DebugLaunchFlags.uiFixtureData {
+            case .empty: archiveEntries = []
+            case .one: archiveEntries = Array(ArchiveEntry.fixtures.prefix(1))
+            case .worst, .huge:
+                let count = DebugLaunchFlags.uiFixtureData == .huge ? 1_284 : 6
+                archiveEntries = (0..<count).map { index in
+                    ArchiveEntry(day: "TUE", date: "6 OCT", cardTitle: index == 0 ? "Đặng Thị Ngọc Hân — a small creative routine that helped me finish a difficult week" : "Daily moment \(index + 1)", decision: .posted, outputLine: "Posted", hasPostThumbnail: false)
+                }
+            case .demo: archiveEntries = ArchiveEntry.fixtures
+            }
+#else
+            archiveEntries = ArchiveEntry.fixtures
+#endif
+        }
+        for (index, entry) in archiveEntries.enumerated() {
+            let id = entry.dailyCardID ?? UUID()
+            if snapshot.archives[id] == nil {
+                let dates = ["2026-06-03", "2026-06-02", "2026-06-01", "2026-05-31"]
+                snapshot.archives[id] = archiveSeed(entry, revisionID: id, date: entry.scheduledDate ?? (index < dates.count ? dates[index] : "2026-10-06"))
+            }
+        }
+        for (id, archive) in snapshot.archives where snapshot.revisions[id] == nil {
+            guard let date = archive.text("archive_date") else { continue }
+            let plan = snapshot.plans.values.first { $0.weekStartDate.map { $0 <= date && date <= SupabaseDateFormatting.weekEndDate(starting: $0) } == true } ?? emptyPlan(for: date)
+            snapshot.plans[plan.id] = plan
+            let card = DailyCard(id: id, title: archive.text("title_snapshot") ?? "Archived package",
+                context: SupabaseDateFormatting.contextLine(for: date), effortLabel: "", whyToday: "", scheduledDate: date,
+                scenes: [], caption: archive.text("caption_snapshot"))
+            var row = try revision(GeneratedDailyCardDraft(fromPublishedCard: card, status: "archived"), planID: plan.id, context: context)
+            row["is_current"] = .bool(false)
+            snapshot.revisions[id] = row
+        }
+        if let id = snapshot.days[SupabaseDateFormatting.todayDateString()]?.currentRevisionID,
+           let planID = snapshot.revisions[id]?.uuid("weekly_plan_id"), let plan = snapshot.plans[planID] {
+            snapshot.plan = plan
+        }
+        return snapshot
+    }
+
+    private static func archiveSeed(_ entry: ArchiveEntry, revisionID: UUID, date: String) -> FakeObject {
+        ["id": .string(entry.id.uuidString), "daily_card_id": .string(revisionID.uuidString), "archive_date": .string(date),
+         "decision": .string(entry.decision.supabaseStatus), "output_line": .string(entry.outputLine),
+         "has_post_thumbnail": .bool(entry.hasPostThumbnail), "title_snapshot": .string(entry.cardTitle),
+         "caption_snapshot": entry.captionSnapshot.map(SupabaseJSONValue.string) ?? .null,
+         "decision_at": .string(entry.decisionAt ?? "\(date)T12:00:00Z")]
+    }
+
+
+    func publishWeek(_ plan: WeeklyPlan, ideaBank: [WeeklyIdea], generatedDraft: GeneratedWeekDraft?) throws -> WeeklyPublishResult {
+        let published = generatedDraft.flatMap { $0.weeklyPlanID == plan.id ? $0.markedPublished.weeklyPlan(setupSections: plan.setupSections, weeklyBriefText: plan.weeklyBriefText) : nil }?.softLockedForPublish ?? plan.softLockedForPublish
+        let cards = generatedDraft.flatMap { $0.weeklyPlanID == plan.id ? $0.markedPublished.publishedWeekCards : nil } ?? DailyCard.publishedCards(from: published)
+        try savePublishedContent(cards: cards, todayCard: nil, plan: published)
+        state.plan = published
+        try persist()
+        return WeeklyPublishResult(weeklyPlan: published, weekCards: cards, todayCard: DailyCard.bestTodayCard(from: cards), summary: "Published \(cards.count) cards to Creator Today.")
+    }
+
+    func readWeekCards() throws -> [DailyCard] {
+        try currentRows().filter { Self.readyStatuses.contains($0.text("status") ?? "") }.map { try FakeJSON.decode(.object($0), as: SupabaseDailyCardRow.self).domainCard() }
+    }
+
+    func readTodayCard() throws -> DailyCard? {
+        try readWeekCards().first { $0.scheduledDate == SupabaseDateFormatting.todayDateString() }
+    }
+
+    func saveGeneratedDraft(_ draft: GeneratedDailyCardDraft) throws {
+        let plan = state.plans.values.first { $0.weekStartDate.map { $0 <= draft.scheduledDate && draft.scheduledDate <= SupabaseDateFormatting.weekEndDate(starting: $0) } == true } ?? Self.emptyPlan(for: draft.scheduledDate)
+        state.plans[plan.id] = plan
+        if let id = state.days[draft.scheduledDate]?.currentRevisionID, id != draft.id, let row = state.revisions[id] { archiveRevision(row) }
+        state.revisions[draft.id] = try Self.revision(draft, planID: plan.id, context: context)
+        state.days[draft.scheduledDate] = FakeServerDay(currentRevisionID: draft.id)
+        try persist()
+    }
+
+    func savePublishedContent(cards: [DailyCard], todayCard: DailyCard?, plan: WeeklyPlan? = nil) throws {
+        if let plan { state.plans[plan.id] = plan }
+        for card in cards {
+            guard let date = card.scheduledDate else { continue }
+            let container = plan ?? state.plans.values.first { $0.weekStartDate.map { $0 <= date && date <= SupabaseDateFormatting.weekEndDate(starting: $0) } == true } ?? Self.emptyPlan(for: date)
+            state.plans[container.id] = container
+            if let id = state.days[date]?.currentRevisionID, id != card.id, let old = state.revisions[id] { archiveRevision(old) }
+            state.revisions[card.id] = try Self.revision(GeneratedDailyCardDraft(fromPublishedCard: card, status: card.completionState?.supabaseStatus ?? "published"), planID: container.id, context: context)
+            state.days[date] = FakeServerDay(currentRevisionID: card.id)
+        }
+        try persist()
     }
 }
 
-private struct FixturePublishedContentSnapshot: Codable {
-    private enum CodingKeys: String, CodingKey {
-        case weekCards
-        case todayCard
-        case generatedDrafts
-        case outboxRuns, historicalCards, decisions
-    }
-
+private struct LegacyFixtureContent: Decodable {
     var weekCards: [DailyCard]
     var todayCard: DailyCard?
     var generatedDrafts: [String: DailyCard]
-    var outboxRuns: [String: FixtureOutboxRun] = [:]
-    var historicalCards: [UUID: DailyCard] = [:]
-    var decisions: [UUID: ArchiveEntry] = [:]
+    var historicalCards: [UUID: DailyCard]
+    var decisions: [UUID: ArchiveEntry]
 
-    init(
-        weekCards: [DailyCard],
-        todayCard: DailyCard?,
-        generatedDrafts: [String: DailyCard] = [:],
-        outboxRuns: [String: FixtureOutboxRun] = [:],
-        historicalCards: [UUID: DailyCard] = [:],
-        decisions: [UUID: ArchiveEntry] = [:]
-    ) {
-        self.weekCards = weekCards
-        self.todayCard = todayCard
-        self.generatedDrafts = generatedDrafts
-        self.outboxRuns = outboxRuns
-        self.historicalCards = historicalCards
-        self.decisions = decisions
-    }
+    private enum CodingKeys: String, CodingKey { case weekCards, todayCard, generatedDrafts, historicalCards, decisions }
 
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        weekCards = try container.decode([DailyCard].self, forKey: .weekCards)
-        todayCard = try container.decodeIfPresent(DailyCard.self, forKey: .todayCard)
-        generatedDrafts = try container.decodeIfPresent(
-            [String: DailyCard].self,
-            forKey: .generatedDrafts
-        ) ?? [:]
-        outboxRuns = try container.decodeIfPresent([String: FixtureOutboxRun].self, forKey: .outboxRuns) ?? [:]
-        historicalCards = try container.decodeIfPresent([UUID: DailyCard].self, forKey: .historicalCards) ?? [:]
-        decisions = try container.decodeIfPresent([UUID: ArchiveEntry].self, forKey: .decisions) ?? [:]
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        weekCards = try values.decode([DailyCard].self, forKey: .weekCards)
+        todayCard = try values.decodeIfPresent(DailyCard.self, forKey: .todayCard)
+        generatedDrafts = try values.decodeIfPresent([String: DailyCard].self, forKey: .generatedDrafts) ?? [:]
+        historicalCards = try values.decodeIfPresent([UUID: DailyCard].self, forKey: .historicalCards) ?? [:]
+        decisions = try values.decodeIfPresent([UUID: ArchiveEntry].self, forKey: .decisions) ?? [:]
     }
 }
 
-/// Keeps the fixture Today and weekly repositories on the same published content.
-/// A QA session persists this state in its own defaults suite for relaunch proof.
-actor FixturePublishedContentStore {
-    private var weekCards: [DailyCard] = []
-    private var todayCard: DailyCard?
-    private var generatedDrafts: [String: DailyCard] = [:]
-    private var outboxRuns: [String: FixtureOutboxRun] = [:]
-    private var historicalCards: [UUID: DailyCard] = [:]
-    private var decisions: [UUID: ArchiveEntry] = [:]
-    private let defaults: UserDefaults?
-    private let persistenceKey = "published-content"
+struct FixturePublishedContentStore: Sendable {
+    let server: FakeServer
+    init(server: FakeServer = .shared) { self.server = server }
+    func readWeekCards() async -> [DailyCard] { (try? await server.readWeekCards()) ?? [] }
+    func readTodayCard() async -> DailyCard? { try? await server.readTodayCard() }
+    func saveGeneratedDraft(_ draft: GeneratedDailyCardDraft) async { try? await server.saveGeneratedDraft(draft) }
+    func savePublishedContent(cards: [DailyCard], todayCard: DailyCard?) async { try? await server.savePublishedContent(cards: cards, todayCard: todayCard) }
+}
 
-    init() {
-        if DebugLaunchConfiguration.fixtureSession != nil {
-            let defaults = DebugLaunchConfiguration.fixtureDefaults
-            self.defaults = defaults
-            if let data = defaults.data(forKey: persistenceKey),
-               let snapshot = try? JSONDecoder().decode(
-                   FixturePublishedContentSnapshot.self,
-                   from: data
-               ) {
-                weekCards = snapshot.weekCards
-                todayCard = snapshot.todayCard
-                generatedDrafts = snapshot.generatedDrafts
-                outboxRuns = snapshot.outboxRuns
-                historicalCards = snapshot.historicalCards
-                decisions = snapshot.decisions
-            }
-        } else {
-            defaults = nil
-        }
-    }
+struct FixtureCreatorProfileStore: Sendable {
+    let server: FakeServer
+    init(server: FakeServer = .shared) { self.server = server }
+}
 
-    func readWeekCards() -> [DailyCard] {
-        weekCards
-    }
-
-    func readTodayCard() -> DailyCard? {
-        todayCard
-    }
-
-    func readGeneratedDraft(for scheduledDate: String) -> DailyCard? {
-        generatedDrafts[scheduledDate]
-    }
-
-    func readGeneratedDrafts() -> [GeneratedDailyCardDraft] {
-        generatedDrafts.values
-            .sorted { ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "") }
-            .map { card in
-                let isPublished = weekCards.contains { $0.id == card.id }
-                return GeneratedDailyCardDraft(
-                    fromPublishedCard: card,
-                    status: isPublished ? "published" : "draft"
-                )
-            }
-    }
-
-    func replaceGeneratedDraft(with card: DailyCard) {
-        guard let date = card.scheduledDate, generatedDrafts[date]?.id == card.id else { return }
-        generatedDrafts[date] = card
-        persist()
-    }
-
-    func saveGeneratedDraft(_ draft: GeneratedDailyCardDraft) {
-        generatedDrafts[draft.scheduledDate] = draft.dailyCard(completionState: nil)
-        persist()
-    }
-
-    func savePublishedContent(cards: [DailyCard], todayCard: DailyCard?) {
-        self.weekCards = cards
-        self.todayCard = todayCard
-        persist()
-    }
-
-    func saveDecisionCard(_ card: DailyCard) {
-        var cards = weekCards
-        if let index = cards.firstIndex(where: { $0.id == card.id }) {
-            cards[index] = card
-        } else if card.scheduledDate != nil {
-            cards.removeAll { $0.scheduledDate == card.scheduledDate }
-            cards.append(card)
-            cards.sort { ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "") }
-        }
-        weekCards = cards
-        if card.scheduledDate == SupabaseDateFormatting.todayDateString()
-            || todayCard?.id == card.id {
-            todayCard = card
-        }
-        persist()
-    }
-
-    fileprivate func claimGeneration(_ intent: ContentIntent) throws -> FixtureOutboxRun {
-        if let run = outboxRuns[intent.id] {
-            guard run.matches(intent) else { throw RepositoryError.edgeFunction("idempotency_key_conflict") }
-            return run
-        }
-        if intent.generationID != nil { throw RepositoryError.edgeFunction("generation_run_not_found") }
-        if intent.kind == .replaceDay {
-            let current = weekCards.first { $0.scheduledDate == intent.scheduledDate }
-                ?? generatedDrafts[intent.scheduledDate]
-            guard let current, current.id == intent.revisionID else { throw RepositoryError.edgeFunction("daily_card_not_found") }
-            historicalCards[current.id] = current
-            weekCards.removeAll { $0.id == current.id }
-            if todayCard?.id == current.id { todayCard = nil }
-            generatedDrafts.removeValue(forKey: intent.scheduledDate)
-        }
-        let run = FixtureOutboxRun(request: intent)
-        outboxRuns[intent.id] = run
-        persist()
-        return run
-    }
-
-    fileprivate func finishGeneration(_ result: DailyGenerationResult, key: String) {
-        guard var run = outboxRuns[key] else { return }
-        if let previous = generatedDrafts[result.targetScheduledDate], previous.id != result.dailyCard.id {
-            historicalCards[previous.id] = previous
-        }
-        run.result = result
-        outboxRuns[key] = run
-        generatedDrafts[result.targetScheduledDate] = result.dailyCard.dailyCard(completionState: nil)
-        persist()
-    }
-
-    func readDecisions() -> [ArchiveEntry] { Array(decisions.values) }
-
-    func saveDecision(_ intent: ContentIntent) throws -> ArchiveEntry {
-        guard let card = intent.cardSnapshot, let decision = intent.decision else { throw DayTransitionError.incompletePackage }
-        if let existing = decisions[card.id], existing.decision == .posted {
-            guard decision.completionState == .posted else { throw RepositoryError.edgeFunction("posted_revision_immutable") }
-            return existing
-        }
-        var entry = intent.archiveSnapshot ?? ArchiveEntry(
-            dailyCardID: card.id,
-            day: SupabaseDateFormatting.weekdayAbbreviation(for: intent.scheduledDate),
-            date: SupabaseDateFormatting.shortDate(for: intent.scheduledDate),
-            cardTitle: card.title,
-            decision: decision.completionState,
-            outputLine: decision.outputLine,
-            hasPostThumbnail: decision.hasPostThumbnail
-        )
-        entry.captionSnapshot = card.caption
-        entry.scheduledDate = intent.scheduledDate
-        entry.decisionAt = entry.decisionAt ?? ISO8601DateFormatter().string(from: intent.createdAt)
-        decisions[card.id] = entry
-        if let index = weekCards.firstIndex(where: { $0.id == card.id }) {
-            weekCards[index].completionState = decision.completionState
-            if todayCard?.id == card.id { todayCard?.completionState = decision.completionState }
-        } else if !weekCards.contains(where: { $0.scheduledDate == intent.scheduledDate }) && historicalCards[card.id] == nil {
-            weekCards.append(card)
-            if intent.scheduledDate == SupabaseDateFormatting.todayDateString() { todayCard = card }
-        }
-        persist()
-        return entry
-    }
-
-    private func persist() {
-        guard let defaults,
-              let data = try? JSONEncoder().encode(
-                  FixturePublishedContentSnapshot(
-                      weekCards: weekCards,
-                      todayCard: todayCard,
-                      generatedDrafts: generatedDrafts,
-                      outboxRuns: outboxRuns,
-                      historicalCards: historicalCards,
-                      decisions: decisions
-                  )
-              )
-        else {
-            return
-        }
-        defaults.set(data, forKey: persistenceKey)
-    }
+struct FixtureArchiveStore: Sendable {
+    let server: FakeServer
+    init(defaults: UserDefaults) { server = .shared }
 }
 
 struct FixtureTodayCardRepository: TodayCardRepository {
-    let publishedStore: FixturePublishedContentStore?
+    let server: FakeServer
+    init(publishedStore: FixturePublishedContentStore? = nil) { server = publishedStore?.server ?? .shared }
 
-    init(publishedStore: FixturePublishedContentStore? = nil) {
-        self.publishedStore = publishedStore
+    func creatorDays(for context: WorkspaceContext) async throws -> [SupabaseCreatorDayRow]? {
+        let response: SupabaseCreatorDaysResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .days, creatorID: context.creatorID), context: context)
+        return response.days
     }
 
     func todayCard(for context: WorkspaceContext) async throws -> DailyCard {
-        if let publishedCard = await publishedStore?.readTodayCard() {
-            return publishedCard
-        }
-        if DebugLaunchFlags.forceEmptyToday {
-            throw RepositoryError.noPublishedTodayCard(
-                date: SupabaseDateFormatting.todayDateString()
-            )
-        }
-#if DEBUG
-        if DebugLaunchFlags.forceFixtureUI {
-            var draft = DebugLaunchFlags.fixtureDailyCardDraft
-            draft.scheduledDate = SupabaseDateFormatting.todayDateString()
-            draft.status = "ready"
-            return draft.dailyCard(completionState: nil)
-        }
-#endif
-        if let generatedDraft = await publishedStore?.readGeneratedDraft(
-            for: SupabaseDateFormatting.todayDateString()
-        ) {
-            return generatedDraft
-        }
-        return DailyCard.raceWeekToday
+        let date = SupabaseDateFormatting.todayDateString()
+        let response: SupabaseTodayReadResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .today, creatorID: context.creatorID, todayDate: date), context: context)
+        guard let card = response.todayCard else { throw RepositoryError.noPublishedTodayCard(date: date) }
+        return card.domainCard()
     }
 
     func weekCards(for context: WorkspaceContext) async throws -> [DailyCard] {
-        if let store = publishedStore {
-            let publishedCards = await store.readWeekCards()
-            if !publishedCards.isEmpty {
-                return publishedCards
-            }
-        }
-#if DEBUG
-        if DebugLaunchFlags.forceFixtureUI {
-            var cards = DailyCard.weekFixtures
-            var draft = DebugLaunchFlags.fixtureDailyCardDraft
-            draft.scheduledDate = SupabaseDateFormatting.todayDateString()
-            draft.status = "ready"
-            let today = draft.dailyCard(completionState: nil)
-            cards.removeAll { $0.scheduledDate == today.scheduledDate }
-            cards.append(today)
-            cards.sort { ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "") }
-            return cards
-        }
-#endif
-        return DailyCard.weekFixtures
+        let response: SupabaseTodayReadResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .today, creatorID: context.creatorID, todayDate: SupabaseDateFormatting.todayDateString()), context: context)
+        return response.weekCards.map { $0.domainCard() }
     }
 
     func replayDecision(_ intent: ContentIntent, context: WorkspaceContext) async throws -> ArchiveEntry {
-#if DEBUG
-        if DebugLaunchFlags.failTodayDecisionSyncOnce,
-           await FixtureFailureState.shared.consume("today-decision-sync") {
-            throw RepositoryError.edgeFunction("fixture_today_decision_sync_failed")
-        }
-#endif
-        if let publishedStore { return try await publishedStore.saveDecision(intent) }
-        guard let card = intent.cardSnapshot, let decision = intent.decision else { throw DayTransitionError.incompletePackage }
-        return try await completeToday(card: card, decision: decision, context: context)
+        guard let card = intent.cardSnapshot else { throw DayTransitionError.incompletePackage }
+        let response: SupabaseWriteContentResponse = try await server.invoke("write-content", body: SupabaseWriteContentRequest.queuedDecision(intent, context: context), context: context)
+        guard let entry = response.archiveEntry else { throw RepositoryError.edgeFunction("complete_today_missing_archive") }
+        return entry.domainEntry(fallbackCard: card)
     }
 
-    func completeToday(
-        card: DailyCard,
-        decision: DailyDecision,
-        context: WorkspaceContext
-    ) async throws -> ArchiveEntry {
-#if DEBUG
-        if DebugLaunchFlags.failTodayDecisionSyncOnce,
-           await FixtureFailureState.shared.consume("today-decision-sync") {
-            throw RepositoryError.edgeFunction("fixture_today_decision_sync_failed")
-        }
-#endif
-        await publishedStore?.saveDecisionCard(card)
-        let archiveDate = card.scheduledDate ?? SupabaseDateFormatting.todayDateString()
-        return ArchiveEntry(
-            dailyCardID: card.id,
-            day: SupabaseDateFormatting.weekdayAbbreviation(for: archiveDate),
-            date: SupabaseDateFormatting.shortDate(for: archiveDate),
-            cardTitle: card.title,
-            decision: decision.completionState,
-            outputLine: decision.outputLine,
-            hasPostThumbnail: decision.hasPostThumbnail
-        )
+    func completeToday(card: DailyCard, decision: DailyDecision, context: WorkspaceContext) async throws -> ArchiveEntry {
+        let response: SupabaseWriteContentResponse = try await server.invoke("write-content", body: SupabaseWriteContentRequest.completeToday(card: card, decision: decision, context: context), context: context)
+        guard let entry = response.archiveEntry else { throw RepositoryError.edgeFunction("complete_today_missing_archive") }
+        return entry.domainEntry(fallbackCard: card)
     }
 }
 
-actor FixtureWeeklyPlanRepository: WeeklyPlanRepository {
-    private var plan: WeeklyPlan
-    private var ideas: [WeeklyIdea]
-    private let publishedStore: FixturePublishedContentStore?
-
-    init(
-        plan: WeeklyPlan = .raceWeek,
-        ideas: [WeeklyIdea] = WeeklyIdea.raceWeekBank,
-        publishedStore: FixturePublishedContentStore? = nil
-    ) {
-        self.plan = plan
-        self.ideas = ideas
-        self.publishedStore = publishedStore
+struct FixtureWeeklyPlanRepository: WeeklyPlanRepository {
+    let server: FakeServer
+    init(plan: WeeklyPlan = .raceWeek, ideas: [WeeklyIdea] = WeeklyIdea.raceWeekBank, publishedStore: FixturePublishedContentStore? = nil) {
+        server = publishedStore?.server ?? .shared
     }
 
-    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan {
-        plan
-    }
-
-    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? {
-        nil
-    }
-
-    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] {
-        ideas
-    }
-
+    func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan { try await currentWeeklyContent(for: context).publishedPlan }
+    func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft? { try await currentWeeklyContent(for: context).generatedDraft }
+    func ideaBank(for context: WorkspaceContext) async throws -> [WeeklyIdea] { try await currentWeeklyContent(for: context).ideaBank }
     func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
-        WeeklyRepositoryContent(
-            publishedPlan: plan,
-            generatedDraft: nil,
-            ideaBank: ideas
-        )
+        let response: SupabaseWeeklyReadResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .weekly, creatorID: context.creatorID), context: context)
+        guard let row = response.publishedWeeklyPlan ?? response.weeklyPlan else { throw RepositoryError.missingFixture("No published weekly plan exists.") }
+        let cards = response.publishedDailyCards.isEmpty ? response.dailyCards : response.publishedDailyCards
+        let setup = response.publishedWeeklySetup ?? response.weeklySetup
+        guard let publishedPlan = WeeklyRepositoryContent.makeWorkingPlan(from: cards, planRow: row,
+            setupSections: setup?.setupSections ?? [], weeklyBriefText: setup?.weeklyBriefText ?? "") else { throw DayTransitionError.incompletePackage }
+        let workingPlan = response.weeklyPlan.flatMap { plan in
+            WeeklyRepositoryContent.makeWorkingPlan(from: response.dailyCards, planRow: plan,
+                setupSections: response.weeklySetup?.setupSections ?? [], weeklyBriefText: response.weeklySetup?.weeklyBriefText ?? "")
+        }
+        return WeeklyRepositoryContent(publishedPlan: publishedPlan, workingPlan: workingPlan,
+            generatedDraft: response.dailyCards.isEmpty ? nil : response.generatedDraft(), ideaBank: response.ideaBank.map { $0.domainIdea() })
     }
 
-    func publishWeek(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        let publishedPlan = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
-            generatedDraft.markedPublished.weeklyPlan(
-                setupSections: plan.setupSections,
-                weeklyBriefText: plan.weeklyBriefText
-            ).softLockedForPublish
-        } else {
-            plan.softLockedForPublish
-        }
-        let cards = if let generatedDraft, generatedDraft.weeklyPlanID == plan.id {
-            generatedDraft.markedPublished.publishedWeekCards
-        } else {
-            DailyCard.publishedCards(from: publishedPlan)
-        }
-
-        self.plan = publishedPlan
-        self.ideas = ideaBank
-
-        let todayCard = DailyCard.bestTodayCard(from: cards)
-        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
-
-        return WeeklyPublishResult(
-            weeklyPlan: publishedPlan,
-            weekCards: cards,
-            todayCard: todayCard,
-            summary: "Published \(cards.count) cards to Creator Today."
-        )
+    func publishWeek(_ plan: WeeklyPlan, ideaBank: [WeeklyIdea], generatedDraft: GeneratedWeekDraft?, context: WorkspaceContext) async throws -> WeeklyPublishResult {
+        try await server.publishWeek(plan, ideaBank: ideaBank, generatedDraft: generatedDraft)
     }
 
-    func selectIdeaForNextOpenDay(
-        _ idea: WeeklyIdea,
-        in plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        context: WorkspaceContext
-    ) async throws -> WeeklySelectionUpdate {
-        var updatedPlan = plan
-        var updatedIdeaBank = ideaBank
-
-        guard
-            let ideaIndex = updatedIdeaBank.firstIndex(where: { $0.id == idea.id }),
-            let dayIndex = updatedPlan.days.firstIndex(where: { $0.state == .open })
-        else {
-            return WeeklySelectionUpdate(weeklyPlan: updatedPlan, ideaBank: updatedIdeaBank)
-        }
-
-        updatedPlan.days[dayIndex].title = idea.title
-        updatedPlan.days[dayIndex].reason = idea.reason
-        updatedPlan.days[dayIndex].source = idea.source
-        updatedPlan.days[dayIndex].state = .planned
-        updatedPlan.days[dayIndex].isSoftLocked = false
-        updatedIdeaBank[ideaIndex].selectedDay = updatedPlan.days[dayIndex].weekday
-        self.plan = updatedPlan
-        self.ideas = updatedIdeaBank
-
-        return WeeklySelectionUpdate(weeklyPlan: updatedPlan, ideaBank: updatedIdeaBank)
+    func selectIdeaForNextOpenDay(_ idea: WeeklyIdea, in plan: WeeklyPlan, ideaBank: [WeeklyIdea], context: WorkspaceContext) async throws -> WeeklySelectionUpdate {
+        let _: SupabaseWriteContentResponse = try await server.invoke("write-content", body: SupabaseWriteContentRequest.selectIdeaForNextOpenDay(idea: idea, plan: plan, context: context), context: context)
+        let content = try await currentWeeklyContent(for: context)
+        return WeeklySelectionUpdate(weeklyPlan: content.publishedPlan, ideaBank: content.ideaBank)
     }
 
-    func updateWeeklySetupSections(
-        _ sections: [WeeklySetupSection],
-        in plan: WeeklyPlan,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPlan {
-        var updatedPlan = plan
-        updatedPlan.setupSections = sections
-        self.plan = updatedPlan
-        return updatedPlan
+    func updateWeeklySetupSections(_ sections: [WeeklySetupSection], in plan: WeeklyPlan, context: WorkspaceContext) async throws -> WeeklyPlan {
+        let _: SupabaseWriteContentResponse = try await server.invoke("write-content", body: SupabaseWriteContentRequest.updateWeeklySetup(sections: sections, plan: plan, context: context), context: context)
+        return try await currentPublishedPlan(for: context)
     }
 
-    func updateWeeklyBrief(
-        _ text: String,
-        in plan: WeeklyPlan,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPlan {
-        var updatedPlan = plan
-        updatedPlan.weeklyBriefText = text
-        self.plan = updatedPlan
-        return updatedPlan
+    func updateWeeklyBrief(_ text: String, in plan: WeeklyPlan, context: WorkspaceContext) async throws -> WeeklyPlan {
+        let _: SupabaseWriteContentResponse = try await server.invoke("write-content", body: SupabaseWriteContentRequest.updateWeeklyBrief(text: text, plan: plan, context: context), context: context)
+        return try await currentPublishedPlan(for: context)
     }
 
-    func updateDailyCardReviewState(
-        dailyCardID: UUID,
-        reviewState: String,
-        context: WorkspaceContext
-    ) async throws {
-        guard var currentPlan = try? await currentPublishedPlan(for: context) else { return }
-        guard let dayIndex = currentPlan.days.firstIndex(where: { $0.id == dailyCardID }) else { return }
-        let newState = WeeklyDayState(reviewState: reviewState)
-        currentPlan.days[dayIndex].state = newState
-        self.plan = currentPlan
+    func updateDailyCardReviewState(dailyCardID: UUID, reviewState: String, context: WorkspaceContext) async throws {
+        let _: SupabaseWriteContentResponse = try await server.invoke("write-content", body: SupabaseWriteContentRequest.updateDailyCardReviewState(dailyCardID: dailyCardID, reviewState: reviewState, context: context), context: context)
     }
 
-    func makeDayAvailable(
-        scheduledDate: String,
-        dailyCardID: UUID?,
-        context: WorkspaceContext
-    ) async throws -> DayAvailabilityResult {
-        if let existing = await publishedStore?.readWeekCards().first(where: { $0.id == dailyCardID && $0.scheduledDate == scheduledDate }) {
-            return DayAvailabilityResult(dailyCardID: existing.id, scheduledDate: scheduledDate, status: existing.completionState?.supabaseStatus ?? "published", weeklyPlanID: plan.id, weekIsSoftLocked: false)
+    func replayPackage(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxReplayResult {
+        do {
+            switch intent.packageAction {
+            case .makeReady:
+                let response: SupabaseMakeDayAvailableResponse = try await server.invoke("make-day-available", body: SupabaseMakeDayAvailableRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion), context: context)
+                return .available(DayAvailabilityResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, weeklyPlanID: response.weeklyPlanID, weekIsSoftLocked: response.weekIsSoftLocked))
+            case .returnToDraft:
+                let response: SupabaseUnpublishDayResponse = try await server.invoke("unpublish-day", body: SupabaseUnpublishDayRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion), context: context)
+                return .unpublished(DayUnpublishResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, previousStatus: response.previousStatus, clearedLiveDecision: response.clearedLiveDecision, archiveRetained: response.archiveRetained, weeklyPlanID: response.weeklyPlanID))
+            case .update:
+                guard let package = intent.package else { throw DayTransitionError.incompletePackage }
+                try package.validate()
+                let response: SupabaseUpdateReadyDayPackageResponse = try await server.invoke("update-ready-day-package", body: SupabaseUpdateReadyDayPackageRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, package: package, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion), context: context)
+                return .package(DayPackageUpdateResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, weeklyPlanID: response.weeklyPlanID, title: response.title, caption: response.caption))
+            case nil: throw DayTransitionError.illegalMove
+            }
+        } catch {
+            let code = error.localizedDescription
+            if code == "daily_card_not_draft" && intent.packageAction == .makeReady || code == "daily_card_already_draft" && intent.packageAction == .returnToDraft {
+                let response: SupabaseCreatorDaysResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .days, creatorID: context.creatorID), context: context)
+                if let row = response.days.first(where: { $0.scheduledDate == intent.scheduledDate && $0.currentRevisionID == intent.revisionID }), let card = row.revision {
+                    if intent.packageAction == .makeReady, DayPackageLifecycleStatus.requiresOverwriteConfirmation(card.status) {
+                        return .available(DayAvailabilityResult(dailyCardID: card.id, scheduledDate: card.scheduledDate, status: card.status, weeklyPlanID: card.weeklyPlanID, weekIsSoftLocked: false))
+                    }
+                    if intent.packageAction == .returnToDraft, card.status == "draft" {
+                        return .unpublished(DayUnpublishResult(dailyCardID: card.id, scheduledDate: card.scheduledDate, status: "draft", previousStatus: "draft", clearedLiveDecision: false, archiveRetained: true, weeklyPlanID: card.weeklyPlanID))
+                    }
+                }
+            }
+            throw error
         }
-        let generatedDraft = await publishedStore?.readGeneratedDraft(for: scheduledDate)
-        let generatedCard = generatedDraft
-        let cardID = dailyCardID ?? generatedCard?.id ?? UUID()
-        let readyCard = if let generatedCard,
-                            generatedCard.id == cardID || dailyCardID == nil {
-            generatedCard
-        } else {
-            DailyCard(
-                id: cardID,
-                title: "Ready package \(scheduledDate)",
-                context: SupabaseDateFormatting.contextLine(for: scheduledDate),
-                effortLabel: "Easy - 12 min",
-                whyToday: "Available on Today from draft.",
-                scheduledDate: scheduledDate,
-                scenes: [
-                    ShotScene(number: 1, title: "Opening detail", duration: "3 sec", symbol: "sparkles"),
-                    ShotScene(number: 2, title: "One steady movement", duration: "5 sec", symbol: "figure.run"),
-                    ShotScene(number: 3, title: "Useful close", duration: "4 sec", symbol: "text.quote")
-                ]
-            )
-        }
-
-        var cards = await publishedStore?.readWeekCards() ?? []
-        cards.removeAll { $0.scheduledDate == scheduledDate }
-        cards.append(readyCard)
-        cards.sort { ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "") }
-
-        let today = SupabaseDateFormatting.todayDateString()
-        let todayCard = cards.first { $0.scheduledDate == today }
-        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
-
-        return DayAvailabilityResult(
-            dailyCardID: cardID,
-            scheduledDate: scheduledDate,
-            status: "published",
-            weeklyPlanID: plan.id,
-            weekIsSoftLocked: false
-        )
     }
 
-    func unpublishDay(
-        scheduledDate: String,
-        dailyCardID: UUID?,
-        context: WorkspaceContext
-    ) async throws -> DayUnpublishResult {
-        var cards = await publishedStore?.readWeekCards() ?? []
-        let existing = cards.first { card in
-            if let dailyCardID { return card.id == dailyCardID }
-            return card.scheduledDate == scheduledDate
-        }
-        if existing == nil, let draft = await publishedStore?.readGeneratedDraft(for: scheduledDate), draft.id == dailyCardID {
-            return DayUnpublishResult(dailyCardID: draft.id, scheduledDate: scheduledDate, status: "draft", previousStatus: "draft", clearedLiveDecision: false, archiveRetained: true, weeklyPlanID: plan.id)
-        }
-        guard let existing else {
-            throw RepositoryError.edgeFunction("daily_card_not_found")
-        }
-
-        var draft = existing
-        draft.completionState = nil
-        await publishedStore?.saveGeneratedDraft(GeneratedDailyCardDraft(fromPublishedCard: draft, status: "draft"))
-        cards.removeAll { $0.id == existing.id }
-        let today = SupabaseDateFormatting.todayDateString()
-        let todayCard = cards.first { $0.scheduledDate == today }
-        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
-
-        return DayUnpublishResult(
-            dailyCardID: existing.id,
-            scheduledDate: existing.scheduledDate ?? scheduledDate,
-            status: "draft",
-            previousStatus: "published",
-            clearedLiveDecision: false,
-            archiveRetained: true,
-            weeklyPlanID: plan.id
-        )
+    func makeDayAvailable(scheduledDate: String, dailyCardID: UUID?, context: WorkspaceContext) async throws -> DayAvailabilityResult {
+        let response: SupabaseMakeDayAvailableResponse = try await server.invoke("make-day-available", body: SupabaseMakeDayAvailableRequest(creatorID: context.creatorID, scheduledDate: scheduledDate, dailyCardID: dailyCardID), context: context)
+        return DayAvailabilityResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, weeklyPlanID: response.weeklyPlanID, weekIsSoftLocked: response.weekIsSoftLocked)
     }
 
-    func updateReadyDayPackage(
-        scheduledDate: String,
-        dailyCardID: UUID?,
-        package: ReadyDayPackageUpdate,
-        context: WorkspaceContext
-    ) async throws -> DayPackageUpdateResult {
+    func unpublishDay(scheduledDate: String, dailyCardID: UUID?, context: WorkspaceContext) async throws -> DayUnpublishResult {
+        let response: SupabaseUnpublishDayResponse = try await server.invoke("unpublish-day", body: SupabaseUnpublishDayRequest(creatorID: context.creatorID, scheduledDate: scheduledDate, dailyCardID: dailyCardID), context: context)
+        return DayUnpublishResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, previousStatus: response.previousStatus, clearedLiveDecision: response.clearedLiveDecision, archiveRetained: response.archiveRetained, weeklyPlanID: response.weeklyPlanID)
+    }
+
+    func updateReadyDayPackage(scheduledDate: String, dailyCardID: UUID?, package: ReadyDayPackageUpdate, context: WorkspaceContext) async throws -> DayPackageUpdateResult {
         try package.validate()
-        var cards = await publishedStore?.readWeekCards() ?? []
-        guard let index = cards.firstIndex(where: { card in
-            if let dailyCardID { return card.id == dailyCardID }
-            return card.scheduledDate == scheduledDate
-        }) else {
-            throw RepositoryError.edgeFunction("daily_card_not_found")
-        }
-
-        var card = cards[index]
-        if let title = package.title?.nilIfBlank {
-            card.title = title
-        }
-        if let whyToday = package.whyToday?.nilIfBlank {
-            card.whyToday = whyToday
-        }
-        if let caption = package.caption {
-            card.caption = caption
-        }
-        if let script = package.script {
-            card.script = script
-        }
-        if let sceneList = package.sceneList {
-            card.scenes = sceneList
-        }
-        cards[index] = card
-        await publishedStore?.replaceGeneratedDraft(with: card)
-
-        let today = SupabaseDateFormatting.todayDateString()
-        let todayCard = cards.first { $0.scheduledDate == today }
-        await publishedStore?.savePublishedContent(cards: cards, todayCard: todayCard)
-
-        return DayPackageUpdateResult(
-            dailyCardID: card.id,
-            scheduledDate: card.scheduledDate ?? scheduledDate,
-            status: "published",
-            weeklyPlanID: plan.id,
-            title: card.title,
-            caption: card.caption
-        )
+        let response: SupabaseUpdateReadyDayPackageResponse = try await server.invoke("update-ready-day-package", body: SupabaseUpdateReadyDayPackageRequest(creatorID: context.creatorID, scheduledDate: scheduledDate, dailyCardID: dailyCardID, package: package), context: context)
+        return DayPackageUpdateResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, weeklyPlanID: response.weeklyPlanID, title: response.title, caption: response.caption)
     }
 }
 
-/// Fixture-mode day generation used by `MCO_FORCE_FIXTURE_UI` / `AppRepositories.fixture`.
-/// Returns a reviewable draft immediately so Plan can exercise onboarding → generate → draft
-/// without a live edge function.
 struct FixtureDayGenerationRepository: DayGenerationRepository {
-    /// Brief artificial delay so Plan can show in-progress chrome before the draft lands.
     var artificialDelayNanoseconds: UInt64
-    let publishedStore: FixturePublishedContentStore?
-
-    init(
-        artificialDelayNanoseconds: UInt64 = DebugLaunchFlags.fixtureFirstIdeaDelayNanoseconds,
-        publishedStore: FixturePublishedContentStore? = nil
-    ) {
+    let server: FakeServer
+    init(artificialDelayNanoseconds: UInt64 = DebugLaunchFlags.fixtureFirstIdeaDelayNanoseconds, publishedStore: FixturePublishedContentStore? = nil) {
         self.artificialDelayNanoseconds = artificialDelayNanoseconds
-        self.publishedStore = publishedStore
+        server = publishedStore?.server ?? .shared
     }
 
     func persistedDayPackages(context: WorkspaceContext) async -> [GeneratedDailyCardDraft] {
-        _ = context
-        return await publishedStore?.readGeneratedDrafts() ?? []
+        guard let response: SupabaseCreatorDaysResponse = try? await server.invoke("read-content", body: SupabaseReadContentRequest(action: .days, creatorID: context.creatorID), context: context) else { return [] }
+        return response.days.compactMap { $0.revision?.generatedDailyCardDraft() }
     }
 
     func replayGeneration(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxGenerationResponse {
-#if DEBUG
-        if DebugLaunchFlags.failFirstIdea { throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed") }
-        if DebugLaunchFlags.failFirstIdeaOnce, await FixtureFailureState.shared.consume("first-idea-generation") {
-            throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed_once")
+        let invocation: SupabaseDailyGenerationInvocation
+        if let id = intent.generationID {
+            invocation = try await server.generation("generate-week", body: SupabaseGenerationStatusRequest(generationID: id, creatorID: intent.creatorID), context: context, delayNanoseconds: artificialDelayNanoseconds)
+        } else if intent.kind == .replaceDay {
+            invocation = try await server.generation("replace-day", body: SupabaseReplaceDayRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, dayBrief: intent.dayBrief ?? "", idempotencyKey: intent.id), context: context, delayNanoseconds: artificialDelayNanoseconds)
+        } else if let planID = intent.weeklyPlanID, let preserve = intent.preserveManualEdits {
+            invocation = try await server.generation("generate-week", body: SupabaseRegenerateDayRequest(creatorID: intent.creatorID, weeklyPlanID: planID, scheduledDate: intent.scheduledDate, preserveManualEdits: preserve, responseMode: .async, dayGuidance: intent.dayGuidance, idempotencyKey: intent.id), context: context, delayNanoseconds: artificialDelayNanoseconds)
+        } else {
+            invocation = try await server.generation("generate-week", body: SupabaseDailyGenerationRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dayBrief: intent.dayBrief ?? "", responseMode: .async, idempotencyKey: intent.id), context: context, delayNanoseconds: artificialDelayNanoseconds)
         }
-#endif
-        guard let publishedStore else {
-            return .completed(try await generateDay(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dayBrief: intent.dayBrief ?? intent.dayGuidance ?? "", context: context))
-        }
-        let run = try await publishedStore.claimGeneration(intent)
-        if let result = run.result { return .completed(result) }
-        try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
-        var result = makeResult(scheduledDate: intent.scheduledDate, dayBrief: intent.dayBrief ?? intent.dayGuidance ?? "Regenerated fixture day for \(intent.scheduledDate).", revisionID: run.revisionID)
-        result.generationID = run.generationID
-        result.dailyCard.sceneList = result.dailyCard.sceneList.map { scene in
-            ShotScene(id: ShotScene.stableID(revisionID: run.revisionID, number: scene.number), number: scene.number, title: scene.title, duration: scene.duration, symbol: scene.symbol)
-        }
-        await publishedStore.finishGeneration(result, key: intent.id)
-        return .completed(result)
-    }
-
-    func generateDay(
-        creatorID: UUID,
-        scheduledDate: String,
-        dayBrief: String,
-        context: WorkspaceContext
-    ) async throws -> DailyGenerationResult {
-        _ = creatorID
-        _ = context
-#if DEBUG
-        if DebugLaunchFlags.failFirstIdea {
-            throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed")
-        }
-        if DebugLaunchFlags.failFirstIdeaOnce,
-           await FixtureFailureState.shared.consume("first-idea-generation") {
-            throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed_once")
-        }
-#endif
-        try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
-        let result = makeResult(scheduledDate: scheduledDate, dayBrief: dayBrief)
-        await publishedStore?.saveGeneratedDraft(result.dailyCard)
-        return result
-    }
-
-    func regenerateDay(
-        creatorID: UUID,
-        weeklyPlanID: UUID,
-        scheduledDate: String,
-        preserveManualEdits: Bool,
-        dayGuidance: String?,
-        context: WorkspaceContext
-    ) async throws -> DailyGenerationResult {
-        _ = creatorID
-        _ = weeklyPlanID
-        _ = preserveManualEdits
-        _ = context
-#if DEBUG
-        if DebugLaunchFlags.failFirstIdea {
-            throw RepositoryError.edgeFunction("fixture_first_idea_generation_failed")
-        }
-#endif
-        try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
-        let guidance = dayGuidance?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let brief = guidance.isEmpty
-            ? "Regenerated fixture day for \(scheduledDate)."
-            : guidance
-        let result = makeResult(scheduledDate: scheduledDate, dayBrief: brief)
-        await publishedStore?.saveGeneratedDraft(result.dailyCard)
-        return result
-    }
-
-    func resumeAcceptedDayGeneration(
-        generationID: UUID,
-        creatorID: UUID,
-        context: WorkspaceContext
-    ) async throws -> DailyGenerationResult {
-        _ = creatorID
-        _ = context
-        try await Task.sleep(nanoseconds: artificialDelayNanoseconds)
-        let result = makeResult(
-            scheduledDate: SupabaseDateFormatting.todayDateString(),
-            dayBrief: "Resumed fixture generation \(generationID.uuidString.prefix(8))."
-        )
-        await publishedStore?.saveGeneratedDraft(result.dailyCard)
-        return result
-    }
-
-    private func makeResult(scheduledDate: String, dayBrief: String, revisionID: UUID = UUID()) -> DailyGenerationResult {
-        let trimmedBrief = dayBrief.trimmingCharacters(in: .whitespacesAndNewlines)
-        let pillar = inferredContentPillar(from: trimmedBrief)
-        let title = synthesizedTitle(from: trimmedBrief, pillar: pillar)
-        let script = synthesizedScript(from: trimmedBrief, pillar: pillar)
-        let format = fixtureFormat(from: trimmedBrief)
-        let duration = format == "Post" ? nil : requestedDuration(from: trimmedBrief) ?? (format == "Story" ? 10 : 12)
-        let scenes = fixtureScenes(for: pillar, format: format, duration: duration)
-        var dailyCard = GeneratedDailyCardDraft(
-            id: revisionID,
-            scheduledDate: scheduledDate,
-            status: "draft",
-            title: title,
-            whyToday: trimmedBrief.isEmpty
-                ? "Fixture day generation for \(scheduledDate)."
-                : trimmedBrief,
-            growthJob: "Consistency.",
-            contentPillar: pillar,
-            shootability: "easy",
-            estimatedShootMinutes: format == "Reel" ? 12 : 2,
-            energyRequired: "low",
-            languageMode: "English",
-            format: format,
-            primarySurface: format == "Story" ? "instagram_stories" : format == "Post" ? "instagram_feed" : "instagram_reels",
-            durationSeconds: duration,
-            hook: title,
-            saveShareReason: "Save this as a reminder to shoot the day as planned.",
-            sceneList: scenes,
-            script: script,
-            noVoiceoverVersion: format == "Post" ? "Use a photo you already have. No filming needed." : "Use bold captions over the same shots.",
-            onScreenText: sceneOnScreenText(for: pillar),
-            caption: script,
-            cta: "Save this for later.",
-            hashtags: hashtags(for: pillar),
-            coverText: String(title.prefix(40)),
-            postInstructions: "Keep it real, natural, and personal.",
-            brandEventNotes: "",
-            backupStory: "Post one phone clip with the same hook.",
-            backupCaptionOnly: "Same angle, shorter cut.",
-            audioOptionNotes: "",
-            creatorFitScore: 90,
-            riskNotes: [],
-            assumptions: ["Fixture UI generation — no live model call."],
-            sourceNote: "Based on your idea."
-        )
-#if DEBUG
-        if DebugLaunchFlags.longContent {
-            dailyCard = dailyCard.withLongContent
-            dailyCard.scheduledDate = scheduledDate
-            dailyCard.status = "draft"
-        }
-        dailyCard = DebugLaunchFlags.uiFixtureData.applying(to: dailyCard)
-#endif
-        return DailyGenerationResult(
-            generationID: UUID(),
-            weeklyPlanID: WeeklyPlan.raceWeek.id,
-            status: "draft",
-            targetScheduledDate: scheduledDate,
-            dailyCard: dailyCard,
-            warnings: [],
-            assumptions: ["Fixture UI generation — no live model call."],
-            sourceSummary: "Fixture day brief only.",
-            generatedAt: ISO8601DateFormatter().string(from: Date())
-        )
-    }
-
-    /// Keep simulated output consistent with the explicit brief used by e2e.
-    /// These methods never run against the live generation repository.
-    private func fixtureFormat(from brief: String) -> String {
-        let lower = brief.lowercased()
-        if lower.contains("photo") || lower.contains("carousel") || lower.contains("caption-only") { return "Post" }
-        if lower.range(of: #"\bstory\b"#, options: .regularExpression) != nil { return "Story" }
-        return "Reel"
-    }
-
-    private func requestedDuration(from brief: String) -> Int? {
-        guard let expression = try? NSRegularExpression(pattern: #"(\d+)\s*(?:[-–]\s*)?(?:seconds?|secs?|s)\b"#, options: .caseInsensitive),
-              let match = expression.firstMatch(in: brief, range: NSRange(brief.startIndex..., in: brief)),
-              let range = Range(match.range(at: 1), in: brief),
-              let seconds = Int(brief[range]), seconds > 0 else { return nil }
-        return seconds
-    }
-
-    private func fixtureScenes(for pillar: String, format: String, duration: Int?) -> [ShotScene] {
-        guard let duration else { return [] }
-        let original = synthesizedScenes(for: pillar)
-        let count = format == "Story" ? 1 : min(original.count, duration)
-        return original.prefix(count).enumerated().map { index, scene in
-            // Quotient and remainder preserve the requested total without zero-length shots.
-            let seconds = duration / count + (index < duration % count ? 1 : 0)
-            return ShotScene(number: index + 1, title: scene.title, duration: "\(seconds) sec", symbol: scene.symbol)
+        switch invocation {
+        case .completed(let response): return .completed(response.domainResult)
+        case .running(let response): return .running(response.generationID, pollAfterSeconds: response.pollAfterSeconds ?? 1)
+        case .failed(let response): return .failed(response.error ?? "invalid_generated_day")
         }
     }
 
-    private func inferredContentPillar(from brief: String) -> String {
-        let lower = brief.lowercased()
-        let hasBooks = lower.contains("book")
-        let hasMovies = lower.contains("movie") || lower.contains(" tv") || lower.contains("tv ")
-        if hasBooks && hasMovies { return "books" }
-        if hasMovies { return "movies-tv" }
-        if hasBooks { return "books" }
-        if lower.contains("hyrox") || lower.contains("race week") || lower.contains("fitness") || lower.contains("gym") {
-            return "fitness-wellness"
-        }
-        return "lifestyle"
+    func generateDay(creatorID: UUID, scheduledDate: String, dayBrief: String, context: WorkspaceContext) async throws -> DailyGenerationResult {
+        try await finish(try await server.generation("generate-week", body: SupabaseDailyGenerationRequest(creatorID: creatorID, scheduledDate: scheduledDate, dayBrief: dayBrief, responseMode: .async), context: context, delayNanoseconds: artificialDelayNanoseconds), creatorID: creatorID, context: context)
     }
 
-    private func synthesizedTitle(from brief: String, pillar: String) -> String {
-        let lower = brief.lowercased()
-        if lower.contains("book") && (lower.contains("movie") || lower.contains(" tv")) {
-            return "What I'm reading and watching right now"
-        }
-        switch pillar {
-        case "books":
-            return "The book on my nightstand — one honest takeaway"
-        case "movies-tv":
-            return "One scene from what I'm watching that stuck with me"
-        case "fitness-wellness":
-            return "One small training win worth sharing today"
-        default:
-            let titleSeed = brief.split(separator: ".").first.map(String.init) ?? brief
-            let title = String(titleSeed.prefix(72))
-            return title.isEmpty ? "Fixture day draft" : title
-        }
+    func regenerateDay(creatorID: UUID, weeklyPlanID: UUID, scheduledDate: String, preserveManualEdits: Bool, dayGuidance: String?, context: WorkspaceContext) async throws -> DailyGenerationResult {
+        try await finish(try await server.generation("generate-week", body: SupabaseRegenerateDayRequest(creatorID: creatorID, weeklyPlanID: weeklyPlanID, scheduledDate: scheduledDate, preserveManualEdits: preserveManualEdits, responseMode: .async, dayGuidance: dayGuidance), context: context, delayNanoseconds: artificialDelayNanoseconds), creatorID: creatorID, context: context)
     }
 
-    private func synthesizedScript(from brief: String, pillar: String) -> String {
-        switch pillar {
-        case "books":
-            return """
-            Here is the book I cannot stop thinking about.
-            One line about why it landed for me.
-            What I would tell a friend who asked if it is worth it.
-            """
-        case "movies-tv":
-            return """
-            Here is what I am watching this week.
-            The moment that made me pause the scroll.
-            Why it fits the mood I am in right now.
-            """
-        default:
-            if brief.localizedCaseInsensitiveContains("book") && brief.localizedCaseInsensitiveContains("movie") {
-                return """
-                Two things on my mind this week: a book and a show.
-                One honest line about each.
-                Why they pair well for the kind of content I make.
-                """
+    func resumeAcceptedDayGeneration(generationID: UUID, creatorID: UUID, context: WorkspaceContext) async throws -> DailyGenerationResult {
+        try await finish(try await server.generation("generate-week", body: SupabaseGenerationStatusRequest(generationID: generationID, creatorID: creatorID), context: context, delayNanoseconds: artificialDelayNanoseconds), creatorID: creatorID, context: context)
+    }
+
+    private func finish(_ initial: SupabaseDailyGenerationInvocation, creatorID: UUID, context: WorkspaceContext) async throws -> DailyGenerationResult {
+        var invocation = initial
+        while true {
+            switch invocation {
+            case .completed(let response): return response.domainResult
+            case .failed(let response): throw RepositoryError.edgeFunction(response.error ?? "invalid_generated_day")
+            case .running(let response):
+                try await Task.sleep(nanoseconds: UInt64(response.pollAfterSeconds ?? 1) * 1_000_000_000)
+                invocation = try await server.generation("generate-week", body: SupabaseGenerationStatusRequest(generationID: response.generationID, creatorID: creatorID), context: context, delayNanoseconds: artificialDelayNanoseconds)
             }
-            return brief.isEmpty
-                ? "Open with the day's angle. Show one real beat. Close with a simple ask."
-                : brief
-        }
-    }
-
-    private func synthesizedScenes(for pillar: String) -> [ShotScene] {
-        switch pillar {
-        case "books":
-            return [
-                ShotScene(number: 1, title: "Book on the table", duration: "3 sec", symbol: "book.closed"),
-                ShotScene(number: 2, title: "Favorite page", duration: "4 sec", symbol: "text.book.closed"),
-                ShotScene(number: 3, title: "Quick rating", duration: "3 sec", symbol: "star"),
-                ShotScene(number: 4, title: "Save for later", duration: "2 sec", symbol: "bookmark")
-            ]
-        case "movies-tv":
-            return [
-                ShotScene(number: 1, title: "Remote and couch", duration: "3 sec", symbol: "tv"),
-                ShotScene(number: 2, title: "Pause on the scene", duration: "4 sec", symbol: "film"),
-                ShotScene(number: 3, title: "Reaction beat", duration: "3 sec", symbol: "face.smiling"),
-                ShotScene(number: 4, title: "Soft ask", duration: "2 sec", symbol: "heart")
-            ]
-        default:
-            return [
-                ShotScene(number: 1, title: "Talking-head hook", duration: "3 sec", symbol: "person.crop.rectangle"),
-                ShotScene(number: 2, title: "Process b-roll", duration: "4 sec", symbol: "film.stack"),
-                ShotScene(number: 3, title: "Proof moment", duration: "3 sec", symbol: "checkmark.circle"),
-                ShotScene(number: 4, title: "Soft CTA", duration: "2 sec", symbol: "heart")
-            ]
-        }
-    }
-
-    private func sceneOnScreenText(for pillar: String) -> [String] {
-        switch pillar {
-        case "books":
-            return ["Currently reading", "Worth it?", "Save this"]
-        case "movies-tv":
-            return ["Watching now", "This scene", "Save this"]
-        default:
-            return ["Today", "Keep it real", "Save this"]
-        }
-    }
-
-    private func hashtags(for pillar: String) -> [String] {
-        switch pillar {
-        case "books":
-            return ["books", "currentlyreading", "fixture"]
-        case "movies-tv":
-            return ["movies", "whattowatch", "fixture"]
-        default:
-            return ["fixture", "dayplan"]
         }
     }
 }
 
-/// Deterministic Plan idea one-liners for `MCO_FORCE_FIXTURE_UI` / preview / tests.
+struct FixtureCreatorProfileRepository: CreatorProfileRepository {
+    let server: FakeServer
+    init(store: FixtureCreatorProfileStore = FixtureCreatorProfileStore()) { server = store.server }
+
+    func activeProfileSummary(for context: WorkspaceContext) async throws -> CreatorProfileSummary {
+        let response: SupabaseCreatorProfileReadResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .creatorProfile, creatorID: context.creatorID), context: context)
+        return response.profile?.summary() ?? .creatorFixture
+    }
+
+    func updateProfile(_ update: CreatorProfileUpdate, context: WorkspaceContext) async throws -> CreatorProfileSummary {
+        let response: SupabaseWriteContentResponse = try await server.invoke("write-content", body: SupabaseWriteContentRequest.updateCreatorProfile(update, context: context), context: context)
+        guard let profile = response.creatorProfile else { throw RepositoryError.edgeFunction("creator_profile_update_failed") }
+        return profile.summary()
+    }
+}
+
+struct FixtureArchiveRepository: ArchiveRepository {
+    let server: FakeServer
+    init(store: FixtureArchiveStore? = nil) { server = store?.server ?? .shared }
+
+    func entries(for context: WorkspaceContext) async throws -> [ArchiveEntry] {
+        let response: SupabaseArchiveReadResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .archive, creatorID: context.creatorID), context: context)
+        return response.entries.map { $0.domainEntry() }
+    }
+
+    func persistDecision(_ entry: ArchiveEntry, for card: DailyCard, context: WorkspaceContext) async throws {
+        let _: SupabaseWriteContentResponse = try await server.invoke("write-content", body: SupabaseWriteContentRequest.upsertArchiveDecision(entry, for: card, context: context), context: context)
+    }
+
+    func upsertDecision(_ entry: ArchiveEntry, for card: DailyCard, context: WorkspaceContext) async throws -> [ArchiveEntry] {
+        try await persistDecision(entry, for: card, context: context)
+        return try await entries(for: context)
+    }
+}
+
+private struct FakePlanIdea: Decodable, Sendable {
+    var title: String
+    var summary: String
+    var dayBrief: String
+    enum CodingKeys: String, CodingKey { case title, summary; case dayBrief = "day_brief" }
+}
+
+private struct FakePlanIdeasResponse: Decodable, Sendable {
+    var ideas: [FakePlanIdea]
+}
+
 struct FixturePlanDayIdeaRepository: PlanDayIdeaRepository {
-    func generatePlanDayIdeas(
-        creatorID: UUID,
-        scheduledDate: String,
-        setup: PlanDaySetupSummary,
-        context: WorkspaceContext
-    ) async throws -> [PlanDayIdeaCandidate] {
-        _ = creatorID
-        _ = context
-        return PlanDayIdeaBuilder.buildIdeas(scheduledDate: scheduledDate, setup: setup)
+    var server: FakeServer = .shared
+    func generatePlanDayIdeas(creatorID: UUID, scheduledDate: String, setup: PlanDaySetupSummary, context: WorkspaceContext) async throws -> [PlanDayIdeaCandidate] {
+        var payload: FakeObject = [
+            "creator_id": .string(creatorID.uuidString), "scheduled_date": .string(scheduledDate),
+            "content_pillars": try FakeJSON.value(setup.contentPillars), "voice_configured": .bool(setup.voiceIsConfigured),
+            "reference_count": .number(Double(setup.confirmedReferenceCount)),
+            "positioning": .string(setup.positioning), "voice_rules": .string(setup.voiceRulesText),
+            "caption_style": .string(setup.captionStyle), "no_go_topics": .string(setup.noGoTopicsText),
+            "reference_labels": try FakeJSON.value(setup.confirmedReferenceLabels)
+        ]
+        for key in ["positioning", "voice_rules", "caption_style", "no_go_topics"] where payload.text(key)?.isEmpty == true { payload.removeValue(forKey: key) }
+        let response: FakePlanIdeasResponse = try await server.invoke("generate-plan-ideas", body: payload, context: context)
+        return response.ideas.map { PlanDayIdeaCandidate(title: $0.title, summary: $0.summary, dayBrief: $0.dayBrief) }
     }
 }
 
-/// Explicit unavailable stub for tests that assert missing day-generation wiring.
 struct AppFixtureDayGenerationUnavailableRepository: DayGenerationRepository {}
 
 struct AppFixtureStoryboardThumbnailUnavailableRepository: StoryboardThumbnailRepository {}
@@ -944,199 +1158,6 @@ struct FixtureReferenceRepository: ReferenceRepository {
 struct FixtureIntelligenceRepository: IntelligenceRepository {
     func home(for context: WorkspaceContext) async throws -> IntelligenceHome {
         IntelligenceHome.raceWeekLibrary
-    }
-}
-
-struct FixtureCreatorProfileRepository: CreatorProfileRepository {
-    private let store: FixtureCreatorProfileStore
-
-    init(store: FixtureCreatorProfileStore = FixtureCreatorProfileStore()) {
-        self.store = store
-    }
-
-    func activeProfileSummary(for context: WorkspaceContext) async throws -> CreatorProfileSummary {
-        _ = context
-        return await store.read()
-    }
-
-    func updateProfile(_ update: CreatorProfileUpdate, context: WorkspaceContext) async throws -> CreatorProfileSummary {
-        _ = context
-        return await store.apply(update)
-    }
-}
-
-actor FixtureCreatorProfileStore {
-    private var profile: CreatorProfileSummary = .creatorFixture
-    private let defaults: UserDefaults?
-
-    init() {
-        defaults = DebugLaunchConfiguration.fixtureSession == nil ? nil : DebugLaunchConfiguration.fixtureDefaults
-        if let data = defaults?.data(forKey: "creator-profile"), let saved = try? JSONDecoder().decode(CreatorProfileSummary.self, from: data) { profile = saved }
-    }
-
-    func read() -> CreatorProfileSummary {
-        profile
-    }
-
-    func apply(_ update: CreatorProfileUpdate) -> CreatorProfileSummary {
-        profile = Self.mergedProfile(existing: profile, update: update)
-        if let data = try? JSONEncoder().encode(profile) { defaults?.set(data, forKey: "creator-profile") }
-        return profile
-    }
-
-    private static func mergedProfile(
-        existing: CreatorProfileSummary,
-        update: CreatorProfileUpdate
-    ) -> CreatorProfileSummary {
-        var summary = existing
-
-        if let positioning = update.positioning {
-            summary.positioning = positioning
-        }
-        if let voiceRules = update.voiceRules {
-            summary.voiceRules = voiceRules
-            summary.voiceLine = voiceRules.joined(separator: ", ")
-        }
-        if let contentPillars = update.contentPillars {
-            summary.contentPillars = contentPillars
-        }
-        if let captionStyle = update.captionStyle {
-            summary.captionStyle = captionStyle
-        }
-        if let noGoTopics = update.noGoTopics {
-            summary.noGoTopics = noGoTopics
-        }
-        if let recurringFormats = update.recurringFormats {
-            summary.recurringFormats = recurringFormats
-        }
-        if let onboardingState = update.onboardingState {
-            summary.onboardingState = onboardingState
-        }
-        if let onboardingStep = update.onboardingStep {
-            summary.onboardingStep = onboardingStep
-        }
-        if update.onboardingCompletedAt != nil {
-            summary.onboardingCompletedAt = update.onboardingCompletedAt
-        }
-        if let startingPoint = update.startingPoint {
-            summary.startingPoint = startingPoint
-        }
-        if let customSubjects = update.customSubjects {
-            summary.customSubjects = customSubjects
-        }
-        if let tasteExampleIDs = update.tasteExampleIDs {
-            summary.tasteExampleIDs = tasteExampleIDs
-        }
-        if let productionFormats = update.productionFormats {
-            summary.productionFormats = productionFormats
-        }
-        if let timeToCreate = update.timeToCreate {
-            summary.timeToCreate = timeToCreate
-        }
-        if let onCameraRestrictions = update.onCameraRestrictions {
-            summary.onCameraRestrictions = onCameraRestrictions
-        }
-        if let recentContext = update.recentContext {
-            summary.recentContext = recentContext
-        }
-        if update.creatorNote != nil {
-            summary.creatorNote = update.creatorNote
-        }
-        if let firstIdeaHandoff = update.firstIdeaHandoff {
-            summary.firstIdeaHandoff = firstIdeaHandoff
-        }
-        if let languagePreferences = update.languagePreferences,
-           let primary = languagePreferences["primary"]?.nilIfBlank {
-            summary.contentLanguage = primary
-        }
-
-        return summary
-    }
-}
-
-actor FixtureArchiveStore {
-    private let defaults: UserDefaults
-    private let key = "archive"
-
-    init(defaults: UserDefaults) {
-        self.defaults = defaults
-    }
-
-    func entries() -> [ArchiveEntry]? {
-        guard let data = defaults.data(forKey: key) else { return nil }
-        return try? JSONDecoder().decode([ArchiveEntry].self, from: data)
-    }
-
-    func save(_ entries: [ArchiveEntry]) {
-        guard let data = try? JSONEncoder().encode(entries) else { return }
-        defaults.set(data, forKey: key)
-    }
-}
-
-struct FixtureArchiveRepository: ArchiveRepository {
-    private let store: FixtureArchiveStore?
-
-    init(store: FixtureArchiveStore? = nil) {
-        self.store = store ?? DebugLaunchConfiguration.fixtureSession.map {
-            _ in FixtureArchiveStore(defaults: DebugLaunchConfiguration.fixtureDefaults)
-        }
-    }
-
-    func entries(for context: WorkspaceContext) async throws -> [ArchiveEntry] {
-        if let stored = await store?.entries() { return stored }
-#if DEBUG
-        switch DebugLaunchFlags.uiFixtureData {
-        case .empty: return []
-        case .one: return Array(ArchiveEntry.fixtures.prefix(1))
-        case .worst, .huge:
-            let count = DebugLaunchFlags.uiFixtureData == .huge ? 1_284 : 6
-            return (0..<count).map { index in
-                ArchiveEntry(day: "TUE", date: "6 OCT",
-                    cardTitle: index == 0
-                        ? "Đặng Thị Ngọc Hân — a small creative routine that helped me finish a difficult week"
-                        : "Daily moment \(index + 1)",
-                    decision: .posted, outputLine: "Posted", hasPostThumbnail: false)
-            }
-        case .demo: break
-        }
-#endif
-        return ArchiveEntry.fixtures
-    }
-
-    func persistDecision(
-        _ entry: ArchiveEntry,
-        for card: DailyCard,
-        context: WorkspaceContext
-    ) async throws {
-        _ = card
-        _ = context
-        guard let store else { return }
-        var entries = await store.entries() ?? ArchiveEntry.fixtures
-        if let index = entries.firstIndex(where: { archiveEntry in
-            archiveEntry.dailyCardID == card.id
-        }) {
-            entries[index] = entry
-        } else {
-            entries.insert(entry, at: 0)
-        }
-        await store.save(entries)
-    }
-
-    func upsertDecision(
-        _ entry: ArchiveEntry,
-        for card: DailyCard,
-        context: WorkspaceContext
-    ) async throws -> [ArchiveEntry] {
-        try await persistDecision(entry, for: card, context: context)
-        var entries = try await self.entries(for: context)
-        if let index = entries.firstIndex(where: { archiveEntry in
-            archiveEntry.dailyCardID == card.id
-        }) {
-            entries[index] = entry
-        } else {
-            entries.insert(entry, at: 0)
-        }
-        return entries
     }
 }
 

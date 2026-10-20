@@ -317,11 +317,11 @@ test('loop R3-L3: one word changes only its shot dialogue', async ({ app, screen
   await app.back();
   await relaunchLoopSession(device, session);
   await screen.getByTestId('today.startFilming').tap();
-  await expect(screen.getByTestId('shoot.scene.1')).toContainText('loudest lie');
+  await expect(screen.getByTestId('shoot.scene.1').filter({ hasText: /loudest lie/ })).toContainText('loudest lie');
   await screen.getByTestId('shoot.next').tap();
-  await expect(screen.getByTestId('shoot.scene.2')).toContainText('That getting stronger is not for them anymore.');
+  await expect(screen.getByTestId('shoot.scene.2').filter({ hasText: /^That getting stronger is not for them anymore\.$/ })).toHaveText('That getting stronger is not for them anymore.');
   for (let shot = 3; shot <= 10; shot += 1) await screen.getByTestId('shoot.next').tap();
-  await expect(screen.getByTestId('shoot.scene.10')).toContainText('Do not let your age decide');
+  await expect(screen.getByTestId('shoot.scene.10').filter({ hasText: /^Do not let your age decide what your body is capable of\.$/ })).toHaveText('Do not let your age decide what your body is capable of.');
 });
 
 test('loop R3-L3: a paragraph edit cannot silently erase later shot dialogue', async ({ app, screen, device }) => {
@@ -330,9 +330,9 @@ test('loop R3-L3: a paragraph edit cannot silently erase later shot dialogue', a
   await app.back();
   await screen.getByTestId('today.startFilming').tap();
   await screen.getByTestId('shoot.next').tap();
-  await expect(screen.getByTestId('shoot.scene.2')).toContainText('That getting stronger is not for them anymore.');
+  await expect(screen.getByTestId('shoot.scene.2').filter({ hasText: /^That getting stronger is not for them anymore\.$/ })).toHaveText('That getting stronger is not for them anymore.');
   for (let shot = 3; shot <= 10; shot += 1) await screen.getByTestId('shoot.next').tap();
-  await expect(screen.getByTestId('shoot.scene.10')).toContainText('Do not let your age decide');
+  await expect(screen.getByTestId('shoot.scene.10').filter({ hasText: /^Do not let your age decide what your body is capable of\.$/ })).toHaveText('Do not let your age decide what your body is capable of.');
 });
 
 test('loop R3-L4: a saved scene duration changes this and following filming timecodes', async ({ app, screen, device }) => {
@@ -343,10 +343,10 @@ test('loop R3-L4: a saved scene duration changes this and following filming time
   await app.back();
   await relaunchLoopSession(device, session);
   await screen.getByTestId('today.startFilming').tap();
-  await expect(screen.getByTestId('shoot.scene.1')).toContainText('0-8 sec');
-  await expect(screen.getByTestId('shoot.scene.1')).toContainText('8 sec');
+  await expect(screen.getByTestId('shoot.scene.1').filter({ hasText: /^0-8 sec, pending$/ })).toContainText('0-8 sec');
+  await expect(screen.getByTestId('shoot.scene.1').filter({ hasText: /^Use your usual camera app\./ })).toContainText('8 sec');
   await screen.getByTestId('shoot.next').tap();
-  await expect(screen.getByTestId('shoot.scene.2')).toContainText('8-11 sec');
+  await expect(screen.getByTestId('shoot.scene.2').filter({ hasText: /^8-11 sec, pending$/ })).toContainText('8-11 sec');
 });
 
 test('loop R3-C1: an old pending-decision cache keeps filming completion and replays its decision', async ({ screen, device }) => {
@@ -370,7 +370,8 @@ test('loop R3-C3: edit, unpublish, and make ready never resurrect Posted', { tim
   await expect(screen.getByTestId('daily.ready.edit.save')).toHaveText('Save caption');
   await expect(screen.getByTestId('daily.ready.edit.save')).toBeDisabled();
   await tapVisibleControl(screen, screen.getByTestId('daily.unpublish'));
-  await screen.getByRole('button', 'Unpublish', { exact: true }).tap();
+  await screen.getByRole('group', 'Unpublish this day?', { exact: true })
+    .getByRole('button', 'Unpublish', { exact: true }).tap();
   await approveLoopPackage(screen);
   await relaunchLoopSession(device, session);
   await archiveHas(screen, 'Loop ready package');
@@ -455,20 +456,39 @@ test('loop R3-C7: Shoot Folio blocks a blank script save', async ({ screen, devi
 });
 
 test('loop R3-C7: Post refuses blank script and caption without changing the saved package', { timeout: 240_000 }, async ({ screen, device }) => {
-  await ready(screen, device);
+  const session = await ready(screen, device);
   await finishLoopFilming(screen);
   await screen.getByTestId('post.edit').tap();
-  const original = await screen.getByTestId('post.script.editor').inputValue();
-  await clearThenType(screen, screen.getByTestId('post.script.editor'), '');
+  const script = screen.getByTestId('post.script.editor');
+  const caption = screen.getByTestId('post.caption.editor');
+  const save = screen.getByTestId('post.save');
+  const originalScript = await script.inputValue();
+  await scrollToControl(screen, caption);
+  const originalCaption = await caption.inputValue();
+  expect(originalScript.trim().length).toBeGreaterThan(0);
+  expect(originalCaption.trim().length).toBeGreaterThan(0);
+  await clearThenType(screen, script, '');
   await dismissKeyboard(screen, 'post.keyboardDone');
-  await clearThenType(screen, screen.getByTestId('post.caption.editor'), '');
+  await expect(save).toBeDisabled();
+  await clearThenType(screen, caption, '');
   await dismissKeyboard(screen, 'post.keyboardDone');
-  await tapEditorControl(screen, 'post.save');
+  await expect(save).toBeDisabled();
   const error = screen.getByText('Keep some text in Script and Caption before saving.', { exact: true });
   await screen.scrollUntilVisible(error, { direction: 'up' });
   await expect(error).toBeVisible();
   await expect(screen.getByTestId('post.cancel')).toBeVisible();
+  await clearThenType(screen, script, 'A valid script draft that must not be saved.');
+  await dismissKeyboard(screen, 'post.keyboardDone');
+  await expect(save).toBeDisabled();
+  await clearThenType(screen, caption, 'A valid caption draft that must not be saved.');
+  await dismissKeyboard(screen, 'post.keyboardDone');
+  await expect(save).toBeEnabled();
   await tapEditorControl(screen, 'post.cancel');
+  await relaunchLoopSession(device, session);
+  await screen.getByTestId('today.startFilming').tap();
   await screen.getByTestId('post.edit').tap();
-  await expect(screen.getByTestId('post.script.editor')).toHaveValue(original);
+  await scrollToControl(screen, script, 'up');
+  await expect(script).toHaveValue(originalScript);
+  await scrollToControl(screen, caption);
+  await expect(caption).toHaveValue(originalCaption);
 });

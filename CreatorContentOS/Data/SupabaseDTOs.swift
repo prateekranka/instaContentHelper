@@ -114,6 +114,7 @@ struct SupabaseShotSceneDTO: Codable, Hashable, Sendable {
     var title: String?
     var duration: String?
     var symbol: String?
+    var dialogue: String? = nil
 
     func domainScene(fallbackNumber: Int, revisionID: UUID? = nil) -> ShotScene {
         let sceneNumber = number ?? fallbackNumber
@@ -123,7 +124,8 @@ struct SupabaseShotSceneDTO: Codable, Hashable, Sendable {
             number: sceneNumber,
             title: title ?? "Shot \(fallbackNumber)",
             duration: duration ?? "3 sec",
-            symbol: symbol ?? "circle"
+            symbol: symbol ?? "circle",
+            dialogue: dialogue
         )
     }
 }
@@ -1075,6 +1077,8 @@ struct SupabasePublishSceneRequest: Encodable, Sendable {
     var title: String
     var duration: String
     var symbol: String
+    var id: UUID? = nil
+    var dialogue: String? = nil
 }
 
 struct SupabasePublishWeekResponse: Decodable, Hashable, Sendable {
@@ -1210,10 +1214,12 @@ struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
     }
 
     private enum SceneCodingKeys: String, CodingKey {
+        case id
         case number
         case title
         case duration
         case symbol
+        case dialogue
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1237,10 +1243,12 @@ struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
             var scenesContainer = packageContainer.nestedUnkeyedContainer(forKey: .sceneList)
             for scene in scenes {
                 var sceneContainer = scenesContainer.nestedContainer(keyedBy: SceneCodingKeys.self)
+                try sceneContainer.encode(scene.id, forKey: .id)
                 try sceneContainer.encode(scene.number, forKey: .number)
                 try sceneContainer.encode(scene.title, forKey: .title)
                 try sceneContainer.encode(scene.duration, forKey: .duration)
                 try sceneContainer.encode(scene.symbol, forKey: .symbol)
+                try sceneContainer.encodeIfPresent(scene.dialogue, forKey: .dialogue)
             }
         }
     }

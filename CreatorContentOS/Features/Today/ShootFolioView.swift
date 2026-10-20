@@ -207,7 +207,7 @@ struct ShootFolioView: View {
 
     private var hasDraftChanges: Bool {
         draftScript.nilIfBlank != nil
-            && (draftScenes != services.todayCard.scenes || draftScript != (services.todayCard.script ?? ""))
+            && (draftScenes != services.todayCard.scenes || draftScript != PackageCopyText.script(for: services.todayCard))
     }
 
     private var sectionTabs: some View {
@@ -236,7 +236,7 @@ struct ShootFolioView: View {
 
     private func beginEditing() {
         draftScenes = services.todayCard.scenes
-        draftScript = services.todayCard.script ?? ""
+        draftScript = PackageCopyText.script(for: services.todayCard)
         saveError = nil
         isEditing = true
         if selection != .scenes && selection != .script {
@@ -246,7 +246,7 @@ struct ShootFolioView: View {
 
     private func cancelEditing() {
         draftScenes = services.todayCard.scenes
-        draftScript = services.todayCard.script ?? ""
+        draftScript = PackageCopyText.script(for: services.todayCard)
         saveError = nil
         isEditing = false
     }
@@ -254,8 +254,8 @@ struct ShootFolioView: View {
     private func saveEdits() {
         guard hasDraftChanges, !services.isUpdatingReadyDayPackage else { return }
         let dateString = planDateForReadyCard
-        let scenes = draftScenes
-        let script = draftScript
+        let scenes = ShotScript.editing(draftScript, scenes: draftScenes)
+        let script = scenes.isEmpty ? draftScript : ShotScript.text(for: scenes)
         Task { @MainActor in
             do {
                 _ = try await services.updateReadyDayPackage(
@@ -421,10 +421,7 @@ struct SceneListView: View {
     }
 
     private func timecode(for index: Int, scene: ShotScene) -> String {
-        if let stamped = card.shotTimeline?[safe: index]?.timestamp.nilIfBlank {
-            return stamped
-        }
-        if let window = SceneTiming.windows(for: card.scenes)[safe: index] {
+        if let window = ShotScript.timecodes(for: card.scenes)[safe: index] {
             return window
         }
         return scene.duration
@@ -603,9 +600,10 @@ struct ScriptTimelineCopyBlock: View {
                         Text("Script")
                             .font(PocketSheetType.sectionLabel)
                             .foregroundStyle(PocketSheetTheme.Color.inverseInk)
-                        Text("One line per beat. Timestamps stay tied to scene order.")
+                        Text(ShotScript.editorGuidance)
                             .font(PocketSheetType.rowSubtitle)
                             .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
                         TextEditor(text: $draftScript)
                             .font(PocketSheetType.rowSubtitle)
                             .foregroundStyle(PocketSheetTheme.Color.ink)

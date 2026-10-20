@@ -189,12 +189,14 @@ final class DayStore {
         if let value = title ?? patch.title { content.title = value }
         if let value = patch.whyToday { content.whyToday = value }
         if let value = caption ?? patch.caption { content.caption = value }
+        let patch = patch.owningShotLines(in: content)
         if let value = patch.script { content.script = value }
         if let value = patch.backupStory { content.backupStory = value }
         if let value = patch.backupCaptionOnly { content.backupCaptionOnly = value }
         if let value = patch.shootability { content.shootability = value }
         if let value = patch.estimatedShootMinutes { content.estimatedShootMinutes = value }
         if let value = patch.sceneList { content.sceneList = value }
+        content.normalizeShotContent()
         try transition(.edit(content), on: date)
     }
 

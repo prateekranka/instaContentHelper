@@ -391,7 +391,7 @@ final class AppServices {
             notifications: notifications,
             todayDate: todayDate,
             todayCard: DebugLaunchFlags.forceEmptyToday ? .emptyTodayPlaceholder : .raceWeekToday,
-            archiveEntries: ArchiveEntry.fixtures,
+            archiveEntries: FakeServer.shared.initialArchiveEntries,
             weeklyPlan: .raceWeek,
             weeklyIdeas: WeeklyIdea.raceWeekBank,
             intelligenceHome: .raceWeekLibrary,
@@ -1507,7 +1507,7 @@ final class AppServices {
         do {
             try package.validate()
             var intent = try packageIntent(on: scheduledDate, action: .update)
-            intent.package = package
+            intent.package = package.owningShotLines(in: dayStore.day(for: scheduledDate)?.revision?.content)
             try enqueueIntent(intent)
             await replayOutboxImmediately()
             guard case .package(let result) = outboxResults[intent.id] else { throw replayError(for: intent) }

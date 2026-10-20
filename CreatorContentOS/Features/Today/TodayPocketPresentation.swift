@@ -429,6 +429,7 @@ struct TodayPostPreparationView: View {
     @State private var isEditing = false
     @State private var isSavingEdits = false
     @State private var draftScript = ""
+    @State private var draftScenes: [ShotScene] = []
     @State private var draftCaption = ""
     @State private var saveError: String?
     @State private var didCopyScript = false
@@ -488,8 +489,8 @@ struct TodayPostPreparationView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 } else {
-                    if !services.todayCard.isNonFilmingPost || services.todayCard.script?.nilIfBlank != nil {
-                        copyBlock(title: "Script", text: services.todayCard.script?.nilIfBlank, emptyText: "No script recorded.", didCopy: $didCopyScript)
+                    if !services.todayCard.isNonFilmingPost || PackageCopyText.script(for: services.todayCard).nilIfBlank != nil {
+                        copyBlock(title: "Script", text: PackageCopyText.script(for: services.todayCard).nilIfBlank, emptyText: "No script recorded.", didCopy: $didCopyScript)
                     }
                     copyBlock(title: "Caption", text: services.todayCard.caption?.nilIfBlank, emptyText: "No caption recorded.", didCopy: $didCopyCaption)
                 }
@@ -540,7 +541,10 @@ struct TodayPostPreparationView: View {
             }
         }
         .onAppear {
-            if draftScript.isEmpty { draftScript = services.todayCard.script ?? "" }
+            if !isEditing {
+                draftScenes = services.todayCard.scenes
+                draftScript = PackageCopyText.script(for: services.todayCard)
+            }
             if draftCaption.isEmpty { draftCaption = services.todayCard.caption ?? "" }
         }
     }
@@ -552,6 +556,10 @@ struct TodayPostPreparationView: View {
                     Text("Script")
                         .font(PocketSheetType.sectionLabel)
                         .foregroundStyle(PocketSheetTheme.Color.inverseInk)
+                    Text(ShotScript.editorGuidance)
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                     TextEditor(text: $draftScript)
                         .focused($focusedEditor, equals: .script)
                         .font(PocketSheetType.rowSubtitle)
@@ -603,7 +611,8 @@ struct TodayPostPreparationView: View {
     }
 
     private func beginEditing() {
-        draftScript = services.todayCard.script ?? ""
+        draftScenes = services.todayCard.scenes
+        draftScript = PackageCopyText.script(for: services.todayCard)
         draftCaption = services.todayCard.caption ?? ""
         saveError = nil
         isEditing = true
@@ -612,7 +621,8 @@ struct TodayPostPreparationView: View {
     private func cancelEditing() {
         guard !isSavingEdits else { return }
         focusedEditor = nil
-        draftScript = services.todayCard.script ?? ""
+        draftScenes = services.todayCard.scenes
+        draftScript = PackageCopyText.script(for: services.todayCard)
         draftCaption = services.todayCard.caption ?? ""
         saveError = nil
         isEditing = false
@@ -628,7 +638,8 @@ struct TodayPostPreparationView: View {
         focusedEditor = nil
         let cardID = services.todayCard.id
         let date = services.todayCard.scheduledDate?.nilIfBlank ?? services.currentTodayDateString
-        let script = draftScript
+        let scenes = ShotScript.editing(draftScript, scenes: draftScenes)
+        let script = scenes.isEmpty ? draftScript : ShotScript.text(for: scenes)
         let caption = draftCaption
         Task { @MainActor in
             defer { isSavingEdits = false }
@@ -636,7 +647,7 @@ struct TodayPostPreparationView: View {
             do {
                 _ = try await services.updateReadyDayPackage(
                     scheduledDate: date,
-                    package: ReadyDayPackageUpdate(caption: caption, script: script)
+                    package: ReadyDayPackageUpdate(caption: caption, script: script, sceneList: scenes)
                 )
                 if services.todayCard.id == cardID {
                     saveError = nil

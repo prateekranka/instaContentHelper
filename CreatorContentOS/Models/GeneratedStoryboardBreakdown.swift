@@ -54,24 +54,13 @@ enum GeneratedStoryboardBreakdown {
     }
 
     static func rows(for card: GeneratedDailyCardDraft) -> [GeneratedStoryboardBreakdownRow] {
-        let rowCount = [
-            card.sceneList.count,
-            card.shotTimeline.count,
-            card.voiceoverTimeline.count,
-            card.onScreenTextTimeline.count,
-            card.onScreenText.count
-        ]
-            .max() ?? 0
+        var card = card
+        card.normalizeShotContent()
+        let rowCount = card.sceneList.count
 
         guard rowCount > 0 else { return [] }
 
-        let derivedTimecodes = timecodes(for: card.sceneList)
-        let spokenTimeline = card.voiceoverTimeline
-            .compactMap { firstPresent($0.voiceover, $0.detail, $0.title) }
-            .joined(separator: " ")
-        let scriptReplacesTimeline = !spokenTimeline.isEmpty
-            && card.script.nilIfBlank != nil
-            && normalizedWords(card.script) != normalizedWords(spokenTimeline)
+        let derivedTimecodes = ShotScript.timecodes(for: card.sceneList)
         let thumbnailsByRow = card.storyboardThumbnailAssets.reduce(into: [Int: StoryboardThumbnailAsset]()) { result, asset in
             result[asset.rowIndex] = asset
         }
@@ -79,21 +68,14 @@ enum GeneratedStoryboardBreakdown {
         return (0..<rowCount).map { index in
             let scene = element(at: index, in: card.sceneList)
             let shot = element(at: index, in: card.shotTimeline)
-            let voiceover = element(at: index, in: card.voiceoverTimeline)
             let text = element(at: index, in: card.onScreenTextTimeline)
             let thumbnailURL = thumbnailsByRow[index]?.publicURL
                 .flatMap { URL(string: $0) }
 
-            let timecode = firstPresent(
-                element(at: index, in: derivedTimecodes),
-                shot?.timestamp,
-                voiceover?.timestamp,
-                text?.timestamp,
-                scene?.duration
-            ) ?? "Scene \(index + 1)"
+            let timecode = derivedTimecodes[index]
 
             return GeneratedStoryboardBreakdownRow(
-                id: "\(card.id.uuidString)-\(index)-\(timecode)",
+                id: scene?.id.uuidString ?? "\(card.id.uuidString)-\(index)",
                 sceneNumber: scene?.number ?? index + 1,
                 timecode: timecode,
                 visualShot: firstPresent(
@@ -107,14 +89,7 @@ enum GeneratedStoryboardBreakdown {
                     shot?.title,
                     scene?.title
                 ) ?? "Show the main action clearly.",
-                audioDialogue: (scriptReplacesTimeline
-                    ? scriptLine(from: card.script, at: index)
-                    : firstPresent(
-                        voiceover?.voiceover,
-                        voiceover?.detail,
-                        voiceover?.title,
-                        scriptLine(from: card.script, at: index)
-                    )) ?? "No voiceover specified.",
+                audioDialogue: scene?.dialogue?.nilIfBlank ?? "No voiceover specified.",
                 onScreenText: firstPresent(
                     text?.onScreenText,
                     text?.title,
@@ -136,52 +111,20 @@ enum GeneratedStoryboardBreakdown {
     private static func element<T>(at index: Int, in values: [T]) -> T? {
         values.indices.contains(index) ? values[index] : nil
     }
-
-    private static func normalizedWords(_ text: String) -> String {
-        text.lowercased()
-            .split(whereSeparator: \.isWhitespace)
-            .joined(separator: " ")
-    }
-
-    private static func lines(of script: String) -> [String] {
-        script
-            .split(whereSeparator: \.isNewline)
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
-    private static func scriptLine(from script: String, at index: Int) -> String? {
-        if let line = element(at: index, in: lines(of: script)) {
-            return line
-        }
-
-        return index == 0 ? script.nilIfBlank : nil
-    }
-
-    private static func timecodes(for scenes: [ShotScene]) -> [String] {
-        var cursor = 0
-        return scenes.map { scene in
-            let start = cursor
-            cursor += seconds(from: scene.duration) ?? 0
-            return "\(start)-\(cursor) sec"
-        }
-    }
-
-    private static func seconds(from duration: String) -> Int? {
-        let digits = duration.prefix { $0.isNumber }
-        return Int(digits)
-    }
-
 }
 
 /// Shared pasteboard text for Today inline and Shoot Folio copy actions.
 enum PackageCopyText {
     static func script(for card: DailyCard) -> String {
-        script(fromStored: card.script?.nilIfBlank, rows: GeneratedStoryboardBreakdown.rows(for: card))
+        var card = card
+        card.normalizeShotContent()
+        return card.scenes.isEmpty ? card.script ?? "" : ShotScript.text(for: card.scenes)
     }
 
     static func script(for card: GeneratedDailyCardDraft) -> String {
-        script(fromStored: card.script.nilIfBlank, rows: GeneratedStoryboardBreakdown.rows(for: card))
+        var card = card
+        card.normalizeShotContent()
+        return card.sceneList.isEmpty ? card.script : ShotScript.text(for: card.sceneList)
     }
 
     static func caption(for card: DailyCard) -> String? {
@@ -190,13 +133,6 @@ enum PackageCopyText {
 
     static func caption(for card: GeneratedDailyCardDraft) -> String? {
         card.caption.nilIfBlank
-    }
-
-    private static func script(fromStored stored: String?, rows: [GeneratedStoryboardBreakdownRow]) -> String {
-        if let script = stored {
-            return script
-        }
-        return rows.map(\.audioDialogue).joined(separator: "\n")
     }
 }
 
