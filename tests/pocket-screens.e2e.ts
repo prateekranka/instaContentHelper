@@ -3,7 +3,7 @@ import { expect, type App } from 'e2e';
 import type { EngineSnapshot, SemanticNode } from 'e2e/engine';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { selectTab, scrollToControl, tapEditorControl, tapVisibleControl } from './pocket-support';
+import { selectTab, scrollToControl, tapEditorControl, tapVisibleControl, dismissKeyboard } from './pocket-support';
 
 async function scrollBackupConfirmationIntoView(screen: Screen) {
   const scroller = screen.getByRole('scroll-view').nth(0);
@@ -133,7 +133,7 @@ test('catalog onboarding, Today states, filming, post text, and backup sheets', 
   await screen.getByTestId('post.script.editor').tap();
   await expect(screen.getByTestId('post.keyboardDone')).toBeVisible();
   await capture(app, device, '11-post-edit-keyboard');
-  await screen.getByTestId('post.keyboardDone').tap();
+  await dismissKeyboard(screen, 'post.keyboardDone');
   try {
     await tapEditorControl(screen, 'post.cancel');
   } catch (error) {
@@ -249,10 +249,10 @@ test('from onboarding, create and restore four Story, Reel, and photo packages t
     await capture(app, device, '41-plan-voice-required');
     await voiceGate.tap();
     await screen.getByTestId('you.voice.positioning').pressSequentially('Small, useful moments from my everyday life.');
-    await screen.getByTestId('you.voice.keyboardDone').tap();
+    await dismissKeyboard(screen, 'you.voice.keyboardDone');
     await scrollToControl(screen, screen.getByTestId('you.voice.rules'));
     await screen.getByTestId('you.voice.rules').pressSequentially('Use direct sentences and a calm voice.');
-    await screen.getByTestId('you.voice.keyboardDone').tap();
+    await dismissKeyboard(screen, 'you.voice.keyboardDone');
     await scrollToControl(screen, screen.getByTestId('you.voice.save'));
     await screen.getByTestId('you.voice.save').tap();
     await expect(screen.getByTestId('you.voice.save')).toBeDisabled();

@@ -22,6 +22,7 @@ struct TodayView: View {
                 }
                 if dynamicTypeSize.isAccessibilitySize, case .ready = services.todayContentState {
                     primaryAction
+                    notEasierAction
                 }
                 switch services.todayContentState {
                 case .ready:
@@ -42,10 +43,7 @@ struct TodayView: View {
             if case .ready = services.todayContentState {
                 PocketSheetCommandBar {
                     primaryAction
-                    PocketSheetSecondaryAction(title: "Need something easier?") {
-                        sheet = .notToday
-                    }
-                    .accessibilityIdentifier("today.notEasier")
+                    notEasierAction
                 }
             }
         }
@@ -59,6 +57,13 @@ struct TodayView: View {
             }
         }
         .navigationBarHidden(true)
+    }
+
+    private var notEasierAction: some View {
+        PocketSheetSecondaryAction(title: "Need something easier?") {
+            sheet = .notToday
+        }
+        .accessibilityIdentifier("today.notEasier")
     }
 
     private var primaryActionTitle: String {

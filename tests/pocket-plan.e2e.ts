@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
-import { selectTab, startFromOnboarding, scrollToControl } from './pocket-support';
+import { selectTab, startFromOnboarding, scrollToControl, dismissKeyboard } from './pocket-support';
 
 test('Plan keeps seven dates separate and supports cancelling or confirming a future overwrite', { timeout: 360_000 }, async ({ app, screen }) => {
   await startFromOnboarding(app, screen);
@@ -17,10 +17,10 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
   await screen.getByTestId('plan.voiceGate.setup').tap();
   await expect(screen.getByTestId('you.voice.positioning')).toBeVisible();
   await screen.getByTestId('you.voice.positioning').pressSequentially('Practical daily routines.');
-  await screen.getByTestId('you.voice.keyboardDone').tap();
+  await dismissKeyboard(screen, 'you.voice.keyboardDone');
   await scrollToControl(screen, screen.getByTestId('you.voice.rules'));
   await screen.getByTestId('you.voice.rules').pressSequentially('Use short, direct sentences.');
-  await screen.getByTestId('you.voice.keyboardDone').tap();
+  await dismissKeyboard(screen, 'you.voice.keyboardDone');
   await scrollToControl(screen, screen.getByTestId('you.voice.save'));
   await screen.getByTestId('you.voice.save').tap();
   await expect(screen.getByTestId('you.voice.save')).toBeDisabled();
@@ -46,7 +46,7 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
   }
   await screen.scrollUntilVisible(screen.getByTestId('plan.package.replaceIdea'));
   await screen.getByTestId('plan.package.replaceIdea').tap();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.daygen.idea.0'), { direction: 'up' });
+  await scrollToControl(screen, screen.getByTestId('plan.daygen.idea.0'), 'up');
   await screen.getByTestId('plan.daygen.idea.0').tap();
   await expect(screen.getByRole('button', 'Overwrite', { exact: true })).toBeVisible();
   await screen.getByRole('button', 'Cancel', { exact: true }).tap();

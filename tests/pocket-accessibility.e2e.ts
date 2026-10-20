@@ -52,8 +52,10 @@ test(`Pocket remains usable in ${scenario}`, { timeout: 240_000 }, async ({ app,
   await scrollToControl(screen, screen.getByText('CAPTURE', { exact: true }), 'down', commandTop - 16);
   await app.screenshot(`pocket-${scenario}-filming-instructions`);
   await screen.getByTestId('shoot.next').tap();
+  await scrollToControl(screen, screen.getByTestId('shoot.progress'), 'up', commandTop - 16);
   await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 2 of');
   await app.back();
+  await scrollToControl(screen, screen.getByTestId('today.notEasier'));
   await screen.getByTestId('today.notEasier').tap();
   await app.screenshot(`pocket-${scenario}-alternatives`);
   await screen.scrollUntilVisible(screen.getByRole('button', /Plan tomorrow/));

@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
-import { selectTab, startFromOnboarding, tapEditorControl } from './pocket-support';
+import { selectTab, startFromOnboarding, tapEditorControl, dismissKeyboard } from './pocket-support';
 
 test('Pocket opens with one ready idea and a reachable filming action', async ({ app, screen, device }) => {
   if (process.env.POCKET_E2E_INSTALL === '1') await device.installApp();
@@ -55,22 +55,19 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
   const oldScript = await screen.getByTestId('post.script.editor').inputValue();
   await screen.getByTestId('post.script.editor').pressSequentially(' Hello.');
   expect(await screen.getByTestId('post.script.editor').inputValue()).not.toBe(oldScript);
-  await screen.getByTestId('post.keyboardDone').tap();
-  await expect(screen.getByTestId('post.keyboardDone')).toBeHidden();
+  await dismissKeyboard(screen, 'post.keyboardDone');
   await expect(screen.getByTestId('post.cancel')).toBeEnabled();
   await tapEditorControl(screen, 'post.cancel');
   await screen.getByTestId('post.edit').tap();
   await expect(screen.getByTestId('post.script.editor')).toHaveValue(oldScript);
   await screen.getByTestId('post.script.editor').pressSequentially(' Small steps.');
-  await screen.getByTestId('post.keyboardDone').tap();
-  await expect(screen.getByTestId('post.keyboardDone')).toBeHidden();
+  await dismissKeyboard(screen, 'post.keyboardDone');
   const savedScript = await screen.getByTestId('post.script.editor').inputValue();
   expect(savedScript).not.toBe(oldScript);
   await screen.scrollUntilVisible(screen.getByTestId('post.caption.editor'));
   const oldCaption = await screen.getByTestId('post.caption.editor').inputValue();
   await screen.getByTestId('post.caption.editor').pressSequentially(' Today.');
-  await screen.getByTestId('post.keyboardDone').tap();
-  await expect(screen.getByTestId('post.keyboardDone')).toBeHidden();
+  await dismissKeyboard(screen, 'post.keyboardDone');
   const savedCaption = await screen.getByTestId('post.caption.editor').inputValue();
   expect(savedCaption).not.toBe(oldCaption);
   await tapEditorControl(screen, 'post.save');

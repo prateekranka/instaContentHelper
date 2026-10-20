@@ -48,8 +48,9 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   let lastDirection: 'up' | 'down' = direction;
   for (let attempt = 0; attempt < 24; attempt += 1) {
     if (await locator.count() > 0) {
-      const box = await locator.boundingBox();
-      if (box.y >= visibleTop && box.y + box.height <= visibleBottom) return;
+      const box = await stableBox(locator);
+      if (box && box.y >= visibleTop && box.y + box.height <= visibleBottom) return;
+      if (!box) continue;
       lastDirection = box.y < visibleTop ? 'up' : 'down';
     }
     if (lastDirection === 'up') await screen.swipe({ from: { x, y: swipeTo }, to: { x, y: swipeFrom } });
@@ -59,4 +60,31 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   const box = await locator.boundingBox();
   expect(box.y).toBeGreaterThanOrEqual(visibleTop);
   expect(box.y + box.height).toBeLessThanOrEqual(visibleBottom);
+}
+
+async function stableBox(locator: Locator) {
+  let box = await locator.boundingBox();
+  for (let settle = 0; settle < 10; settle += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    if (await locator.count() === 0) return undefined;
+    const next = await locator.boundingBox();
+    if (next.x === box.x && next.y === box.y) return next;
+    box = next;
+  }
+  return box;
+}
+
+export async function dismissKeyboard(screen: Screen, id: string) {
+  const done = screen.getByTestId(id);
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (await done.count() === 0) return;
+    const box = await stableBox(done);
+    if (!box) return;
+    await screen.tapAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+    try {
+      await expect(done).toBeHidden({ timeout: 3_000 });
+      return;
+    } catch {}
+  }
+  await expect(done).toBeHidden();
 }
