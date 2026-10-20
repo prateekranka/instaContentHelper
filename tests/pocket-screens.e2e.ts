@@ -148,6 +148,9 @@ test('catalog onboarding, Today states, filming, post text, and backup sheets', 
   await app.back();
   await expect(screen.getByTestId('today.startFilming')).toContainText('View posted content');
   await capture(app, device, '13-today-posted');
+  await expect(screen.getByTestId('today.notEasier')).toBeHidden();
+  await launch(device, 'backups');
+  await expect(screen.getByTestId('today.startFilming')).toBeVisible();
   await screen.getByTestId('today.notEasier').tap();
   await expect(screen.getByText('Other ideas', { exact: true })).toBeVisible();
   await capture(app, device, '14-other-ideas');
