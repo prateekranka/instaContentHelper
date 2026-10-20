@@ -9,10 +9,14 @@ import {
 } from "../_shared/device-auth.ts";
 import {
   pickWorkingPlan,
-  type WeeklyPlanRecord,
   utcTodayDateString,
+  type WeeklyPlanRecord,
 } from "./working-plan-selection.ts";
-import { canReadAction, isReadAction, type ReadAction } from "./read-permissions.ts";
+import {
+  canReadAction,
+  isReadAction,
+  type ReadAction,
+} from "./read-permissions.ts";
 
 type ReadContentRequest = {
   action?: ReadAction;
@@ -41,7 +45,9 @@ const PUBLISHED_DAILY_STATUSES = [
   "skipped_intentionally",
 ];
 
-Deno.serve(async (request) => {
+export async function handleReadContentRequest(
+  request: Request,
+): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -95,6 +101,8 @@ Deno.serve(async (request) => {
   }
 
   switch (action) {
+    case "days":
+      return readCreatorDays(admin, session, creatorID);
     case "today":
       return readToday(
         admin,
@@ -111,7 +119,9 @@ Deno.serve(async (request) => {
     case "intelligence":
       return readIntelligence(admin, session, creatorID);
   }
-});
+}
+
+if (import.meta.main) Deno.serve(handleReadContentRequest);
 
 async function assertCreator(
   admin: SupabaseAdminClient,
@@ -146,6 +156,7 @@ async function readToday(
   const { data: todayRows, error: todayError } = await admin
     .from("daily_cards")
     .select(DAILY_CARD_SELECT)
+    .eq("is_current", true)
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
     .eq("scheduled_date", todayDate)
@@ -160,6 +171,7 @@ async function readToday(
   const { data: weekRows, error: weekError } = await admin
     .from("daily_cards")
     .select(DAILY_CARD_SELECT)
+    .eq("is_current", true)
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
     .in("status", PUBLISHED_DAILY_STATUSES)
@@ -214,6 +226,7 @@ export async function readWeekly(
     const { data: pubCards, error: pubCardsError } = await admin
       .from("daily_cards")
       .select(DAILY_CARD_SELECT)
+      .eq("is_current", true)
       .eq("workspace_id", session.workspaceID)
       .eq("creator_id", creatorID)
       .eq("weekly_plan_id", publishedPlan.id)
@@ -247,6 +260,7 @@ export async function readWeekly(
     const { data: wkCards, error: wkCardsError } = await admin
       .from("daily_cards")
       .select(DAILY_CARD_SELECT)
+      .eq("is_current", true)
       .eq("workspace_id", session.workspaceID)
       .eq("creator_id", creatorID)
       .eq("weekly_plan_id", workingPlan.id)
@@ -299,7 +313,7 @@ export async function readWeekly(
   });
 }
 
-async function readArchive(
+export async function readArchive(
   admin: SupabaseAdminClient,
   session: VerifiedDeviceSession,
   creatorID: string,
@@ -307,10 +321,17 @@ async function readArchive(
   const { data: rows, error } = await admin
     .from("archive_entries")
     .select(
-      "id,daily_card_id,archive_date,decision,output_line,has_post_thumbnail,daily_cards(title)",
+      "id,daily_card_id,archive_date,decision,output_line,has_post_thumbnail,title_snapshot,caption_snapshot,decision_at",
     )
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
+    .in("decision", [
+      "shot",
+      "posted",
+      "used_backup",
+      "saved_for_tomorrow",
+      "skipped_intentionally",
+    ])
     .order("archive_date", { ascending: false })
     .limit(50);
 
@@ -318,7 +339,13 @@ async function readArchive(
     return jsonResponse({ error: "archive_lookup_failed" }, 500);
   }
 
-  return jsonResponse({ entries: rows ?? [] });
+  return jsonResponse({
+    entries: (rows ?? []).map((row: Record<string, unknown>) => ({
+      ...row,
+      revision_id: row.daily_card_id,
+      daily_cards: { title: row.title_snapshot, caption: row.caption_snapshot },
+    })),
+  });
 }
 
 async function readCreatorProfile(
@@ -582,4 +609,21 @@ function normalizedDate(value: string | undefined): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(value ?? "")
     ? value!
     : new Date().toISOString().slice(0, 10);
+}
+
+export async function readCreatorDays(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  creatorID: string,
+): Promise<Response> {
+  const { data, error } = await (admin as SupabaseAdminClient & {
+    rpc: (
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: unknown }>;
+  }).rpc("read_creator_days", {
+    payload: { workspace_id: session.workspaceID, creator_id: creatorID },
+  });
+  if (error) return jsonResponse({ error: "days_lookup_failed" }, 500);
+  return jsonResponse((data ?? { days: [] }) as Record<string, unknown>);
 }

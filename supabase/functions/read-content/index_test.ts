@@ -345,3 +345,68 @@ function assertEquals<T>(actual: T, expected: T, message?: string): void {
     );
   }
 }
+
+Deno.test("archive returns frozen title and caption through the legacy nested shape", async () => {
+  const { readArchive } = await import("./index.ts");
+  const row = {
+    daily_card_id: "posted-revision",
+    title_snapshot: "Posted title",
+    caption_snapshot: "Posted caption",
+  };
+  const query = {
+    select(columns: string) {
+      assert(!columns.includes("daily_cards(title)"));
+      return this;
+    },
+    eq() {
+      return this;
+    },
+    in() {
+      return this;
+    },
+    order() {
+      return this;
+    },
+    limit() {
+      return Promise.resolve({ data: [row], error: null });
+    },
+  };
+  const response = await readArchive(
+    {
+      from() {
+        return query;
+      },
+    },
+    session,
+    creatorID,
+  );
+  const body = await response.json();
+  assertEquals(body.entries[0].daily_cards, {
+    title: "Posted title",
+    caption: "Posted caption",
+  });
+  assertEquals(body.entries[0].revision_id, "posted-revision");
+});
+
+Deno.test("day reads use the authenticated workspace and return the current revision pointer", async () => {
+  const { readCreatorDays } = await import("./index.ts");
+  const response = await readCreatorDays(
+    {
+      from() {},
+      rpc(name: string, args: Record<string, unknown>) {
+        assertEquals(name, "read_creator_days");
+        assertEquals(args.payload, {
+          workspace_id: workspaceID,
+          creator_id: creatorID,
+        });
+        return Promise.resolve({
+          data: { days: [{ current_revision_id: "revision" }] },
+          error: null,
+        });
+      },
+    } as never,
+    session,
+    creatorID,
+  );
+  assertEquals((await response.json()).days[0].current_revision_id, "revision");
+});

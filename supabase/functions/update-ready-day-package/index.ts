@@ -84,23 +84,61 @@ export async function handleUpdateReadyDayPackageRequest(
   const packagePatch = body.package ?? {};
 
   if (!creatorID || !UUID_PATTERN.test(creatorID)) {
-    return jsonResponse({ error: "invalid_update_ready_day_package_payload" }, 400);
+    return jsonResponse(
+      { error: "invalid_update_ready_day_package_payload" },
+      400,
+    );
   }
 
   if (!scheduledDate && !dailyCardID) {
-    return jsonResponse({ error: "invalid_update_ready_day_package_payload" }, 400);
+    return jsonResponse(
+      { error: "invalid_update_ready_day_package_payload" },
+      400,
+    );
   }
 
   if (scheduledDate && !DATE_PATTERN.test(scheduledDate)) {
-    return jsonResponse({ error: "invalid_update_ready_day_package_payload" }, 400);
+    return jsonResponse(
+      { error: "invalid_update_ready_day_package_payload" },
+      400,
+    );
   }
 
   if (dailyCardID && !UUID_PATTERN.test(dailyCardID)) {
-    return jsonResponse({ error: "invalid_update_ready_day_package_payload" }, 400);
+    return jsonResponse(
+      { error: "invalid_update_ready_day_package_payload" },
+      400,
+    );
   }
 
-  if (typeof packagePatch !== "object" || packagePatch === null || Array.isArray(packagePatch)) {
-    return jsonResponse({ error: "invalid_update_ready_day_package_payload" }, 400);
+  if (
+    typeof packagePatch !== "object" || packagePatch === null ||
+    Array.isArray(packagePatch)
+  ) {
+    return jsonResponse(
+      { error: "invalid_update_ready_day_package_payload" },
+      400,
+    );
+  }
+
+  for (
+    const field of [
+      "title",
+      "why_today",
+      "caption",
+      "script",
+      "backup_story",
+      "backup_caption_only",
+      "shootability",
+    ]
+  ) {
+    if (!(field in packagePatch)) continue;
+    if (typeof packagePatch[field] !== "string") {
+      return jsonResponse({ error: "invalid_package_text", field }, 400);
+    }
+    if (!(packagePatch[field] as string).trim()) {
+      return jsonResponse({ error: "blank_package_text", field }, 400);
+    }
   }
 
   const { session } = authResult;
@@ -125,7 +163,9 @@ export async function handleUpdateReadyDayPackageRequest(
     payload.daily_card_id = dailyCardID;
   }
 
-  const { data, error } = await admin.rpc("update_ready_day_package", { payload });
+  const { data, error } = await admin.rpc("update_ready_day_package", {
+    payload,
+  });
   if (error) {
     return jsonResponse({ error: "update_ready_day_package_failed" }, 500);
   }
@@ -133,7 +173,10 @@ export async function handleUpdateReadyDayPackageRequest(
   const result = (data ?? {}) as Record<string, unknown>;
   if (typeof result.error === "string" && result.error.length > 0) {
     const status = typeof result.status === "number" ? result.status : 500;
-    return jsonResponse({ error: stableError(result.error) }, status);
+    return jsonResponse({
+      error: stableError(result.error),
+      field: result.field,
+    }, status);
   }
 
   return jsonResponse({
@@ -172,6 +215,8 @@ async function assertCreator(
 
 function stableError(code: string): string {
   switch (code) {
+    case "blank_package_text":
+    case "invalid_package_text":
     case "invalid_update_ready_day_package_payload":
     case "daily_card_not_found":
     case "daily_card_not_ready":

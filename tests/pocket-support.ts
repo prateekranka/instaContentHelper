@@ -1,4 +1,6 @@
 import { expect, type App, type Screen, type Locator } from 'e2e';
+import type { Device } from '@e2e-dev/mobile';
+import { randomUUID } from 'node:crypto';
 
 export async function selectTab(screen: Screen, name: 'Today' | 'Plan' | 'You') {
   const bar = screen.getByRole('tablist');
@@ -87,4 +89,85 @@ export async function dismissKeyboard(screen: Screen, id: string) {
     } catch {}
   }
   await expect(done).toBeHidden();
+}
+
+export type LoopScenario = 'initial' | 'ready' | 'line-script' | 'blank-copy' | 'stale-pointer' | 'legacy-cache' | 'old-decision';
+
+export interface LoopSession {
+  id: string;
+  scenario: LoopScenario;
+  flags: Record<string, string>;
+}
+
+export async function openLoopSession(device: Device, scenario: LoopScenario = 'ready', flags: Record<string, string> = {}) {
+  const session: LoopSession = { id: `loop-${randomUUID()}`, scenario, flags };
+  await relaunchLoopSession(device, session);
+  return session;
+}
+
+export async function relaunchLoopSession(device: Device, session: LoopSession, flags: Record<string, string> = {}) {
+  await device.openApp('com.prateekranka.creatorcontenthelper', {
+    relaunch: true,
+    launchArguments: ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US',
+      ...Object.entries({
+        MCO_FORCE_FIXTURE_UI: '1', MCO_FORCE_APP_MODE: 'creator',
+        MCO_FORCE_ONBOARDING: '0', MCO_FORCE_EMPTY_TODAY: '0',
+        MCO_QA_SESSION: session.id, MCO_LOOP_SCENARIO: session.scenario,
+        ...session.flags, ...flags,
+      }).flatMap(([key, value]) => [`-${key}`, value])],
+  });
+}
+
+export async function openLoopEditor(screen: Screen) {
+  await expect(screen.getByTestId('today.startFilming')).toBeVisible();
+  await screen.getByTestId('today.overflow').tap();
+  await screen.getByTestId('today.editScenesScript').tap();
+  await expect(screen.getByTestId('shootFolio.cancelEdit')).toBeVisible();
+}
+
+export async function saveLoopEditor(screen: Screen, device: Device) {
+  await device.dismissKeyboard();
+  await tapEditorControl(screen, 'shootFolio.saveEdits');
+  await expect(screen.getByTestId('shootFolio.edit')).toBeVisible();
+}
+
+export async function finishLoopFilming(screen: Screen) {
+  await screen.getByTestId('today.startFilming').tap();
+  await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 1 of');
+  const progress = (await screen.getByTestId('shoot.progress').textContent()) ?? '';
+  const count = Number(progress.match(/of\s+(\d+)/)?.[1]);
+  expect(count).toBeGreaterThan(0);
+  expect(count).toBeLessThanOrEqual(12);
+  for (let shot = 1; shot <= count; shot += 1) {
+    await expect(screen.getByTestId('shoot.progress')).toContainText(`Shot ${shot} of`);
+    await screen.getByTestId('shoot.complete').tap();
+    if (shot < count) await screen.getByTestId('shoot.next').tap();
+  }
+  await expect(screen.getByTestId('post.markPosted')).toBeVisible();
+}
+
+export async function openLoopPlanDay(screen: Screen, index: number) {
+  await selectTab(screen, 'Plan');
+  await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
+  const day = screen.getByTestId(/^plan\.sevenDaySelector\.day\./).nth(index);
+  await day.tap();
+  await expect(day).toBeSelected();
+  return day;
+}
+
+export async function requestLoopReplacement(screen: Screen, idea = 1) {
+  await screen.scrollUntilVisible(screen.getByTestId('plan.package.replaceIdea'));
+  await screen.getByTestId('plan.package.replaceIdea').tap();
+  await screen.scrollUntilVisible(screen.getByTestId(`plan.daygen.idea.${idea}`), { direction: 'up' });
+  await screen.getByTestId(`plan.daygen.idea.${idea}`).tap();
+  await expect(screen.getByRole('button', 'Overwrite', { exact: true })).toBeVisible();
+  await screen.getByRole('button', 'Overwrite', { exact: true }).tap();
+}
+
+export async function approveLoopPackage(screen: Screen) {
+  const approve = screen.getByTestId('daily.availableOnToday');
+  await screen.scrollUntilVisible(approve);
+  await expect(approve).toBeEnabled({ timeout: 45_000 });
+  await approve.tap();
+  await expect(approve).toBeHidden();
 }

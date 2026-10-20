@@ -1,8 +1,4 @@
 import { jsonResponse, SupabaseAdminClient } from "../_shared/device-auth.ts";
-import {
-  readDayGenerationPlan,
-  readPlanCardsForDayGeneration,
-} from "./generation-context-store.ts";
 import type { DayGenerationCardRecord } from "./generation-context-store.ts";
 import type {
   GeneratedDailyCard,
@@ -20,6 +16,7 @@ export type RegeneratedDayPersistenceInput = {
   scheduledDate: string;
   preserveManualEdits: boolean;
   targetCard?: DayGenerationCardRecord;
+  generationID: string;
 };
 
 type PlanIdentityRecord = {
@@ -67,26 +64,6 @@ export function postgrestErrorMessage(error: unknown): string {
     return error.message;
   }
   return typeof error === "string" ? error : "unknown_error";
-}
-
-export async function clearExistingDraftDailyCardsForFullGeneration(
-  admin: SupabaseAdminClient,
-  workspaceID: string,
-  creatorID: string,
-  weeklyPlanID: string,
-): Promise<{ ok: true } | { response: Response }> {
-  const { error } = await admin
-    .from("daily_cards")
-    .delete()
-    .eq("workspace_id", workspaceID)
-    .eq("creator_id", creatorID)
-    .eq("weekly_plan_id", weeklyPlanID);
-
-  if (error) {
-    return generationPersistFailure("daily_cards_clear_existing", error);
-  }
-
-  return { ok: true };
 }
 
 export function generatedDailyCardValues(
@@ -142,7 +119,6 @@ export function generatedDailyCardValues(
 }
 
 export const DAY_PLAN_CONTAINER_SELECT = "id,status,is_soft_locked";
-export const DRAFT_DAILY_CARD_UPDATE_SELECT = "id,scheduled_date";
 
 export type ThinDraftDayPlanContainerRow = {
   id: string;
@@ -157,14 +133,6 @@ export type ThinDraftDayPlanContainerRow = {
   assumptions: string[];
   is_soft_locked: false;
   created_by_member_id: string;
-};
-
-export type ExistingDraftDailyCardIdentity = {
-  id: string;
-  workspace_id: string;
-  creator_id: string;
-  weekly_plan_id: string;
-  scheduled_date: string;
 };
 
 /** Latest draft weekly_plans container for single-day generation. */
@@ -207,128 +175,53 @@ export async function insertThinDraftDayPlanContainer(
   };
 }
 
-/** Update an existing draft daily_cards row during regenerate_day. */
-export async function updateExistingDraftDailyCard(
-  admin: SupabaseAdminClient,
-  values: Record<string, unknown>,
-  identity: ExistingDraftDailyCardIdentity,
-): Promise<{ data: Record<string, unknown> | null; error: unknown }> {
-  const { data, error } = await admin
-    .from("daily_cards")
-    .update(values)
-    .eq("id", identity.id)
-    .eq("workspace_id", identity.workspace_id)
-    .eq("creator_id", identity.creator_id)
-    .eq("weekly_plan_id", identity.weekly_plan_id)
-    .eq("scheduled_date", identity.scheduled_date)
-    .eq("status", "draft")
-    .select(DRAFT_DAILY_CARD_UPDATE_SELECT)
-    .maybeSingle();
-
-  return {
-    data: isRecord(data) ? data : null,
-    error,
-  };
-}
-
 export async function persistRegeneratedDay(
   admin: SupabaseAdminClient,
   input: RegeneratedDayPersistenceInput,
   generatedCard: GeneratedDailyCard,
 ): Promise<{ dailyCard: GeneratedDailyCard } | { response: Response }> {
-  const planLookup = {
-    creator_id: input.creatorID,
-    weekly_plan_id: input.weeklyPlanID,
-  };
-  const currentPlan = await readDayGenerationPlan(
-    admin,
-    input.workspaceID,
-    planLookup,
-  );
-  if ("response" in currentPlan) {
-    return currentPlan;
-  }
-  if (
-    currentPlan.plan.status === "published" ||
-    currentPlan.plan.is_soft_locked
-  ) {
-    return {
-      response: jsonResponse({ error: "existing_published_week_locked" }, 409),
-    };
-  }
-  if (currentPlan.plan.status !== "draft") {
-    return {
-      response: jsonResponse({ error: "weekly_plan_not_found" }, 409),
-    };
-  }
-
-  const freshCards = await readPlanCardsForDayGeneration(
-    admin,
-    input.workspaceID,
-    planLookup,
-  );
-  if ("response" in freshCards) {
-    return freshCards;
-  }
-  const existing = freshCards.cards.find((card) =>
-    (input.targetCard?.id ? card.id === input.targetCard.id : true) &&
-    card.scheduled_date === input.scheduledDate &&
-    card.status === "draft"
-  );
-
-  const card = input.preserveManualEdits && existing
-    ? preserveManualDailyCardEdits(generatedCard, existing)
+  const card = input.preserveManualEdits && input.targetCard
+    ? preserveManualDailyCardEdits(generatedCard, input.targetCard)
     : generatedCard;
-  if (!existing) {
-    const persistResult = await upsertGeneratedDailyCards(
-      admin,
-      input.workspaceID,
-      input.creatorID,
-      input.weeklyPlanID,
-      [card],
-      false,
-    );
-    if ("response" in persistResult) {
-      return persistResult;
-    }
-    const dailyCard = persistResult.dailyCards.find((entry) =>
-      entry.scheduled_date === input.scheduledDate
-    ) ?? persistResult.dailyCards[0];
-    return dailyCard ? { dailyCard } : {
+  const { data, error } = await (admin as SupabaseAdminClient & {
+    rpc: (
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ data: Record<string, unknown> | null; error: unknown }>;
+  }).rpc("persist_day_revision", {
+    payload: {
+      workspace_id: input.workspaceID,
+      creator_id: input.creatorID,
+      generation_id: input.generationID,
+      card: generatedDailyCardValues(card),
+    },
+  });
+  if (error || !isRecord(data)) {
+    return generationPersistFailure("persist_day_revision", error);
+  }
+  if (typeof data.error === "string") {
+    return {
       response: jsonResponse(
-        { error: "daily_card_not_found" },
-        404,
+        { error: data.error },
+        typeof data.status === "number" ? data.status : 500,
       ),
     };
   }
-
-  const values = generatedDailyCardValues(card);
-  const { data, error } = await updateExistingDraftDailyCard(
-    admin,
-    values,
-    {
-      id: existing.id,
-      workspace_id: input.workspaceID,
-      creator_id: input.creatorID,
-      weekly_plan_id: input.weeklyPlanID,
-      scheduled_date: input.scheduledDate,
-    },
-  );
-  if (error || !isRecord(data)) {
-    return generationPersistFailure("regenerate_day_update_card", error);
+  if (typeof data.id !== "string") {
+    return generationPersistFailure(
+      "persist_day_revision",
+      "missing_revision_id",
+    );
   }
-
-  const referenceResult = await replaceDailyCardReferences(
+  const dailyCard = { ...card, id: data.id };
+  await replaceDailyCardReferences(
     admin,
     input.workspaceID,
     input.creatorID,
-    existing.id,
-    card,
+    dailyCard.id,
+    dailyCard,
   );
-  if ("response" in referenceResult) {
-    return referenceResult;
-  }
-  return { dailyCard: { ...card, id: existing.id } };
+  return { dailyCard };
 }
 
 export async function replaceDailyCardReferences(
@@ -459,7 +352,8 @@ export async function recoverWeeklyPlanIDFromExistingCards(
     .select("weekly_plan_id,scheduled_date")
     .eq("workspace_id", workspaceID)
     .eq("creator_id", creatorID)
-    .in("scheduled_date", [...dates]);
+    .in("scheduled_date", [...dates])
+    .eq("is_current", true);
   if (error) {
     console.warn("generate-week existing card plan recovery failed", {
       step: "recover_weekly_plan_from_cards",
@@ -546,7 +440,8 @@ export async function upsertGeneratedDailyCards(
     )
     .eq("workspace_id", workspaceID)
     .eq("creator_id", creatorID)
-    .eq("weekly_plan_id", weeklyPlanID);
+    .eq("weekly_plan_id", weeklyPlanID)
+    .eq("is_current", true);
 
   if (existingCardsResult.error) {
     return generationPersistFailure(
@@ -555,12 +450,6 @@ export async function upsertGeneratedDailyCards(
     );
   }
 
-  const existingIDs = new Map<string, string>(
-    ((existingCardsResult.data ?? []) as CardIdentityRecord[]).map((row) => [
-      row.scheduled_date,
-      row.id,
-    ]),
-  );
   const existingCards = new Map<string, CardIdentityRecord>(
     ((existingCardsResult.data ?? []) as CardIdentityRecord[]).map((row) => [
       row.scheduled_date,
@@ -574,98 +463,16 @@ export async function upsertGeneratedDailyCards(
     : cards;
 
   const rows = cardsToWrite.map((card) => ({
-    id: existingIDs.get(card.scheduled_date) ?? crypto.randomUUID(),
+    ...generatedDailyCardValues(card),
+    id: crypto.randomUUID(),
     workspace_id: workspaceID,
     creator_id: creatorID,
     weekly_plan_id: weeklyPlanID,
     scheduled_date: card.scheduled_date,
-    status: "draft",
-    title: card.title,
-    why_today: card.why_today,
-    growth_job: card.growth_job,
-    content_pillar: card.content_pillar,
-    shootability: card.shootability,
-    estimated_shoot_minutes: card.estimated_shoot_minutes,
-    energy_required: card.energy_required,
-    language_mode: card.language_mode,
-    scene_list: card.scene_list,
-    script: card.script,
-    no_voiceover_version: card.no_voiceover_version,
-    on_screen_text: card.on_screen_text,
-    caption: card.caption,
-    cta: card.cta,
-    hashtags: card.hashtags,
-    cover_text: card.cover_text,
-    post_instructions: {
-      instructions: card.post_instructions,
-      audio_option_notes: card.audio_option_notes,
-      format: card.format,
-      primary_surface: card.primary_surface,
-      duration_seconds: card.duration_seconds,
-      hook: card.hook,
-      weekly_brief_anchor: card.weekly_brief_anchor,
-      brief_alignment: card.brief_alignment,
-      brief_context_tags: card.brief_context_tags,
-      save_share_reason: card.save_share_reason,
-      shot_timeline: card.shot_timeline,
-      voiceover_timeline: card.voiceover_timeline,
-      silent_version_timeline: card.silent_version_timeline,
-      on_screen_text_timeline: card.on_screen_text_timeline,
-      caption_backup_detail: card.caption_backup_detail,
-      creator_fit_score: card.creator_fit_score,
-    },
-    brand_event_notes: card.brand_event_notes || null,
-    backup_story: { line: card.backup_story, detail: card.backup_story_detail },
-    backup_caption_only: {
-      line: card.backup_caption_only,
-      detail: card.caption_backup_detail,
-    },
-    risk_notes: card.risk_notes,
-    assumptions: card.assumptions,
-    source_note: card.source_note,
-    storyboard_thumbnail_assets: [],
   }));
 
   const writtenIDs = new Map<string, string>();
   for (const row of rows) {
-    if (existingIDs.has(row.scheduled_date)) {
-      const {
-        id,
-        workspace_id: _workspaceID,
-        creator_id: _creatorID,
-        weekly_plan_id: _weeklyPlanID,
-        scheduled_date: _scheduledDate,
-        ...updateValues
-      } = row;
-      const { data, error } = await admin
-        .from("daily_cards")
-        .update(updateValues)
-        .eq("id", id)
-        .eq("workspace_id", workspaceID)
-        .eq("creator_id", creatorID)
-        .eq("weekly_plan_id", weeklyPlanID)
-        .eq("scheduled_date", row.scheduled_date)
-        .select("id,scheduled_date")
-        .maybeSingle();
-
-      if (error) {
-        return generationPersistFailure("daily_card_update", error);
-      }
-      if (!isRecord(data)) {
-        const fallback = await upsertDailyCardRow(admin, row);
-        if ("response" in fallback) {
-          return fallback;
-        }
-        writtenIDs.set(fallback.scheduledDate, fallback.id);
-        continue;
-      }
-      writtenIDs.set(
-        stringValue(data.scheduled_date) ?? row.scheduled_date,
-        stringValue(data.id) ?? id,
-      );
-      continue;
-    }
-
     const insertResult = await upsertDailyCardRow(admin, row);
     if ("response" in insertResult) {
       return insertResult;
@@ -747,10 +554,6 @@ export async function upsertDailyCardRow(
     if (recovered) {
       return recovered;
     }
-    const recoveredConflict = await recoverConflictingDailyCardRow(admin, row);
-    if (recoveredConflict) {
-      return recoveredConflict;
-    }
     return generationPersistFailure(
       "daily_card_upsert",
       error ?? new Error("daily_card_upsert_no_returned_row"),
@@ -759,57 +562,6 @@ export async function upsertDailyCardRow(
 
   return {
     id: stringValue(data.id) ?? row.id,
-    scheduledDate: stringValue(data.scheduled_date) ?? row.scheduled_date,
-  };
-}
-
-export async function recoverConflictingDailyCardRow(
-  admin: SupabaseAdminClient,
-  row: Record<string, unknown> & { id: string; scheduled_date: string },
-): Promise<{ id: string; scheduledDate: string } | null> {
-  const { data: existing, error: lookupError } = await admin
-    .from("daily_cards")
-    .select("id,scheduled_date")
-    .eq("workspace_id", row.workspace_id)
-    .eq("creator_id", row.creator_id)
-    .eq("weekly_plan_id", row.weekly_plan_id)
-    .eq("scheduled_date", row.scheduled_date)
-    .maybeSingle();
-
-  if (lookupError || !isRecord(existing)) {
-    return null;
-  }
-
-  const existingID = stringValue(existing.id);
-  if (!existingID) {
-    return null;
-  }
-
-  const {
-    id: _id,
-    workspace_id: _workspaceID,
-    creator_id: _creatorID,
-    weekly_plan_id: _weeklyPlanID,
-    scheduled_date: _scheduledDate,
-    ...updateValues
-  } = row;
-  const { data, error } = await admin
-    .from("daily_cards")
-    .update(updateValues)
-    .eq("id", existingID)
-    .eq("workspace_id", row.workspace_id)
-    .eq("creator_id", row.creator_id)
-    .eq("weekly_plan_id", row.weekly_plan_id)
-    .eq("scheduled_date", row.scheduled_date)
-    .select("id,scheduled_date")
-    .maybeSingle();
-
-  if (error || !isRecord(data)) {
-    return null;
-  }
-
-  return {
-    id: stringValue(data.id) ?? existingID,
     scheduledDate: stringValue(data.scheduled_date) ?? row.scheduled_date,
   };
 }

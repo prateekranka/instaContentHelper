@@ -111,7 +111,9 @@ const WEEKLY_SETUP_SECTION_ALIASES: Record<string, string> = {
   constraints: "__constraints__",
 };
 
-Deno.serve(async (request) => {
+export async function handleWriteContentRequest(
+  request: Request,
+): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -160,7 +162,12 @@ Deno.serve(async (request) => {
   }
 
   const { session } = authResult;
-  const creatorResult = await assertCreator(admin, session, creatorID, action);
+  const creatorResult = await assertCreator(
+    admin,
+    session,
+    creatorID,
+    action,
+  );
   if (creatorResult) {
     return creatorResult;
   }
@@ -225,7 +232,9 @@ Deno.serve(async (request) => {
   }
 
   return jsonResponse(data ?? { action });
-});
+}
+
+if (import.meta.main) Deno.serve(handleWriteContentRequest);
 
 async function assertCreator(
   admin: SupabaseAdminClient,
@@ -802,7 +811,9 @@ export function normalizedCreatorProfileUpdate(
 ): Record<string, unknown> | null {
   const update: Record<string, unknown> = {};
 
-  for (const column of ["positioning", "caption_style", "creator_note"] as const) {
+  for (
+    const column of ["positioning", "caption_style", "creator_note"] as const
+  ) {
     const value = body[column];
     if (value === undefined) {
       continue;
@@ -1073,6 +1084,7 @@ function allowedRoles(_action: WriteAction): string[] {
 
 function stableWriteError(value: unknown, action: WriteAction): string {
   if (
+    value === "posted_revision_immutable" ||
     value === "creator_not_found" ||
     value === "daily_card_not_found" ||
     value === "idea_not_found" ||

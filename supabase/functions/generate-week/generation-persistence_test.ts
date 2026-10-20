@@ -1,7 +1,5 @@
 import {
-  clearExistingDraftDailyCardsForFullGeneration,
   DAY_PLAN_CONTAINER_SELECT,
-  DRAFT_DAILY_CARD_UPDATE_SELECT,
   findLatestDraftDayPlanContainer,
   generatedDailyCardValues,
   generationPersistFailure,
@@ -9,17 +7,13 @@ import {
   insertThinDraftDayPlanContainer,
   persistRegeneratedDay,
   postgrestErrorMessage,
-  recoverConflictingDailyCardRow,
   recoverInsertedDailyCardRow,
   recoverWeeklyPlanIDFromExistingCards,
   replaceDailyCardReferences,
-  updateExistingDraftDailyCard,
   upsertDailyCardRow,
   upsertDraftWeeklyPlan,
   upsertGeneratedDailyCards,
 } from "./generation-persistence.ts";
-import type { RegeneratedDayPersistenceInput } from "./generation-persistence.ts";
-import type { DayGenerationCardRecord } from "./generation-context-store.ts";
 import type {
   GeneratedDailyCard,
   GeneratedWeekOutput,
@@ -351,7 +345,9 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: unknown }> {
 
   private matches(row: Record<string, unknown>): boolean {
     for (const [key, value] of Object.entries(this.filters)) {
-      if (row[key] !== value) return false;
+      if ((key === "is_current" ? row[key] ?? true : row[key]) !== value) {
+        return false;
+      }
     }
     for (const [key, values] of Object.entries(this.inFilters)) {
       if (!values.includes(row[key])) return false;
@@ -549,51 +545,6 @@ Deno.test("generatedDailyCardValues maps nested fields and storyboard default", 
     (values.backup_caption_only as Record<string, unknown>).detail,
     "caption backup detail",
   );
-});
-
-Deno.test("clearExistingDraftDailyCardsForFullGeneration scopes delete and soft-fails", async () => {
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [],
-    dailyCards: [{
-      id: CARD,
-      workspace_id: WORKSPACE,
-      creator_id: CREATOR,
-      weekly_plan_id: PLAN,
-    }],
-    references: [],
-    ideas: [],
-  };
-  const admin = fakeAdmin(state) as never;
-  const ok = await clearExistingDraftDailyCardsForFullGeneration(
-    admin,
-    WORKSPACE,
-    CREATOR,
-    PLAN,
-  );
-  assert("ok" in ok);
-  assertEquals(state.dailyCards.length, 0);
-  assertEquals(state.ops[0].operation, "delete");
-  assertEquals(state.ops[0].filters, {
-    workspace_id: WORKSPACE,
-    creator_id: CREATOR,
-    weekly_plan_id: PLAN,
-  });
-
-  const failState: FakeState = {
-    ...state,
-    ops: [],
-    deleteError: { message: "clear failed" },
-  };
-  const failed = await clearExistingDraftDailyCardsForFullGeneration(
-    fakeAdmin(failState) as never,
-    WORKSPACE,
-    CREATOR,
-    PLAN,
-  );
-  assert("response" in failed);
-  const body = await failed.response.json();
-  assertEquals(body.step, "daily_cards_clear_existing");
 });
 
 Deno.test("upsertDraftWeeklyPlan soft-locks with 409", async () => {
@@ -895,7 +846,7 @@ Deno.test("replaceDailyCardReferences clear/insert contracts continue on warning
   assert("ok" in warned);
 });
 
-Deno.test("upsertGeneratedDailyCards preserves manual edits and chooses update vs insert", async () => {
+Deno.test("upsertGeneratedDailyCards preserves manual edits in a new revision", async () => {
   const existingID = "17171717-1717-4171-8171-171717171717";
   const state: FakeState = {
     ops: [],
@@ -934,11 +885,12 @@ Deno.test("upsertGeneratedDailyCards preserves manual edits and chooses update v
   assert("dailyCards" in result);
   assertEquals(result.dailyCards[0].title, "Manual title");
   assertEquals(result.dailyCards[0].caption, "Manual caption");
-  assertEquals(result.dailyCards[0].id, existingID);
+  assert(result.dailyCards[0].id !== existingID);
+  assertEquals(state.dailyCards[0].title, "Manual title");
+  assertEquals(state.dailyCards.length, 2);
   assert(
     state.ops.some((op) =>
-      op.table === "daily_cards" && op.operation === "update" &&
-      op.filters.id === existingID
+      op.table === "daily_cards" && op.operation === "insert"
     ),
   );
 
@@ -987,7 +939,7 @@ Deno.test("upsertGeneratedDailyCards reference clear/insert warnings are non-fat
   assertEquals(result.dailyCards.length, 1);
 });
 
-Deno.test("upsertDailyCardRow recovers insert-no-row and conflicting scheduled-date", async () => {
+Deno.test("upsertDailyCardRow recovers only its own insert and never overwrites a conflicting revision", async () => {
   const row = {
     id: CARD,
     workspace_id: WORKSPACE,
@@ -1032,15 +984,15 @@ Deno.test("upsertDailyCardRow recovers insert-no-row and conflicting scheduled-d
     fakeAdmin(conflictState) as never,
     { ...row, id: "19191919-1919-4191-8191-191919191919", title: "new" },
   );
-  assert("id" in recoveredConflict);
-  assertEquals(recoveredConflict.id, conflictID);
+  assert("response" in recoveredConflict);
+  assertEquals(recoveredConflict.response.status, 500);
   assertEquals(
     conflictState.dailyCards.find((card) => card.id === conflictID)?.title,
-    "new",
+    "existing",
   );
 });
 
-Deno.test("recoverInsertedDailyCardRow and recoverConflictingDailyCardRow filters", async () => {
+Deno.test("recoverInsertedDailyCardRow filters", async () => {
   const row = {
     id: CARD,
     workspace_id: WORKSPACE,
@@ -1068,32 +1020,6 @@ Deno.test("recoverInsertedDailyCardRow and recoverConflictingDailyCardRow filter
     weekly_plan_id: PLAN,
     scheduled_date: "2026-06-08",
   });
-
-  const conflictState: FakeState = {
-    ops: [],
-    weeklyPlans: [],
-    dailyCards: [{
-      id: "20202020-2020-4202-8202-202020202020",
-      workspace_id: WORKSPACE,
-      creator_id: CREATOR,
-      weekly_plan_id: PLAN,
-      scheduled_date: "2026-06-08",
-      title: "old",
-    }],
-    references: [],
-    ideas: [],
-  };
-  const conflict = await recoverConflictingDailyCardRow(
-    fakeAdmin(conflictState) as never,
-    row,
-  );
-  assertEquals(conflict?.id, "20202020-2020-4202-8202-202020202020");
-  assert(
-    conflictState.ops.some((op) =>
-      op.operation === "update" &&
-      op.filters.id === "20202020-2020-4202-8202-202020202020"
-    ),
-  );
 });
 
 Deno.test("findLatestDraftDayPlanContainer uses draft-only lookup chain", async () => {
@@ -1265,470 +1191,90 @@ Deno.test("insertThinDraftDayPlanContainer writes exact thin draft payload", asy
   assertEquals(noRow.error, null);
 });
 
-Deno.test("updateExistingDraftDailyCard uses exact payload filters and maybeSingle", async () => {
-  const card = sampleCard();
-  const values = generatedDailyCardValues(card);
+Deno.test("persistRegeneratedDay uses the run transaction and returns a new revision", async () => {
   const state: FakeState = {
     ops: [],
     weeklyPlans: [],
-    dailyCards: [{
-      id: CARD,
-      workspace_id: WORKSPACE,
-      creator_id: CREATOR,
-      weekly_plan_id: PLAN,
-      scheduled_date: "2026-06-08",
-      status: "draft",
-      title: "old",
-    }],
+    dailyCards: [{ id: CARD, title: "Old title" }],
     references: [],
     ideas: [],
   };
-  const result = await updateExistingDraftDailyCard(
-    fakeAdmin(state) as never,
-    values,
+  let received: Record<string, unknown> = {};
+  const revision = "99999999-9999-4999-8999-999999999999";
+  const result = await persistRegeneratedDay(
     {
-      id: CARD,
-      workspace_id: WORKSPACE,
-      creator_id: CREATOR,
-      weekly_plan_id: PLAN,
-      scheduled_date: "2026-06-08",
-    },
-  );
-  assertEquals(result.error, null);
-  assertEquals(result.data, { id: CARD, scheduled_date: "2026-06-08" });
-  assertEquals(state.dailyCards[0].title, "Generated title");
-  const op = state.ops[0];
-  assertEquals(op.table, "daily_cards");
-  assertEquals(op.operation, "update");
-  assertEquals(op.values, values);
-  assertEquals(op.selectColumns, DRAFT_DAILY_CARD_UPDATE_SELECT);
-  assertEquals(op.terminal, "maybeSingle");
-  assertEquals(op.filters, {
-    id: CARD,
-    workspace_id: WORKSPACE,
-    creator_id: CREATOR,
-    weekly_plan_id: PLAN,
-    scheduled_date: "2026-06-08",
-    status: "draft",
-  });
-  assertEquals(op.filterOrder, [
-    "id",
-    "workspace_id",
-    "creator_id",
-    "weekly_plan_id",
-    "scheduled_date",
-    "status",
-  ]);
-
-  const missingState: FakeState = {
-    ops: [],
-    weeklyPlans: [],
-    dailyCards: [],
-    references: [],
-    ideas: [],
-  };
-  const missing = await updateExistingDraftDailyCard(
-    fakeAdmin(missingState) as never,
-    values,
+      ...fakeAdmin(state),
+      rpc(name: string, args: Record<string, unknown>) {
+        assertEquals(name, "persist_day_revision");
+        received = args.payload as Record<string, unknown>;
+        return Promise.resolve({ data: { id: revision }, error: null });
+      },
+    } as never,
     {
-      id: CARD,
-      workspace_id: WORKSPACE,
-      creator_id: CREATOR,
-      weekly_plan_id: PLAN,
-      scheduled_date: "2026-06-08",
+      workspaceID: WORKSPACE,
+      creatorID: CREATOR,
+      weeklyPlanID: PLAN,
+      scheduledDate: "2026-06-08",
+      generationID: "run-id",
+      preserveManualEdits: false,
     },
+    sampleCard(),
   );
-  assertEquals(missing.data, null);
-  assertEquals(missing.error, null);
-
-  const failState: FakeState = {
-    ops: [],
-    weeklyPlans: [],
-    dailyCards: [{
-      id: CARD,
-      workspace_id: WORKSPACE,
-      creator_id: CREATOR,
-      weekly_plan_id: PLAN,
-      scheduled_date: "2026-06-08",
-      status: "draft",
-    }],
-    references: [],
-    ideas: [],
-    writeError: { message: "update failed" },
-  };
-  const failed = await updateExistingDraftDailyCard(
-    fakeAdmin(failState) as never,
-    values,
-    {
-      id: CARD,
-      workspace_id: WORKSPACE,
-      creator_id: CREATOR,
-      weekly_plan_id: PLAN,
-      scheduled_date: "2026-06-08",
-    },
-  );
-  assertEquals(failed.data, null);
-  assertEquals((failed.error as { message: string }).message, "update failed");
+  assert("dailyCard" in result);
+  assertEquals(result.dailyCard.id, revision);
+  assertEquals(received.generation_id, "run-id");
+  assertEquals(received.workspace_id, WORKSPACE);
+  assertEquals(state.dailyCards, [{ id: CARD, title: "Old title" }]);
+  assert(state.references.every((row) => row.daily_card_id === revision));
 });
 
-const SCHEDULED = "2026-06-08";
-
-function draftPlanRow(
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
-  return {
-    id: PLAN,
-    workspace_id: WORKSPACE,
-    creator_id: CREATOR,
-    status: "draft",
-    is_soft_locked: false,
-    week_start_date: WEEK_START,
-    weekly_setup_id: null,
-    ...overrides,
-  };
-}
-
-function draftCardRow(
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
-  return {
-    id: CARD,
-    workspace_id: WORKSPACE,
-    creator_id: CREATOR,
-    weekly_plan_id: PLAN,
-    scheduled_date: SCHEDULED,
-    status: "draft",
-    title: "Manual title",
-    why_today: "Manual why",
-    shootability: "manual shoot",
-    estimated_shoot_minutes: 9,
-    scene_list: [{
-      number: 1,
-      title: "manual",
-      duration: "0:00-0:02",
-      symbol: "M",
-    }],
-    caption: "Manual caption",
-    backup_story: { line: "Manual backup" },
-    backup_caption_only: { line: "Manual caption backup" },
-    ...overrides,
-  };
-}
-
-function regenerateInput(
-  overrides: Partial<RegeneratedDayPersistenceInput> = {},
-): RegeneratedDayPersistenceInput {
-  return {
-    workspaceID: WORKSPACE,
-    creatorID: CREATOR,
-    weeklyPlanID: PLAN,
-    scheduledDate: SCHEDULED,
-    preserveManualEdits: false,
-    ...overrides,
-  };
-}
-
-Deno.test("persistRegeneratedDay rejects published and soft-locked plans with 409", async () => {
+Deno.test("persistRegeneratedDay returns closed and missing run errors without writing references", async () => {
   for (
-    const plan of [
-      draftPlanRow({ status: "published" }),
-      draftPlanRow({ is_soft_locked: true }),
-    ]
+    const [code, status] of [["generation_run_closed", 409], [
+      "generation_run_not_found",
+      404,
+    ]] as const
   ) {
-    const state: FakeState = {
-      ops: [],
-      weeklyPlans: [plan],
-      dailyCards: [],
-      references: [],
-      ideas: [],
-    };
-    const result = await persistRegeneratedDay(
-      fakeAdmin(state) as never,
-      regenerateInput(),
-      sampleCard(),
-    );
+    const result = await persistRegeneratedDay({
+      from() {
+        throw new Error("unexpected reference write");
+      },
+      rpc() {
+        return Promise.resolve({ data: { error: code, status }, error: null });
+      },
+    } as never, {
+      workspaceID: WORKSPACE,
+      creatorID: CREATOR,
+      weeklyPlanID: PLAN,
+      scheduledDate: "2026-06-08",
+      generationID: "run-id",
+      preserveManualEdits: false,
+    }, sampleCard());
     assert("response" in result);
-    assertEquals(result.response.status, 409);
-    assertEquals(
-      await result.response.json(),
-      { error: "existing_published_week_locked" },
-    );
+    assertEquals(result.response.status, status);
+    assertEquals(await result.response.json(), { error: code });
   }
 });
 
-Deno.test("persistRegeneratedDay rejects non-draft plans with weekly_plan_not_found 409", async () => {
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [draftPlanRow({ status: "reviewed" })],
-    dailyCards: [],
-    references: [],
-    ideas: [],
-  };
-  const result = await persistRegeneratedDay(
-    fakeAdmin(state) as never,
-    regenerateInput(),
-    sampleCard(),
-  );
-  assert("response" in result);
-  assertEquals(result.response.status, 409);
-  assertEquals(await result.response.json(), {
-    error: "weekly_plan_not_found",
-  });
-});
-
-Deno.test("persistRegeneratedDay maps plan lookup failures to weekly_plan_lookup_failed", async () => {
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [],
-    dailyCards: [],
-    references: [],
-    ideas: [],
-    selectError: { message: "plan lookup failed" },
-  };
-  const result = await persistRegeneratedDay(
-    fakeAdmin(state) as never,
-    regenerateInput(),
-    sampleCard(),
-  );
-  assert("response" in result);
-  assertEquals(result.response.status, 500);
-  assertEquals(await result.response.json(), {
-    error: "weekly_plan_lookup_failed",
-  });
-});
-
-Deno.test("persistRegeneratedDay maps missing plan to weekly_plan_not_found 404", async () => {
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [],
-    dailyCards: [],
-    references: [],
-    ideas: [],
-  };
-  const result = await persistRegeneratedDay(
-    fakeAdmin(state) as never,
-    regenerateInput(),
-    sampleCard(),
-  );
-  assert("response" in result);
-  assertEquals(result.response.status, 404);
-  assertEquals(await result.response.json(), {
-    error: "weekly_plan_not_found",
-  });
-});
-
-Deno.test("persistRegeneratedDay maps card lookup failures to daily_card_lookup_failed", async () => {
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [draftPlanRow()],
-    dailyCards: [],
-    references: [],
-    ideas: [],
-  };
-  const admin = {
-    from(table: string) {
-      const query = new FakeQuery(table, state);
-      if (table === "daily_cards") {
-        return {
-          ...query,
-          select() {
-            return {
-              eq() {
-                return {
-                  eq() {
-                    return {
-                      eq() {
-                        return {
-                          order() {
-                            return Promise.resolve({
-                              data: null,
-                              error: { message: "card lookup failed" },
-                            });
-                          },
-                        };
-                      },
-                    };
-                  },
-                };
-              },
-            };
-          },
-        };
-      }
-      return query;
+Deno.test("persistRegeneratedDay reports transaction failures", async () => {
+  const result = await persistRegeneratedDay({
+    from() {
+      throw new Error("unexpected reference write");
     },
-  };
-  const result = await persistRegeneratedDay(
-    admin as never,
-    regenerateInput(),
-    sampleCard(),
-  );
+    rpc() {
+      return Promise.resolve({
+        data: null,
+        error: { message: "transaction failed" },
+      });
+    },
+  } as never, {
+    workspaceID: WORKSPACE,
+    creatorID: CREATOR,
+    weeklyPlanID: PLAN,
+    scheduledDate: "2026-06-08",
+    generationID: "run-id",
+    preserveManualEdits: false,
+  }, sampleCard());
   assert("response" in result);
-  assertEquals(result.response.status, 500);
-  assertEquals(await result.response.json(), {
-    error: "daily_card_lookup_failed",
-  });
-});
-
-Deno.test("persistRegeneratedDay updates an existing draft card and replaces references", async () => {
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [draftPlanRow()],
-    dailyCards: [draftCardRow()],
-    references: [{
-      workspace_id: WORKSPACE,
-      creator_id: CREATOR,
-      daily_card_id: CARD,
-      source_reference_id: "00000000-0000-4000-8000-000000000000",
-    }],
-    ideas: [],
-  };
-  const generated = sampleCard({ title: "Generated title" });
-  const result = await persistRegeneratedDay(
-    fakeAdmin(state) as never,
-    regenerateInput(),
-    generated,
-  );
-  assert("dailyCard" in result);
-  assertEquals(result.dailyCard.id, CARD);
-  assertEquals(result.dailyCard.title, "Generated title");
-  assert(
-    state.ops.some((op) =>
-      op.table === "daily_cards" &&
-      op.operation === "update" &&
-      op.filters.id === CARD &&
-      op.filters.status === "draft"
-    ),
-  );
-  assert(
-    state.ops.some((op) =>
-      op.table === "daily_card_references" && op.operation === "delete"
-    ),
-  );
-  assert(
-    state.ops.some((op) =>
-      op.table === "daily_card_references" &&
-      op.operation === "insert" &&
-      (op.values as Record<string, unknown>[])[0]?.source_reference_id === REF
-    ),
-  );
-});
-
-Deno.test("persistRegeneratedDay preserves manual edits when requested", async () => {
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [draftPlanRow()],
-    dailyCards: [draftCardRow()],
-    references: [],
-    ideas: [],
-  };
-  const result = await persistRegeneratedDay(
-    fakeAdmin(state) as never,
-    regenerateInput({ preserveManualEdits: true }),
-    sampleCard({ title: "Generated title", caption: "Generated caption" }),
-  );
-  assert("dailyCard" in result);
-  assertEquals(result.dailyCard.title, "Manual title");
-  assertEquals(result.dailyCard.caption, "Manual caption");
-});
-
-Deno.test("persistRegeneratedDay upserts when no matching draft card exists", async () => {
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [draftPlanRow()],
-    dailyCards: [],
-    references: [],
-    ideas: [],
-  };
-  const result = await persistRegeneratedDay(
-    fakeAdmin(state) as never,
-    regenerateInput(),
-    sampleCard(),
-  );
-  assert("dailyCard" in result);
-  assertEquals(result.dailyCard.scheduled_date, SCHEDULED);
-  assert(
-    state.ops.some((op) =>
-      op.table === "daily_cards" && op.operation === "insert"
-    ),
-  );
-  assertEquals(state.dailyCards.length, 1);
-});
-
-Deno.test("persistRegeneratedDay honors targetCard id when selecting existing draft", async () => {
-  const otherID = "17171717-1717-4171-8171-171717171717";
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [draftPlanRow()],
-    dailyCards: [
-      draftCardRow({ id: otherID, title: "Other card" }),
-      draftCardRow({ id: CARD, title: "Target card" }),
-    ],
-    references: [],
-    ideas: [],
-  };
-  const result = await persistRegeneratedDay(
-    fakeAdmin(state) as never,
-    regenerateInput({
-      targetCard: {
-        id: CARD,
-        scheduled_date: SCHEDULED,
-      } as DayGenerationCardRecord,
-    }),
-    sampleCard({ title: "Generated title" }),
-  );
-  assert("dailyCard" in result);
-  assertEquals(result.dailyCard.id, CARD);
-  assertEquals(
-    state.dailyCards.find((row) => row.id === CARD)?.title,
-    "Generated title",
-  );
-  assertEquals(
-    state.dailyCards.find((row) => row.id === otherID)?.title,
-    "Other card",
-  );
-});
-
-Deno.test("persistRegeneratedDay returns regenerate_day_update_card on update failure", async () => {
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [draftPlanRow()],
-    dailyCards: [draftCardRow()],
-    references: [],
-    ideas: [],
-    writeError: { message: "update failed" },
-  };
-  const result = await persistRegeneratedDay(
-    fakeAdmin(state) as never,
-    regenerateInput(),
-    sampleCard(),
-  );
-  assert("response" in result);
-  assertEquals(result.response.status, 500);
-  const body = await result.response.json();
-  assertEquals(body.error, "generation_persist_failed");
-  assertEquals(body.step, "regenerate_day_update_card");
-  assertEquals(body.detail, "update failed");
-});
-
-Deno.test("persistRegeneratedDay returns generation_persist_failed when missing-card upsert fails", async () => {
-  const state: FakeState = {
-    ops: [],
-    weeklyPlans: [draftPlanRow()],
-    dailyCards: [],
-    references: [],
-    ideas: [],
-    insertError: { message: "insert failed" },
-  };
-  const result = await persistRegeneratedDay(
-    fakeAdmin(state) as never,
-    regenerateInput(),
-    sampleCard({ source_reference_ids: [] }),
-  );
-  assert("response" in result);
-  assertEquals(result.response.status, 500);
-  const body = await result.response.json();
-  assertEquals(body.error, "generation_persist_failed");
-  assertEquals(body.step, "daily_card_upsert");
-  assertEquals(body.detail, "insert failed");
+  assertEquals((await result.response.json()).step, "persist_day_revision");
 });

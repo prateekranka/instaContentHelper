@@ -969,7 +969,7 @@ Deno.test({
   },
 });
 
-Deno.test("regenerate_day updates exactly one draft card and leaves the other six unchanged", async () => {
+Deno.test("regenerate_day creates a new revision and leaves the other six unchanged", async () => {
   const state = dayGenerationState();
   const before = structuredClone(state.dailyCards);
   let observedProviders: Array<{ provider: string; model: string }> = [];
@@ -1017,7 +1017,12 @@ Deno.test("regenerate_day updates exactly one draft card and leaves the other si
   const body = await response.json();
   assertEquals(body.target_scheduled_date, "2026-06-10");
   assertEquals(body.daily_card.title, "Fresh Wednesday");
-  assertEquals(state.dailyCards[2].title, "Fresh Wednesday");
+  assertEquals(
+    state.dailyCards.find((row) =>
+      row.scheduled_date === "2026-06-10" && row.is_current !== false
+    )?.title,
+    "Fresh Wednesday",
+  );
   for (const index of [0, 1, 3, 4, 5, 6]) {
     assertEquals(
       JSON.stringify(state.dailyCards[index]),
@@ -1025,7 +1030,8 @@ Deno.test("regenerate_day updates exactly one draft card and leaves the other si
       `card ${index} must remain unchanged`,
     );
   }
-  assertEquals(state.updatedDailyCardIDs.join(","), dailyCardIDs[2]);
+  assertEquals(state.updatedDailyCardIDs.length, 0);
+  assertEquals(state.dailyCards.length, 8);
 });
 
 Deno.test("day provider defaults degrade safely and preserve explicit overrides", () => {
@@ -1106,8 +1112,14 @@ Deno.test("regenerate_day retries a failed draft day and keeps the other six car
   const body = await response.json();
   assertEquals(body.target_scheduled_date, "2026-06-10");
   assertEquals(body.daily_card.title, "Retried Wednesday");
-  assertEquals(state.dailyCards[2].title, "Retried Wednesday");
-  assertEquals(state.updatedDailyCardIDs.join(","), dailyCardIDs[2]);
+  assertEquals(
+    state.dailyCards.find((row) =>
+      row.scheduled_date === "2026-06-10" && row.is_current !== false
+    )?.title,
+    "Retried Wednesday",
+  );
+  assertEquals(state.updatedDailyCardIDs.length, 0);
+  assertEquals(state.dailyCards.length, 8);
   for (const index of [0, 1, 3, 4, 5, 6]) {
     assertEquals(
       JSON.stringify(state.dailyCards[index]),
@@ -1289,8 +1301,13 @@ Deno.test("regenerate_day async mode schedules one card and returns a pollable r
     throw new Error("Expected single-day generation to be scheduled.");
   }
   await scheduled;
-  assertEquals(state.dailyCards[2].title, "Async Wednesday");
-  assertEquals(state.updatedDailyCardIDs.join(","), dailyCardIDs[2]);
+  assertEquals(
+    state.dailyCards.find((row) =>
+      row.scheduled_date === "2026-06-10" && row.is_current !== false
+    )?.title,
+    "Async Wednesday",
+  );
+  assertEquals(state.updatedDailyCardIDs.length, 0);
 });
 
 Deno.test("regenerate_day async mode creates a missing card and polls to draft", async () => {
@@ -1518,8 +1535,9 @@ Deno.test("regenerate_day accepts and bounds day_guidance", async () => {
       _dayIndex: number,
     ) => {
       capturedGuidance = input.day_guidance;
-      capturedSetupNotes = (input.weekly_setup as Record<string, unknown> | null)
-        ?.notes as string | undefined;
+      capturedSetupNotes =
+        (input.weekly_setup as Record<string, unknown> | null)
+          ?.notes as string | undefined;
       const card = makeMockGeneratedWeek(input).daily_cards[2];
       return {
         strategy_note: "Guidance test",
@@ -1675,7 +1693,12 @@ Deno.test("generate_day reuses the existing draft week and sends the day brief a
     "the day brief must replace the stored weekly setup",
   );
   assertEquals(capturedInput?.day_guidance, dayBrief);
-  assertEquals(state.dailyCards[2].title, "Brand recovery drink day");
+  assertEquals(
+    state.dailyCards.find((row) =>
+      row.scheduled_date === "2026-06-10" && row.is_current !== false
+    )?.title,
+    "Brand recovery drink day",
+  );
 });
 
 Deno.test("generate_day creates a thin draft container week when none exists", async () => {
@@ -1776,7 +1799,12 @@ Deno.test("generate_day async mode returns a pollable run", async () => {
   assertEquals(typeof body.generation_id, "string");
 
   await Promise.all(backgrounded);
-  assertEquals(state.dailyCards[2].title, "Async gym return");
+  assertEquals(
+    state.dailyCards.find((row) =>
+      row.scheduled_date === "2026-06-10" && row.is_current !== false
+    )?.title,
+    "Async gym return",
+  );
 });
 
 function requestFor(body: Record<string, unknown>): Request {
@@ -1923,6 +1951,69 @@ async function fakeRPC(
   state: FakeState,
 ): Promise<{ data: unknown; error: null }> {
   switch (fn) {
+    case "start_day_generation":
+    case "replace_day": {
+      const payload = params.payload as Record<string, unknown>;
+      const existing = state.generationRun;
+      if (existing?.idempotency_key === payload.idempotency_key) {
+        return { data: { ...existing, replayed: true }, error: null };
+      }
+      if (fn === "replace_day") {
+        const card = state.dailyCards.find((row) =>
+          row.scheduled_date === payload.scheduled_date &&
+          row.is_current !== false
+        );
+        if (card) card.status = "archived";
+      }
+      const run = {
+        id: generationRunID,
+        status: "running",
+        generation_scope: "day",
+        workspace_id: payload.workspace_id,
+        creator_id: payload.creator_id,
+        weekly_plan_id: payload.weekly_plan_id,
+        target_scheduled_date: payload.scheduled_date,
+        requested_by_member_id: payload.member_id,
+        input_snapshot: payload.input_snapshot,
+        request_identity: payload.request_identity,
+        idempotency_key: payload.idempotency_key,
+        updated_at: new Date().toISOString(),
+        output_snapshot: {
+          kind: "single_day_generation_v1",
+          scheduled_date: payload.scheduled_date,
+          status: "pending",
+          updated_at: new Date().toISOString(),
+        },
+      };
+      state.generationRun = run;
+      return { data: { ...run, replayed: false }, error: null };
+    }
+    case "persist_day_revision": {
+      const payload = params.payload as Record<string, unknown>;
+      const run = state.generationRun!;
+      if (run.status !== "running") {
+        return {
+          data: { error: "generation_run_closed", status: 409 },
+          error: null,
+        };
+      }
+      const row = {
+        ...(payload.card as Record<string, unknown>),
+        id: crypto.randomUUID(),
+        generation_run_id: run.id,
+        workspace_id: payload.workspace_id,
+        creator_id: payload.creator_id,
+        weekly_plan_id: run.weekly_plan_id,
+        scheduled_date: run.target_scheduled_date,
+        is_current: true,
+      };
+      state.dailyCards.filter((old) =>
+        old.scheduled_date === row.scheduled_date
+      ).forEach((old) => old.is_current = false);
+      state.dailyCards.push(row);
+      state.upsertedDailyCardDates.push(String(row.scheduled_date));
+      return { data: row, error: null };
+    }
     case "claim_queued_day_job": {
       const genRunID = params.p_generation_run_id as string;
       const job = state.dayJobs.find((j) =>
@@ -2215,15 +2306,10 @@ class FakeQuery {
             } as never,
           };
         }
-        const existing = this.state.dailyCards.find((candidate) =>
-          candidate.weekly_plan_id === values.weekly_plan_id &&
-          candidate.scheduled_date === values.scheduled_date
-        );
-        if (existing) {
-          Object.assign(existing, values);
-        } else {
-          this.state.dailyCards.push(values);
-        }
+        this.state.dailyCards.filter((old) =>
+          old.scheduled_date === values.scheduled_date
+        ).forEach((old) => old.is_current = false);
+        this.state.dailyCards.push({ ...values, is_current: true });
         if (
           this.operation === "insert" &&
           this.state.dailyCardInsertNoDataDates.has(scheduledDate)
@@ -2334,7 +2420,12 @@ class FakeQuery {
         };
       case "weekly_generation_runs":
         return {
-          data: this.state.generationRun ? this.state.generationRun : [],
+          data: this.state.generationRun &&
+              (!this.filters.idempotency_key ||
+                this.state.generationRun.idempotency_key ===
+                  this.filters.idempotency_key)
+            ? this.state.generationRun
+            : [],
           error: null,
         };
       case "weekly_generation_day_jobs":
@@ -2353,6 +2444,7 @@ class FakeQuery {
         return {
           data: this.state.dailyCards.filter((card) =>
             (!this.filters.id || card.id === this.filters.id) &&
+            (!this.filters.is_current || card.is_current !== false) &&
             (!this.filters.workspace_id ||
               card.workspace_id === this.filters.workspace_id) &&
             (!this.filters.weekly_plan_id ||
@@ -3516,7 +3608,7 @@ Deno.test("full_week_generation_retired: historical status remains readable", as
   assertEquals(state.dayJobLeaseUpdates.length, 0);
 });
 
-Deno.test("single-day status poll reschedules stale running generation once", async () => {
+Deno.test("single-day status poll closes a stale run without restarting it", async () => {
   const staleStartedAt = new Date(
     Date.now() - SINGLE_DAY_STARTED_AT_STALE_MS - 60_000,
   ).toISOString();
@@ -3539,7 +3631,8 @@ Deno.test("single-day status poll reschedules stale running generation once", as
     deps,
   );
   assertEquals(first.status, 200);
-  assertEquals(backgroundCount, 1);
+  assertEquals(backgroundCount, 0);
+  assertEquals(state.generationRun?.status, "failed");
 
   const second = await handleGenerateWeekRequest(
     requestFor({
@@ -3552,12 +3645,12 @@ Deno.test("single-day status poll reschedules stale running generation once", as
   assertEquals(second.status, 200);
   assertEquals(
     backgroundCount,
-    1,
-    "fresh restart must not duplicate dispatch",
+    0,
+    "closed runs must not dispatch",
   );
 });
 
-Deno.test("single-day status poll reschedules stale heartbeat even when started_at is fresh", async () => {
+Deno.test("single-day status poll closes a run with a stale heartbeat", async () => {
   const freshStartedAt = new Date().toISOString();
   const staleHeartbeat = new Date(Date.now() - 400_000).toISOString();
   const state = dayGenerationState();
@@ -3580,7 +3673,8 @@ Deno.test("single-day status poll reschedules stale heartbeat even when started_
     deps,
   );
   assertEquals(response.status, 200);
-  assertEquals(backgroundCount, 1);
+  assertEquals(backgroundCount, 0);
+  assertEquals(state.generationRun?.status, "failed");
 });
 
 Deno.test("single-day status poll keeps active run without heartbeat when started_at is only 4 minutes old", async () => {

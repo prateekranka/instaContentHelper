@@ -201,7 +201,9 @@ class FakeQuery {
 
   private matches(row: Record<string, unknown>): boolean {
     for (const [key, value] of Object.entries(this.filters)) {
-      if (row[key] !== value) return false;
+      if ((key === "is_current" ? row[key] ?? true : row[key]) !== value) {
+        return false;
+      }
     }
     for (const [key, values] of Object.entries(this.inFilters)) {
       if (!values.includes(row[key])) return false;
@@ -477,11 +479,13 @@ Deno.test("readDailyCardsForPlan uses dayGenerationCardSelect and ascending date
     "workspace_id",
     "creator_id",
     "weekly_plan_id",
+    "is_current",
   ]);
   assertEquals(op.filters, {
     workspace_id: WORKSPACE,
     creator_id: CREATOR,
     weekly_plan_id: PLAN,
+    is_current: true,
   });
   assertEquals(op.order, { column: "scheduled_date", ascending: true });
   assertEquals(op.terminal, undefined);

@@ -238,6 +238,7 @@ export async function readDailyCardsForPlan(
     .eq("workspace_id", workspaceID)
     .eq("creator_id", creatorID)
     .eq("weekly_plan_id", weeklyPlanID)
+    .eq("is_current", true)
     .order("scheduled_date", { ascending: true });
 
   return {

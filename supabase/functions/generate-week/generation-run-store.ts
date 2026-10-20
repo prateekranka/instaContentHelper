@@ -121,7 +121,8 @@ export async function completeFullWeekGenerationRun(
       completed_at: payload.completed_at,
       error_code: null,
     })
-    .eq("id", generationID);
+    .eq("id", generationID)
+    .eq("status", "running");
 
   return { error: error ?? null };
 }
@@ -144,7 +145,8 @@ export async function completePartialGenerationRun(
       error_code: "partial_generation",
       completed_at: payload.completed_at,
     })
-    .eq("id", generationID);
+    .eq("id", generationID)
+    .eq("status", "running");
 
   return { error: error ?? null };
 }
@@ -159,7 +161,7 @@ export async function completeDayGenerationRun(
     completed_at: string;
   },
 ): Promise<{ error: unknown | null }> {
-  const { error } = await admin
+  const { data, error } = await admin
     .from("weekly_generation_runs")
     .update({
       status: "completed",
@@ -169,9 +171,14 @@ export async function completeDayGenerationRun(
       completed_at: payload.completed_at,
       error_code: null,
     })
-    .eq("id", generationID);
+    .eq("id", generationID)
+    .eq("status", "running")
+    .select("id")
+    .maybeSingle();
 
-  return { error: error ?? null };
+  return {
+    error: error ?? (data ? null : { message: "generation_run_closed" }),
+  };
 }
 
 /**
@@ -200,7 +207,8 @@ export async function completeGenerationRunMinimal(
   const { error } = await admin
     .from("weekly_generation_runs")
     .update(update)
-    .eq("id", generationID);
+    .eq("id", generationID)
+    .eq("status", "running");
 
   return { error: error ?? null };
 }
@@ -228,7 +236,8 @@ export async function markGenerationRunFailed(
   await admin
     .from("weekly_generation_runs")
     .update(update)
-    .eq("id", generationID);
+    .eq("id", generationID)
+    .eq("status", "running");
 }
 
 function isRunIDRecord(value: unknown): value is { id: string } {

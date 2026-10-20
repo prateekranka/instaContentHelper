@@ -385,7 +385,7 @@ export async function readGenerationStatus(
   }
 
   if (isDayGenerationRun(run)) {
-    return await resumeSingleDayGeneration(
+    return await readSingleDayGenerationStatus(
       admin,
       generationID,
       run,
@@ -521,7 +521,7 @@ export async function readQueuedGenerationStatus(
   });
 }
 
-async function resumeSingleDayGeneration(
+async function readSingleDayGenerationStatus(
   admin: SupabaseAdminClient,
   generationID: string,
   run: GenerationRunStatusRecord,
@@ -549,39 +549,19 @@ async function resumeSingleDayGeneration(
     });
   }
 
-  const preparedResult = await host.prepareSingleDayGenerationFromRun(
-    admin,
-    generationID,
-    env,
-    run,
-    session,
-    inputSnapshot,
-    progress,
-  );
-  if ("response" in preparedResult) {
-    return preparedResult.response;
-  }
-
   const isActive = isSingleDayGenerationRunActive(
     progress,
     runningDayStaleMS(),
     Date.now(),
   );
   if (!isActive) {
-    const scheduleResult = await host.scheduleSingleDayGeneration(
-      admin,
-      generationID,
-      preparedResult.prepared,
-      {
-        ...progress,
-        status: "pending",
-        started_at: undefined,
-        heartbeat_at: undefined,
-      },
-    );
-    if ("response" in scheduleResult) {
-      return scheduleResult.response;
-    }
+    await host.markGenerationRunFailed(admin, generationID, "generation_stale");
+    return jsonResponse({
+      generation_id: generationID,
+      status: "failed",
+      error: "generation_stale",
+      poll_after_seconds: null,
+    });
   }
 
   return jsonResponse({

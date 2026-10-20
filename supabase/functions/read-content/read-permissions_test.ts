@@ -25,3 +25,8 @@ function assertEquals<T>(actual: T, expected: T, message?: string): void {
     );
   }
 }
+
+Deno.test("day records are limited to creator roles", () => {
+  assertEquals(canReadAction("creator", "days"), true);
+  assertEquals(canReadAction("scout", "days"), false);
+});

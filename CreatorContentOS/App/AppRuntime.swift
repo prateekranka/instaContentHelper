@@ -23,6 +23,9 @@ struct AppRuntime {
         todayCache: any TodayCacheStoring = DebugLaunchConfiguration.fixtureTodayCache,
         notifications: any TodayNotificationScheduling = LocalTodayNotificationScheduler()
     ) -> AppRuntime {
+#if DEBUG
+        DebugLaunchFlags.seedLoopScenario()
+#endif
         let services = AppServices.fixtureBacked(
             todayCache: todayCache,
             notifications: notifications,
@@ -307,11 +310,117 @@ enum DebugLaunchFlags {
                 number: scene.number, title: scene.title, duration: scene.duration, symbol: scene.symbol
             )
         }
-        return uiFixtureData.applying(to: longContent ? draft.withLongContent : draft)
+        draft = uiFixtureData.applying(to: longContent ? draft.withLongContent : draft)
+        if forceFixtureUI,
+           DebugLaunchConfiguration.fixtureSession != nil,
+           let scenario = DebugLaunchConfiguration.value(for: "MCO_LOOP_SCENARIO"),
+           ["ready", "line-script", "blank-copy", "stale-pointer", "legacy-cache", "old-decision"].contains(scenario) {
+            draft.title = "Loop \(scenario) package"
+            if scenario == "line-script" {
+                draft.script = draft.sceneList.map { "Creator line \($0.number)." }.joined(separator: "\n")
+            }
+            if scenario == "blank-copy" {
+                draft.script = ""
+                draft.caption = ""
+                draft.audioOptionNotes = ""
+                draft.shotTimeline = []
+                draft.voiceoverTimeline = []
+                draft.onScreenTextTimeline = []
+            }
+        }
+        return draft
     }
 
     static var fixtureFirstIdeaDelayNanoseconds: UInt64 {
         slowFirstIdea ? 20_000_000_000 : 450_000_000
+    }
+
+    static func seedLoopScenario() {
+        guard forceFixtureUI,
+              DebugLaunchConfiguration.fixtureSession != nil,
+              let scenario = DebugLaunchConfiguration.value(for: "MCO_LOOP_SCENARIO"),
+              ["ready", "line-script", "blank-copy", "stale-pointer", "legacy-cache", "old-decision"].contains(scenario)
+        else { return }
+        let defaults = DebugLaunchConfiguration.fixtureDefaults
+        guard !defaults.bool(forKey: "loop-scenario-seeded") else { return }
+        let today = SupabaseDateFormatting.todayDateString()
+        var draft = fixtureDailyCardDraft
+        draft.scheduledDate = today
+        let card = draft.dailyCard(completionState: nil)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: today) else { return }
+        let hasPastCard = scenario == "stale-pointer" || scenario == "old-decision"
+        let adjacentDate = formatter.string(from: date.addingTimeInterval(hasPastCard ? -86_400 : 86_400))
+        let adjacent = DailyCard(
+            id: UUID(uuidString: "2407E44A-1F70-4B96-8EE2-AD1E4E0E34C1")!,
+            title: hasPastCard ? "Yesterday's loop package" : "Tomorrow's loop package",
+            context: SupabaseDateFormatting.contextLine(for: adjacentDate),
+            effortLabel: card.effortLabel,
+            whyToday: card.whyToday,
+            scheduledDate: adjacentDate,
+            scenes: card.scenes,
+            shotTimeline: card.shotTimeline,
+            voiceoverTimeline: card.voiceoverTimeline,
+            script: card.script,
+            caption: card.caption,
+            audioOptionNotes: card.audioOptionNotes
+        )
+        let snapshot = LoopFixtureSnapshot(
+            weekCards: [card, adjacent],
+            todayCard: scenario == "stale-pointer" ? adjacent : card,
+            generatedDrafts: [today: card, adjacentDate: adjacent]
+        )
+        do {
+            let data = try JSONEncoder().encode(snapshot)
+            defaults.set(data, forKey: "published-content")
+            if scenario == "legacy-cache" || scenario == "old-decision" {
+                guard let directory = DebugLaunchConfiguration.fixtureCacheDirectory else {
+                    preconditionFailure("Cannot locate loop fixture cache")
+                }
+                let isLegacy = scenario == "legacy-cache"
+                var cachedCard = card
+                cachedCard.completionState = isLegacy ? .shot : nil
+                var pendingCard = isLegacy ? cachedCard : adjacent
+                pendingCard.completionState = isLegacy ? .shot : .posted
+                let cached = CachedTodaySnapshot(
+                    todayCard: cachedCard,
+                    weekCards: [cachedCard, adjacent],
+                    cachedAt: Date(),
+                    source: "loop-\(scenario)",
+                    shotSceneIDs: isLegacy ? Set(card.scenes.map(\.id)) : [],
+                    unsyncedDecision: UnsyncedTodayDecision(
+                        cardID: pendingCard.id,
+                        decision: isLegacy ? .shot : .posted,
+                        card: pendingCard
+                    )
+                )
+                try FileTodayCacheStore(baseDirectory: directory).saveSnapshot(cached, for: .creatorFixture)
+                if isLegacy {
+                    let context = WorkspaceContext.creatorFixture
+                    let url = directory.appendingPathComponent("today-\(context.workspaceID.uuidString)-\(context.creatorID.uuidString).json")
+                    guard var json = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any],
+                          var pending = json["unsyncedDecision"] as? [String: Any]
+                    else {
+                        preconditionFailure("Cannot encode loop legacy decision")
+                    }
+                    pending.removeValue(forKey: "card")
+                    json["unsyncedDecision"] = pending
+                    try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]).write(to: url, options: .atomic)
+                }
+            }
+            defaults.set(true, forKey: "loop-scenario-seeded")
+        } catch {
+            preconditionFailure("Cannot seed loop fixture: \(error.localizedDescription)")
+        }
+    }
+
+    private struct LoopFixtureSnapshot: Encodable {
+        var weekCards: [DailyCard]
+        var todayCard: DailyCard
+        var generatedDrafts: [String: DailyCard]
     }
 }
 #else

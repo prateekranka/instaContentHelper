@@ -9,7 +9,9 @@ const scheduledDate = "2026-07-21";
 
 Deno.test("update_ready_day_package keeps ready status and ignores week soft-lock", async () => {
   let rpcCalled = false;
-  const captured: { payload: Record<string, unknown> | null } = { payload: null };
+  const captured: { payload: Record<string, unknown> | null } = {
+    payload: null,
+  };
 
   const response = await handleUpdateReadyDayPackageRequest(
     new Request("http://localhost/update-ready-day-package", {
@@ -194,3 +196,43 @@ function assertEquals<T>(actual: T, expected: T, message?: string): void {
     );
   }
 }
+
+Deno.test("package edits reject blank text and invalid text before writing", async () => {
+  for (
+    const [value, code] of [
+      ["", "blank_package_text"],
+      [" \n\t", "blank_package_text"],
+      [null, "invalid_package_text"],
+      [{ line: "text" }, "invalid_package_text"],
+    ]
+  ) {
+    const response = await handleUpdateReadyDayPackageRequest(
+      new Request("http://localhost/update-ready-day-package", {
+        method: "POST",
+        headers: { "x-mco-device-token": "device-token" },
+        body: JSON.stringify({
+          creator_id: creatorID,
+          daily_card_id: dailyCardID,
+          package: { caption: value },
+        }),
+      }),
+      {
+        env: {
+          get(name: string) {
+            return name === "SUPABASE_URL" ? "http://localhost" : "local-key";
+          },
+        },
+        createAdminClient: () => ({
+          from(table: string) {
+            return new FakeAuthQuery(table);
+          },
+          rpc() {
+            throw new Error("blank edit must not write");
+          },
+        }),
+      },
+    );
+    assertEquals(response.status, 400);
+    assertEquals((await response.json()).error, code);
+  }
+});

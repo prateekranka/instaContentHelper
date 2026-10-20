@@ -24,6 +24,7 @@ enum DebugLaunchConfiguration {
         "MCO_BREAK_UI_320",
         "MCO_DYNAMIC_TYPE_ACCESSIBILITY5",
         "MCO_REDUCED_MOTION",
+        "MCO_LOOP_SCENARIO",
         "MCO_QA_SESSION"
     ]
 

@@ -414,8 +414,8 @@ Deno.test("completeFullWeekGenerationRun writes exact completion payload", async
     completed_at: "2026-06-08T12:00:00.000Z",
     error_code: null,
   });
-  assertEquals(op.filterOrder, ["id"]);
-  assertEquals(op.filters, { id: RUN_ID });
+  assertEquals(op.filterOrder, ["id", "status"]);
+  assertEquals(op.filters, { id: RUN_ID, status: "running" });
 });
 
 Deno.test("completePartialGenerationRun writes partial_generation error code", async () => {
@@ -443,8 +443,8 @@ Deno.test("completePartialGenerationRun writes partial_generation error code", a
     error_code: "partial_generation",
     completed_at: "2026-06-08T12:30:00.000Z",
   });
-  assertEquals(op.filterOrder, ["id"]);
-  assertEquals(op.filters, { id: RUN_ID });
+  assertEquals(op.filterOrder, ["id", "status"]);
+  assertEquals(op.filters, { id: RUN_ID, status: "running" });
 });
 
 Deno.test("completeDayGenerationRun writes day completion payload", async () => {
@@ -474,8 +474,8 @@ Deno.test("completeDayGenerationRun writes day completion payload", async () => 
     completed_at: "2026-06-08T13:00:00.000Z",
     error_code: null,
   });
-  assertEquals(op.filterOrder, ["id"]);
-  assertEquals(op.filters, { id: RUN_ID });
+  assertEquals(op.filterOrder, ["id", "status"]);
+  assertEquals(op.filters, { id: RUN_ID, status: "running" });
 });
 
 Deno.test("completeGenerationRunMinimal accepts caller-built fallback payload", async () => {
@@ -500,7 +500,7 @@ Deno.test("completeGenerationRunMinimal accepts caller-built fallback payload", 
     error_code: null,
     weekly_plan_id: PLAN,
   });
-  assertEquals(state.ops[0].filterOrder, ["id"]);
+  assertEquals(state.ops[0].filterOrder, ["id", "status"]);
 
   const withoutPlanState: FakeState = {
     ops: [],
@@ -553,8 +553,8 @@ Deno.test("markGenerationRunFailed writes failed payload by id", async () => {
     typeof (op.values as Record<string, unknown>).completed_at,
     "string",
   );
-  assertEquals(op.filterOrder, ["id"]);
-  assertEquals(op.filters, { id: RUN_ID });
+  assertEquals(op.filterOrder, ["id", "status"]);
+  assertEquals(op.filters, { id: RUN_ID, status: "running" });
 });
 
 Deno.test("update helpers surface raw write errors without HTTP mapping", async () => {
@@ -608,4 +608,23 @@ Deno.test("update helpers surface raw write errors without HTTP mapping", async 
     })).error,
     { message: "db_down" },
   );
+});
+
+Deno.test("a closed day run cannot report another completion", async () => {
+  const state: FakeState = {
+    ops: [],
+    runs: [{ id: RUN_ID, status: "failed" }],
+  };
+  const result = await completeDayGenerationRun(
+    fakeAdmin(state) as never,
+    RUN_ID,
+    {
+      output_snapshot: {},
+      warnings: [],
+      assumptions: [],
+      completed_at: new Date().toISOString(),
+    },
+  );
+  assertEquals(result.error, { message: "generation_run_closed" });
+  assertEquals(state.runs[0].status, "failed");
 });
