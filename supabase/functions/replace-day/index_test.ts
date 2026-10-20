@@ -58,7 +58,9 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
     scheduled_date: date,
     title: "Posted title",
     status: "posted",
-    post_instructions: { filmed_shots: ["shot-1"] },
+    post_instructions: {
+      filmed_shots: ["1407e44a-1f70-4b96-8ee2-000000000001"],
+    },
   };
   const run: Record<string, unknown> = {};
   let background: Promise<void> | undefined;
@@ -211,7 +213,9 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
   await background;
   assertEquals(calls, ["replace_day", "persist_day_revision"]);
   assertEquals(oldCard.title, "Posted title");
-  assertEquals(oldCard.post_instructions.filmed_shots, ["shot-1"]);
+  assertEquals(oldCard.post_instructions.filmed_shots, [
+    "1407e44a-1f70-4b96-8ee2-000000000001",
+  ]);
   assertEquals(newCard?.id === cardID, false);
   assertEquals(run.status, "completed");
 });

@@ -277,7 +277,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
     var durationSeconds: Int?
     var hook: String?
     var saveShareReason: String?
-    var sceneList: [SupabaseShotSceneDTO]
+    @SupabaseShotScenes var sceneList: [SupabaseShotSceneDTO]
     var shotTimeline: [ProductionTimelineItem]?
     var voiceoverTimeline: [ProductionTimelineItem]?
     var onScreenTextTimeline: [ProductionTimelineItem]?

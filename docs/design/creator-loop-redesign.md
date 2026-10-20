@@ -46,7 +46,7 @@ A generation response binds dependent requests from their local requested ID to 
 The client saves accepted run IDs and polls the same run after an interruption.
 Dates and elapsed time do not expire intents.
 Success, explicit revision removal, and terminal generation failure resolve intents.
-Other errors retain the request for replay and expose the error.
+A past-date rejection is terminal. An unaccepted first idea retargets to current today and replays. Other rejected generation intents leave generating and show the error. Other errors retain the request for replay and expose the error.
 
 The separate pending-first-idea and accepted-generation stores are gone.
 Small decoding models remain for one-time migration of their old UserDefaults values.
@@ -58,17 +58,17 @@ Migration deletes old keys only after the new snapshot saves successfully.
 Each successful generation inserts a new `daily_cards` revision.
 `creator_days` points at its current revision and latest generation run.
 Archive entries keep their exact revision ID, title snapshot, caption snapshot, and decision time.
-A replaced revision cannot change its history. Current posted undo keeps the stored text snapshots.
+Replacement acceptance clears the old revision's `is_current` flag immediately. A replaced revision cannot change its history. Current posted undo keeps the stored text snapshots.
 
 `replace-day` archives the prior revision and accepts the new generation in one transaction.
 Provider work runs after that transaction. A failed provider run leaves the accepted prior revision archived;
 the app retains its content and progress as recovery data without presenting it as ready.
 A failure before acceptance leaves the prior server state intact.
 Generation keys bind to request identity. A changed brief requires a new key.
-Terminal runs stay closed.
+Revision insertion and the completed run snapshot commit together. Terminal runs stay closed; finalization can enrich a completed snapshot.
 
 Package edits reject blank or invalid text. Both SQL and the edge function validate every supplied shot.
-Each shot requires string `id`, `title`, and `duration`; `dialogue` is optional and must be a string when supplied.
+Each shot requires a UUID string `id` and string `title` and `duration`; `dialogue` is optional and must be a string when supplied.
 The existing client metadata fields remain valid. The new migration leaves earlier migrations unchanged.
 See [the server contract](creator-loop-server-contract.md) for error codes and response fields.
 

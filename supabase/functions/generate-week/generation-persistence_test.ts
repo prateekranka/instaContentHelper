@@ -1224,6 +1224,7 @@ Deno.test("persistRegeneratedDay uses the run transaction and returns a new revi
   assertEquals(result.dailyCard.id, revision);
   assertEquals(received.generation_id, "run-id");
   assertEquals(received.workspace_id, WORKSPACE);
+  assertEquals(received.draft_card, sampleCard());
   assertEquals(state.dailyCards, [{ id: CARD, title: "Old title" }]);
   assert(state.references.every((row) => row.daily_card_id === revision));
 });

@@ -492,3 +492,67 @@ test('loop R3-C7: Post refuses blank script and caption without changing the sav
   await scrollToControl(screen, caption);
   await expect(caption).toHaveValue(originalCaption);
 });
+
+
+test('loop R4-L1: Undo posted updates the single Archive entry after relaunch', { timeout: 240_000 }, async ({ screen, device }) => {
+  const session = await ready(screen, device);
+  await finishLoopFilming(screen);
+  await screen.getByTestId('post.markPosted').tap();
+  await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
+  await archiveHas(screen, 'Loop ready package');
+  await expect(screen.getByText('Posted', { exact: true })).toHaveCount(1);
+  await selectTab(screen, 'Today');
+  await screen.getByTestId('today.startFilming').tap();
+  await screen.getByTestId('post.undoPosted').tap();
+  await expect(screen.getByTestId('post.markPosted')).toBeVisible();
+  await archiveHas(screen, 'Loop ready package');
+  await expect(screen.getByText('Shot today, ready to post', { exact: true })).toHaveCount(1);
+  await expect(screen.getByText('Posted', { exact: true })).toBeHidden();
+  await relaunchLoopSession(device, session);
+  await expect(screen.getByTestId('today.startFilming')).toContainText('Get post text');
+  await archiveHas(screen, 'Loop ready package');
+  await expect(screen.getByText('Shot today, ready to post', { exact: true })).toHaveCount(1);
+  await expect(screen.getByText('Posted', { exact: true })).toBeHidden();
+});
+
+test('loop R4-C3: repost after Unpublish and Make ready persists one Posted archive entry', { timeout: 240_000 }, async ({ screen, device }) => {
+  const session = await ready(screen, device);
+  await finishLoopFilming(screen);
+  await screen.getByTestId('post.markPosted').tap();
+  await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
+  await openLoopPlanDay(screen, 0);
+  await tapVisibleControl(screen, screen.getByTestId('daily.unpublish'));
+  await screen.getByRole('group', 'Unpublish this day?', { exact: true })
+    .getByRole('button', 'Unpublish', { exact: true }).tap();
+  await approveLoopPackage(screen);
+  await selectTab(screen, 'Today');
+  await expect(screen.getByTestId('today.startFilming')).toContainText('Get post text');
+  await screen.getByTestId('today.startFilming').tap();
+  await screen.getByTestId('post.markPosted').tap();
+  await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
+  await relaunchLoopSession(device, session);
+  await expect(screen.getByTestId('today.startFilming')).toContainText('View posted content');
+  await archiveHas(screen, 'Loop ready package');
+  await expect(screen.getByText('Posted', { exact: true })).toHaveCount(1);
+  await relaunchLoopSession(device, session);
+  await expect(screen.getByTestId('today.startFilming')).toContainText('View posted content');
+  await archiveHas(screen, 'Loop ready package');
+  await expect(screen.getByText('Posted', { exact: true })).toHaveCount(1);
+});
+
+test('loop R4-C2: legacy backup cache retains its partial filming marks', async ({ app, screen, device }) => {
+  const session = await openLoopSession(device, 'legacy-backup');
+  await expect(screen.getByTestId('today.package.title')).toHaveText('Loop legacy-backup package');
+  await expect(screen.getByTestId('today.startFilming')).toContainText('Continue filming');
+  await archiveHas(screen, 'Loop legacy-backup package');
+  await expect(screen.getByText('Used backup: 10-second story', { exact: true })).toBeVisible();
+  await relaunchLoopSession(device, session);
+  await expect(screen.getByTestId('today.startFilming')).toContainText('Continue filming');
+  await screen.getByTestId('today.startFilming').tap();
+  await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 2 of');
+  await screen.getByTestId('shoot.previous').tap();
+  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await app.back();
+  await archiveHas(screen, 'Loop legacy-backup package');
+  await expect(screen.getByText('Used backup: 10-second story', { exact: true })).toBeVisible();
+});

@@ -161,24 +161,25 @@ export async function completeDayGenerationRun(
     completed_at: string;
   },
 ): Promise<{ error: unknown | null }> {
-  const { data, error } = await admin
-    .from("weekly_generation_runs")
-    .update({
-      status: "completed",
-      output_snapshot: payload.output_snapshot,
-      warnings: payload.warnings,
-      assumptions: payload.assumptions,
-      completed_at: payload.completed_at,
-      error_code: null,
-    })
-    .eq("id", generationID)
-    .eq("status", "running")
-    .select("id")
-    .maybeSingle();
+  for (const status of ["running", "completed"]) {
+    const { data, error } = await admin
+      .from("weekly_generation_runs")
+      .update({
+        status: "completed",
+        output_snapshot: payload.output_snapshot,
+        warnings: payload.warnings,
+        assumptions: payload.assumptions,
+        completed_at: payload.completed_at,
+        error_code: null,
+      })
+      .eq("id", generationID)
+      .eq("status", status)
+      .select("id")
+      .maybeSingle();
 
-  return {
-    error: error ?? (data ? null : { message: "generation_run_closed" }),
-  };
+    if (error || data) return { error: error ?? null };
+  }
+  return { error: { message: "generation_run_closed" } };
 }
 
 /**

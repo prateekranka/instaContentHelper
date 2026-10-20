@@ -32,6 +32,8 @@ type HandlerDependencies = {
 };
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const SHOT_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -152,7 +154,8 @@ export async function handleUpdateReadyDayPackageRequest(
     for (const [shotIndex, shot] of scenes.entries()) {
       if (
         typeof shot !== "object" || shot === null || Array.isArray(shot) ||
-        typeof shot.id !== "string" || typeof shot.title !== "string" ||
+        typeof shot.id !== "string" || !SHOT_UUID_PATTERN.test(shot.id) ||
+        typeof shot.title !== "string" ||
         typeof shot.duration !== "string" ||
         ("dialogue" in shot && typeof shot.dialogue !== "string")
       ) {

@@ -156,7 +156,7 @@ export async function typeInChunks(editor: Locator, text: string) {
   }
 }
 
-export type LoopScenario = 'initial' | 'ready' | 'line-script' | 'blank-copy' | 'stale-pointer' | 'legacy-cache' | 'old-decision';
+export type LoopScenario = 'initial' | 'ready' | 'line-script' | 'blank-copy' | 'stale-pointer' | 'legacy-cache' | 'legacy-backup' | 'old-decision';
 
 export interface LoopSession {
   id: string;

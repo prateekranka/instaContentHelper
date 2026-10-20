@@ -213,10 +213,22 @@ final class DayStore {
                 if let revisionID = entry.dailyCardID { return existing.dailyCardID == revisionID }
                 return existing.id == entry.id
             }) {
-                if archiveEntries[index].decision == .posted,
-                   entry.decision != .posted || !authoritative { continue }
+                if archiveEntries[index].decision == .posted, !authoritative { continue }
                 var mergedEntry = entry
-                mergedEntry.captionSnapshot = entry.captionSnapshot ?? archiveEntries[index].captionSnapshot
+                if archiveEntries[index].decision == .posted {
+                    mergedEntry = ArchiveEntry(
+                        id: entry.id,
+                        dailyCardID: entry.dailyCardID,
+                        day: entry.day,
+                        date: entry.date,
+                        cardTitle: archiveEntries[index].cardTitle,
+                        decision: entry.decision,
+                        outputLine: entry.outputLine,
+                        hasPostThumbnail: entry.hasPostThumbnail
+                    )
+                    mergedEntry.captionSnapshot = archiveEntries[index].captionSnapshot
+                }
+                mergedEntry.captionSnapshot = mergedEntry.captionSnapshot ?? archiveEntries[index].captionSnapshot
                 mergedEntry.scheduledDate = entry.scheduledDate ?? archiveEntries[index].scheduledDate
                 mergedEntry.decisionAt = entry.decisionAt ?? archiveEntries[index].decisionAt
                 archiveEntries[index] = mergedEntry
@@ -302,11 +314,13 @@ struct CachedTodaySnapshot: Codable, Hashable, Sendable {
             guard let date = card.scheduledDate else { continue }
             var day = days[date] ?? Day(identity: DayIdentity(workspaceID: context.workspaceID, creatorID: context.creatorID, scheduledDate: date))
             do {
-                try day.transition(.reconcile(GeneratedDailyCardDraft(fromPublishedCard: card), card.completionState, nil))
+                let package = GeneratedDailyCardDraft(fromPublishedCard: card)
+                try day.transition(.reconcile(package, nil, nil))
                 if card.id == todayCard?.id, !shotSceneIDs.isEmpty {
                     let ids = shotSceneIDs.intersection(Set(card.scenes.map(\.id)))
                     if card.completionState != .posted { try day.transition(.markShots(ids)) }
                 }
+                try day.transition(.reconcile(package, card.completionState, nil))
                 days[date] = day
             } catch {
                 try? day.transition(.unavailable)

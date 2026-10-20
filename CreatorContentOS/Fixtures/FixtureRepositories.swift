@@ -259,7 +259,7 @@ actor FakeServer {
                 guard case .array(let scenes) = sceneList else { return Self.failure("invalid_package_scene_list", status: 400, field: "scene_list") }
                 for (index, scene) in scenes.enumerated() {
                     guard let shot = scene.objectValue,
-                          shot.text("id") != nil, shot.text("title") != nil, shot.text("duration") != nil,
+                          shot.uuid("id") != nil, shot.text("title") != nil, shot.text("duration") != nil,
                           shot["dialogue"] == nil || shot.text("dialogue") != nil else {
                         return FakeServerResponse(statusCode: 400, body: .object(["error": .string("invalid_package_scene_list"), "field": .string("scene_list"), "shot_index": .number(Double(index))]))
                     }
@@ -375,16 +375,24 @@ actor FakeServer {
         let output = decisionPayload["output_line"] ?? .null
         let thumbnail = decisionPayload.flag("has_post_thumbnail")
         let existing = state.archives[id]
-        let current = state.days[card.text("scheduled_date") ?? ""]?.currentRevisionID == id
+        let current = card.flag("is_current") && card.text("status") != "archived"
+            && state.days[card.text("scheduled_date") ?? ""]?.currentRevisionID == id
         if !current {
             guard let existing, existing.text("decision") == decision, existing.text("archive_date") == date,
                   (existing["output_line"] ?? .null) == output, existing.flag("has_post_thumbnail") == thumbnail,
                   payload.text("decision_at") == nil || Self.sameTimestamp(payload.text("decision_at"), existing.text("decision_at")) else {
-                return Self.failure(existing?.text("decision") == "posted" ? "posted_revision_immutable" : "historical_revision_immutable", status: 409)
+                return Self.failure("historical_revision_immutable", status: 409)
             }
             return Self.success(decisionReply(payload, card: card, archive: existing))
         }
         if let existing, existing.text("decision") == "posted", decision == "posted" {
+            if complete, card.text("status") != "posted" || !Self.sameTimestamp(card.text("decision_at"), existing.text("decision_at")) {
+                card["status"] = .string("posted")
+                card["decision_at"] = existing["decision_at"]
+                card["completed_by_member_id"] = .string(context.memberID.uuidString)
+                state.revisions[id] = card
+                state.days[date]?.updatedAt = SupabaseDateFormatting.isoTimestampString()
+            }
             return Self.success(decisionReply(payload, card: card, archive: existing))
         }
         let same = existing?.text("decision") == decision
@@ -497,7 +505,7 @@ actor FakeServer {
             if let existing, existing.text("status") != "draft" { return Self.failure("replace_day_required", status: 409) }
         }
         if let previous = state.days[date]?.generationKey, state.runs[previous]?.status == "running" { failRun(previous, code: "generation_superseded") }
-        if isReplacement, let existing { archiveRevision(existing, superseded: false) }
+        if isReplacement, let existing { archiveRevision(existing) }
         state.plans[plan.id] = plan
         state.plan = plan
         let run = FakeServerRun(planID: plan.id, scheduledDate: date, identity: identity,
@@ -589,7 +597,7 @@ actor FakeServer {
         return card
     }
 
-    private func archiveRevision(_ row: FakeObject, superseded: Bool = true) {
+    private func archiveRevision(_ row: FakeObject) {
         let id = row.uuid("id")!
         if state.archives[id] == nil {
             let decision = row.text("status").flatMap { Self.decisions.contains($0) ? $0 : nil } ?? "replaced"
@@ -601,7 +609,7 @@ actor FakeServer {
             ]
         }
         state.revisions[id]?["status"] = .string("archived")
-        state.revisions[id]?["is_current"] = .bool(!superseded)
+        state.revisions[id]?["is_current"] = .bool(false)
     }
 
     private func currentRows() -> [FakeObject] {
@@ -611,7 +619,7 @@ actor FakeServer {
 
     private func currentRow(_ payload: FakeObject) -> FakeObject? {
         if let id = payload.uuid("daily_card_id"), let row = state.revisions[id],
-           let date = row.text("scheduled_date"), state.days[date]?.currentRevisionID == id,
+           let date = row.text("scheduled_date"), row.flag("is_current"), state.days[date]?.currentRevisionID == id,
            payload.text("scheduled_date") == nil || payload.text("scheduled_date") == date { return row }
         if payload["daily_card_id"] != nil { return nil }
         return payload.text("scheduled_date").flatMap { state.days[$0]?.currentRevisionID }.flatMap { state.revisions[$0] }

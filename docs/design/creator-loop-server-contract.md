@@ -1,6 +1,6 @@
 # Creator loop server contract
 
-Implemented through phase 6, including the posted-undo correction and shot validation. Local changes only.
+Implemented through phase 6, including round 4 generation recovery, history protection, repost persistence, and shot validation. Local changes only.
 No live migration or deployment is authorized.
 The approved scope is section 3 of `creator-loop-redesign.md`.
 
@@ -9,7 +9,7 @@ The approved scope is section 3 of `creator-loop-redesign.md`.
 - `daily_cards.id` is the revision ID. Each successful generation inserts a new row with a new ID.
 - `creator_days` has one row per `(workspace_id, creator_id, scheduled_date)`.
 - `creator_days.current_revision_id` points at the current revision. It can be null before the first successful generation.
-- `daily_cards.is_current` is an indexed projection of that pointer. An insert updates both in the same transaction.
+- `daily_cards.is_current` controls mutation eligibility. Replacement acceptance clears it immediately; the day pointer can retain that archived revision for recovery. An insert points to the new current revision.
 - `creator_days.generation_run_id` points at the latest generation run. Read its status before treating the day as generating.
 - `daily_cards.generation_run_id` identifies the run that made the revision. A run can create at most one revision per date.
 - Superseded revisions stay in `daily_cards` with `status = archived` and `is_current = false`.
@@ -67,7 +67,9 @@ Generation errors, validation errors, and persistence errors close runs with `co
 A status poll closes a stale single-day worker with `generation_stale`. It does not resume that worker.
 The existing worker heartbeat rules determine status-poll staleness.
 A keyed replay or server claim also closes a running run after ten minutes without a database update.
-Server failure and completion writes apply only to running runs. Database guards reject reopening a terminal run.
+Revision insertion and the completed run snapshot commit in one transaction. Worker interruption after insertion cannot leave a saved draft behind a running run. Finalization can enrich an already completed snapshot; failure writes still apply only to running runs. Database guards reject reopening a terminal run.
+
+A queued request rejected with `past_generation_date_not_allowed` is terminal. The native outbox restores the day from generating. An unaccepted firstIdea request retargets to the creator's current today, saves that date, and replays. Other generation intents stop and show that the day has passed.
 
 Additional errors:
 
@@ -107,7 +109,7 @@ One SQL transaction archives the old revision, removes its ready status, and ins
 The transaction does not call an AI provider. Provider work starts only after that transaction commits.
 If the transaction fails, it rolls back all three changes. A provider failure after acceptance closes the run;
 it leaves the archived revision and its filming data available for recovery.
-The old revision remains the day pointer until the new revision is saved. Its archived status prevents ready reads.
+The old revision remains the day pointer until the new revision is saved. Acceptance sets its status to archived and is_current to false. Late decisions and undo return historical_revision_immutable, even before provider work finishes. Exact historical retries still return the saved entry.
 
 Success and replay responses match the day-generation responses above.
 `replaced_daily_card_id` identifies the old revision. Same-key replay checks occur before current-state validation.
@@ -136,7 +138,7 @@ Existing numeric behavior remains.
 
 If `scene_list` is supplied, it must be an array. Each element must be an object with:
 
-- `id`: a string. The boundary does not require UUID syntax.
+- `id`: a UUID string in canonical 8-4-4-4-12 hexadecimal form, case insensitive.
 - `title`: a string.
 - `duration`: a string, including the client's existing `"5 sec"` form.
 - `dialogue`: an optional string. An omitted value and an empty string are valid; explicit null is invalid.
@@ -146,8 +148,8 @@ For an invalid shot, include its zero-based `shot_index`. Invalid list types hav
 No part of a rejected patch is written. An omitted `scene_list` keeps the stored shots;
 an empty array remains valid. This validation checks types, without new nonblank, duration-format, or uniqueness rules.
 Additional shot metadata is retained, including the current client's `number` and `symbol` fields.
-The edge function, SQL RPC, and `FakeServer` enforce the same shot shape.
-The SQL change is in the new `20261021090000_validate_ready_day_scene_list.sql` migration.
+The edge function, SQL RPC, and `FakeServer` enforce the same shot shape. Native stored-card and generation decoders process each shot separately; a malformed shot cannot discard valid siblings.
+Round 4 updates the phase 6 validation function in the new `20261021100000_round4_creator_loop_recovery.sql` migration.
 Earlier migrations remain unchanged. Replacing the SQL function preserves its service-only execution grants.
 
 A valid edit keeps the revision ID and ready status. It cannot change an existing posted archive snapshot.
@@ -174,11 +176,11 @@ For that undo, the archive entry keeps its ID, title snapshot, and caption snaps
 It receives a new `decision_at`. An omitted time uses the server clock, not the previous card decision time.
 `complete_today` changes the current card and its archive entry in the same transaction.
 `upsert_archive_decision` keeps its archive-only write behavior.
+After Unpublish and Make ready, another posted decision restores the live card status and decision time from the stored archive entry. It keeps one archive row and its existing snapshots.
 A same-decision retry keeps the stored decision time. A repeated current `posted` decision keeps the entire stored archive entry.
 
 A replaced revision cannot receive an undo, a different decision, or changed archive metadata.
-Changes to a replaced posted entry return HTTP 409, `posted_revision_immutable`.
-Changes to any other replaced entry return HTTP 409, `historical_revision_immutable`.
+Changes to any replaced entry return HTTP 409, `historical_revision_immutable`, including posted history.
 This includes a late first decision for an entry whose stored decision is `replaced`.
 An exact historical retry must match the saved decision, archive date, output line, thumbnail flag,
 and decision time when supplied. It returns the saved archive entry without updating either revision.

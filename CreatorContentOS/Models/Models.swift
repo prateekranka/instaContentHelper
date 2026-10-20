@@ -2026,7 +2026,8 @@ enum DayTransition {
     case reconcile(GeneratedDailyCardDraft, CompletionState?, String?)
     case generate(DayGenerationRun, replacing: Bool)
     case generated(GeneratedDailyCardDraft)
-    case generationFailed
+    case generationFailed(priorRevisionID: UUID?)
+    case generationRejected
     case retain(GeneratedDailyCardDraft, CompletionState?)
     case makeReady
     case returnToDraft
@@ -2129,13 +2130,16 @@ struct Day: Codable, Hashable, Sendable, Identifiable {
             guard case .generating = lifecycle else { throw DayTransitionError.illegalMove }
             try next.install(content)
             next.lifecycle = .draft
-        case .generationFailed:
+        case .generationRejected:
             guard case .generating = lifecycle else { throw DayTransitionError.illegalMove }
-            if next.revision != nil {
+            next.lifecycle = next.resolvedLifecycle()
+        case .generationFailed(let priorRevisionID):
+            guard case .generating = lifecycle else { throw DayTransitionError.illegalMove }
+            if next.revision?.id == priorRevisionID, priorRevisionID != nil {
                 next.revision?.content.status = "archived"
                 next.lifecycle = .unavailable
             } else {
-                next.lifecycle = .empty
+                next.lifecycle = next.resolvedLifecycle()
             }
         case .retain(let content, let completion):
             guard content.scheduledDate == identity.scheduledDate, revision?.id != content.id else {

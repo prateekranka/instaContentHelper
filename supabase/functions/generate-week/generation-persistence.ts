@@ -194,6 +194,7 @@ export async function persistRegeneratedDay(
       creator_id: input.creatorID,
       generation_id: input.generationID,
       card: generatedDailyCardValues(card),
+      draft_card: card,
     },
   });
   if (error || !isRecord(data)) {

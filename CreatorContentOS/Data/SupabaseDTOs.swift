@@ -108,6 +108,23 @@ enum SupabaseJSONValue: Codable, Hashable, Sendable {
     }
 }
 
+@propertyWrapper
+struct SupabaseShotScenes: Codable, Hashable, Sendable {
+    var wrappedValue: [SupabaseShotSceneDTO]
+
+    init(wrappedValue: [SupabaseShotSceneDTO]) { self.wrappedValue = wrappedValue }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.singleValueContainer().decode([SupabaseJSONValue].self)
+        wrappedValue = values.compactMap { $0.decoded(SupabaseShotSceneDTO.self) }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+}
+
 struct SupabaseShotSceneDTO: Codable, Hashable, Sendable {
     var id: UUID? = nil
     var number: Int?
@@ -153,7 +170,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     var durationSeconds: Int?
     var hook: String?
     var saveShareReason: String?
-    var sceneList: [SupabaseShotSceneDTO]
+    @SupabaseShotScenes var sceneList: [SupabaseShotSceneDTO]
     var shotTimeline: [ProductionTimelineItem]
     var voiceoverTimeline: [ProductionTimelineItem]
     var onScreenTextTimeline: [ProductionTimelineItem]
@@ -264,7 +281,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             ?? postInstructionObject?["hook"]?.displayText
         saveShareReason = try container.decodeIfPresent(String.self, forKey: .saveShareReason)
             ?? postInstructionObject?["save_share_reason"]?.displayText
-        sceneList = (try? container.decode([SupabaseShotSceneDTO].self, forKey: .sceneList)) ?? []
+        sceneList = (try? container.decode(SupabaseShotScenes.self, forKey: .sceneList))?.wrappedValue ?? []
         let decodedShotTimeline = (try? container.decode([ProductionTimelineItem].self, forKey: .shotTimeline)) ?? []
         shotTimeline = decodedShotTimeline.isEmpty
             ? postInstructionObject?["shot_timeline"]?.decoded([ProductionTimelineItem].self) ?? []

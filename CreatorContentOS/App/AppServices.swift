@@ -557,7 +557,7 @@ final class AppServices {
         do {
             try enqueueIntent(intent)
             try dayStore.transition(.decide(decision), on: intent.scheduledDate)
-            if let entry = intent.archiveSnapshot { dayStore.mergeArchive([entry]) }
+            if let entry = intent.archiveSnapshot { dayStore.mergeArchive([entry], authoritative: intent.undoPosted) }
             try persistDaySnapshot(source: "decision")
             lastTodayDecisionSyncError = nil
             Task { await cancelTodayNotification() }
@@ -2112,8 +2112,14 @@ final class AppServices {
                 if intent.kind == .decide { lastTodayDecisionSyncError = nil }
                 lastRepositoryError = nil
             } catch {
+                let intent = dayStore.outbox.first { $0.id == intent.id } ?? intent
                 outboxErrors[intent.id] = error
                 let code = SupabaseFunctionErrorMapper.errorCode(from: error) ?? error.localizedDescription
+                if intent.isGeneration, ["daily_card_not_found", "past_generation_date_not_allowed"].contains(code),
+                   case .generating(let run) = dayStore.day(for: intent.scheduledDate)?.lifecycle,
+                   run.requestID == intent.requestedRevisionID {
+                    try? dayStore.transition(.generationRejected, on: intent.scheduledDate)
+                }
                 if code == "daily_card_not_found" {
                     let pending = dayStore.outbox
                     do {
@@ -2121,9 +2127,15 @@ final class AppServices {
                         dayStore.finishIntent(intent.id)
                         try persistDaySnapshot(source: "outbox-revision-removed")
                     } catch { dayStore.restoreOutbox(pending) }
-                } else if case OutboxTerminalFailure.server = error {
+                } else if error is OutboxTerminalFailure || code == "past_generation_date_not_allowed" {
+                    if code == "past_generation_date_not_allowed" {
+                        var terminal = intent
+                        terminal.terminalFailureCode = code
+                        dayStore.updateIntent(terminal)
+                    }
                     let pending = dayStore.outbox
                     do {
+                        try persistDaySnapshot(source: "outbox-terminal-recorded")
                         if intent.kind == .firstIdea { try await saveFirstIdeaProfile(intent, status: .failed) }
                         dayStore.finishIntent(intent.id)
                         try persistDaySnapshot(source: "outbox-terminal-failure")
@@ -2167,6 +2179,7 @@ final class AppServices {
             try await applyPackageReply(result, intent: original)
             return result
         case .generate, .replaceDay:
+            if let code = original.terminalFailureCode { throw OutboxTerminalFailure.server(code) }
             return .generated(try await replayGeneration(original))
         case .firstIdea:
             var intent = original
@@ -2213,7 +2226,27 @@ final class AppServices {
         }
         while !Task.isCancelled {
             try requireAIConsent(for: .generateDay(scheduledDate: intent.scheduledDate))
-            let response = try await repositories.dailyGeneration.replayGeneration(intent, context: context)
+            let response: OutboxGenerationResponse
+            do {
+                response = try await repositories.dailyGeneration.replayGeneration(intent, context: context)
+            } catch {
+                let code = SupabaseFunctionErrorMapper.errorCode(from: error) ?? error.localizedDescription
+                guard code == "past_generation_date_not_allowed", intent.kind == .firstIdea,
+                      intent.scheduledDate != currentTodayDateString, intent.generationID == nil else { throw error }
+                if case .generating(let run) = dayStore.day(for: intent.scheduledDate)?.lifecycle,
+                   run.requestID == intent.requestedRevisionID {
+                    try dayStore.transition(.generationRejected, on: intent.scheduledDate)
+                }
+                intent.scheduledDate = currentTodayDateString
+                intent.priorRevisionID = dayPackage(for: intent.scheduledDate)?.id
+                intent.supersededByServer = nil
+                dayStore.updateIntent(intent)
+                try persistDaySnapshot(source: "outbox-first-idea-retargeted")
+                try await saveFirstIdeaProfile(intent, status: .preparing)
+                try dayStore.transition(.generate(DayGenerationRun(requestID: intent.requestedRevisionID, generationID: nil), replacing: intent.priorRevisionID != nil), on: intent.scheduledDate)
+                try persistDaySnapshot(source: "outbox-first-idea-retargeted-generating")
+                continue
+            }
             intent = dayStore.outbox.first { $0.id == intent.id } ?? intent
             switch response {
             case .running(let generationID, let delay):
@@ -2248,7 +2281,7 @@ final class AppServices {
                 dayStore.updateIntent(intent)
                 if intent.supersededByServer != true, case .generating(let run) = dayStore.day(for: intent.scheduledDate)?.lifecycle,
                    run.requestID == intent.requestedRevisionID || run.generationID == intent.generationID && intent.generationID != nil {
-                    try dayStore.transition(.generationFailed, on: intent.scheduledDate)
+                    try dayStore.transition(.generationFailed(priorRevisionID: intent.priorRevisionID), on: intent.scheduledDate)
                 }
                 try persistDaySnapshot(source: "outbox-generation-failed")
                 throw OutboxTerminalFailure.server(code)
@@ -2448,7 +2481,7 @@ private enum DayGenerationErrorDisplay {
         "generation_persist_failed": "The draft could not be saved. Try Generate again.",
         "weekly_setup_not_found": "The weekly brief could not be found. Save the brief and try again.",
         "existing_published_week_locked": "This week is already published and locked.",
-        "past_generation_date_not_allowed": "You cannot generate content for a past date. Select today or a future date.",
+        "past_generation_date_not_allowed": "This day has passed. Select today or a future date to generate content.",
         "generation_timeout": "Generation timed out. Wait a moment, then try Generate again.",
         "generation_cancelled": "This day’s draft stopped before it finished. You can try Generate again.",
         "generation_already_running": "A generation is already in progress for this day. Wait for it to finish, then try again.",

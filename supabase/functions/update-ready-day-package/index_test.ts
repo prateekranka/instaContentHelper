@@ -251,8 +251,22 @@ Deno.test("scene list validation rejects malformed lists before the RPC", async 
 });
 
 Deno.test("scene list validation checks every shot and every field type", async () => {
-  const shot = { id: "shot-1", title: "Opening", duration: "5 sec" };
+  const shot = {
+    id: "1407e44a-1f70-4b96-8ee2-000000000001",
+    title: "Opening",
+    duration: "5 sec",
+  };
   const invalidShots: unknown[] = [null, [], "shot", 1, true];
+  for (
+    const id of [
+      "not-a-uuid",
+      "",
+      "1407e44a1f704b968ee2000000000001",
+      " 1407e44a-1f70-4b96-8ee2-000000000001",
+    ]
+  ) {
+    invalidShots.push({ ...shot, id });
+  }
   for (const field of ["id", "title", "duration"]) {
     const missing: Record<string, unknown> = { ...shot };
     delete missing[field];
@@ -287,13 +301,18 @@ Deno.test("scene list accepts the Swift payload and retains optional shot metada
       dialogue: "The opening line.",
     },
     {
-      id: "shot-2",
+      id: "1407e44a-1f70-4b96-8ee2-000000000002",
       number: 2,
       title: "Silent shot",
       duration: "3 sec",
       symbol: "camera",
     },
-    { id: "shot-3", title: "Blank line", duration: "0 sec", dialogue: "" },
+    {
+      id: "1407e44a-1f70-4b96-8ee2-000000000003",
+      title: "Blank line",
+      duration: "0 sec",
+      dialogue: "",
+    },
   ];
   for (const sceneList of [scenes, []]) {
     let calls = 0;

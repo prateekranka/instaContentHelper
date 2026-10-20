@@ -27,7 +27,7 @@ begin
   insert into public.members(id, workspace_id, display_name, role) values(m, w, 'Local member', 'owner');
   insert into public.weekly_plans(id, workspace_id, creator_id, week_start_date) values(p, w, c, d);
   insert into public.daily_cards(id, workspace_id, creator_id, weekly_plan_id, scheduled_date, status, title, caption, post_instructions)
-    values(old_id, w, c, p, d, 'published', 'Posted title', 'Posted caption', '{"filmed_shots":["shot-1"]}');
+    values(old_id, w, c, p, d, 'published', 'Posted title', 'Posted caption', '{"filmed_shots":["1407e44a-1f70-4b96-8ee2-000000000001"]}');
   result := public.write_content(jsonb_build_object('action', 'complete_today', 'workspace_id', w, 'creator_id', c,
     'member_id', m, 'daily_card_id', old_id, 'decision_at', clock_timestamp() - interval '1 day',
     'decision', jsonb_build_object('status', 'posted', 'output_line', 'Posted', 'has_post_thumbnail', false)));
@@ -47,15 +47,17 @@ begin
     null, {}, "shots", 1, true,
     [null], [[]], ["shot"], [1], [true],
     [{}],
+    [{"id":"not-a-uuid","title":"Shot","duration":"5 sec"}],
+    [{"id":"","title":"Shot","duration":"5 sec"}],
     [{"title":"Shot","duration":"5 sec"}],
-    [{"id":"shot-1","duration":"5 sec"}],
-    [{"id":"shot-1","title":"Shot"}],
+    [{"id":"1407e44a-1f70-4b96-8ee2-000000000001","duration":"5 sec"}],
+    [{"id":"1407e44a-1f70-4b96-8ee2-000000000001","title":"Shot"}],
     [{"id":1,"title":"Shot","duration":"5 sec"}],
-    [{"id":"shot-1","title":null,"duration":"5 sec"}],
-    [{"id":"shot-1","title":"Shot","duration":5}],
-    [{"id":"shot-1","title":"Shot","duration":"5 sec","dialogue":null}],
-    [{"id":"shot-1","title":"Shot","duration":"5 sec","dialogue":{}}],
-    [{"id":"shot-1","title":"Shot","duration":"5 sec"}, false]
+    [{"id":"1407e44a-1f70-4b96-8ee2-000000000001","title":null,"duration":"5 sec"}],
+    [{"id":"1407e44a-1f70-4b96-8ee2-000000000001","title":"Shot","duration":5}],
+    [{"id":"1407e44a-1f70-4b96-8ee2-000000000001","title":"Shot","duration":"5 sec","dialogue":null}],
+    [{"id":"1407e44a-1f70-4b96-8ee2-000000000001","title":"Shot","duration":"5 sec","dialogue":{}}],
+    [{"id":"1407e44a-1f70-4b96-8ee2-000000000001","title":"Shot","duration":"5 sec"}, false]
   ]'::jsonb) loop
     result := public.update_ready_day_package(jsonb_build_object('workspace_id', w, 'creator_id', c, 'daily_card_id', old_id,
       'package', jsonb_build_object('caption', 'Must not be saved', 'scene_list', invalid_scene_list)));
@@ -73,9 +75,9 @@ begin
   end loop;
   for invalid_scene_list in select value from jsonb_array_elements('[
     [],
-    [{"id":"shot-1","number":1,"title":"Shot","duration":"5 sec","symbol":"camera","dialogue":"Line"},
-     {"id":"shot-2","title":"Silent","duration":"0 sec"},
-     {"id":"shot-3","title":"Blank line","duration":"3 sec","dialogue":""}]
+    [{"id":"1407e44a-1f70-4b96-8ee2-000000000001","number":1,"title":"Shot","duration":"5 sec","symbol":"camera","dialogue":"Line"},
+     {"id":"1407e44a-1f70-4b96-8ee2-000000000002","title":"Silent","duration":"0 sec"},
+     {"id":"1407e44a-1f70-4b96-8ee2-000000000003","title":"Blank line","duration":"3 sec","dialogue":""}]
   ]'::jsonb) loop
     result := public.update_ready_day_package(jsonb_build_object('workspace_id', w, 'creator_id', c, 'daily_card_id', old_id,
       'package', jsonb_build_object('scene_list', invalid_scene_list)));
@@ -131,6 +133,18 @@ begin
     'member_id', m, 'daily_card_id', old_id, 'decision', jsonb_build_object('status', 'posted', 'output_line', 'Posted', 'has_post_thumbnail', false)));
   if result ? 'error' then raise exception 'reposting after archive undo failed: %', result; end if;
   select to_jsonb(a) into first_archive from public.archive_entries a where daily_card_id = old_id;
+  result := public.unpublish_day(jsonb_build_object('workspace_id', w, 'creator_id', c, 'daily_card_id', old_id));
+  if result ? 'error' then raise exception 'unpublish before repost failed: %', result; end if;
+  result := public.make_day_available(jsonb_build_object('workspace_id', w, 'creator_id', c, 'daily_card_id', old_id));
+  if result ? 'error' then raise exception 'make ready before repost failed: %', result; end if;
+  result := public.write_content(jsonb_build_object('action', 'complete_today', 'workspace_id', w, 'creator_id', c,
+    'member_id', m, 'daily_card_id', old_id, 'decision', jsonb_build_object('status', 'posted', 'output_line', 'Posted', 'has_post_thumbnail', false)));
+  if result ? 'error' or (select status from public.daily_cards where id = old_id) is distinct from 'posted'
+    or (select decision_at from public.daily_cards where id = old_id) is distinct from (first_archive->>'decision_at')::timestamptz
+    or result->'archive_entry' is distinct from first_archive
+    or (select count(*) from public.archive_entries where daily_card_id = old_id) <> 1 then
+    raise exception 'repost did not restore live state and retain one archive entry: %', result;
+  end if;
   input := jsonb_build_object('workspace_id', w, 'creator_id', c, 'weekly_plan_id', p, 'scheduled_date', d,
     'member_id', m, 'daily_card_id', old_id, 'model', 'local-mock', 'idempotency_key', 'replace-1',
     'request_identity', jsonb_build_object('brief', 'New brief'), 'input_snapshot', '{}'::jsonb);
@@ -144,13 +158,21 @@ begin
   if result ? 'error' then raise exception 'replacement failed: %', result; end if;
   run_id := (result->>'id')::uuid;
   if (select status from public.daily_cards where id = old_id) <> 'archived' then raise exception 'replacement did not unpublish'; end if;
-  if (select post_instructions from public.daily_cards where id = old_id) <> '{"filmed_shots":["shot-1"]}'::jsonb then
+  if (select post_instructions from public.daily_cards where id = old_id) <> '{"filmed_shots":["1407e44a-1f70-4b96-8ee2-000000000001"]}'::jsonb then
     raise exception 'filming progress changed';
   end if;
   result := public.replace_day(input);
   if (result->>'id')::uuid <> run_id or result->>'replayed' <> 'true' then raise exception 'replacement duplicated'; end if;
   result := public.replace_day(input || '{"request_identity":{"brief":"Different brief"}}');
   if result->>'error' <> 'idempotency_key_conflict' then raise exception 'changed brief reused key'; end if;
+  if (select is_current from public.daily_cards where id = old_id) then raise exception 'accepted history is still current'; end if;
+  foreach decision_name in array array['shot', 'posted'] loop
+    result := public.write_content(jsonb_build_object('action', 'complete_today', 'workspace_id', w, 'creator_id', c,
+      'member_id', m, 'daily_card_id', old_id, 'decision', jsonb_build_object('status', decision_name, 'output_line', 'Late change', 'has_post_thumbnail', true)));
+    if result->>'error' is distinct from 'historical_revision_immutable' then
+      raise exception 'accepted replacement history allowed a late decision: %', result;
+    end if;
+  end loop;
   card := jsonb_build_object('title', 'New title', 'caption', 'New caption');
   result := public.persist_day_revision(jsonb_build_object('workspace_id', w, 'creator_id', c, 'generation_id', run_id, 'card', card));
   if result ? 'error' then raise exception 'revision insert failed: %', result; end if;
@@ -177,7 +199,7 @@ begin
         'member_id', m, 'daily_card_id', old_id, 'archive_date', d, 'output_line', 'Changed', 'has_post_thumbnail', true,
         'decision', case when action_name = 'complete_today' then
           jsonb_build_object('status', decision_name, 'output_line', 'Changed', 'has_post_thumbnail', true) else to_jsonb(decision_name) end));
-      if result->>'error' is distinct from 'posted_revision_immutable' or result->>'status' is distinct from '409' then
+      if result->>'error' is distinct from 'historical_revision_immutable' or result->>'status' is distinct from '409' then
         raise exception 'replaced posted revision accepted % / %: %', action_name, decision_name, result;
       end if;
     end loop;
@@ -185,7 +207,7 @@ begin
   result := public.write_content(jsonb_build_object('action', 'complete_today', 'workspace_id', w, 'creator_id', c,
     'member_id', m, 'daily_card_id', old_id, 'decision_at', clock_timestamp() + interval '1 day',
     'decision', jsonb_build_object('status', 'posted', 'output_line', 'Posted', 'has_post_thumbnail', false)));
-  if result->>'error' is distinct from 'posted_revision_immutable' then raise exception 'replaced decision timestamp changed: %', result; end if;
+  if result->>'error' is distinct from 'historical_revision_immutable' then raise exception 'replaced decision timestamp changed: %', result; end if;
   begin
     update public.archive_entries set title_snapshot = 'Changed', caption_snapshot = 'Changed', decision = 'shot' where daily_card_id = old_id;
     raise exception 'replaced posted archive mutation accepted';
@@ -205,8 +227,11 @@ begin
     or (select status from public.daily_cards where id = new_id) is distinct from 'draft' then
     raise exception 'rejected historical decisions changed card state';
   end if;
-  update public.weekly_generation_runs set status = 'failed', error_code = 'local_failure' where id = run_id;
-  if (select completed_at from public.weekly_generation_runs where id = run_id) is null then raise exception 'failed run is not closed'; end if;
+  if (select status from public.weekly_generation_runs where id = run_id) is distinct from 'completed'
+    or (select output_snapshot #>> '{daily_card,id}' from public.weekly_generation_runs where id = run_id) is distinct from new_id::text
+    or (select completed_at from public.weekly_generation_runs where id = run_id) is null then
+    raise exception 'revision and completion were not saved atomically';
+  end if;
   begin
     update public.weekly_generation_runs set status = 'running' where id = run_id;
     raise exception 'closed run reopened';

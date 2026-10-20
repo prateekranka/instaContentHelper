@@ -302,7 +302,7 @@ enum DebugLaunchFlags {
         if forceFixtureUI,
            DebugLaunchConfiguration.fixtureSession != nil,
            let scenario = DebugLaunchConfiguration.value(for: "MCO_LOOP_SCENARIO"),
-           ["ready", "line-script", "blank-copy", "stale-pointer", "legacy-cache", "old-decision"].contains(scenario) {
+           ["ready", "line-script", "blank-copy", "stale-pointer", "legacy-cache", "legacy-backup", "old-decision"].contains(scenario) {
             draft.title = "Loop \(scenario) package"
             if scenario == "line-script" {
                 draft.script = draft.sceneList.map { "Creator line \($0.number)." }.joined(separator: "\n")
@@ -327,7 +327,7 @@ enum DebugLaunchFlags {
         guard forceFixtureUI,
               DebugLaunchConfiguration.fixtureSession != nil,
               let scenario = DebugLaunchConfiguration.value(for: "MCO_LOOP_SCENARIO"),
-              ["ready", "line-script", "blank-copy", "stale-pointer", "legacy-cache", "old-decision"].contains(scenario)
+              ["ready", "line-script", "blank-copy", "stale-pointer", "legacy-cache", "legacy-backup", "old-decision"].contains(scenario)
         else { return nil }
         let today = SupabaseDateFormatting.todayDateString()
         var draft = fixtureDailyCardDraft
@@ -365,24 +365,25 @@ enum DebugLaunchFlags {
         let card = cards[0]
         let adjacent = cards[1]
         do {
-            if scenario == "legacy-cache" || scenario == "old-decision" {
+            if ["legacy-cache", "legacy-backup", "old-decision"].contains(scenario) {
                 guard let directory = DebugLaunchConfiguration.fixtureCacheDirectory else {
                     preconditionFailure("Cannot locate loop fixture cache")
                 }
-                let isLegacy = scenario == "legacy-cache"
+                let isBackup = scenario == "legacy-backup"
+                let isLegacy = scenario == "legacy-cache" || isBackup
                 var cachedCard = card
-                cachedCard.completionState = isLegacy ? .shot : nil
+                cachedCard.completionState = isBackup ? .usedBackup : isLegacy ? .shot : nil
                 var pendingCard = isLegacy ? cachedCard : adjacent
-                pendingCard.completionState = isLegacy ? .shot : .posted
+                pendingCard.completionState = isBackup ? .usedBackup : isLegacy ? .shot : .posted
                 let cached = CachedTodaySnapshot(
                     todayCard: cachedCard,
                     weekCards: [cachedCard, adjacent],
                     cachedAt: Date(),
                     source: "loop-\(scenario)",
-                    shotSceneIDs: isLegacy ? Set(card.scenes.map(\.id)) : [],
+                    shotSceneIDs: isBackup ? Set(card.scenes.prefix(1).map(\.id)) : isLegacy ? Set(card.scenes.map(\.id)) : [],
                     unsyncedDecision: LegacyTodayDecision(
                         cardID: pendingCard.id,
-                        decision: isLegacy ? .shot : .posted,
+                        decision: isBackup ? .backupStory : isLegacy ? .shot : .posted,
                         card: pendingCard
                     )
                 )

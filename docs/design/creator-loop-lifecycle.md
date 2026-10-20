@@ -12,12 +12,12 @@ A `Day` holds its current revision, previous revisions, lifecycle, last known li
 Each `DayRevision` owns its content, stable shot IDs, filming progress, and decision.
 Today selects the current date. Plan selects the tapped date.
 Date-only display uses UTC formatting; selecting Today uses the existing creator-day policy.
-A day change does not rewrite a saved revision or an intent's target date.
+A day change does not rewrite a saved revision or an intent's target date. A server past-date rejection can retarget an unaccepted first-idea intent to current today.
 
 `DayStoreSnapshot` saves days, archive entries, and the outbox together.
 `CachedTodaySnapshot` uses schema version 3 and supplies defaults for missing old fields.
 Unreadable or unsupported cache files move to a separate recovery file.
-Legacy Today, week, shot marks, and pending decisions migrate into the new snapshot.
+Legacy Today, week, shot marks, and pending decisions migrate into the new snapshot. Migration restores shot marks before backup, skipped, or saved-for-tomorrow decisions.
 Legacy first-idea and accepted-generation UserDefaults values migrate through decode-only models.
 Their keys are removed only after the migrated snapshot saves.
 A date or the former two-hour cutoff never expires saved work.
@@ -73,7 +73,7 @@ Repeated wake events share the existing task.
 | --- | --- |
 | `generate` | Creator, date, brief or regeneration input, requested revision, idempotency key, accepted run ID, and completed revision ID. |
 | `replaceDay` | The same generation data plus the prior revision ID. The repository calls `replace-day` instead of independent unpublish and generate requests. |
-| `firstIdea` | Original date, onboarding data, brief, profile-save state, run ID, and completed revision ID. Continue profile save, generation, and make ready in one intent. |
+| `firstIdea` | Target date, onboarding data, brief, profile-save state, run ID, and completed revision ID. Retarget an unaccepted past-date request to current today. Continue profile save, generation, and make ready in one intent. |
 | `editPackage` | Exact revision, patch, and action: `update`, `makeReady`, or `returnToDraft`. |
 | `decide` | Exact revision, decision or undo action, card snapshot, and archive snapshot. |
 
@@ -84,7 +84,7 @@ Replay retains the same key after a timeout, connection loss, relaunch, or missi
 Expected versions are saved and sent; current server behavior remains defined by the server contract.
 
 Success removes the intent after the resulting snapshot saves.
-`daily_card_not_found` resolves an explicitly removed target. Terminal generation failures resolve failed runs.
+`daily_card_not_found` resolves an explicitly removed target and restores a locally generating day. A rejected past-date generation is terminal and restores the prior lifecycle. An unaccepted first idea saves current today as its new date and replays. Terminal failed runs archive only their prior revision; a newly saved revision remains usable.
 Other errors, including rejected package edits, remain queued and expose an error for later replay.
 A failure blocks later requests for that revision during the current pass; other revisions can continue.
 No pending request is filtered out because its date is past.
@@ -213,3 +213,11 @@ failed with `sandbox-exec: sandbox_apply: Operation not permitted` in this restr
 All 85 app Swift files passed a syntax parse. This does not replace a successful build.
 No e2e run, simulator action, live database access, migration application, or deployment occurs in phase 6.
 Build and backend success do not establish runtime acceptance or zero creator-facing bugs.
+
+## Round 4 regression scenarios
+
+The loop suite adds `R4-L1`, `R4-C3`, and `R4-C2` for Undo posted in Archive,
+reposting after Unpublish and Make ready, and legacy backup cache migration with partial filming.
+The cache scenario uses `MCO_LOOP_SCENARIO=legacy-backup` and the existing session isolation.
+These scenarios are authored only. The separate e2e runner must execute them before runtime acceptance.
+See `creator-loop-round4.md` for the source findings, changed files, and local check results.

@@ -447,35 +447,38 @@ Deno.test("completePartialGenerationRun writes partial_generation error code", a
   assertEquals(op.filters, { id: RUN_ID, status: "running" });
 });
 
-Deno.test("completeDayGenerationRun writes day completion payload", async () => {
-  const state: FakeState = {
-    ops: [],
-    runs: [{ id: RUN_ID, status: "running" }],
-  };
-  const snapshot = { status: "draft", daily_card: { title: "day" } };
-  const result = await completeDayGenerationRun(
-    fakeAdmin(state) as never,
-    RUN_ID,
-    {
+Deno.test("completeDayGenerationRun writes or enriches an atomic day completion", async () => {
+  for (const status of ["running", "completed"]) {
+    const state: FakeState = {
+      ops: [],
+      runs: [{ id: RUN_ID, status }],
+    };
+    const snapshot = { status: "draft", daily_card: { title: "day" } };
+    const result = await completeDayGenerationRun(
+      fakeAdmin(state) as never,
+      RUN_ID,
+      {
+        output_snapshot: snapshot,
+        warnings: [],
+        assumptions: ["day assumption"],
+        completed_at: "2026-06-08T13:00:00.000Z",
+      },
+    );
+    assertEquals(result.error, null);
+
+    const op = state.ops.at(-1)!;
+    assertEquals(state.ops.length, status === "running" ? 1 : 2);
+    assertEquals(op.values, {
+      status: "completed",
       output_snapshot: snapshot,
       warnings: [],
       assumptions: ["day assumption"],
       completed_at: "2026-06-08T13:00:00.000Z",
-    },
-  );
-  assertEquals(result.error, null);
-
-  const op = state.ops[0];
-  assertEquals(op.values, {
-    status: "completed",
-    output_snapshot: snapshot,
-    warnings: [],
-    assumptions: ["day assumption"],
-    completed_at: "2026-06-08T13:00:00.000Z",
-    error_code: null,
-  });
-  assertEquals(op.filterOrder, ["id", "status"]);
-  assertEquals(op.filters, { id: RUN_ID, status: "running" });
+      error_code: null,
+    });
+    assertEquals(op.filterOrder, ["id", "status"]);
+    assertEquals(op.filters, { id: RUN_ID, status });
+  }
 });
 
 Deno.test("completeGenerationRunMinimal accepts caller-built fallback payload", async () => {
