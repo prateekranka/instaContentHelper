@@ -115,9 +115,22 @@ async function editableValue(editor: Locator) {
   return placeholder && value === placeholder ? '' : value;
 }
 
-export async function clearThenType(screen: Screen, editor: Locator, text: string) {
+export async function clearThenType(screen: Screen, editor: Locator, text: string, clearMethod: 'clear' | 'selection' = 'clear') {
   await scrollToControl(screen, editor);
   let remaining = await editableValue(editor);
+  if (clearMethod === 'selection') {
+    if (remaining.length > 0) {
+      await editor.tap();
+      await editor.longPress();
+      const selectAll = screen.getByText('Select All', { exact: true });
+      await expect(selectAll).toBeVisible();
+      await selectAll.tap();
+      await screen.getByTestId('delete', { visible: true }).tap();
+    }
+    await expect.poll(() => editableValue(editor)).toBe('');
+    await typeInChunks(editor, text);
+    return;
+  }
   while (remaining.length > 0) {
     const previousLength = remaining.length;
     try {

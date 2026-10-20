@@ -471,17 +471,6 @@ final class AppServices {
         shotSceneIDs.contains(scene.id)
     }
 
-    private static func sceneProgressKey(_ scene: ShotScene) -> String {
-        let normalizedTitle = scene.title
-            .folding(
-                options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "en_US_POSIX")
-            )
-            .split { !$0.isLetter && !$0.isNumber }
-            .joined(separator: " ")
-        return "\(scene.number)|\(normalizedTitle)"
-    }
-
     func markSceneShot(_ scene: ShotScene) {
         guard todayCard.scenes.contains(where: { $0.id == scene.id }),
               !shotSceneIDs.contains(scene.id) else { return }
@@ -579,10 +568,6 @@ final class AppServices {
         }
     }
 
-    var nextOpenWeeklyDay: WeeklyDay? {
-        weeklyPlan.days.first { $0.state == .open }
-    }
-
     var canPublishCurrentWeek: Bool {
         guard canGenerateContent,
               !isPublishingWeek,
@@ -607,15 +592,6 @@ final class AppServices {
         let planDates = Set(weeklyPlan.days.compactMap(\.scheduledDate))
         let draftDates = Set(draft.dailyCards.map(\.scheduledDate))
         return planDates.count == 7 && planDates == draftDates
-    }
-
-    var isWeeklyBriefDirty: Bool {
-        weeklyBriefDraftText.trimmingCharacters(in: .whitespacesAndNewlines) !=
-            weeklyPlan.weeklyBriefText.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    func updateWeeklyDateWindow(startDate: String, endDate: String) {
-        updateWeeklyStartDate(startDate)
     }
 
 #if DEBUG
@@ -1128,17 +1104,6 @@ final class AppServices {
         return latestGenerationSummary?.dailyCards.first(where: { $0.id == dailyCardID })
     }
 
-    func applyRegeneratedDay(_ card: GeneratedDailyCardDraft) {
-        do {
-            if case .generating = dayStore.day(for: card.scheduledDate)?.lifecycle {
-                try dayStore.transition(.generated(card), on: card.scheduledDate)
-            } else {
-                try dayStore.receive(card)
-            }
-            saveTodaySnapshot(source: "generated-day")
-        } catch { lastRepositoryError = error.localizedDescription }
-    }
-
     func applyStoryboardThumbnailAssets(
         _ assets: [StoryboardThumbnailAsset],
         toDailyCardID dailyCardID: UUID
@@ -1158,12 +1123,6 @@ final class AppServices {
     private static func hasMissingStoryboardThumbnails(for card: GeneratedDailyCardDraft) -> Bool {
         let rows = GeneratedStoryboardBreakdown.rows(for: card)
         return rows.contains { $0.thumbnailURL == nil }
-    }
-
-    func updateWeeklyDayState(dayID: UUID, state: WeeklyDayState) {
-        Task {
-            _ = await updateWeeklyDayStateImmediately(dayID: dayID, state: state)
-        }
     }
 
     @discardableResult
@@ -1417,12 +1376,6 @@ final class AppServices {
         )
     }
 
-    func publishCurrentWeek() {
-        Task {
-            await publishCurrentWeekImmediately()
-        }
-    }
-
     func publishCurrentWeekImmediately() async {
         guard !isPublishingWeek else { return }
         guard canPublishCurrentWeek else {
@@ -1567,12 +1520,6 @@ final class AppServices {
         }
     }
 
-    func checkRuntimeHealth() {
-        Task {
-            await checkRuntimeHealthImmediately()
-        }
-    }
-
     func checkRuntimeHealthImmediately() async {
         guard isLiveSupabaseRuntime else {
             supabaseHealthStatus = .sample
@@ -1598,12 +1545,6 @@ final class AppServices {
             geminiHealthStatus = .down(error.localizedDescription)
             lastRuntimeHealthCheckedAt = Date()
             lastRuntimeHealthError = error.localizedDescription
-        }
-    }
-
-    func refreshWeeklyData() {
-        Task {
-            await refreshWeeklyDataFromRepositories()
         }
     }
 
@@ -1762,18 +1703,6 @@ final class AppServices {
         }
     }
 
-    var isTodayStale: Bool {
-        switch todayContentState {
-        case .missingPublishedCard(let date):
-            return SupabaseDateFormatting.isDatePast(date, todayString: currentTodayDateString)
-        case .unavailable:
-            return true
-        case .loading, .ready:
-            guard let scheduledDate = todayCard.scheduledDate else { return false }
-            return SupabaseDateFormatting.isDatePast(scheduledDate, todayString: currentTodayDateString)
-        }
-    }
-
     func refreshFromRepositoriesImmediately() async {
         isRefreshingRepository = true
         lastRepositoryRefreshAttemptAt = Date()
@@ -1916,35 +1845,6 @@ final class AppServices {
             lastRepositoryError = nil
         } catch {
             lastRepositoryError = error.localizedDescription
-        }
-    }
-
-    private func refreshWeeklyDataFromRepositories() async {
-        let readVersion = dayStore.changeVersion
-        var refreshError: Error?
-
-        do {
-            let weeklyContent = try await repositories.weeklyPlans.currentWeeklyContent(for: context)
-            weeklyPlan = weeklyContent.workingPlan ?? weeklyContent.publishedPlan
-            weeklyBriefDraftText = weeklyPlan.weeklyBriefText
-            setGenerationSummary(weeklyContent.generatedDraft, readVersion: readVersion)
-            weeklyIdeas = weeklyContent.ideaBank
-        } catch {
-            refreshError = error
-        }
-
-        if let refreshError {
-            lastRepositoryRefreshError = refreshError.localizedDescription
-        } else {
-            lastRepositoryRefreshError = nil
-            normalizeManagerWeekStartIfStale()
-        }
-    }
-
-
-    func scheduleTodayNotificationIfNeeded() {
-        Task {
-            await scheduleTodayNotificationIfNeededImmediately()
         }
     }
 
@@ -2417,10 +2317,6 @@ final class AppServices {
         entry.scheduledDate = archiveDate
         entry.decisionAt = ISO8601DateFormatter().string(from: Date())
         return entry
-    }
-
-    private func upsertLocalArchiveEntry(_ entry: ArchiveEntry, for card: DailyCard, authoritative: Bool = false) {
-        dayStore.mergeArchive([entry], authoritative: authoritative)
     }
 
     private func cancelTodayNotification() async {

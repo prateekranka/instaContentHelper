@@ -117,7 +117,7 @@
 		DC744D8BDFF1C05E194D88F8 /* DeviceReadDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47FD85E986A31DFFB0B5FF3F /* DeviceReadDTOs.swift */; };
 		DE6ECBE40B13D03BDD2F3983 /* GeneratedStoryboardBreakdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7E49F920DF70C5EEE2E7C2 /* GeneratedStoryboardBreakdown.swift */; };
 		E3BD409D4CCB2EFABDB5049F /* NotTodaySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA513EE516274570D68E102 /* NotTodaySheet.swift */; };
-		E626A0AA2635DC1E7206DAB3 /* AcceptedDayGenerationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99EF8764C590F7B789BCCFD3 /* AcceptedDayGenerationStore.swift */; };
+		E626A0AA2635DC1E7206DAB3 /* ContentOutbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99EF8764C590F7B789BCCFD3 /* ContentOutbox.swift */; };
 		E6E2CC4D3DC952FADCDEBD9A /* YouCurrentContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 637005E1E27D3F958967C239 /* YouCurrentContextView.swift */; };
 		E960AE9810B9CBB549538E38 /* SupabaseRepositories.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90532CA91160D600CF200666 /* SupabaseRepositories.swift */; };
 		EC533C490D01ABEA8AC52476 /* ArchiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D30B229F5943E73438D46F5 /* ArchiveView.swift */; };
@@ -218,7 +218,7 @@
 		98A7AB76E1BB596E16726DE0 /* PlanCalendarSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCalendarSheet.swift; sourceTree = "<group>"; };
 		99A7AEA0EFE2AB580A6F2775 /* TestGeneratedDraftFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestGeneratedDraftFactory.swift; sourceTree = "<group>"; };
 		99D8093F95A3FBAF1E2138BF /* SupabaseClientFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientFactory.swift; sourceTree = "<group>"; };
-		99EF8764C590F7B789BCCFD3 /* AcceptedDayGenerationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcceptedDayGenerationStore.swift; sourceTree = "<group>"; };
+		99EF8764C590F7B789BCCFD3 /* ContentOutbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentOutbox.swift; sourceTree = "<group>"; };
 		9A630640EC84FFD5B4C17934 /* WeeklyPublishingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyPublishingModels.swift; sourceTree = "<group>"; };
 		A06425D2069B1BF8AF650AAB /* OnboardingFirstIdeaHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFirstIdeaHandoff.swift; sourceTree = "<group>"; };
 		A448CD53A79DDA0644C8DD09 /* Fixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fixtures.swift; sourceTree = "<group>"; };
@@ -412,7 +412,7 @@
 		891ADFBC4B2E968BEECE2A7C /* Daily */ = {
 			isa = PBXGroup;
 			children = (
-				99EF8764C590F7B789BCCFD3 /* AcceptedDayGenerationStore.swift */,
+				99EF8764C590F7B789BCCFD3 /* ContentOutbox.swift */,
 				F60A8FF2DCE5BCCB70962CBC /* DayGenerationView.swift */,
 				44554BE3268355F5F4330553 /* GeneratedDayPlannedContent.swift */,
 				4D666FF53604015635072B11 /* PackageFolderTabs.swift */,
@@ -728,7 +728,7 @@
 				30A0AAA05F5ECB5CD53E6592 /* AIConsentCopy.swift in Sources */,
 				8AA90468A6A1FFE4CEF2E7A9 /* AIConsentSheet.swift in Sources */,
 				51A6A595070D5DC95FDA256D /* AIConsentStore.swift in Sources */,
-				E626A0AA2635DC1E7206DAB3 /* AcceptedDayGenerationStore.swift in Sources */,
+				E626A0AA2635DC1E7206DAB3 /* ContentOutbox.swift in Sources */,
 				C43084DD68C8499F5DCF0E6A /* AdminShellView.swift in Sources */,
 				B08008609B240EAB892F2007 /* AppRepositories.swift in Sources */,
 				9566967BE497BF7D432D8F2D /* AppRuntime.swift in Sources */,

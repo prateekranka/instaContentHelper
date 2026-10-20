@@ -1,6 +1,6 @@
 # Creator loop server contract
 
-Phase 1 implementation, with the posted-undo correction after phase 3. Local changes only.
+Implemented through phase 6, including the posted-undo correction and shot validation. Local changes only.
 No live migration or deployment is authorized.
 The approved scope is section 3 of `creator-loop-redesign.md`.
 
@@ -132,7 +132,24 @@ or `shootability`:
 
 Both the HTTP boundary and the SQL function enforce this rule.
 Backup text is stored as a JSON string when supplied; existing JSON objects survive when the field is omitted.
-Existing numeric and scene-list behavior remains.
+Existing numeric behavior remains.
+
+If `scene_list` is supplied, it must be an array. Each element must be an object with:
+
+- `id`: a string. The boundary does not require UUID syntax.
+- `title`: a string.
+- `duration`: a string, including the client's existing `"5 sec"` form.
+- `dialogue`: an optional string. An omitted value and an empty string are valid; explicit null is invalid.
+
+Reject a malformed array or shot with HTTP 400, `invalid_package_scene_list`, and `field = scene_list`.
+For an invalid shot, include its zero-based `shot_index`. Invalid list types have no shot index.
+No part of a rejected patch is written. An omitted `scene_list` keeps the stored shots;
+an empty array remains valid. This validation checks types, without new nonblank, duration-format, or uniqueness rules.
+Additional shot metadata is retained, including the current client's `number` and `symbol` fields.
+The edge function, SQL RPC, and `FakeServer` enforce the same shot shape.
+The SQL change is in the new `20261021090000_validate_ready_day_scene_list.sql` migration.
+Earlier migrations remain unchanged. Replacing the SQL function preserves its service-only execution grants.
+
 A valid edit keeps the revision ID and ready status. It cannot change an existing posted archive snapshot.
 Historical revision IDs cannot target package edits. A date selects only its current ready revision.
 
@@ -259,7 +276,7 @@ The conversion does not invent missing history.
 
 ## Local checks
 
-Run Deno checks from the repository root:
+Run Deno checks from `supabase/functions` or the repository root:
 
 ```sh
 deno task ci:backend
@@ -274,6 +291,10 @@ MCO_LOCAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
 ```
 
 The database test refuses remote URLs. It rolls back its fixture data.
+It rejects malformed scene lists and shots without changing any revision fields.
+It accepts empty lists and current client shots, including optional dialogue and retained metadata.
+The edge-function Deno tests cover all required field types, optional dialogue, later invalid shots,
+the current Swift payload, and SQL error-code and shot-index forwarding without a database connection.
 It checks current posted undo through both decision actions, new undo timestamps, retained text snapshots,
 and safe retries. It rejects decision changes and metadata changes for replaced posted and shot revisions.
 It also checks direct archive mutation and deletion guards, frozen posted snapshots, late undecided writes,

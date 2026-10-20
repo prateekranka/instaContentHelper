@@ -255,6 +255,16 @@ actor FakeServer {
                     return Self.failure("blank_package_text", status: 400, field: field)
                 }
             }
+            if let sceneList = patch["scene_list"] {
+                guard case .array(let scenes) = sceneList else { return Self.failure("invalid_package_scene_list", status: 400, field: "scene_list") }
+                for (index, scene) in scenes.enumerated() {
+                    guard let shot = scene.objectValue,
+                          shot.text("id") != nil, shot.text("title") != nil, shot.text("duration") != nil,
+                          shot["dialogue"] == nil || shot.text("dialogue") != nil else {
+                        return FakeServerResponse(statusCode: 400, body: .object(["error": .string("invalid_package_scene_list"), "field": .string("scene_list"), "shot_index": .number(Double(index))]))
+                    }
+                }
+            }
         }
         guard var row = currentRow(payload) else { return Self.failure("daily_card_not_found", status: 404) }
         let id = row.uuid("id")!
@@ -882,16 +892,6 @@ struct FixturePublishedContentStore: Sendable {
     func savePublishedContent(cards: [DailyCard], todayCard: DailyCard?) async { try? await server.savePublishedContent(cards: cards, todayCard: todayCard) }
 }
 
-struct FixtureCreatorProfileStore: Sendable {
-    let server: FakeServer
-    init(server: FakeServer = .shared) { self.server = server }
-}
-
-struct FixtureArchiveStore: Sendable {
-    let server: FakeServer
-    init(defaults: UserDefaults) { server = .shared }
-}
-
 struct FixtureTodayCardRepository: TodayCardRepository {
     let server: FakeServer
     init(publishedStore: FixturePublishedContentStore? = nil) { server = publishedStore?.server ?? .shared }
@@ -929,7 +929,7 @@ struct FixtureTodayCardRepository: TodayCardRepository {
 
 struct FixtureWeeklyPlanRepository: WeeklyPlanRepository {
     let server: FakeServer
-    init(plan: WeeklyPlan = .raceWeek, ideas: [WeeklyIdea] = WeeklyIdea.raceWeekBank, publishedStore: FixturePublishedContentStore? = nil) {
+    init(publishedStore: FixturePublishedContentStore? = nil) {
         server = publishedStore?.server ?? .shared
     }
 
@@ -1084,7 +1084,7 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
 
 struct FixtureCreatorProfileRepository: CreatorProfileRepository {
     let server: FakeServer
-    init(store: FixtureCreatorProfileStore = FixtureCreatorProfileStore()) { server = store.server }
+    init(server: FakeServer = .shared) { self.server = server }
 
     func activeProfileSummary(for context: WorkspaceContext) async throws -> CreatorProfileSummary {
         let response: SupabaseCreatorProfileReadResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .creatorProfile, creatorID: context.creatorID), context: context)
@@ -1100,7 +1100,7 @@ struct FixtureCreatorProfileRepository: CreatorProfileRepository {
 
 struct FixtureArchiveRepository: ArchiveRepository {
     let server: FakeServer
-    init(store: FixtureArchiveStore? = nil) { server = store?.server ?? .shared }
+    init(server: FakeServer = .shared) { self.server = server }
 
     func entries(for context: WorkspaceContext) async throws -> [ArchiveEntry] {
         let response: SupabaseArchiveReadResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .archive, creatorID: context.creatorID), context: context)
@@ -1144,8 +1144,6 @@ struct FixturePlanDayIdeaRepository: PlanDayIdeaRepository {
         return response.ideas.map { PlanDayIdeaCandidate(title: $0.title, summary: $0.summary, dayBrief: $0.dayBrief) }
     }
 }
-
-struct AppFixtureDayGenerationUnavailableRepository: DayGenerationRepository {}
 
 struct AppFixtureStoryboardThumbnailUnavailableRepository: StoryboardThumbnailRepository {}
 

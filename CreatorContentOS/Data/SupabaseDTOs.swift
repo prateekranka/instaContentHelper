@@ -952,38 +952,6 @@ struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
     }
 }
 
-struct SupabaseDailyCardDecisionUpdate: Encodable, Sendable {
-    var status: String
-    var decisionAt: String
-    var completedByMemberID: UUID
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case decisionAt = "decision_at"
-        case completedByMemberID = "completed_by_member_id"
-    }
-}
-
-struct SupabaseArchiveEntryUpsert: Encodable, Sendable {
-    var workspaceID: UUID
-    var creatorID: UUID
-    var dailyCardID: UUID
-    var archiveDate: String
-    var decision: String
-    var outputLine: String
-    var hasPostThumbnail: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case workspaceID = "workspace_id"
-        case creatorID = "creator_id"
-        case dailyCardID = "daily_card_id"
-        case archiveDate = "archive_date"
-        case decision
-        case outputLine = "output_line"
-        case hasPostThumbnail = "has_post_thumbnail"
-    }
-}
-
 struct SupabasePublishWeekRequest: Encodable, Sendable {
     var creatorID: UUID
     var memberID: UUID

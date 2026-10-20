@@ -395,7 +395,7 @@ test('loop R3-C5: the initial ready fixture can save its first scene edit', asyn
   await app.back();
   await relaunchLoopSession(device, session);
   await screen.getByTestId('today.startFilming').tap();
-  await expect(screen.getByText('Saved initial fixture edit', { exact: true })).toBeVisible();
+  await expect(screen.getByTestId('shoot.scene.1').filter({ hasText: 'Saved initial fixture edit' })).toBeVisible();
 });
 
 test('loop R3-C6: onboarding interests survive the same fixture session relaunch', { timeout: 180_000 }, async ({ screen, device }) => {
@@ -467,7 +467,7 @@ test('loop R3-C7: Post refuses blank script and caption without changing the sav
   const originalCaption = await caption.inputValue();
   expect(originalScript.trim().length).toBeGreaterThan(0);
   expect(originalCaption.trim().length).toBeGreaterThan(0);
-  await clearThenType(screen, script, '');
+  await clearThenType(screen, script, '', 'selection');
   await dismissKeyboard(screen, 'post.keyboardDone');
   await expect(save).toBeDisabled();
   await clearThenType(screen, caption, '');
@@ -477,7 +477,7 @@ test('loop R3-C7: Post refuses blank script and caption without changing the sav
   await screen.scrollUntilVisible(error, { direction: 'up' });
   await expect(error).toBeVisible();
   await expect(screen.getByTestId('post.cancel')).toBeVisible();
-  await clearThenType(screen, script, 'A valid script draft that must not be saved.');
+  await clearThenType(screen, script, 'A valid script draft that must not be saved.', 'selection');
   await dismissKeyboard(screen, 'post.keyboardDone');
   await expect(save).toBeDisabled();
   await clearThenType(screen, caption, 'A valid caption draft that must not be saved.');

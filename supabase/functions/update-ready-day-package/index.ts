@@ -141,6 +141,30 @@ export async function handleUpdateReadyDayPackageRequest(
     }
   }
 
+  if ("scene_list" in packagePatch) {
+    const scenes = packagePatch.scene_list;
+    if (!Array.isArray(scenes)) {
+      return jsonResponse({
+        error: "invalid_package_scene_list",
+        field: "scene_list",
+      }, 400);
+    }
+    for (const [shotIndex, shot] of scenes.entries()) {
+      if (
+        typeof shot !== "object" || shot === null || Array.isArray(shot) ||
+        typeof shot.id !== "string" || typeof shot.title !== "string" ||
+        typeof shot.duration !== "string" ||
+        ("dialogue" in shot && typeof shot.dialogue !== "string")
+      ) {
+        return jsonResponse({
+          error: "invalid_package_scene_list",
+          field: "scene_list",
+          shot_index: shotIndex,
+        }, 400);
+      }
+    }
+  }
+
   const { session } = authResult;
   const creatorResult = await assertCreator(
     admin,
@@ -176,6 +200,7 @@ export async function handleUpdateReadyDayPackageRequest(
     return jsonResponse({
       error: stableError(result.error),
       field: result.field,
+      shot_index: result.shot_index,
     }, status);
   }
 
@@ -217,6 +242,7 @@ function stableError(code: string): string {
   switch (code) {
     case "blank_package_text":
     case "invalid_package_text":
+    case "invalid_package_scene_list":
     case "invalid_update_ready_day_package_payload":
     case "daily_card_not_found":
     case "daily_card_not_ready":

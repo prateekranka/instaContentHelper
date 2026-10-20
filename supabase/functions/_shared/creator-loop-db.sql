@@ -19,6 +19,8 @@ declare
   action_name text;
   decision_name text;
   card jsonb;
+  invalid_scene_list jsonb;
+  before_scene_edit jsonb;
 begin
   insert into public.workspaces(id, name) values(w, 'Local revision test');
   insert into public.creators(id, workspace_id, display_name) values(c, w, 'Local creator');
@@ -40,6 +42,47 @@ begin
   result := public.update_ready_day_package(jsonb_build_object('workspace_id', w, 'creator_id', c, 'daily_card_id', old_id,
     'package', jsonb_build_object('caption', chr(160) || chr(8192) || chr(65279))));
   if result->>'error' is distinct from 'blank_package_text' then raise exception 'unicode blank edit accepted: %', result; end if;
+  select to_jsonb(dc) into before_scene_edit from public.daily_cards dc where id = old_id;
+  for invalid_scene_list in select value from jsonb_array_elements('[
+    null, {}, "shots", 1, true,
+    [null], [[]], ["shot"], [1], [true],
+    [{}],
+    [{"title":"Shot","duration":"5 sec"}],
+    [{"id":"shot-1","duration":"5 sec"}],
+    [{"id":"shot-1","title":"Shot"}],
+    [{"id":1,"title":"Shot","duration":"5 sec"}],
+    [{"id":"shot-1","title":null,"duration":"5 sec"}],
+    [{"id":"shot-1","title":"Shot","duration":5}],
+    [{"id":"shot-1","title":"Shot","duration":"5 sec","dialogue":null}],
+    [{"id":"shot-1","title":"Shot","duration":"5 sec","dialogue":{}}],
+    [{"id":"shot-1","title":"Shot","duration":"5 sec"}, false]
+  ]'::jsonb) loop
+    result := public.update_ready_day_package(jsonb_build_object('workspace_id', w, 'creator_id', c, 'daily_card_id', old_id,
+      'package', jsonb_build_object('caption', 'Must not be saved', 'scene_list', invalid_scene_list)));
+    if result->>'error' is distinct from 'invalid_package_scene_list'
+      or result->>'field' is distinct from 'scene_list' or result->>'status' is distinct from '400' then
+      raise exception 'invalid scene list accepted: %, result: %', invalid_scene_list, result;
+    end if;
+    if jsonb_typeof(invalid_scene_list) = 'array' and result->>'shot_index' is distinct from
+      (case when jsonb_array_length(invalid_scene_list) = 2 then '1' else '0' end) then
+      raise exception 'incorrect invalid shot index: %', result;
+    end if;
+    if (select to_jsonb(dc) from public.daily_cards dc where id = old_id) is distinct from before_scene_edit then
+      raise exception 'invalid scene list partially changed the revision';
+    end if;
+  end loop;
+  for invalid_scene_list in select value from jsonb_array_elements('[
+    [],
+    [{"id":"shot-1","number":1,"title":"Shot","duration":"5 sec","symbol":"camera","dialogue":"Line"},
+     {"id":"shot-2","title":"Silent","duration":"0 sec"},
+     {"id":"shot-3","title":"Blank line","duration":"3 sec","dialogue":""}]
+  ]'::jsonb) loop
+    result := public.update_ready_day_package(jsonb_build_object('workspace_id', w, 'creator_id', c, 'daily_card_id', old_id,
+      'package', jsonb_build_object('scene_list', invalid_scene_list)));
+    if result ? 'error' or (select scene_list from public.daily_cards where id = old_id) is distinct from invalid_scene_list then
+      raise exception 'valid scene list rejected or changed: %', result;
+    end if;
+  end loop;
   result := public.update_ready_day_package(jsonb_build_object('workspace_id', w, 'creator_id', c, 'daily_card_id', old_id,
     'package', jsonb_build_object('title', 'Edited title', 'caption', 'Edited caption')));
   if result ? 'error' then raise exception 'valid edit failed: %', result; end if;

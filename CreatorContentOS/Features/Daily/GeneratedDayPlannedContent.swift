@@ -24,52 +24,14 @@ struct GeneratedReadOnlyField: View {
 }
 
 enum SceneTiming {
-    static func windows(for scenes: [ShotScene]) -> [String] {
-        var cursor = 0
-        return scenes.map { scene in
-            let start = cursor
-            cursor += scene.durationSeconds
-            return "\(timecode(start))-\(timecode(cursor))"
-        }
-    }
-
     static func totalSeconds(for scenes: [ShotScene]) -> Int? {
         scenes.reduce(0) { $0 + $1.durationSeconds }
-    }
-
-    static func sceneTitle(for scenes: [ShotScene], index: Int) -> String? {
-        guard let scene = scenes[safe: index] else { return nil }
-        return "Scene \(String(format: "%02d", scene.number)): \(scene.title)"
-    }
-
-    private static func timecode(_ seconds: Int) -> String {
-        "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
     }
 }
 
 extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
-    }
-}
-
-extension ProductionTimelineItem {
-    var timelineTarget: String? {
-        videoPortion?.nilIfBlank ?? placement?.nilIfBlank ?? shot?.nilIfBlank
-    }
-
-    var timelineBody: String {
-        voiceover?.nilIfBlank
-            ?? onScreenText?.nilIfBlank
-            ?? detail.nilIfBlank
-            ?? title.nilIfBlank
-            ?? "Detail not specified."
-    }
-}
-
-extension String {
-    var containsTimestamp: Bool {
-        range(of: #"(\d{1,2}:\d{2}|\d+\s?-\s?\d+\s?s|\d+\s?s)"#, options: .regularExpression) != nil
     }
 }
 
