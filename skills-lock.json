@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "skills": {
+    "animate": {
+      "source": "../../../../../../agent-skills",
+      "sourceType": "local",
+      "computedHash": "7598d33e7f60dd5c24531eaaa897621cc3bdb48e8050324211627973bc59c4ce"
+    },
+    "bug-hunt-until-zero": {
+      "source": "../../../../../../agent-skills",
+      "sourceType": "local",
+      "computedHash": "39adb626bb624e3ff5898d5f0d36835b14a45c77d535469625fbd26108e253af"
+    },
+    "create-verification-skill": {
+      "source": "tester-army/e2e",
+      "sourceType": "github",
+      "skillPath": "skills/create-verification-skill/SKILL.md",
+      "computedHash": "39006e845be4efc091556f41726cc72237fd3a97e51b932396dd9d691bb27404"
+    },
+    "e2e": {
+      "source": "tester-army/e2e",
+      "sourceType": "github",
+      "skillPath": "skills/e2e/SKILL.md",
+      "computedHash": "8f9c3f2a187399fa01bfb4a59f344362e4eca2e6f2ac1e7603c1b165c07c526e"
+    },
+    "find-animation-opportunities": {
+      "source": "../../../../../../agent-skills",
+      "sourceType": "local",
+      "computedHash": "465d087c41768e4f14ed640dd049036009f613feb55baaa5831b68b33178f9d2"
+    },
+    "improve-animations": {
+      "source": "../../../../../../agent-skills",
+      "sourceType": "local",
+      "computedHash": "524ea241e41d58bbdd8e288700fe24f5725e2a2f3ae7186ad7cebf9055058356"
+    },
+    "motion-durations": {
+      "source": "../../../../../../agent-skills",
+      "sourceType": "local",
+      "computedHash": "b3f50eb2843c74dd7405f05425abf7e639eedb24b3a0309b80f570b0c12b13e9"
+    },
+    "review-animations": {
+      "source": "../../../../../../agent-skills",
+      "sourceType": "local",
+      "computedHash": "b4e5f0f4fe3e2743c85bf7354108f48a0b9d502cb20ef5c4a9c195da91f93736"
+    },
+    "xctrace": {
+      "source": "artemnovichkov/xcode-skills",
+      "sourceType": "github",
+      "skillPath": "skills/xctrace/SKILL.md",
+      "computedHash": "d107312a1aa2a92806265862470f56a036f464d2c350ab42d77ac910eae9933c"
+    }
+  }
+}

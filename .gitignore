@@ -42,3 +42,6 @@ node_modules/
 *.p8
 *.p12
 /contenthelper-*.png.png
+
+.agents/skills/xctrace/
+.claude/skills/xctrace/
