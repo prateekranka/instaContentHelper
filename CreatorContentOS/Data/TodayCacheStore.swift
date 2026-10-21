@@ -26,6 +26,21 @@ struct DayStoreSnapshot: Codable, Hashable, Sendable {
     }
 }
 
+struct DayCardProjection {
+    let card: DailyCard
+    let shotSceneCount: Int
+    let unshotSceneCount: Int
+    let areAllScenesShot: Bool
+
+    init(revision: DayRevision) {
+        card = revision.dailyCard
+        let shotIDs = revision.filmingProgress.shotSceneIDs
+        shotSceneCount = card.scenes.count { shotIDs.contains($0.id) }
+        unshotSceneCount = max(card.scenes.count - shotSceneCount, 0)
+        areAllScenesShot = !card.scenes.isEmpty && unshotSceneCount == 0
+    }
+}
+
 @MainActor
 @Observable
 final class DayStore {
@@ -33,6 +48,7 @@ final class DayStore {
     private(set) var days: [String: Day] = [:]
     private(set) var changeVersion = 0
     private var dayVersions: [String: Int] = [:]
+    @ObservationIgnored private var cardProjections: [String: [UUID: DayCardProjection]] = [:]
     private(set) var archiveEntries: [ArchiveEntry] = []
     var ideaSuggestions: [String: PlanDayIdeasCacheEntry] = [:]
     private(set) var outbox: [ContentIntent] = []
@@ -51,22 +67,34 @@ final class DayStore {
 
     var readyCards: [DailyCard] {
         days.values.filter { $0.lifecycle.exposesReadyPackage }
-            .compactMap { $0.revision?.dailyCard }
+            .compactMap { projection(for: $0.identity.scheduledDate)?.card }
             .sorted { ($0.scheduledDate ?? "") < ($1.scheduledDate ?? "") }
     }
 
     func day(for date: String) -> Day? { days[date] }
 
+    func projection(for date: String, revisionID: UUID? = nil) -> DayCardProjection? {
+        guard let day = days[date], let id = revisionID ?? day.revision?.id else { return nil }
+        if let cached = cardProjections[date]?[id] { return cached }
+        guard let revision = day.revision.flatMap({ $0.id == id ? $0 : nil })
+            ?? day.previousRevisions.first(where: { $0.id == id }) else { return nil }
+        let projection = DayCardProjection(revision: revision)
+        cardProjections[date, default: [:]][id] = projection
+        return projection
+    }
+
     func card(revisionID: UUID) -> DailyCard? {
         for day in days.values {
-            if let revision = day.revision, revision.id == revisionID { return revision.dailyCard }
-            if let revision = day.previousRevisions.first(where: { $0.id == revisionID }) { return revision.dailyCard }
+            if day.revision?.id == revisionID || day.previousRevisions.contains(where: { $0.id == revisionID }) {
+                return projection(for: day.identity.scheduledDate, revisionID: revisionID)?.card
+            }
         }
         return nil
     }
 
     func restore(_ snapshot: DayStoreSnapshot) {
         for day in snapshot.days where day.identity.workspaceID == context.workspaceID && day.identity.creatorID == context.creatorID {
+            cardProjections[day.identity.scheduledDate] = nil
             days[day.identity.scheduledDate] = day
             changeVersion += 1
             dayVersions[day.identity.scheduledDate] = changeVersion
@@ -107,6 +135,7 @@ final class DayStore {
     func transition(_ move: DayTransition, on date: String) throws {
         var day = days[date] ?? Day(identity: DayIdentity(workspaceID: context.workspaceID, creatorID: context.creatorID, scheduledDate: date))
         try day.transition(move)
+        cardProjections[date] = nil
         days[date] = day
         changeVersion += 1
         dayVersions[date] = changeVersion
@@ -370,14 +399,27 @@ protocol TodayCacheStoring {
     func loadSnapshot(for context: WorkspaceContext) throws -> CachedTodaySnapshot?
     func saveSnapshot(_ snapshot: CachedTodaySnapshot, for context: WorkspaceContext) throws
     func clearSnapshot(for context: WorkspaceContext) throws
+    @MainActor func saveSnapshotInBackground(_ snapshot: CachedTodaySnapshot, for context: WorkspaceContext) async throws
 }
 
-struct FileTodayCacheStore: TodayCacheStoring {
+extension TodayCacheStoring {
+    @MainActor
+    func saveSnapshotInBackground(_ snapshot: CachedTodaySnapshot, for context: WorkspaceContext) async throws {
+        try saveSnapshot(snapshot, for: context)
+    }
+}
+
+struct FileTodayCacheStore: TodayCacheStoring, Sendable {
+    private static let fileQueue = DispatchQueue(label: "contenthelper.today-cache", qos: .userInitiated)
     private let baseDirectory: URL?
 
     init(baseDirectory: URL? = nil) { self.baseDirectory = baseDirectory }
 
     func loadSnapshot(for context: WorkspaceContext) throws -> CachedTodaySnapshot? {
+        try Self.fileQueue.sync { try loadSnapshotOnFileQueue(for: context) }
+    }
+
+    private func loadSnapshotOnFileQueue(for context: WorkspaceContext) throws -> CachedTodaySnapshot? {
         let url = try fileURL(for: context)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         let data = try Data(contentsOf: url)
@@ -392,12 +434,30 @@ struct FileTodayCacheStore: TodayCacheStoring {
         }
     }
 
+    @MainActor
+    func saveSnapshotInBackground(_ snapshot: CachedTodaySnapshot, for context: WorkspaceContext) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            Self.fileQueue.async {
+                do {
+                    try saveSnapshotOnFileQueue(snapshot, for: context)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     func saveSnapshot(_ snapshot: CachedTodaySnapshot, for context: WorkspaceContext) throws {
+        try Self.fileQueue.sync { try saveSnapshotOnFileQueue(snapshot, for: context) }
+    }
+
+    private func saveSnapshotOnFileQueue(_ snapshot: CachedTodaySnapshot, for context: WorkspaceContext) throws {
         let directory = try directoryURL()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let existingURL = try fileURL(for: context)
         if FileManager.default.fileExists(atPath: existingURL.path) {
-            do { _ = try loadSnapshot(for: context) }
+            do { _ = try loadSnapshotOnFileQueue(for: context) }
             catch {
                 if FileManager.default.fileExists(atPath: existingURL.path) { throw error }
             }
@@ -409,6 +469,10 @@ struct FileTodayCacheStore: TodayCacheStoring {
     }
 
     func clearSnapshot(for context: WorkspaceContext) throws {
+        try Self.fileQueue.sync { try clearSnapshotOnFileQueue(for: context) }
+    }
+
+    private func clearSnapshotOnFileQueue(for context: WorkspaceContext) throws {
         let url = try fileURL(for: context)
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         try FileManager.default.removeItem(at: url)

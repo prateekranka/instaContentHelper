@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 enum SupabaseJSONValue: Codable, Hashable, Sendable {
     case string(String)
@@ -1288,7 +1289,7 @@ struct SupabaseRuntimeHealthResponse: Decodable, Hashable, Sendable {
     func report(fallbackDate: Date = Date()) -> RuntimeHealthReport {
         let checkedAtDate: Date = {
             guard let checkedAt,
-                  let parsed = ISO8601DateFormatter().date(from: checkedAt)
+                  let parsed = SupabaseDateFormatting.timestamp(from: checkedAt)
             else {
                 return fallbackDate
             }
@@ -1311,39 +1312,52 @@ enum SupabaseDateFormatting {
         return calendar
     }
 
-    private static func calendarDayFormatter() -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        return formatter
+    private struct Formatters {
+        var calendarDays: [String: DateFormatter] = [:]
+        let timestamp = ISO8601DateFormatter()
+    }
+
+    private static let formatters = Mutex(Formatters())
+
+    private static func withFormatter<T>(
+        format: String,
+        timeZone: TimeZone = TimeZone(secondsFromGMT: 0)!,
+        _ body: (DateFormatter) -> T
+    ) -> T {
+        formatters.withLock { cache in
+            let key = format + ":" + timeZone.identifier
+            let formatter: DateFormatter
+            if let cached = cache.calendarDays[key] {
+                formatter = cached
+            } else {
+                formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.timeZone = timeZone
+                formatter.dateFormat = format
+                cache.calendarDays[key] = formatter
+            }
+            return body(formatter)
+        }
     }
 
     static func contextLine(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return rawDate }
-        let formatter = calendarDayFormatter()
-        formatter.dateFormat = "EEEE"
-        return formatter.string(from: date)
+        return withFormatter(format: "EEEE") { $0.string(from: date) }
     }
 
     static func weekdayAbbreviation(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return "DAY" }
-        let formatter = calendarDayFormatter()
-        formatter.dateFormat = "EEE"
-        return formatter.string(from: date).uppercased()
+        return withFormatter(format: "EEE") { $0.string(from: date) }.uppercased()
     }
 
     static func dayNumber(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return "--" }
-        let formatter = calendarDayFormatter()
-        formatter.dateFormat = "dd"
-        return formatter.string(from: date)
+        return withFormatter(format: "dd") { $0.string(from: date) }
     }
 
     static func shortDate(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return rawDate }
-        let formatter = calendarDayFormatter()
-        formatter.dateFormat = "d MMM"
-        return formatter.string(from: date).uppercased()
+        return withFormatter(format: "d MMM") { $0.string(from: date) }.uppercased()
     }
 
     static func weekRange(starting rawDate: String) -> String {
@@ -1358,11 +1372,7 @@ enum SupabaseDateFormatting {
             return "\(rawStartDate) - \(rawEndDate)"
         }
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "d MMM"
-        return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
+        return withFormatter(format: "d MMM") { "\($0.string(from: start)) - \($0.string(from: end))" }
     }
 
     static func weekEndDate(starting rawDate: String) -> String {
@@ -1422,11 +1432,7 @@ enum SupabaseDateFormatting {
 
     static func displayDate(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return rawDate }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "d MMM"
-        return formatter.string(from: date)
+        return withFormatter(format: "d MMM") { $0.string(from: date) }
     }
 
     static func weekDates(starting rawDate: String) -> [String] {
@@ -1434,34 +1440,25 @@ enum SupabaseDateFormatting {
             return []
         }
 
-        let formatter = calendarDayFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-
         return (0..<7).compactMap { offset in
             utcCalendar
                 .date(byAdding: .day, value: offset, to: start)
-                .map { formatter.string(from: $0) }
+                .map { dateString(from: $0) }
         }
     }
 
     static func todayDateString() -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
+        let zone = TimeZone(identifier: TimeZone.current.identifier) ?? TimeZone(secondsFromGMT: 0)!
+        return withFormatter(format: "yyyy-MM-dd", timeZone: zone) { $0.string(from: Date()) }
     }
 
     /// `days` after today, formatted `yyyy-MM-dd` (dev benchmark uses a far-future
     /// date so runs never touch real content).
     static func dateString(daysAfterToday days: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
         guard let date = Calendar.current.date(byAdding: .day, value: days, to: Date()) else {
             return todayDateString()
         }
-        return formatter.string(from: date)
+        return dateString(from: date)
     }
 
     /// Compares normalized yyyy-MM-dd prefixes lexically — valid because ISO-8601 date strings sort correctly.
@@ -1472,7 +1469,11 @@ enum SupabaseDateFormatting {
     }
 
     static func isoTimestampString() -> String {
-        ISO8601DateFormatter().string(from: Date())
+        formatters.withLock { $0.timestamp.string(from: Date()) }
+    }
+
+    static func timestamp(from value: String) -> Date? {
+        formatters.withLock { $0.timestamp.date(from: value) }
     }
 
     static func effortLabel(shootability: String?, minutes: Int?) -> String {
@@ -1495,19 +1496,11 @@ enum SupabaseDateFormatting {
 
     private static func parseDate(_ rawDate: String) -> Date? {
         let trimmedDate = String(rawDate.prefix(10))
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: trimmedDate)
+        return withFormatter(format: "yyyy-MM-dd") { $0.date(from: trimmedDate) }
     }
 
     private static func dateString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        withFormatter(format: "yyyy-MM-dd") { $0.string(from: date) }
     }
 }
 

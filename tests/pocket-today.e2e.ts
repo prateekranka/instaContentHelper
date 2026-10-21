@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
-import { selectTab, startFromOnboarding, tapEditorControl, dismissKeyboard } from './pocket-support';
+import { selectTab, startFromOnboarding, tapEditorControl, dismissKeyboard, scrollToControl } from './pocket-support';
 
 test('Pocket opens with one ready idea and a reachable filming action', async ({ app, screen, device }) => {
   if (process.env.POCKET_E2E_INSTALL === '1') await device.installApp();
@@ -65,7 +65,7 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
   await dismissKeyboard(screen, 'post.keyboardDone');
   const savedScript = await screen.getByTestId('post.script.editor').inputValue();
   expect(savedScript).not.toBe(oldScript);
-  await screen.scrollUntilVisible(screen.getByTestId('post.caption.editor'));
+  await scrollToControl(screen, screen.getByTestId('post.caption.editor'));
   const oldCaption = await screen.getByTestId('post.caption.editor').inputValue();
   await screen.getByTestId('post.caption.editor').pressSequentially(' Today.');
   await dismissKeyboard(screen, 'post.keyboardDone');
@@ -73,7 +73,7 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
   expect(savedCaption).not.toBe(oldCaption);
   await tapEditorControl(screen, 'post.save');
   await expect(screen.getByTestId('post.edit')).toBeVisible();
-  await screen.scrollUntilVisible(screen.getByTestId('post.copy.caption'));
+  await scrollToControl(screen, screen.getByTestId('post.copy.caption'));
   await screen.getByTestId('post.copy.caption').tap();
   expect(await device.clipboard()).toBe(savedCaption);
   await screen.getByTestId('post.markPosted').tap();
@@ -94,7 +94,7 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
   await expect(screen.getByText('Posted', { exact: true })).toBeVisible();
   await screen.getByTestId('post.edit').tap();
   await expect(screen.getByTestId('post.script.editor')).toHaveValue(savedScript);
-  await screen.scrollUntilVisible(screen.getByTestId('post.caption.editor'));
+  await scrollToControl(screen, screen.getByTestId('post.caption.editor'));
   await expect(screen.getByTestId('post.caption.editor')).toHaveValue(savedCaption);
   await app.screenshot('pocket-persisted-edits');
   await device.openApp('com.prateekranka.creatorcontenthelper', {

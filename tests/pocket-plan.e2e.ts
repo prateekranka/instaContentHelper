@@ -26,25 +26,27 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
   await expect(screen.getByTestId('you.voice.save')).toBeDisabled();
   await screen.scrollUntilVisible(screen.getByRole('button', 'Back to Plan', { exact: true }), { direction: 'up' });
   await screen.getByRole('button', 'Back to Plan', { exact: true }).tap();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.daygen.idea.0'));
+  await scrollToControl(screen, screen.getByTestId('plan.daygen.idea.0'));
   await expect(screen.getByTestId('plan.daygen.idea.0')).toBeEnabled();
   await screen.getByTestId('plan.daygen.idea.0').tap();
   await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
   await expect(screen.getByTestId('daily.availableOnToday')).toContainText('Save for');
   const originalTitle = await screen.getByTestId('plan.package.title').textContent();
   await app.screenshot('pocket-plan-future-draft');
+  await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
   await screen.getByTestId('daily.availableOnToday').tap();
   await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
   await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
   await expect(screen.getByTestId('plan.title')).toBeVisible();
   await expect(days.nth(1)).toBeSelected();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.package.tab.caption'));
+  await scrollToControl(screen, screen.getByTestId('plan.package.tab.caption'));
   for (let index = 0; index < 8; index += 1) {
     const tab = ['script', 'caption', 'storyboard'][index % 3];
+    await scrollToControl(screen, screen.getByTestId(`plan.package.tab.${tab}`));
     await screen.getByTestId(`plan.package.tab.${tab}`).tap();
     await expect(screen.getByTestId(`plan.package.tab.${tab}`)).toBeSelected();
   }
-  await screen.scrollUntilVisible(screen.getByTestId('plan.package.replaceIdea'));
+  await scrollToControl(screen, screen.getByTestId('plan.package.replaceIdea'));
   await screen.getByTestId('plan.package.replaceIdea').tap();
   await scrollToControl(screen, screen.getByTestId('plan.daygen.idea.0'), 'up');
   await screen.getByTestId('plan.daygen.idea.0').tap();
@@ -52,7 +54,9 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
   await screen.getByRole('button', 'Cancel', { exact: true }).tap();
   await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
   await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
+  await scrollToControl(screen, days.nth(2));
   await days.nth(2).tap();
+  await scrollToControl(screen, days.nth(1), 'up');
   await days.nth(1).tap();
   await expect(screen.getByTestId('plan.package.tab.caption')).toBeVisible();
   await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
@@ -71,7 +75,9 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
   await screen.getByTestId('daily.availableOnToday').tap();
   await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
   await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
+  await scrollToControl(screen, days.nth(2));
   await days.nth(2).tap();
+  await scrollToControl(screen, days.nth(1), 'up');
   await days.nth(1).tap();
   await expect(screen.getByTestId('plan.package.tab.storyboard')).toBeVisible();
   await expect(screen.getByTestId('plan.package.title')).toHaveText(replacementTitle);

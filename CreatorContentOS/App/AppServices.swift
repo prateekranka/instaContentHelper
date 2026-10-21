@@ -27,10 +27,15 @@ final class AppServices {
     private var generationSummaryMetadata: GeneratedWeekDraft?
     private var generationSummaryDates: Set<String> = []
 
+    private var todayProjection: DayCardProjection? {
+        let date = currentTodayDateString
+        guard dayStore.day(for: date)?.lifecycle.exposesReadyPackage == true else { return nil }
+        return dayStore.projection(for: date)
+    }
+
     var todayCard: DailyCard {
         get {
-            if let day = dayStore.day(for: currentTodayDateString), day.lifecycle.exposesReadyPackage,
-               let revision = day.revision { return revision.dailyCard }
+            if let projection = todayProjection { return projection.card }
             return DailyCard(
                 id: context.creatorID,
                 title: "No ready package",
@@ -457,15 +462,15 @@ final class AppServices {
     }
 
     var shotSceneCount: Int {
-        todayCard.scenes.count { shotSceneIDs.contains($0.id) }
+        todayProjection?.shotSceneCount ?? 0
     }
 
     var unshotSceneCount: Int {
-        max(todayCard.scenes.count - shotSceneCount, 0)
+        todayProjection?.unshotSceneCount ?? 0
     }
 
     var areAllScenesShot: Bool {
-        !todayCard.scenes.isEmpty && unshotSceneCount == 0
+        todayProjection?.areAllScenesShot ?? false
     }
 
     func isSceneShot(_ scene: ShotScene) -> Bool {
@@ -529,14 +534,16 @@ final class AppServices {
         let isFilmingDecision = decision.completionState == .shot || decision.completionState == .posted
         guard isFilmingDecision || canChooseEasierOption else { return }
         guard canApplyTodayDecision(decision) else { return }
-        guard prepareTodayDecision(decision) != nil else { return }
-        Task { await replayOutboxImmediately() }
+        Task {
+            guard await prepareTodayDecision(decision) != nil else { return }
+            await replayOutboxImmediately()
+        }
     }
 
     @discardableResult
     func completeTodayImmediately(with decision: DailyDecision) async -> ArchiveEntry {
         let fallback = makeArchiveEntry(for: todayCard, decision: decision)
-        guard canApplyTodayDecision(decision), let intent = prepareTodayDecision(decision) else { return fallback }
+        guard canApplyTodayDecision(decision), let intent = await prepareTodayDecision(decision) else { return fallback }
         await replayOutboxImmediately()
         if case .decision(let entry) = outboxResults[intent.id] { return entry }
         return intent.archiveSnapshot ?? fallback
@@ -549,8 +556,21 @@ final class AppServices {
         catch { return false }
     }
 
-    private func prepareTodayDecision(_ decision: DailyDecision) -> ContentIntent? {
+    @ObservationIgnored private var decisionPreparationTask: Task<ContentIntent?, Never>?
+
+    private func prepareTodayDecision(_ decision: DailyDecision) async -> ContentIntent? {
         let card = todayCard
+        let previous = decisionPreparationTask
+        let task = Task { @MainActor in
+            if let previous { _ = await previous.value }
+            guard todayCard.id == card.id, canApplyTodayDecision(decision) else { return nil as ContentIntent? }
+            return await persistTodayDecision(decision, card: todayCard)
+        }
+        decisionPreparationTask = task
+        return await task.value
+    }
+
+    private func persistTodayDecision(_ decision: DailyDecision, card: DailyCard) async -> ContentIntent? {
         var decidedCard = card
         decidedCard.completionState = decision.completionState
         var intent = ContentIntent(kind: .decide, context: context, scheduledDate: card.scheduledDate ?? currentTodayDateString, revisionID: card.id)
@@ -559,10 +579,13 @@ final class AppServices {
         intent.cardSnapshot = decidedCard
         intent.archiveSnapshot = makeArchiveEntry(for: card, decision: decision)
         do {
-            try enqueueIntent(intent)
+            try await enqueueIntent(intent)
+            guard dayStore.day(for: intent.scheduledDate)?.revision?.id == intent.revisionID else {
+                throw DayTransitionError.mismatchedRevision
+            }
             try dayStore.transition(.decide(decision), on: intent.scheduledDate)
             if let entry = intent.archiveSnapshot { dayStore.mergeArchive([entry], authoritative: intent.undoPosted) }
-            try persistDaySnapshot(source: "decision")
+            try await persistDaySnapshot(source: "decision")
             lastTodayDecisionSyncError = nil
             Task { await cancelTodayNotification() }
             return intent
@@ -830,7 +853,7 @@ final class AppServices {
         intent.preserveManualEdits = preserveManualEdits
         intent.dayGuidance = dayGuidance
         do {
-            try enqueueGeneration(intent)
+            try await enqueueGeneration(intent)
             await replayOutboxImmediately()
             return try generatedResult(for: intent)
         } catch {
@@ -991,7 +1014,7 @@ final class AppServices {
         var intent = ContentIntent(kind: existing == nil ? .generate : .replaceDay, context: context, scheduledDate: scheduledDate, revisionID: existing?.id ?? UUID())
         intent.dayBrief = brief
         do {
-            try enqueueGeneration(intent)
+            try await enqueueGeneration(intent)
             await replayOutboxImmediately()
             return try generatedResult(for: intent)
         } catch {
@@ -1119,7 +1142,7 @@ final class AppServices {
     }
 
     private func logGeneration(_ message: String) {
-        let line = "[ContentHelperGeneration] \(ISO8601DateFormatter().string(from: Date())) \(message)"
+        let line = "[ContentHelperGeneration] \(SupabaseDateFormatting.isoTimestampString()) \(message)"
         print(line)
         GenerationLogFile.append(line)
     }
@@ -1324,7 +1347,7 @@ final class AppServices {
             intent.dayBrief = plan.dayBrief
             intent.firstIdeaSkipped = !plan.shouldGenerate && !plan.makeAvailableOnly
             if plan.makeAvailableOnly { intent.generatedRevisionID = existing?.id }
-            do { try enqueueIntent(intent) }
+            do { try await enqueueIntent(intent) }
             catch { return .persistFailed }
         }
         await replayOutboxImmediately()
@@ -1425,7 +1448,7 @@ final class AppServices {
         defer { isMakingDayAvailable = false }
         do {
             let intent = try packageIntent(on: scheduledDate, action: .makeReady)
-            try enqueueIntent(intent)
+            try await enqueueIntent(intent)
             await replayOutboxImmediately()
             guard case .available = outboxResults[intent.id] else { throw replayError(for: intent) }
             lastActionMessage = scheduledDate == currentTodayDateString ? "Ready for Today." : "Ready package saved for \(SupabaseDateFormatting.displayDate(for: scheduledDate))."
@@ -1444,7 +1467,7 @@ final class AppServices {
         defer { isUnpublishingDay = false }
         do {
             let intent = try packageIntent(on: scheduledDate, action: .returnToDraft)
-            try enqueueIntent(intent)
+            try await enqueueIntent(intent)
             await replayOutboxImmediately()
             guard case .unpublished(let result) = outboxResults[intent.id] else { throw replayError(for: intent) }
             lastActionMessage = "Unpublished — back to draft."
@@ -1465,7 +1488,7 @@ final class AppServices {
             try package.validate()
             var intent = try packageIntent(on: scheduledDate, action: .update)
             intent.package = package.owningShotLines(in: dayStore.day(for: scheduledDate)?.revision?.content)
-            try enqueueIntent(intent)
+            try await enqueueIntent(intent)
             await replayOutboxImmediately()
             guard case .package(let result) = outboxResults[intent.id] else { throw replayError(for: intent) }
             lastActionMessage = "Ready package updated."
@@ -1694,6 +1717,10 @@ final class AppServices {
 
     @discardableResult
     func loadTodayFromCache() -> Bool {
+        if pendingSnapshotWrites > 0 {
+            guard let day = dayStore.day(for: currentTodayDateString) else { return false }
+            return day.lifecycle != .unavailable
+        }
         do {
             guard let snapshot = try todayCache.loadSnapshot(for: context) else {
                 return false
@@ -1985,16 +2012,35 @@ final class AppServices {
         }
     }
 
+    @ObservationIgnored private var snapshotWriteTask: Task<Void, Error>?
+    @ObservationIgnored private var pendingSnapshotWrites = 0
+
+    private func queueDaySnapshot(source: String) -> Task<Void, Error> {
+        let snapshot = CachedTodaySnapshot(dayStore: dayStore.snapshot, cachedAt: Date(), source: source)
+        let previous = snapshotWriteTask
+        pendingSnapshotWrites += 1
+        let task = Task { @MainActor in
+            defer { pendingSnapshotWrites -= 1 }
+            if let previous { _ = try? await previous.value }
+            try await todayCache.saveSnapshotInBackground(snapshot, for: context)
+        }
+        snapshotWriteTask = task
+        return task
+    }
+
     private func saveTodaySnapshot(source: String) {
-        do { try persistDaySnapshot(source: source) }
-        catch { lastRepositoryError = error.localizedDescription }
+        let task = queueDaySnapshot(source: source)
+        Task {
+            do { try await task.value }
+            catch { lastRepositoryError = error.localizedDescription }
+        }
     }
 
-    private func persistDaySnapshot(source: String) throws {
-        try todayCache.saveSnapshot(CachedTodaySnapshot(dayStore: dayStore.snapshot, cachedAt: Date(), source: source), for: context)
+    private func persistDaySnapshot(source: String) async throws {
+        try await queueDaySnapshot(source: source).value
     }
 
-    private func migrateLegacyOutbox() {
+    private func migrateLegacyOutbox() async {
         let defaults = isLiveSupabaseRuntime ? UserDefaults.standard : DebugLaunchConfiguration.fixtureDefaults
         let firstKey = "ch-pending-first-idea"
         let generationKey = "ch-accepted-day-generations"
@@ -2031,7 +2077,7 @@ final class AppServices {
         }
         guard changed else { return }
         do {
-            try persistDaySnapshot(source: "outbox-migrated")
+            try await persistDaySnapshot(source: "outbox-migrated")
             if let data = defaults.data(forKey: firstKey), let legacy = try? JSONDecoder().decode(LegacyFirstIdeaMigration.self, from: data), legacy.creatorID == context.creatorID {
                 defaults.removeObject(forKey: firstKey)
             }
@@ -2039,23 +2085,27 @@ final class AppServices {
         } catch { lastRepositoryError = error.localizedDescription }
     }
 
-    private func enqueueIntent(_ intent: ContentIntent) throws {
+    private func enqueueIntent(_ intent: ContentIntent) async throws {
         if dayStore.outbox.contains(where: { $0.id == intent.id }) { return }
         dayStore.enqueue(intent)
-        do { try persistDaySnapshot(source: "outbox-enqueued") }
-        catch { dayStore.finishIntent(intent.id); throw error }
+        do { try await persistDaySnapshot(source: "outbox-enqueued") }
+        catch {
+            dayStore.finishIntent(intent.id)
+            saveTodaySnapshot(source: "outbox-enqueue-rollback")
+            throw error
+        }
     }
 
-    private func enqueueGeneration(_ requested: ContentIntent) throws {
+    private func enqueueGeneration(_ requested: ContentIntent) async throws {
         var intent = requested
         intent.priorRevisionID = dayPackage(for: intent.scheduledDate)?.id
         guard !dayStore.outbox.contains(where: { $0.isGeneration && $0.scheduledDate == intent.scheduledDate }) else {
             throw RepositoryError.edgeFunction("generation_already_running")
         }
         if case .generating = dayStore.day(for: intent.scheduledDate)?.lifecycle { throw RepositoryError.edgeFunction("generation_already_running") }
-        try enqueueIntent(intent)
+        try await enqueueIntent(intent)
         try dayStore.transition(.generate(DayGenerationRun(requestID: intent.requestedRevisionID, generationID: nil), replacing: dayPackage(for: intent.scheduledDate) != nil), on: intent.scheduledDate)
-        try persistDaySnapshot(source: "outbox-generation")
+        try await persistDaySnapshot(source: "outbox-generation")
     }
 
     private func packageIntent(on date: String, action: PackageIntentAction) throws -> ContentIntent {
@@ -2077,7 +2127,6 @@ final class AppServices {
     }
 
     func replayOutboxImmediately() async {
-        migrateLegacyOutbox()
         if let task = outboxReplayTask {
             outboxNeedsReplay = true
             await task.value
@@ -2085,6 +2134,7 @@ final class AppServices {
         }
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
+            await self.migrateLegacyOutbox()
             repeat {
                 self.outboxNeedsReplay = false
                 await self.drainOutbox()
@@ -2095,12 +2145,16 @@ final class AppServices {
         outboxReplayTask = nil
     }
 
-    private func finishIntentPersisting(_ id: String, source: String) throws {
+    private func finishIntentPersisting(_ id: String, source: String) async throws {
         guard let index = dayStore.outbox.firstIndex(where: { $0.id == id }) else { return }
         let intent = dayStore.outbox[index]
         dayStore.finishIntent(id)
-        do { try persistDaySnapshot(source: source) }
-        catch { dayStore.restoreIntent(intent, at: index); throw error }
+        do { try await persistDaySnapshot(source: source) }
+        catch {
+            dayStore.restoreIntent(intent, at: index)
+            saveTodaySnapshot(source: "outbox-finish-rollback")
+            throw error
+        }
     }
 
     private func drainOutbox() async {
@@ -2114,9 +2168,14 @@ final class AppServices {
             attempted.insert(intent.id)
             outboxErrors[intent.id] = nil
             if intent.isGeneration { generatingDayBriefDates.insert(intent.scheduledDate) }
+            defer {
+                if intent.isGeneration { generatingDayBriefDates.remove(intent.scheduledDate) }
+            }
             do {
-                let result = try await replayIntent(intent)
-                try finishIntentPersisting(intent.id, source: "outbox-done")
+                try await persistDaySnapshot(source: "outbox-before-send")
+                guard let persisted = dayStore.outbox.first(where: { $0.id == intent.id }) else { continue }
+                let result = try await replayIntent(persisted)
+                try await finishIntentPersisting(intent.id, source: "outbox-done")
                 outboxResults[intent.id] = result
                 if intent.kind == .decide { lastTodayDecisionSyncError = nil }
                 lastRepositoryError = nil
@@ -2132,7 +2191,7 @@ final class AppServices {
                 if code == "daily_card_not_found" {
                     do {
                         if intent.kind == .firstIdea { try await saveFirstIdeaProfile(intent, status: .failed) }
-                        try finishIntentPersisting(intent.id, source: "outbox-revision-removed")
+                        try await finishIntentPersisting(intent.id, source: "outbox-revision-removed")
                     } catch { lastRepositoryError = error.localizedDescription }
                 } else if error is OutboxTerminalFailure || code == "past_generation_date_not_allowed" {
                     if code == "past_generation_date_not_allowed" {
@@ -2141,9 +2200,9 @@ final class AppServices {
                         dayStore.updateIntent(terminal)
                     }
                     do {
-                        try persistDaySnapshot(source: "outbox-terminal-recorded")
+                        try await persistDaySnapshot(source: "outbox-terminal-recorded")
                         if intent.kind == .firstIdea { try await saveFirstIdeaProfile(intent, status: .failed) }
-                        try finishIntentPersisting(intent.id, source: "outbox-terminal-failure")
+                        try await finishIntentPersisting(intent.id, source: "outbox-terminal-failure")
                     } catch { lastRepositoryError = error.localizedDescription }
                 } else {
                     blocked.insert(intent.revisionID)
@@ -2155,7 +2214,6 @@ final class AppServices {
                     try? await saveFirstIdeaProfile(current, status: .failed)
                 }
             }
-            if intent.isGeneration { generatingDayBriefDates.remove(intent.scheduledDate) }
         }
     }
 
@@ -2168,7 +2226,7 @@ final class AppServices {
             } else if let card = try await repositories.today.weekCards(for: context).first(where: { $0.scheduledDate == intent.scheduledDate }) {
                 try dayStore.receivePublished(card, readVersion: version)
             }
-            try persistDaySnapshot(source: "outbox-generation-reconciled")
+            try await persistDaySnapshot(source: "outbox-generation-reconciled")
         } catch { lastRepositoryError = error.localizedDescription }
     }
 
@@ -2201,7 +2259,7 @@ final class AppServices {
             if !intent.profileSaved {
                 intent.profileSaved = true
                 dayStore.updateIntent(intent)
-                try persistDaySnapshot(source: "outbox-first-idea-profile")
+                try await persistDaySnapshot(source: "outbox-first-idea-profile")
             }
             if intent.firstIdeaSkipped {
                 try await saveFirstIdeaProfile(intent, status: .skippedExistingReady)
@@ -2212,7 +2270,7 @@ final class AppServices {
                 intent = dayStore.outbox.first { $0.id == intent.id } ?? intent
                 intent.generatedRevisionID = card.id
                 dayStore.updateIntent(intent)
-                try persistDaySnapshot(source: "outbox-first-idea-draft")
+                try await persistDaySnapshot(source: "outbox-first-idea-draft")
             }
             guard let revisionID = intent.generatedRevisionID else { throw DayTransitionError.mismatchedRevision }
             var approval = intent
@@ -2222,7 +2280,7 @@ final class AppServices {
             approval.idempotencyKey = intent.id + ":ready"
             let result = try await repositories.weeklyPlans.replayPackage(approval, context: context)
             try await applyPackageReply(result, intent: approval)
-            try persistDaySnapshot(source: "outbox-first-idea-ready")
+            try await persistDaySnapshot(source: "outbox-first-idea-ready")
             try await saveFirstIdeaProfile(intent, status: .completed)
             return .firstIdea(.completed(navigatedToday: intent.scheduledDate == currentTodayDateString))
         }
@@ -2232,7 +2290,7 @@ final class AppServices {
         var intent = original
         if intent.generatedRevisionID == nil && intent.supersededByServer != true {
             try dayStore.transition(.generate(DayGenerationRun(requestID: intent.requestedRevisionID, generationID: intent.generationID), replacing: dayPackage(for: intent.scheduledDate) != nil), on: intent.scheduledDate)
-            try persistDaySnapshot(source: "outbox-generating")
+            try await persistDaySnapshot(source: "outbox-generating")
         }
         while !Task.isCancelled {
             try requireAIConsent(for: .generateDay(scheduledDate: intent.scheduledDate))
@@ -2251,10 +2309,10 @@ final class AppServices {
                 intent.priorRevisionID = dayPackage(for: intent.scheduledDate)?.id
                 intent.supersededByServer = nil
                 dayStore.updateIntent(intent)
-                try persistDaySnapshot(source: "outbox-first-idea-retargeted")
+                try await persistDaySnapshot(source: "outbox-first-idea-retargeted")
                 try await saveFirstIdeaProfile(intent, status: .preparing)
                 try dayStore.transition(.generate(DayGenerationRun(requestID: intent.requestedRevisionID, generationID: nil), replacing: intent.priorRevisionID != nil), on: intent.scheduledDate)
-                try persistDaySnapshot(source: "outbox-first-idea-retargeted-generating")
+                try await persistDaySnapshot(source: "outbox-first-idea-retargeted-generating")
                 continue
             }
             intent = dayStore.outbox.first { $0.id == intent.id } ?? intent
@@ -2265,7 +2323,7 @@ final class AppServices {
                 if intent.supersededByServer != true {
                     try dayStore.transition(.generate(DayGenerationRun(requestID: intent.requestedRevisionID, generationID: generationID), replacing: true), on: intent.scheduledDate)
                 }
-                try persistDaySnapshot(source: "outbox-generation-accepted")
+                try await persistDaySnapshot(source: "outbox-generation-accepted")
                 try await Task.sleep(nanoseconds: UInt64(max(1, min(delay, 15))) * 1_000_000_000)
             case .completed(let result):
                 guard result.targetScheduledDate == intent.scheduledDate, result.dailyCard.scheduledDate == intent.scheduledDate else { throw DayTransitionError.mismatchedRevision }
@@ -2284,7 +2342,7 @@ final class AppServices {
                 intent.generatedRevisionID = card.id
                 dayStore.updateIntent(intent)
                 dayStore.bindRevision(requestedID: intent.requestedRevisionID, to: card.id)
-                try persistDaySnapshot(source: "outbox-generation-completed")
+                try await persistDaySnapshot(source: "outbox-generation-completed")
                 return card
             case .failed(let code):
                 intent.terminalFailureCode = code
@@ -2293,7 +2351,7 @@ final class AppServices {
                    run.requestID == intent.requestedRevisionID || run.generationID == intent.generationID && intent.generationID != nil {
                     try dayStore.transition(.generationFailed(priorRevisionID: intent.priorRevisionID), on: intent.scheduledDate)
                 }
-                try persistDaySnapshot(source: "outbox-generation-failed")
+                try await persistDaySnapshot(source: "outbox-generation-failed")
                 throw OutboxTerminalFailure.server(code)
             }
         }
@@ -2358,7 +2416,7 @@ final class AppServices {
         )
         entry.captionSnapshot = card.caption
         entry.scheduledDate = archiveDate
-        entry.decisionAt = ISO8601DateFormatter().string(from: Date())
+        entry.decisionAt = SupabaseDateFormatting.isoTimestampString()
         return entry
     }
 
