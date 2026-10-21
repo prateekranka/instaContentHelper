@@ -16,6 +16,7 @@ export type DayGenerationCardRecord = {
 export type DayGenerationPlanLookup = {
   creator_id: string;
   weekly_plan_id: string;
+  piece_id?: string;
 };
 
 export const CREATOR_LOOKUP_SELECT = "id,display_name,default_timezone";
@@ -94,6 +95,7 @@ type ContextQuery = {
 export function dayGenerationCardSelect(): string {
   return [
     "id",
+    "piece_id",
     "scheduled_date",
     "status",
     "title",
@@ -232,15 +234,26 @@ export async function readDailyCardsForPlan(
   workspaceID: string,
   creatorID: string,
   weeklyPlanID: string,
+  pieceID?: string,
+  includeAllPieces = false,
 ): Promise<{ data: Record<string, unknown>[]; error: unknown }> {
-  const { data, error } = await admin
+  const query = admin
     .from("daily_cards")
-    .select(dayGenerationCardSelect())
+    .select(
+      dayGenerationCardSelect() +
+        ",content_pieces!daily_cards_piece_fk!inner(position,removed_at)",
+    )
     .eq("workspace_id", workspaceID)
     .eq("creator_id", creatorID)
     .eq("weekly_plan_id", weeklyPlanID)
     .eq("is_current", true)
     .order("scheduled_date", { ascending: true });
+  const { data, error } =
+    await (pieceID
+      ? query.eq("piece_id", pieceID)
+      : includeAllPieces
+      ? query
+      : query.eq("content_pieces.position", 0));
 
   return {
     data: Array.isArray(data) ? data.filter(isRecord) : [],
@@ -284,6 +297,7 @@ export async function readPlanCardsForDayGeneration(
     workspaceID,
     request.creator_id,
     request.weekly_plan_id,
+    request.piece_id,
   );
   if (error) {
     return {

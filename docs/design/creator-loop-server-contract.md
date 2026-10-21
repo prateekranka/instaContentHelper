@@ -2,16 +2,23 @@
 
 Implemented through phase 6, including round 5 local-date generation, replacement recovery, decision replay, and shot ownership corrections. Local changes only.
 No live migration or deployment is authorized.
-The approved scope is section 3 of `creator-loop-redesign.md`.
+The approved scope includes phase 1 of `several-pieces-per-date-plan.md` (option A).
 
 ## Records and invariants
 
 - `daily_cards.id` is the revision ID. Each successful generation inserts a new row with a new ID.
-- `creator_days` has one row per `(workspace_id, creator_id, scheduled_date)`.
-- `creator_days.current_revision_id` points at the current revision. It can be null before the first successful generation.
-- `daily_cards.is_current` controls mutation eligibility. Replacement acceptance clears it immediately; the day pointer can retain that archived revision for recovery. An insert points to the new current revision.
-- `creator_days.generation_run_id` points at the latest generation run. Read its status before treating the day as generating.
-- `daily_cards.generation_run_id` identifies the run that made the revision. A run can create at most one revision per date.
+- `content_pieces.id` is the stable piece ID. Each piece belongs to one workspace, creator, and scheduled date.
+- Fields are `id`, `workspace_id`, `creator_id`, `scheduled_date`, `position`, `current_revision_id`, `generation_run_id`, `created_at`, `updated_at`, and nullable `removed_at`.
+- Active positions are unique within a workspace, creator, and date. Position 0 is the compatibility piece.
+- `daily_cards.piece_id` is required. All current and historical revisions belong to a piece.
+- Each piece has at most one current revision. Two pieces on the same date can both be ready.
+- `content_pieces.current_revision_id` points at the current revision or retained replacement recovery revision.
+- `daily_cards.is_current` controls mutation eligibility. Replacement acceptance clears it immediately.
+- `content_pieces.generation_run_id` points at the latest run for that piece. Read its status before treating the piece as generating.
+- `weekly_generation_runs.piece_id` binds a single-day run to its piece. One piece cannot supersede another piece's run.
+- `daily_cards.generation_run_id` identifies the run that made the revision. A run creates at most one revision per piece.
+- `creator_days` remains a service-only compatibility table. An insert/update trigger on position 0 copies its revision, run, and timestamp into this table.
+- The trigger retains existing table constraints and avoids replacing a table while older dependencies still refer to it. All current mutation RPCs use `content_pieces` as the source.
 - Superseded revisions stay in `daily_cards` with `status = archived` and `is_current = false`.
 - Superseding a revision preserves its content, decision fields, references, and filming data. New revisions start with fresh thumbnail assets.
 - Historical revision content and identity cannot be changed. Thumbnail completion can still attach assets to its exact revision.
@@ -24,9 +31,69 @@ The approved scope is section 3 of `creator-loop-redesign.md`.
 - A replacement without a prior decision creates an archive entry with `decision = replaced`. It does not claim the content was posted.
 - Current Today and Plan reads filter on `is_current`. Archive reads use snapshots and do not join mutable card text.
 
-`creator_days` and the new SQL RPCs are available only to `service_role`.
+`content_pieces`, `creator_days`, and the new SQL RPCs are available only to `service_role`.
 HTTP functions keep device-token authentication and workspace and creator checks.
 No model endpoint, model input contract, prompt, or provider setting changes in this phase.
+
+
+## Several pieces per date: phase 1
+
+Migration `20261021140000_content_pieces.sql` follows `20261021130000`.
+It migrates each `creator_days` row into position 0 with the same revision and run pointers.
+It binds every revision for that creator and date, including historical revisions, to that piece.
+Dates with revisions and no day row also receive a piece. Empty day rows remain pieces with null pointers.
+The migration checks date counts, revision counts, non-null bindings, and copied pointers before enforcing `piece_id NOT NULL`.
+It replaces `daily_cards_current_day_key` with `daily_cards_current_piece_key`.
+Composite foreign keys retain workspace and creator boundaries. The table has RLS enabled and grants only to `service_role`.
+
+`generate-week` (`generate_day` and `regenerate_day`), `replace-day`, `update-ready-day-package`,
+`make-day-available`, `unpublish-day`, and the two decision actions accept optional `piece_id`.
+Clients can generate a UUID before saving their intent. First generation creates that piece if absent.
+Repeated use of that ID resolves the same piece. The generation idempotency key still controls run replay.
+A new key can start another run for that same piece; it does not create another piece.
+
+A date without `piece_id` selects position 0 and creates it if absent.
+An exact `daily_card_id` without a date selects that revision's piece. If both a date and revision are supplied,
+the revision must belong to the selected piece. A supplied piece and revision must also agree.
+Package edits and lifecycle calls can use `piece_id` alone after the piece exists.
+Date-only decision calls use `scheduled_date`; archive decisions still require their separate `archive_date`.
+An absent piece with a date can be created by a mutation resolver, but operations needing a revision return `daily_card_not_found` until generation completes.
+New pieces can generate inside a locked plan without changing that plan or other pieces.
+
+Generation replaces and archives only the selected piece's prior revision.
+Decisions, package edits, make ready, and unpublish affect only their selected revision.
+Two pieces can remain ready on one date. Posting or replacing one leaves the other unchanged.
+The `claim_queued_day_job` lock and live-job count use `generation_run_id`.
+Two pieces use separate runs, so the existing lane cap permits both. No lane-cap change is required.
+
+All revision, day, decision archive, and lifecycle responses include `piece_id`.
+Generation acceptance, replay, completed result, and day status responses also include it.
+Archive reads derive the ID from the exact revision; title and caption still come from frozen snapshots.
+Legacy `today`, `weekly`, and `days` reads retain position-0 projections.
+`read-content` action `days` accepts `include_all_pieces: true` to return all active pieces,
+ordered by date and position. Each row adds `piece_id` and `position`.
+The SQL `read_creator_days` RPC accepts the same flag, plus an optional piece filter.
+
+| HTTP | Code | Meaning |
+| --- | --- | --- |
+| 400 | `invalid_piece_id` | A lifecycle or SQL resolver received a malformed piece UUID. Generation uses `invalid_generation_payload`; decision HTTP validation uses `invalid_write_payload`. |
+| 400 | `invalid_piece_target` | Scope is missing, or neither a date nor piece identifies a target. |
+| 404 | `piece_not_found` | The supplied piece does not exist and no date permits creation. |
+| 409 | `piece_scope_mismatch` | The piece belongs to a different workspace, creator, or scheduled date. |
+| 409 | `piece_revision_mismatch` | The revision does not belong to the selected piece. |
+| 409 | `piece_removed` | The supplied piece was removed. Its ID cannot create another piece. |
+| 500 | `piece_lookup_failed` | Generation could not validate the piece scope. |
+
+The local database harness includes independent-piece transactions and an isolated-schema backfill fixture.
+Run after the owner's local reset with `MCO_LOCAL_DATABASE_URL` set to a loopback PostgreSQL URL:
+
+```sh
+deno test --allow-env --allow-read --allow-run=psql supabase/functions/_shared/creator-loop-db_test.ts
+```
+
+The migration fixture substitutes only the schema name, runs the new migration over seeded old records,
+checks saved content and pointers, and rolls back. It does not change public records.
+Backend CI skips this harness without a local URL. A passing Deno suite does not prove PostgreSQL execution.
 
 ## HTTP: `generate-week`
 
@@ -52,12 +119,12 @@ Clients must save a key before the first request to obtain replay protection aft
 The request identity includes the normalized action, date, brief or guidance, edit preservation, mock flag,
 input overrides, and explicit target revision. Regeneration also includes the plan ID.
 Transport mode is excluded. A synchronous request can be retried in asynchronous mode with the same key.
-Object key order does not affect identity. Existing brief length limits remain in effect.
+An explicitly supplied `piece_id` also belongs to request identity. Omitting it preserves legacy key identity. Object key order does not affect identity. Existing brief length limits remain in effect.
 
 - Same key and identity: return the existing run or saved result. Do not start another worker.
 - Same key and different identity: return HTTP 409, `idempotency_key_conflict`.
 - New brief: use a new key. This creates a new run.
-- New key for a day with an active run: close the previous run with `generation_superseded` and start a new run.
+- New key for a piece with an active run: close the previous run with `generation_superseded` and start a new run.
 - Ready or decided current revisions require `replace-day`, or the existing explicit unpublish flow.
 - A failed run stays closed. A retry requires a new key.
 
@@ -226,6 +293,8 @@ It returns one consistent SQL snapshot:
 {
   "days": [{
     "scheduled_date": "2026-10-21",
+    "piece_id": "<piece uuid>",
+    "position": 0,
     "current_revision_id": "<uuid or null>",
     "generation_id": "<latest run uuid or null>",
     "revision": {},

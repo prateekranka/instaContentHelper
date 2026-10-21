@@ -32,7 +32,7 @@ begin
     'member_id', m, 'daily_card_id', old_id, 'decision_at', clock_timestamp() - interval '1 day',
     'decision', jsonb_build_object('status', 'posted', 'output_line', 'Posted', 'has_post_thumbnail', false)));
   if result ? 'error' then raise exception 'complete_today failed: %', result; end if;
-  select to_jsonb(a) into first_archive from public.archive_entries a where daily_card_id = old_id;
+  select (to_jsonb(a) || jsonb_build_object('piece_id', (select piece_id from public.daily_cards where id = a.daily_card_id))) into first_archive from public.archive_entries a where daily_card_id = old_id;
   if first_archive->>'title_snapshot' <> 'Posted title' or first_archive->>'caption_snapshot' <> 'Posted caption' then
     raise exception 'decision snapshots missing';
   end if;
@@ -98,7 +98,7 @@ begin
   if result ? 'error' or result #>> '{daily_card,status}' is distinct from 'shot' then
     raise exception 'current posted undo failed: %', result;
   end if;
-  select to_jsonb(a) into undo_archive from public.archive_entries a where daily_card_id = old_id;
+  select (to_jsonb(a) || jsonb_build_object('piece_id', (select piece_id from public.daily_cards where id = a.daily_card_id))) into undo_archive from public.archive_entries a where daily_card_id = old_id;
   if undo_archive->>'id' is distinct from first_archive->>'id'
     or undo_archive->>'decision' is distinct from 'shot'
     or undo_archive->>'title_snapshot' is distinct from first_archive->>'title_snapshot'
@@ -120,7 +120,7 @@ begin
     or result #>> '{archive_entry,decision_at}' is not distinct from undo_archive->>'decision_at' then
     raise exception 'reposting with a reused timestamp did not save a new consistent time: %', result;
   end if;
-  select to_jsonb(a) into first_archive from public.archive_entries a where daily_card_id = old_id;
+  select (to_jsonb(a) || jsonb_build_object('piece_id', (select piece_id from public.daily_cards where id = a.daily_card_id))) into first_archive from public.archive_entries a where daily_card_id = old_id;
   result := public.write_content(jsonb_build_object('action', 'upsert_archive_decision', 'workspace_id', w, 'creator_id', c,
     'member_id', m, 'daily_card_id', old_id, 'archive_date', d, 'decision', 'shot', 'output_line', 'Archive undo', 'has_post_thumbnail', false));
   if result ? 'error' or result #>> '{archive_entry,decision}' is distinct from 'shot'
@@ -132,7 +132,7 @@ begin
   result := public.write_content(jsonb_build_object('action', 'complete_today', 'workspace_id', w, 'creator_id', c,
     'member_id', m, 'daily_card_id', old_id, 'decision', jsonb_build_object('status', 'posted', 'output_line', 'Posted', 'has_post_thumbnail', false)));
   if result ? 'error' then raise exception 'reposting after archive undo failed: %', result; end if;
-  select to_jsonb(a) into first_archive from public.archive_entries a where daily_card_id = old_id;
+  select (to_jsonb(a) || jsonb_build_object('piece_id', (select piece_id from public.daily_cards where id = a.daily_card_id))) into first_archive from public.archive_entries a where daily_card_id = old_id;
   result := public.unpublish_day(jsonb_build_object('workspace_id', w, 'creator_id', c, 'daily_card_id', old_id));
   if result ? 'error' then raise exception 'unpublish before repost failed: %', result; end if;
   result := public.make_day_available(jsonb_build_object('workspace_id', w, 'creator_id', c, 'daily_card_id', old_id));
@@ -191,7 +191,7 @@ begin
         jsonb_build_object('status', 'posted', 'output_line', 'Posted', 'has_post_thumbnail', false) else '"posted"'::jsonb end));
     if result ? 'error' or result->'archive_entry' is distinct from first_archive then raise exception 'old decision replay failed: %', result; end if;
   end loop;
-  if (select to_jsonb(a) from public.archive_entries a where daily_card_id = old_id) <> first_archive then raise exception 'replay changed posted history'; end if;
+  if (select (to_jsonb(a) || jsonb_build_object('piece_id', (select piece_id from public.daily_cards where id = a.daily_card_id))) from public.archive_entries a where daily_card_id = old_id) <> first_archive then raise exception 'replay changed posted history'; end if;
   if (select status from public.daily_cards where id = new_id) <> 'draft' then raise exception 'old decision changed current revision'; end if;
   foreach action_name in array array['complete_today', 'upsert_archive_decision'] loop
     foreach decision_name in array array['shot', 'used_backup', 'saved_for_tomorrow', 'skipped_intentionally', 'posted'] loop
@@ -220,7 +220,7 @@ begin
   exception when sqlstate 'P0001' then
     if sqlerrm <> 'archive_revision_immutable' then raise; end if;
   end;
-  if (select to_jsonb(a) from public.archive_entries a where daily_card_id = old_id) is distinct from first_archive then
+  if (select (to_jsonb(a) || jsonb_build_object('piece_id', (select piece_id from public.daily_cards where id = a.daily_card_id))) from public.archive_entries a where daily_card_id = old_id) is distinct from first_archive then
     raise exception 'replaced posted snapshot changed';
   end if;
   if (select status from public.daily_cards where id = old_id) is distinct from 'archived'
@@ -247,7 +247,7 @@ begin
   result := public.write_content(jsonb_build_object('action', 'complete_today', 'workspace_id', w, 'creator_id', c,
     'member_id', m, 'daily_card_id', shot_id, 'decision', jsonb_build_object('status', 'shot', 'output_line', 'Shot', 'has_post_thumbnail', false)));
   if result ? 'error' then raise exception 'shot setup failed: %', result; end if;
-  select to_jsonb(a) into shot_archive from public.archive_entries a where daily_card_id = shot_id;
+  select (to_jsonb(a) || jsonb_build_object('piece_id', (select piece_id from public.daily_cards where id = a.daily_card_id))) into shot_archive from public.archive_entries a where daily_card_id = shot_id;
   insert into public.daily_cards(workspace_id, creator_id, weekly_plan_id, scheduled_date, title)
     values(w, c, p, d + 1, 'Replacement for shot');
   foreach action_name in array array['complete_today', 'upsert_archive_decision'] loop
@@ -267,7 +267,7 @@ begin
   exception when sqlstate 'P0001' then
     if sqlerrm <> 'archive_revision_immutable' then raise; end if;
   end;
-  if (select to_jsonb(a) from public.archive_entries a where daily_card_id = shot_id) is distinct from shot_archive then
+  if (select (to_jsonb(a) || jsonb_build_object('piece_id', (select piece_id from public.daily_cards where id = a.daily_card_id))) from public.archive_entries a where daily_card_id = shot_id) is distinct from shot_archive then
     raise exception 'replaced shot snapshot changed';
   end if;
   insert into public.daily_cards(id, workspace_id, creator_id, weekly_plan_id, scheduled_date, title)

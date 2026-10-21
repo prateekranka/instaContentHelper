@@ -128,6 +128,7 @@ const CREATOR_REALISTIC_CAPTURE_BANK = [
 ];
 
 export type RegenerateDayRequest = {
+  piece_id?: string;
   action: "regenerate_day";
   creator_id: string;
   weekly_plan_id: string;
@@ -151,6 +152,7 @@ export type GenerateWeekRequest = {
 };
 
 export type GenerateDayRequest = {
+  piece_id?: string;
   action: "generate_day";
   creator_id: string;
   scheduled_date: string;
@@ -209,6 +211,7 @@ export type GeneratedOnScreenTextTimelineItem = {
 };
 
 export type GeneratedDailyCard = {
+  piece_id?: string;
   shot_content_owned?: boolean;
   id?: string;
   scheduled_date: string;

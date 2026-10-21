@@ -1,7 +1,7 @@
 import { SupabaseAdminClient } from "../_shared/device-auth.ts";
 
 export const GENERATION_RUN_STATUS_SELECT =
-  "id,workspace_id,creator_id,weekly_setup_id,requested_by_member_id,status,weekly_plan_id,output_snapshot,input_snapshot,error_code,completed_at,model,generation_scope,target_daily_card_id,target_scheduled_date";
+  "id,workspace_id,creator_id,weekly_setup_id,requested_by_member_id,status,weekly_plan_id,output_snapshot,input_snapshot,error_code,completed_at,model,generation_scope,target_daily_card_id,target_scheduled_date,piece_id";
 
 export const GENERATION_RUN_CANCELLATION_SELECT = "status,error_code";
 

@@ -5,6 +5,7 @@ const creator = "33333333-3333-4333-8333-333333333333";
 const member = "22222222-2222-4222-8222-222222222222";
 const planID = "44444444-4444-4444-8444-444444444444";
 const cardID = "55555555-5555-4555-8555-555555555555";
+const pieceID = "88888888-8888-4888-8888-888888888888";
 const runID = "66666666-6666-4666-8666-666666666666";
 const date = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 const week = new Date(`${date}T00:00:00Z`);
@@ -52,6 +53,7 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
   const calls: string[] = [];
   const oldCard = {
     id: cardID,
+    piece_id: pieceID,
     workspace_id: workspace,
     creator_id: creator,
     weekly_plan_id: planID,
@@ -62,10 +64,18 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
       filmed_shots: ["1407e44a-1f70-4b96-8ee2-000000000001"],
     },
   };
+  const otherCard = {
+    ...oldCard,
+    id: "99999999-9999-4999-8999-999999999999",
+    piece_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    status: "draft",
+  };
+  const savedOther = JSON.stringify(otherCard);
   const run: Record<string, unknown> = {};
   let background: Promise<void> | undefined;
   let newCard: Record<string, unknown> | undefined;
   class Query {
+    pieceFilter?: unknown;
     constructor(
       readonly table: string,
       private values?: Record<string, unknown>,
@@ -73,7 +83,8 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
     select() {
       return this;
     }
-    eq() {
+    eq(column: string, value: unknown) {
+      if (column === "piece_id") this.pieceFilter = value;
       return this;
     }
     in() {
@@ -139,8 +150,18 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
             is_soft_locked: true,
             week_start_date: week.toISOString().slice(0, 10),
           }];
+        case "content_pieces":
+          return [{
+            id: pieceID,
+            workspace_id: workspace,
+            creator_id: creator,
+            scheduled_date: date,
+            removed_at: null,
+          }];
         case "daily_cards":
-          return [newCard ?? oldCard];
+          return [newCard ?? oldCard, otherCard].filter((card) =>
+            this.pieceFilter === undefined || card.piece_id === this.pieceFilter
+          );
         case "weekly_generation_runs":
           return run.id ? [run] : [];
         default:
@@ -167,6 +188,7 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
       headers: { "x-mco-device-token": "device-token" },
       body: JSON.stringify({
         creator_id: creator,
+        piece_id: pieceID,
         scheduled_date: date,
         daily_card_id: cardID,
         day_brief: "A quiet walk outside",
@@ -185,11 +207,13 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
           const payload = args.payload as Record<string, unknown>;
           if (name === "replace_day") {
             assertEquals(payload.daily_card_id, cardID);
+            assertEquals(payload.piece_id, pieceID);
             oldCard.status = "archived";
             Object.assign(run, {
               id: runID,
               status: "running",
               replaced_daily_card_id: cardID,
+              piece_id: pieceID,
             });
             return Promise.resolve({ data: run, error: null });
           }
@@ -198,6 +222,7 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
               ...(payload.card as Record<string, unknown>),
               id: "77777777-7777-4777-8777-777777777777",
               scheduled_date: date,
+              piece_id: pieceID,
             };
             return Promise.resolve({ data: newCard, error: null });
           }
@@ -210,6 +235,7 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
     },
   );
   assertEquals(response.status, 202);
+  assertEquals((await response.json()).piece_id, pieceID);
   await background;
   assertEquals(calls, ["replace_day", "persist_day_revision"]);
   assertEquals(oldCard.title, "Posted title");
@@ -218,4 +244,5 @@ Deno.test("replace-day archives and starts through one RPC, then saves a new rev
   ]);
   assertEquals(newCard?.id === cardID, false);
   assertEquals(run.status, "completed");
+  assertEquals(JSON.stringify(otherCard), savedOther);
 });

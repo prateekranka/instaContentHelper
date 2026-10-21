@@ -2,7 +2,7 @@ const localURL = Deno.env.get("MCO_LOCAL_DATABASE_URL");
 
 Deno.test({
   name:
-    "local database creator loop transactions, current posted undo, and frozen replaced revisions",
+    "local database creator loop transactions, independent pieces, and frozen replaced revisions",
   ignore: !localURL,
   async fn() {
     const parsed = new URL(localURL!);
@@ -15,6 +15,22 @@ Deno.test({
     }
     const sql = await Deno.readTextFile(
       new URL("./creator-loop-db.sql", import.meta.url),
+    );
+    const piecesSQL = await Deno.readTextFile(
+      new URL("./content-pieces-db.sql", import.meta.url),
+    );
+    const fixture = await Deno.readTextFile(
+      new URL("./content-pieces-migration-db.sql", import.meta.url),
+    );
+    const migration = await Deno.readTextFile(
+      new URL(
+        "../../migrations/20261021140000_content_pieces.sql",
+        import.meta.url,
+      ),
+    );
+    const migrationSQL = fixture.replace(
+      "__CONTENT_PIECES_MIGRATION__",
+      () => migration.replaceAll("public.", "piece_migration_fixture."),
     );
     const command = new Deno.Command("psql", {
       clearEnv: true,
@@ -32,7 +48,9 @@ Deno.test({
     });
     const child = command.spawn();
     const writer = child.stdin.getWriter();
-    await writer.write(new TextEncoder().encode(sql));
+    await writer.write(
+      new TextEncoder().encode(sql + "\n" + piecesSQL + "\n" + migrationSQL),
+    );
     await writer.close();
     const result = await child.output();
     if (!result.success) {

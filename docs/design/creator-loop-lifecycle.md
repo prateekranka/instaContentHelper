@@ -4,6 +4,24 @@ Implemented through phase 6 of the approved [creator loop redesign](creator-loop
 This document describes the current source and its verification limits. All work remains local.
 The separate simulator owner provides runtime evidence. Phase 6 does not run e2e or change simulator state.
 
+## Several pieces: server phase 1
+
+The server now stores independent `content_pieces` on each date.
+Each piece owns its current revision and generation run. Each `daily_cards` revision has a required `piece_id`.
+The existing lifecycle guards apply to one piece. Two pieces can both be ready on one date.
+Posting, editing, unpublishing, and replacing one piece leave other pieces unchanged.
+Replacement archives only that piece's prior revision and keeps its history and filming data.
+
+Date-only API calls use position 0. A trigger mirrors that piece into `creator_days` for compatibility.
+An explicit piece ID must match the workspace, creator, date, and supplied revision.
+Client-generated IDs are stable across retries; a generation key controls run replay separately.
+The queue lane cap is per run, so separate piece runs do not block each other.
+See the [server contract](creator-loop-server-contract.md) for fields, errors, and read projections.
+
+The native client and FakeServer still use the date model below. Their changes belong to later phases.
+The phase 1 rollback SQL harness covers independent pieces and seeded old-record migration.
+The owner applies the local reset and runs that harness. No PostgreSQL or app runtime acceptance is claimed here.
+
 ## Identity and saved work
 
 A `DayIdentity` contains workspace, creator, and calendar date (`yyyy-MM-dd`).

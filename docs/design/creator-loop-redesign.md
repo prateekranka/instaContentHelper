@@ -122,6 +122,8 @@ The 17 UI items from step 4 remain later work. They are outside these implementa
 
 - Live migrations, live database access, Supabase deployment, and production conversion.
 - Onboarding questions, AI prompts, and screen redesign.
+- Several independent pieces per date. This is still the product plan (confirmed 2026-10-21).
+  `Day` holds one current package per date today, so a later change must let one date hold several pieces.
 - Commits, pushes, and git history changes during phase 6.
 
 The stopped patch job's saved patch and stash remain historical references.

@@ -97,3 +97,34 @@ Deno.test("day run returns stable RPC errors and persistence errors", async () =
     assertEquals(result.response.status, data ? 409 : 500);
   }
 });
+
+Deno.test("piece run creation forwards client identity and preserves foreign-piece errors", async () => {
+  const pieceID = "11111111-1111-4111-8111-111111111111";
+  const intent = generationIntent({
+    action: "generate_day",
+    creator_id: prepared.request.creator_id,
+    scheduled_date: prepared.request.scheduled_date,
+    day_brief: "Second piece",
+    piece_id: pieceID,
+  });
+  const result = await createDayGenerationRun(
+    {
+      from() {},
+      rpc(_name: string, args: Record<string, unknown>) {
+        assertEquals(
+          (args.payload as Record<string, unknown>).piece_id,
+          pieceID,
+        );
+        return Promise.resolve({
+          data: { error: "piece_scope_mismatch", status: 409 },
+          error: null,
+        });
+      },
+    } as never,
+    { ...prepared, generationIntent: intent },
+    "member",
+  );
+  if (!("response" in result)) throw new Error("expected rejection");
+  assertEquals(result.response.status, 409);
+  assertEquals((await result.response.json()).error, "piece_scope_mismatch");
+});

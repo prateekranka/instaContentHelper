@@ -20,6 +20,8 @@ type WriteContentRequest = {
   action?: WriteAction;
   creator_id?: string;
   daily_card_id?: string;
+  piece_id?: string;
+  scheduled_date?: string;
   idea_id?: string;
   weekly_plan_id?: string | null;
   weekly_setup_id?: string | null;
@@ -283,7 +285,13 @@ function normalizedPayload(
   session: VerifiedDeviceSession,
   creatorID: string,
 ): Record<string, unknown> | null {
+  if (body.piece_id !== undefined && !isUUID(body.piece_id)) return null;
+  if (body.scheduled_date !== undefined && !isDateString(body.scheduled_date)) {
+    return null;
+  }
   const base = {
+    ...(body.piece_id ? { piece_id: body.piece_id } : {}),
+    ...(body.scheduled_date ? { scheduled_date: body.scheduled_date } : {}),
     action: body.action,
     workspace_id: session.workspaceID,
     creator_id: creatorID,
@@ -296,7 +304,8 @@ function normalizedPayload(
       const decisionAt = body.decision_at?.trim() || null;
 
       if (
-        !isUUID(body.daily_card_id) ||
+        (!isUUID(body.daily_card_id) && !isUUID(body.piece_id) &&
+          !isDateString(body.scheduled_date)) ||
         !decision ||
         !isDecisionStatus(decision.status) ||
         !isNonBlankString(decision.output_line) ||
@@ -320,7 +329,8 @@ function normalizedPayload(
 
     case "upsert_archive_decision": {
       if (
-        !isUUID(body.daily_card_id) ||
+        (!isUUID(body.daily_card_id) && !isUUID(body.piece_id) &&
+          !isDateString(body.scheduled_date)) ||
         !isDateString(body.archive_date) ||
         !isDecisionStatus(
           typeof body.decision === "string" ? body.decision : undefined,
@@ -1084,6 +1094,12 @@ function allowedRoles(_action: WriteAction): string[] {
 
 function stableWriteError(value: unknown, action: WriteAction): string {
   if (
+    value === "invalid_piece_id" ||
+    value === "invalid_piece_target" ||
+    value === "piece_scope_mismatch" ||
+    value === "piece_revision_mismatch" ||
+    value === "piece_not_found" ||
+    value === "piece_removed" ||
     value === "posted_revision_immutable" ||
     value === "historical_revision_immutable" ||
     value === "creator_not_found" ||

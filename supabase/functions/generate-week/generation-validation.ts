@@ -423,6 +423,9 @@ export function normalizeGenerateDayRequest(body: unknown): GenerateDayRequest {
 
   return {
     action: "generate_day",
+    ...(body.piece_id !== undefined
+      ? { piece_id: String(body.piece_id).toLowerCase() }
+      : {}),
     creator_id: creatorID,
     scheduled_date: scheduledDate,
     day_brief: dayBrief,
@@ -468,6 +471,9 @@ export function normalizeRegenerateDayRequest(
 
   return {
     action: "regenerate_day",
+    ...(body.piece_id !== undefined
+      ? { piece_id: String(body.piece_id).toLowerCase() }
+      : {}),
     creator_id: creatorID,
     weekly_plan_id: weeklyPlanID,
     scheduled_date: scheduledDate,

@@ -313,6 +313,7 @@ export async function readGenerationStatus(
     if (dayFailure?.status === "failed" || isDayGenerationRun(run)) {
       return jsonResponse({
         generation_id: generationID,
+        piece_id: run.piece_id,
         status: "failed",
         error: stringValue(run.error_code) ??
           dayFailure?.error_code ??
@@ -574,6 +575,7 @@ async function readSingleDayGenerationStatus(
       generation_id: generationID,
       weekly_plan_id: latest.data.weekly_plan_id,
       target_scheduled_date: latest.data.target_scheduled_date,
+      piece_id: latest.data.piece_id,
       status: latest.data.status,
       error: latest.data.status === "failed"
         ? latest.data.error_code
@@ -587,6 +589,7 @@ async function readSingleDayGenerationStatus(
     weekly_plan_id: weeklyPlanID,
     status: "running",
     target_scheduled_date: scheduledDate,
+    piece_id: run.piece_id,
     poll_after_seconds: 2,
   });
 }
@@ -883,6 +886,15 @@ async function hydrateDayDraftVisualsFromSavedCard(
     return { ...snapshot };
   }
 
+  snapshot = {
+    ...snapshot,
+    ...(typeof run.piece_id === "string"
+      ? {
+        piece_id: run.piece_id,
+        daily_card: { ...snapshot.daily_card, piece_id: run.piece_id },
+      }
+      : {}),
+  };
   const weeklyPlanID = stringValue(run.weekly_plan_id) ??
     snapshot.weekly_plan_id;
   const creatorID = stringValue(run.creator_id);

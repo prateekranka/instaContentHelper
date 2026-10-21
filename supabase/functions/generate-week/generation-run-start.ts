@@ -46,6 +46,7 @@ export async function createDayGenerationRun(
       idempotency_key: intent?.idempotencyKey ?? crypto.randomUUID(),
       request_identity: intent?.identity ?? prepared.request,
       daily_card_id: intent?.expectedRevisionID,
+      piece_id: intent?.pieceID,
       preserve_manual_edits:
         (prepared.request as Record<string, unknown>).preserve_manual_edits,
     },

@@ -157,3 +157,36 @@ Deno.test("a stale keyed run closes instead of starting another worker", async (
   assertEquals(update.status, "failed");
   assertEquals((await response.json()).error, "generation_stale");
 });
+
+Deno.test("client piece identity is stable on retry and distinct for a second piece", () => {
+  const first = "11111111-1111-4111-8111-111111111111";
+  const second = "22222222-2222-4222-8222-222222222222";
+  const request = { ...body, piece_id: first };
+  assertEquals(generationIntent(request), generationIntent(request));
+  assertEquals(generationIntent(request).pieceID, first);
+  assertEquals(generationIntent(request).identity.piece_id, first);
+  assertEquals(
+    generationIntent({ ...request, piece_id: second }).identity.piece_id,
+    second,
+  );
+  assertEquals(generationIntent(body).identity.piece_id, undefined);
+});
+
+Deno.test("a key for one piece cannot replay a different piece on the same date", async () => {
+  const first = generationIntent({
+    ...body,
+    piece_id: "11111111-1111-4111-8111-111111111111",
+  });
+  const second = generationIntent({
+    ...body,
+    piece_id: "22222222-2222-4222-8222-222222222222",
+  });
+  const response = await generationReplayResponse({
+    from() {
+      throw new Error("unexpected write");
+    },
+  }, {
+    request_identity: first.identity,
+  }, second);
+  assertEquals(response.status, 409);
+});

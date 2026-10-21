@@ -119,6 +119,7 @@ const postedSnapshot = {
   decision: "posted",
   title_snapshot: "Posted title",
   caption_snapshot: "Posted caption",
+  piece_id: "88888888-8888-4888-8888-888888888888",
   decision_at: "2026-10-20T10:00:00+00:00",
 };
 
@@ -169,6 +170,8 @@ Deno.test("write-content keeps replaced revision conflicts for undo and other ch
       const error of [
         "posted_revision_immutable",
         "historical_revision_immutable",
+        "piece_scope_mismatch",
+        "piece_revision_mismatch",
       ]
     ) {
       for (
@@ -240,6 +243,7 @@ async function decisionRequest(
         const { payload } = await request.json();
         assertEquals(payload.action, action);
         assertEquals(payload.daily_card_id, revisionID);
+        assertEquals(payload.piece_id, postedSnapshot.piece_id);
         assertEquals(payload.creator_id, creatorID);
         assertEquals(payload.workspace_id, workspaceID);
         assertEquals(payload.member_id, memberID);
@@ -264,6 +268,7 @@ async function decisionRequest(
           action,
           creator_id: creatorID,
           daily_card_id: revisionID,
+          piece_id: postedSnapshot.piece_id,
           archive_date: "2026-10-20",
           decision: action === "complete_today"
             ? {

@@ -215,7 +215,11 @@ export async function persistRegeneratedDay(
       "missing_revision_id",
     );
   }
-  const dailyCard = { ...card, id: data.id };
+  const dailyCard = {
+    ...card,
+    id: data.id,
+    ...(typeof data.piece_id === "string" ? { piece_id: data.piece_id } : {}),
+  };
   await replaceDailyCardReferences(
     admin,
     input.workspaceID,

@@ -22,10 +22,11 @@ type ReadContentRequest = {
   action?: ReadAction;
   creator_id?: string;
   today_date?: string;
+  include_all_pieces?: boolean;
 };
 
 const DAILY_CARD_SELECT =
-  "id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,review_state,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,shot_content_owned,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,risk_notes,assumptions,source_note,decision_at,storyboard_thumbnail_assets";
+  "id,piece_id,content_pieces!daily_cards_piece_fk!inner(position,removed_at),workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,review_state,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,shot_content_owned,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,risk_notes,assumptions,source_note,decision_at,storyboard_thumbnail_assets";
 const WEEKLY_PLAN_SELECT =
   "id,workspace_id,creator_id,weekly_setup_id,creator_profile_id,week_start_date,status,strategy_summary,warnings,assumptions,is_soft_locked,published_at,updated_at";
 const WEEKLY_SETUP_SELECT =
@@ -102,7 +103,12 @@ export async function handleReadContentRequest(
 
   switch (action) {
     case "days":
-      return readCreatorDays(admin, session, creatorID);
+      return readCreatorDays(
+        admin,
+        session,
+        creatorID,
+        body.include_all_pieces === true,
+      );
     case "today":
       return readToday(
         admin,
@@ -156,6 +162,7 @@ async function readToday(
   const { data: todayRows, error: todayError } = await admin
     .from("daily_cards")
     .select(DAILY_CARD_SELECT)
+    .eq("content_pieces.position", 0)
     .eq("is_current", true)
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
@@ -171,6 +178,7 @@ async function readToday(
   const { data: weekRows, error: weekError } = await admin
     .from("daily_cards")
     .select(DAILY_CARD_SELECT)
+    .eq("content_pieces.position", 0)
     .eq("is_current", true)
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
@@ -226,6 +234,7 @@ export async function readWeekly(
     const { data: pubCards, error: pubCardsError } = await admin
       .from("daily_cards")
       .select(DAILY_CARD_SELECT)
+      .eq("content_pieces.position", 0)
       .eq("is_current", true)
       .eq("workspace_id", session.workspaceID)
       .eq("creator_id", creatorID)
@@ -260,6 +269,7 @@ export async function readWeekly(
     const { data: wkCards, error: wkCardsError } = await admin
       .from("daily_cards")
       .select(DAILY_CARD_SELECT)
+      .eq("content_pieces.position", 0)
       .eq("is_current", true)
       .eq("workspace_id", session.workspaceID)
       .eq("creator_id", creatorID)
@@ -321,7 +331,7 @@ export async function readArchive(
   const { data: rows, error } = await admin
     .from("archive_entries")
     .select(
-      "id,daily_card_id,archive_date,decision,output_line,has_post_thumbnail,title_snapshot,caption_snapshot,decision_at",
+      "id,daily_card_id,archive_date,decision,output_line,has_post_thumbnail,title_snapshot,caption_snapshot,decision_at,daily_cards!archive_entries_workspace_id_creator_id_daily_card_id_fkey(piece_id)",
     )
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
@@ -343,7 +353,12 @@ export async function readArchive(
     entries: (rows ?? []).map((row: Record<string, unknown>) => ({
       ...row,
       revision_id: row.daily_card_id,
-      daily_cards: { title: row.title_snapshot, caption: row.caption_snapshot },
+      piece_id: (row.daily_cards as Record<string, unknown> | null)?.piece_id,
+      daily_cards: {
+        title: row.title_snapshot,
+        caption: row.caption_snapshot,
+        piece_id: (row.daily_cards as Record<string, unknown> | null)?.piece_id,
+      },
     })),
   });
 }
@@ -615,6 +630,7 @@ export async function readCreatorDays(
   admin: SupabaseAdminClient,
   session: VerifiedDeviceSession,
   creatorID: string,
+  includeAllPieces = false,
 ): Promise<Response> {
   const { data, error } = await (admin as SupabaseAdminClient & {
     rpc: (
@@ -622,7 +638,11 @@ export async function readCreatorDays(
       args: Record<string, unknown>,
     ) => Promise<{ data: unknown; error: unknown }>;
   }).rpc("read_creator_days", {
-    payload: { workspace_id: session.workspaceID, creator_id: creatorID },
+    payload: {
+      workspace_id: session.workspaceID,
+      creator_id: creatorID,
+      ...(includeAllPieces ? { include_all_pieces: true } : {}),
+    },
   });
   if (error) return jsonResponse({ error: "days_lookup_failed" }, 500);
   return jsonResponse((data ?? { days: [] }) as Record<string, unknown>);

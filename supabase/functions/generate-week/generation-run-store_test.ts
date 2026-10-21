@@ -209,7 +209,7 @@ Deno.test("readGenerationRunStatus uses exact select, filters, and maybeSingle",
   assertEquals(op.selectColumns, GENERATION_RUN_STATUS_SELECT);
   assertEquals(
     GENERATION_RUN_STATUS_SELECT,
-    "id,workspace_id,creator_id,weekly_setup_id,requested_by_member_id,status,weekly_plan_id,output_snapshot,input_snapshot,error_code,completed_at,model,generation_scope,target_daily_card_id,target_scheduled_date",
+    "id,workspace_id,creator_id,weekly_setup_id,requested_by_member_id,status,weekly_plan_id,output_snapshot,input_snapshot,error_code,completed_at,model,generation_scope,target_daily_card_id,target_scheduled_date,piece_id",
   );
   assertEquals(op.filterOrder, ["id", "workspace_id"]);
   assertEquals(op.filters, { id: RUN_ID, workspace_id: WORKSPACE });

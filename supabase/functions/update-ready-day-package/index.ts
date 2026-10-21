@@ -10,6 +10,7 @@ type UpdateReadyDayPackageRequest = {
   creator_id?: string;
   scheduled_date?: string;
   daily_card_id?: string;
+  piece_id?: string;
   package?: Record<string, unknown>;
 };
 
@@ -83,6 +84,13 @@ export async function handleUpdateReadyDayPackageRequest(
   const creatorID = body.creator_id?.trim();
   const scheduledDate = body.scheduled_date?.trim();
   const dailyCardID = body.daily_card_id?.trim();
+  if (
+    body.piece_id !== undefined &&
+    (typeof body.piece_id !== "string" || !UUID_PATTERN.test(body.piece_id))
+  ) {
+    return jsonResponse({ error: "invalid_piece_id" }, 400);
+  }
+  const pieceID = body.piece_id;
   const packagePatch = body.package ?? {};
 
   if (!creatorID || !UUID_PATTERN.test(creatorID)) {
@@ -92,7 +100,7 @@ export async function handleUpdateReadyDayPackageRequest(
     );
   }
 
-  if (!scheduledDate && !dailyCardID) {
+  if (!scheduledDate && !dailyCardID && !pieceID) {
     return jsonResponse(
       { error: "invalid_update_ready_day_package_payload" },
       400,
@@ -191,6 +199,7 @@ export async function handleUpdateReadyDayPackageRequest(
     creator_id: creatorID,
     package: packagePatch,
   };
+  if (pieceID) payload.piece_id = pieceID;
   if (scheduledDate) {
     payload.scheduled_date = scheduledDate;
   }
@@ -217,6 +226,7 @@ export async function handleUpdateReadyDayPackageRequest(
 
   return jsonResponse({
     daily_card_id: result.daily_card_id,
+    piece_id: result.piece_id,
     scheduled_date: result.scheduled_date,
     status: result.status,
     weekly_plan_id: result.weekly_plan_id,
@@ -251,6 +261,12 @@ async function assertCreator(
 
 function stableError(code: string): string {
   switch (code) {
+    case "invalid_piece_id":
+    case "invalid_piece_target":
+    case "piece_scope_mismatch":
+    case "piece_revision_mismatch":
+    case "piece_not_found":
+    case "piece_removed":
     case "blank_package_text":
     case "invalid_package_text":
     case "invalid_package_scene_list":

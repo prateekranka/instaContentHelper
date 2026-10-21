@@ -349,6 +349,26 @@ export async function handleGenerateWeekRequest(
           : "invalid_idempotency_key",
       }, 400);
     }
+    if (intent.pieceID) {
+      const piece = await admin.from("content_pieces").select(
+        "id,workspace_id,creator_id,scheduled_date,removed_at",
+      ).eq("id", intent.pieceID).maybeSingle();
+      if (piece.error) {
+        return jsonResponse({ error: "piece_lookup_failed" }, 500);
+      }
+      if (
+        piece.data &&
+        (piece.data.workspace_id !== session.workspaceID ||
+          String(piece.data.creator_id).toLowerCase() !==
+            String(rawBody.creator_id).toLowerCase() ||
+          piece.data.scheduled_date !== rawBody.scheduled_date)
+      ) {
+        return jsonResponse({ error: "piece_scope_mismatch" }, 409);
+      }
+      if (piece.data?.removed_at) {
+        return jsonResponse({ error: "piece_removed" }, 409);
+      }
+    }
     if (rawBody.idempotency_key !== undefined) {
       const replay = await readGenerationReplay(
         admin,
@@ -482,6 +502,7 @@ async function handleGenerateDayRequest(
     creator_id: request.creator_id,
     weekly_plan_id: containerResult.weeklyPlanID,
     scheduled_date: request.scheduled_date,
+    piece_id: request.piece_id,
     preserve_manual_edits: false,
     mock: request.mock,
     response_mode: request.response_mode,
@@ -530,12 +551,15 @@ async function findReplacementPlan(
 ): Promise<
   { weeklyPlanID: string; recovering?: boolean } | { response: Response }
 > {
-  const { data, error } = await admin.from("daily_cards").select(
-    "id,weekly_plan_id",
+  const query = admin.from("daily_cards").select(
+    "id,weekly_plan_id,content_pieces!daily_cards_piece_fk!inner(position)",
   )
     .eq("workspace_id", workspaceID).eq("creator_id", request.creator_id)
-    .eq("scheduled_date", request.scheduled_date).eq("is_current", true)
-    .maybeSingle();
+    .eq("scheduled_date", request.scheduled_date).eq("is_current", true);
+  const { data, error } =
+    await (request.piece_id
+      ? query.eq("piece_id", request.piece_id)
+      : query.eq("content_pieces.position", 0)).maybeSingle();
   if (error) return generationPersistFailure("replacement_card_lookup", error);
   if (!data) {
     const recovery = await findArchivedDayPlan(
@@ -565,11 +589,17 @@ async function findArchivedDayPlan(
 ): Promise<
   { weeklyPlanID: string; recovering: true } | { response: Response } | null
 > {
-  const recovery = await admin.from("creator_days").select(
+  const recoveryQuery = admin.from(
+    request.piece_id ? "content_pieces" : "creator_days",
+  ).select(
     "current_revision_id",
   )
     .eq("workspace_id", workspaceID).eq("creator_id", request.creator_id)
-    .eq("scheduled_date", request.scheduled_date).maybeSingle();
+    .eq("scheduled_date", request.scheduled_date);
+  const recovery =
+    await (request.piece_id
+      ? recoveryQuery.eq("id", request.piece_id)
+      : recoveryQuery).maybeSingle();
   if (recovery.error) {
     return generationPersistFailure("replacement_day_lookup", recovery.error);
   }
@@ -630,7 +660,7 @@ async function ensureDayPlanContainer(
   }
 
   const existing = (existingResult.data?.[0] ?? null) as PlanRecord | null;
-  if (existing?.is_soft_locked) {
+  if (existing?.is_soft_locked && !request.piece_id) {
     return {
       response: jsonResponse({ error: "existing_published_week_locked" }, 409),
     };
@@ -734,6 +764,7 @@ async function startPreparedDayGeneration(
       target_scheduled_date: prepared.request.scheduled_date,
       poll_after_seconds: 2,
       idempotency_key: intent.idempotencyKey,
+      piece_id: runResult.run.piece_id,
       replaced_daily_card_id: runResult.run.replaced_daily_card_id,
     }, 202);
   }
@@ -747,6 +778,7 @@ async function startPreparedDayGeneration(
   return "response" in result ? result.response : jsonResponse({
     ...result.payload,
     idempotency_key: intent.idempotencyKey,
+    piece_id: runResult.run.piece_id,
     replaced_daily_card_id: runResult.run.replaced_daily_card_id,
   });
 }
@@ -798,12 +830,15 @@ async function prepareDayGeneration(
   }
   const plan = planResult.plan;
   const replacing = isRecord(rawBody) && rawBody.replace_day === true;
-  if (!replacing && (plan.status === "published" || plan.is_soft_locked)) {
+  if (
+    !replacing && !request.piece_id &&
+    (plan.status === "published" || plan.is_soft_locked)
+  ) {
     return {
       response: jsonResponse({ error: "existing_published_week_locked" }, 409),
     };
   }
-  if (!replacing && plan.status !== "draft") {
+  if (!replacing && !request.piece_id && plan.status !== "draft") {
     return {
       response: jsonResponse({ error: "weekly_plan_not_found" }, 409),
     };
@@ -954,6 +989,8 @@ async function readSavedDailyCards(
     workspaceID,
     creatorID,
     weeklyPlanID,
+    undefined,
+    true,
   );
   if (error) {
     return generationPersistFailure("daily_cards_lookup", error);
@@ -973,6 +1010,7 @@ function storedDailyCardToGenerated(
     : {};
   return {
     id: stringValue(card.id),
+    piece_id: stringValue(card.piece_id),
     scheduled_date: card.scheduled_date,
     format: contentFormatValue(postInstructions.format),
     primary_surface: stringValue(postInstructions.primary_surface) ?? "",

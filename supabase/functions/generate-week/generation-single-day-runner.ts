@@ -499,6 +499,7 @@ export async function runDayGenerationPipeline(
     status: "draft",
     target_scheduled_date: prepared.request.scheduled_date,
     daily_card: persistResult.dailyCard,
+    piece_id: persistResult.dailyCard.piece_id,
     warnings: generated.warnings,
     assumptions: generated.assumptions,
     source_summary: generated.source_summary,

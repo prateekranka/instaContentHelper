@@ -350,6 +350,7 @@ Deno.test("archive returns frozen title and caption through the legacy nested sh
   const { readArchive } = await import("./index.ts");
   const row = {
     daily_card_id: "posted-revision",
+    daily_cards: { piece_id: "piece-1" },
     title_snapshot: "Posted title",
     caption_snapshot: "Posted caption",
   };
@@ -384,8 +385,10 @@ Deno.test("archive returns frozen title and caption through the legacy nested sh
   assertEquals(body.entries[0].daily_cards, {
     title: "Posted title",
     caption: "Posted caption",
+    piece_id: "piece-1",
   });
   assertEquals(body.entries[0].revision_id, "posted-revision");
+  assertEquals(body.entries[0].piece_id, "piece-1");
 });
 
 Deno.test("day reads use the authenticated workspace and return the current revision pointer", async () => {

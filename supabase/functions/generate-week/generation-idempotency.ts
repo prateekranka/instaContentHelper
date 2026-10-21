@@ -15,6 +15,7 @@ export type GenerationIntent = {
   identity: Record<string, unknown>;
   replace: boolean;
   expectedRevisionID?: string;
+  pieceID?: string;
 };
 
 export function generationIntent(
@@ -37,6 +38,15 @@ export function generationIntent(
       "daily_card_id must be a UUID.",
     );
   }
+  if (
+    body.piece_id !== undefined &&
+    (typeof body.piece_id !== "string" || !isUUID(body.piece_id))
+  ) {
+    throw new GenerateWeekValidationError(
+      "invalid_generation_payload",
+      "piece_id must be a UUID.",
+    );
+  }
   const replace = body.action === "replace_day";
   const normalized = body.action === "regenerate_day"
     ? normalizeRegenerateDayRequest(body)
@@ -54,6 +64,9 @@ export function generationIntent(
       }),
     ),
     replace,
+    ...(typeof body.piece_id === "string"
+      ? { pieceID: body.piece_id.toLowerCase() }
+      : {}),
     expectedRevisionID: typeof body.daily_card_id === "string"
       ? body.daily_card_id
       : undefined,
@@ -121,6 +134,7 @@ export async function generationReplayResponse(
   if (run.status === "completed") {
     return jsonResponse({
       ...(run.output_snapshot as Record<string, unknown>),
+      piece_id: run.piece_id,
       replaced_daily_card_id: run.replaced_daily_card_id,
       idempotency_key: intent.idempotencyKey,
       replayed: true,
@@ -128,6 +142,7 @@ export async function generationReplayResponse(
   }
   return jsonResponse({
     generation_id: run.id,
+    piece_id: run.piece_id,
     weekly_plan_id: run.weekly_plan_id,
     target_scheduled_date: run.target_scheduled_date,
     status: run.status,
