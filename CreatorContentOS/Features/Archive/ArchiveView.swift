@@ -19,7 +19,7 @@ struct ArchiveSection: View {
     @State private var selectedEntry: ArchiveEntry?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
             VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                 Text("Archive")
                     .font(PocketSheetType.screenTitle)
@@ -43,6 +43,8 @@ struct ArchiveSection: View {
                     PocketSheetDivider()
                 }
             }
+            .background(PocketSheetTheme.Color.fillMuted)
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.sheetRadius, style: .continuous))
         }
         .sheet(item: $selectedEntry) { entry in
             ArchiveEntryDetailView(entry: entry)
@@ -89,14 +91,16 @@ private struct ArchiveFilterBar: View {
                         selectedFilter = filter
                     } label: {
                         Text(filter.rawValue)
-                            .font(PocketSheetType.chip)
+                            .font(PocketSheetType.actionSecondary)
                             .foregroundStyle(
                                 selectedFilter == filter
                                     ? PocketSheetTheme.Color.inversePaper
                                     : PocketSheetTheme.Color.ink
                             )
-                            .padding(.horizontal, PocketSheetSpace.s)
-                            .frame(height: 32)
+                            .padding(.horizontal, PocketSheetSpace.xxs)
+                            .padding(.horizontal, PocketSheetSpace.m)
+                            .padding(.vertical, PocketSheetSpace.xxs)
+                            .frame(minHeight: 44)
                             .background(
                                 selectedFilter == filter
                                     ? PocketSheetTheme.Color.inverseInk
@@ -118,48 +122,33 @@ struct ArchiveTimelineRow: View {
     let entry: ArchiveEntry
 
     var body: some View {
-        HStack(alignment: .top, spacing: PocketSheetSpace.m) {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                Text(entry.day)
-                    .font(PocketSheetType.rowTitle)
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
-                Text(entry.date)
-                    .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-            }
-            .frame(width: 56, alignment: .leading)
-
-            Rectangle()
-                .fill(PocketSheetTheme.Color.hairline)
-                .frame(width: 1)
-                .padding(.vertical, 2)
+        HStack(alignment: .top, spacing: PocketSheetSpace.s) {
+            Image(systemName: entry.hasPostThumbnail ? "figure.run" : "tray")
+                .font(PocketSheetType.listIcon)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                 Text(entry.cardTitle)
                     .font(PocketSheetType.rowTitle)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
+                Text("\(entry.day.capitalized), \(entry.date.capitalized)")
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 Text(entry.outputLine)
                     .accessibilityIdentifier("archive.output.\(entry.cardTitle)")
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
 
-            Spacer()
-
-            if entry.hasPostThumbnail {
-                Image(systemName: "figure.run")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(PocketSheetTheme.Color.inversePaper)
-                    .frame(width: 54, height: 54)
-                    .background(PocketSheetTheme.Color.inverseInk)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            } else {
-                Image(systemName: "chevron.right")
-                    .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
-            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(PocketSheetType.navIcon)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                .accessibilityHidden(true)
         }
-        .padding(.vertical, PocketSheetSpace.m)
+        .padding(.horizontal, PocketSheetSpace.l)
+        .padding(.vertical, PocketSheetSpace.s)
     }
 }
 
@@ -171,9 +160,9 @@ private struct ArchiveEntryDetailView: View {
         NavigationStack {
             ZStack {
                 PocketSheetTheme.Color.paper.ignoresSafeArea()
-                VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                     VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
-                        Text("\(entry.day), \(entry.date)")
+                        Text("\(entry.day.capitalized), \(entry.date.capitalized)")
                             .font(PocketSheetType.sectionLabel)
                             .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                         Text(entry.cardTitle)
@@ -208,6 +197,7 @@ private struct ArchiveEntryDetailView: View {
                     Button("Done") {
                         dismiss()
                     }
+                    .font(PocketSheetType.actionSecondary)
                 }
             }
         }

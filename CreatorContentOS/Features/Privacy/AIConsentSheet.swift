@@ -5,31 +5,27 @@ struct AIConsentSheet: View {
     var onNotNow: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
-            Text(AIConsentCopy.sheetTitle)
-                .font(PocketSheetType.screenTitle)
-                .foregroundStyle(PocketSheetTheme.Color.ink)
-                .accessibilityAddTraits(.isHeader)
+        PocketSheetScreen(bottomContentPadding: PocketSheetSpace.l) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
+                Text(AIConsentCopy.sheetTitle)
+                    .font(PocketSheetType.screenTitle)
+                    .foregroundStyle(PocketSheetTheme.Color.ink)
+                    .accessibilityAddTraits(.isHeader)
 
-            Text(AIConsentCopy.purposeAndDestinations)
-                .font(PocketSheetType.rowSubtitle)
-                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: PocketSheetSpace.s)
-
-            VStack(spacing: PocketSheetSpace.s) {
+                Text(AIConsentCopy.purposeAndDestinations)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } bottomBar: {
+            PocketSheetCommandBar {
                 PocketSheetPrimaryAction(title: AIConsentCopy.allowTitle, action: onAllow)
                     .accessibilityIdentifier("ai.consent.allow")
                 PocketSheetSecondaryAction(title: AIConsentCopy.notNowTitle, action: onNotNow)
                     .accessibilityIdentifier("ai.consent.notNow")
             }
         }
-        .padding(.horizontal, PocketSheetSpace.l)
-        .padding(.top, PocketSheetSpace.xl)
-        .padding(.bottom, PocketSheetSpace.l)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(PocketSheetTheme.Color.paper.ignoresSafeArea())
         .accessibilityIdentifier("ai.consent.sheet")
     }
 }

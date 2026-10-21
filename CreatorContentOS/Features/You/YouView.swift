@@ -4,10 +4,9 @@ import SwiftUI
 struct YouView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var navigationPath = NavigationPath()
     @State private var isSigningOut = false
-    @State private var isPreferencesExpanded = false
-    @Environment(\.pocketReduceMotion) private var reduceMotion
 #if DEBUG
     @State private var showBenchmark = false
     @State private var uiFixtureData = DebugLaunchFlags.uiFixtureData
@@ -16,7 +15,7 @@ struct YouView: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ScrollView {
-                VStack(alignment: .leading, spacing: PocketSheetSpace.xl) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                     Text("You")
                         .font(PocketSheetType.screenTitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
@@ -24,8 +23,13 @@ struct YouView: View {
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("you.title")
 
-                    accountBlock
-                    generationInputsBlock
+                    if dynamicTypeSize.isAccessibilitySize {
+                        generationInputsBlock
+                        accountBlock
+                    } else {
+                        accountBlock
+                        generationInputsBlock
+                    }
                     archiveBlock
 #if DEBUG
                     devBlock
@@ -52,6 +56,7 @@ struct YouView: View {
     }
 
 #if DEBUG
+    @ViewBuilder
     private var devBlock: some View {
         PocketSheetBlock(header: "Dev") {
             if DebugLaunchFlags.forceFixtureUI {
@@ -91,6 +96,11 @@ struct YouView: View {
             .accessibilityIdentifier("you.dev.benchmark")
         }
         .padding(.horizontal, PocketSheetSpace.l)
+
+        YouAccountRuntimeStatusBlock()
+            .padding(.horizontal, PocketSheetSpace.l)
+        YouAccountDebugOnboardingResetBlock()
+            .padding(.horizontal, PocketSheetSpace.l)
     }
 #endif
 
@@ -101,7 +111,8 @@ struct YouView: View {
             } label: {
                 PocketSheetRow(
                     title: accountTitle,
-                    subtitle: accountSubtitle
+                    subtitle: accountSubtitle,
+                    leadingSymbol: "person.crop.circle"
                 )
             }
             .buttonStyle(.plain)
@@ -111,52 +122,24 @@ struct YouView: View {
     }
 
     private var generationInputsBlock: some View {
-        PocketSheetBlock {
-            VStack(spacing: 0) {
-                Button {
-                    if reduceMotion {
-                        isPreferencesExpanded.toggle()
-                    } else {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isPreferencesExpanded.toggle()
-                        }
-                    }
-                } label: {
-                    HStack(alignment: .center, spacing: PocketSheetSpace.s) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Idea settings")
-                                .font(PocketSheetType.rowTitle)
-                                .foregroundStyle(PocketSheetTheme.Color.ink)
-                            Text(isPreferencesExpanded ? "Edit how your ideas are shaped" : "Optional preferences for future ideas")
-                                .font(PocketSheetType.rowSubtitle)
-                                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                        }
-                        Spacer(minLength: PocketSheetSpace.s)
-                        Image(systemName: isPreferencesExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-                    .padding(.horizontal, PocketSheetSpace.m)
-                }
-                .buttonStyle(.plain)
-                .accessibilityValue(isPreferencesExpanded ? "Expanded" : "Collapsed")
+        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+            Text("Idea settings")
+                .font(PocketSheetType.sectionLabel)
+                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityValue("Expanded")
                 .accessibilityIdentifier("you.preferences.toggle")
-
-                if isPreferencesExpanded {
+            PocketSheetBlock {
+                VStack(spacing: 0) {
+                    setupRow(.creatorVoice, title: "Creator voice", subtitle: voiceSubtitle)
                     PocketSheetDivider()
-                    VStack(spacing: 0) {
-                        setupRow(.contentCategories, title: "Interests & style", subtitle: interestsSubtitle)
-                        PocketSheetDivider()
-                        setupRow(.productionPreferences, title: "Content preferences", subtitle: productionSubtitle)
-                        PocketSheetDivider()
-                        setupRow(.currentContext, title: "Current reads & watches", subtitle: contextSubtitle)
-                        PocketSheetDivider()
-                        setupRow(.creatorVoice, title: "Creator voice", subtitle: voiceSubtitle)
-                        PocketSheetDivider()
-                        setupRow(.references, title: "References", subtitle: referencesSubtitle)
-                    }
-                    .transition(.opacity)
+                    setupRow(.contentCategories, title: "Interests & style", subtitle: interestsSubtitle)
+                    PocketSheetDivider()
+                    setupRow(.productionPreferences, title: "Content preferences", subtitle: productionSubtitle)
+                    PocketSheetDivider()
+                    setupRow(.currentContext, title: "Current reads & watches", subtitle: contextSubtitle)
+                    PocketSheetDivider()
+                    setupRow(.references, title: "References", subtitle: referencesSubtitle)
                 }
             }
         }
@@ -164,7 +147,7 @@ struct YouView: View {
     }
 
     private var archiveBlock: some View {
-        PocketSheetBlock(header: "Archive") {
+        PocketSheetBlock(header: "Your posts") {
             YouArchivePreview(onSeeMore: { open(.archive, from: .you) })
         }
         .padding(.horizontal, PocketSheetSpace.l)
@@ -184,10 +167,22 @@ struct YouView: View {
         Button {
             open(route, from: .you)
         } label: {
-            PocketSheetRow(title: title, subtitle: subtitle)
+            PocketSheetRow(title: title, subtitle: subtitle, leadingSymbol: symbol(for: route))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("you.row.\(accessibilitySuffix(for: route))")
+    }
+
+    private func symbol(for route: YouRoute) -> String {
+        switch route {
+        case .contentCategories: "square.grid.2x2"
+        case .productionPreferences: "slider.horizontal.3"
+        case .currentContext: "book"
+        case .creatorVoice: "waveform"
+        case .references: "bookmark"
+        case .account: "person.crop.circle"
+        case .archive: "tray"
+        }
     }
 
     private func open(_ route: YouRoute, from origin: YouNavigationOrigin) {
@@ -237,11 +232,7 @@ struct YouView: View {
     }
 
     private var accountSubtitle: String {
-        var parts = [liveSession == nil ? "Using sample data" : "Signed in with Apple"]
-        if let checkedAt = services.lastRepositoryRefreshAt ?? services.lastRepositoryRefreshAttemptAt {
-            parts.append("checked \(checkedAt.formatted(date: .omitted, time: .shortened))")
-        }
-        return parts.joined(separator: " · ")
+        liveSession == nil ? "Using sample data" : "Signed in with Apple"
     }
 
     private func accessibilitySuffix(for route: YouRoute) -> String {
@@ -336,14 +327,12 @@ struct YouArchivePreview: View {
                 Text("Nothing posted yet.")
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                    .padding(.horizontal, PocketSheetSpace.m)
+                    .padding(.horizontal, PocketSheetSpace.l)
                     .padding(.vertical, PocketSheetSpace.s)
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(previewEntries.enumerated()), id: \.element.id) { index, entry in
                         ArchiveTimelineRow(entry: entry)
-                            .padding(.horizontal, PocketSheetSpace.m)
-                            .padding(.vertical, PocketSheetSpace.s)
                         if index < previewEntries.count - 1 {
                             PocketSheetDivider()
                         }
@@ -357,7 +346,7 @@ struct YouArchivePreview: View {
                         .font(PocketSheetType.rowTitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .padding(.horizontal, PocketSheetSpace.m)
+                        .padding(.horizontal, PocketSheetSpace.l)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("you.archive.seeMore")

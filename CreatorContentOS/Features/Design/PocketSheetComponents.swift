@@ -7,7 +7,8 @@ struct PocketSheetPressFeedbackStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+            .opacity(configuration.isPressed && reduceMotion ? 0.8 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -109,7 +110,8 @@ struct PocketSheetCard<Content: View>: View {
 
     var body: some View {
         content
-            .padding(PocketSheetSpace.m)
+            .padding(.horizontal, PocketSheetSpace.l)
+            .padding(.vertical, PocketSheetSpace.s)
             .background(PocketSheetTheme.Color.paperRaised)
             .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.sheetRadius, style: .continuous))
             .overlay {
@@ -168,7 +170,7 @@ struct PocketSheetFeedbackBanner: View {
         if let message = message?.nilIfBlank {
             HStack(alignment: .center, spacing: PocketSheetSpace.s) {
                 Image(systemName: kind.symbolName)
-                    .font(.system(size: 14, weight: kind.symbolWeight))
+                    .font(PocketSheetType.rowSubtitle)
                 Text(message)
                     .font(PocketSheetType.rowSubtitle)
                     .lineLimit(2)
@@ -176,7 +178,7 @@ struct PocketSheetFeedbackBanner: View {
                 Spacer(minLength: PocketSheetSpace.s)
             }
             .foregroundStyle(PocketSheetTheme.Color.ink)
-            .padding(.horizontal, PocketSheetSpace.m)
+            .padding(.horizontal, PocketSheetSpace.l)
             .padding(.vertical, PocketSheetSpace.s)
             .background(PocketSheetTheme.Color.fillMuted)
             .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
@@ -196,24 +198,23 @@ struct PocketSheetBlock<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
             if let header {
-                Text(header.uppercased())
+                Text(header)
                     .font(PocketSheetType.sectionLabel)
-                    .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
-                    .tracking(0.44)
-                    .padding(.horizontal, PocketSheetSpace.m)
-                    .padding(.top, PocketSheetSpace.s)
-                    .padding(.bottom, PocketSheetSpace.xs)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .accessibilityAddTraits(.isHeader)
             }
-            content
-        }
-        .background(PocketSheetTheme.Color.paperRaised)
-        .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.sheetRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: PocketSheetShape.sheetRadius, style: .continuous)
-                .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
+            VStack(spacing: 0) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(PocketSheetTheme.Color.fillMuted)
+            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.sheetRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: PocketSheetShape.sheetRadius, style: .continuous)
+                    .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
+            }
         }
     }
 }
@@ -221,31 +222,67 @@ struct PocketSheetBlock<Content: View>: View {
 // MARK: - Row
 
 struct PocketSheetRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
     var subtitle: String?
     var trailingSymbol: String = "chevron.right"
+    var leadingSymbol: String?
 
     var body: some View {
-        HStack(alignment: .center, spacing: PocketSheetSpace.s) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(PocketSheetType.rowTitle)
-                    .foregroundStyle(PocketSheetTheme.Color.ink)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(PocketSheetType.rowSubtitle)
-                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                    HStack(spacing: PocketSheetSpace.s) {
+                        leadingIcon
+                        Spacer(minLength: PocketSheetSpace.s)
+                        trailingIcon
+                    }
+                    rowText
+                }
+            } else {
+                HStack(alignment: .center, spacing: PocketSheetSpace.s) {
+                    leadingIcon
+                    rowText
+                    Spacer(minLength: PocketSheetSpace.s)
+                    trailingIcon
                 }
             }
-            Spacer(minLength: PocketSheetSpace.s)
-            Image(systemName: trailingSymbol)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
         }
         .frame(minHeight: 44, alignment: .center)
-        .padding(.horizontal, PocketSheetSpace.m)
+        .padding(.horizontal, PocketSheetSpace.l)
         .padding(.vertical, PocketSheetSpace.s)
         .contentShape(Rectangle())
+    }
+
+    private var rowText: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(PocketSheetType.rowTitle)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+            if let subtitle {
+                Text(subtitle)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var leadingIcon: some View {
+        if let leadingSymbol {
+            Image(systemName: leadingSymbol)
+                .font(PocketSheetType.listIcon)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var trailingIcon: some View {
+        Image(systemName: trailingSymbol)
+            .font(PocketSheetType.navIcon)
+            .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
     }
 }
 
@@ -259,8 +296,9 @@ struct PocketSheetChip: View {
         Text(text)
             .font(PocketSheetType.chip)
             .foregroundStyle(isEmphasized ? PocketSheetTheme.Color.inversePaper : PocketSheetTheme.Color.ink)
-            .padding(.horizontal, 10)
-            .frame(minHeight: 26)
+            .padding(.horizontal, PocketSheetSpace.m)
+            .padding(.vertical, PocketSheetSpace.xxs)
+            .frame(minHeight: 44)
             .background(isEmphasized ? PocketSheetTheme.Color.inverseInk : PocketSheetTheme.Color.fillMuted)
             .clipShape(Capsule())
             .overlay {
@@ -287,21 +325,31 @@ struct PocketSheetDivider: View {
 // MARK: - Actions
 
 struct PocketSheetPrimaryAction: View {
+    @Environment(\.pocketReduceMotion) private var reduceMotion
     let title: String
     var systemImage: String?
+    var animatesSymbol = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: PocketSheetSpace.xs) {
+            HStack(spacing: 0) {
                 if let systemImage {
                     Image(systemName: systemImage)
+                        .contentTransition(animatesSymbol
+                            ? (reduceMotion ? .opacity : .symbolEffect(.replace, options: .speed(4)))
+                            : .identity)
+                        .animation(animatesSymbol ? .easeOut(duration: 0.2) : nil, value: systemImage)
+                        .accessibilityHidden(true)
                 }
                 Text(title)
-                    .font(PocketSheetType.actionPrimary)
+                    .padding(.horizontal, PocketSheetSpace.xxs)
             }
+            .font(PocketSheetType.actionPrimary)
+            .padding(.horizontal, PocketSheetSpace.m)
+            .padding(.vertical, PocketSheetSpace.xxs)
             .frame(maxWidth: .infinity)
-            .frame(minHeight: 48)
+            .frame(minHeight: 44)
             .foregroundStyle(PocketSheetTheme.Color.inversePaper)
             .background(PocketSheetTheme.Color.inverseInk)
             .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
@@ -318,8 +366,11 @@ struct PocketSheetSecondaryAction: View {
         Button(action: action) {
             Text(title)
                 .font(PocketSheetType.actionSecondary)
+                .padding(.horizontal, PocketSheetSpace.xxs)
+                .padding(.horizontal, PocketSheetSpace.m)
+                .padding(.vertical, PocketSheetSpace.xxs)
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 48)
+                .frame(minHeight: 44)
                 .foregroundStyle(PocketSheetTheme.Color.ink)
                 .background(PocketSheetTheme.Color.paperRaised)
                 .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
@@ -352,9 +403,9 @@ enum PocketSheetStatusKind: Equatable {
     var symbolWeight: Font.Weight {
         switch self {
         case .neutral: .regular
-        case .ready: .semibold
+        case .ready: .medium
         case .pending: .medium
-        case .issue: .semibold
+        case .issue: .medium
         }
     }
 }
@@ -366,7 +417,7 @@ struct PocketSheetStatus: View {
     var body: some View {
         HStack(spacing: PocketSheetSpace.xs) {
             Image(systemName: kind.symbolName)
-                .font(.system(size: 12, weight: kind.symbolWeight))
+                .font(PocketSheetType.rowSubtitle)
             Text(text)
                 .font(PocketSheetType.status)
         }

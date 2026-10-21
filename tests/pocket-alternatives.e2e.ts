@@ -7,7 +7,8 @@ test('partial filming survives relaunch and backup preview preserves the main id
   const title = await screen.getByTestId('today.package.title').textContent();
   await screen.getByTestId('today.startFilming').tap();
   await screen.getByTestId('shoot.complete').tap();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   await device.openApp('com.prateekranka.creatorcontenthelper', {
     relaunch: true,
     launchArguments: ['-MCO_FORCE_FIXTURE_UI', '1', '-MCO_FORCE_APP_MODE', 'creator',
@@ -18,7 +19,8 @@ test('partial filming survives relaunch and backup preview preserves the main id
   await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 2 of');
   await app.screenshot('pocket-resumed-filming');
   await screen.getByTestId('shoot.previous').tap();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   await app.back();
   await screen.getByTestId('today.notEasier').tap();
   await screen.getByRole('button', /10-second story/).tap();

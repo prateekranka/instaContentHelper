@@ -110,7 +110,8 @@ test('catalog onboarding, Today states, filming, post text, and backup sheets', 
   await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 1 of');
   await capture(app, device, '06-filming-first-shot');
   await screen.getByTestId('shoot.complete').tap();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   await capture(app, device, '07-filming-shot-complete');
   await app.back();
   await expect(screen.getByTestId('today.startFilming')).toContainText('Continue filming');
@@ -122,7 +123,7 @@ test('catalog onboarding, Today states, filming, post text, and backup sheets', 
   expect(count).toBeGreaterThan(1);
   for (let shot = 1; shot <= count; shot++) {
     await capture(app, device, `filming-shot-${shot}-of-${count}`);
-    if (await screen.getByTestId('shoot.complete').isEnabled()) await screen.getByTestId('shoot.complete').tap();
+    if ((await screen.getByTestId('shoot.complete').textContent()) !== 'Next shot') await screen.getByTestId('shoot.complete').tap();
     if (shot < count) await screen.getByTestId('shoot.next').tap();
   }
   await expect(screen.getByTestId('post.markPosted')).toBeVisible();
@@ -170,9 +171,8 @@ test('catalog You and each creator preference screen', async ({ app, screen, dev
   await launch(device, 'preferences');
   await selectTab(screen, 'You');
   await expect(screen.getByTestId('you.preferences.toggle')).toBeVisible();
-  await capture(app, device, '20-you-collapsed');
-  await screen.getByTestId('you.preferences.toggle').tap();
-  await capture(app, device, '21-you-expanded');
+  await capture(app, device, '20-you-grouped-settings');
+  await expect(screen.getByTestId('you.row.voice')).toBeAttached();
   for (const [row, destination, name] of [
     ['account', 'account', '22-account'],
     ['interests', 'interests', '23-interests'],
@@ -366,7 +366,7 @@ test('break-ui worst content, large text, and reduced motion remain usable', asy
     await capture(app, device, `50-${suffix}-today`);
     const commandTop = suffix.includes('large') ? undefined
       : (await screen.getByTestId('today.startFilming').boundingBox()).y - 16;
-    await scrollToControl(screen, screen.getByText('SHOT 01', { exact: true }), 'down', commandTop);
+    await scrollToControl(screen, screen.getByTestId('today.shot.1').getByText('What to film', { exact: true }), 'down', commandTop);
     await capture(app, device, `51-${suffix}-shot-list`);
     if (suffix === 'large' || suffix === 'narrow-large') {
       await scrollToControl(screen, screen.getByTestId('today.startFilming'), 'up');
@@ -385,7 +385,8 @@ test('break-ui worst content, large text, and reduced motion remain usable', asy
     }
     await capture(app, device, `52-${suffix}-filming`);
     await screen.getByTestId('shoot.complete').tap();
-    await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+    await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+    await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   }
 });
 

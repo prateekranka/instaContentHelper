@@ -43,7 +43,8 @@ test('loop R1-1: renaming a filmed scene keeps its mark after relaunch', async (
   const session = await ready(screen, device);
   await screen.getByTestId('today.startFilming').tap();
   await screen.getByTestId('shoot.complete').tap();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   await app.back();
   await openLoopEditor(screen);
   await clearThenType(screen, screen.getByTestId('shootFolio.scene.1.title'), 'Renamed opening scene');
@@ -55,7 +56,8 @@ test('loop R1-1: renaming a filmed scene keeps its mark after relaunch', async (
   await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 2 of');
   await screen.getByTestId('shoot.previous').tap();
   await expect(screen.getByText('Renamed opening scene', { exact: true })).toBeVisible();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
 });
 
 for (const decision of ['shot', 'posted'] as const) {
@@ -227,7 +229,8 @@ test('loop R1b-4 R2-4: failed replacement restores the title and filmed scene', 
   await screen.getByTestId('today.startFilming').tap();
   await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 2 of');
   await screen.getByTestId('shoot.previous').tap();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
 });
 
 test('loop R2-4: a failed replacement restores a posted decision', { timeout: 240_000 }, async ({ app, screen, device }) => {
@@ -406,7 +409,7 @@ test('loop R3-C6: onboarding interests survive the same fixture session relaunch
   await expect(screen.getByTestId('today.startFilming')).toBeVisible({ timeout: 45_000 });
   await relaunchLoopSession(device, session, { MCO_FORCE_ONBOARDING: '0' });
   await selectTab(screen, 'You');
-  await screen.getByTestId('you.preferences.toggle').tap();
+  await expect(screen.getByTestId('you.row.voice')).toBeAttached();
   await screen.getByTestId('you.row.interests').tap();
   await expect(screen.getByTestId('you.interests.chip.books')).toBeSelected();
 });
@@ -549,7 +552,8 @@ test('loop R4-C2: legacy backup cache retains its partial filming marks', async 
   await screen.getByTestId('today.startFilming').tap();
   await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 2 of');
   await screen.getByTestId('shoot.previous').tap();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   await app.back();
   await archiveHas(screen, 'Loop legacy-backup package');
   await expect(screen.getByText('Used backup: 10-second story', { exact: true })).toBeVisible();

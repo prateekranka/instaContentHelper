@@ -36,7 +36,8 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
     await expect(screen.getByTestId('shoot.progress')).toContainText(`Shot ${shot} of`);
     if (shot < count) {
       await screen.getByTestId('shoot.complete').doubleTap();
-      await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+      await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+      await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
       await expect(screen.getByTestId('shoot.progress')).toContainText(`Shot ${shot} of`);
       await screen.getByTestId('shoot.next').tap();
     } else {

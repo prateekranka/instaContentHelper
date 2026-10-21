@@ -17,7 +17,7 @@ struct ShootFolioView: View {
 
     var body: some View {
         PocketSheetScreen {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                 header
 
                 if case .ready = services.todayContentState {
@@ -102,7 +102,7 @@ struct ShootFolioView: View {
         PocketSheetCard {
             HStack(alignment: .center, spacing: PocketSheetSpace.m) {
                 Image(systemName: services.areAllScenesShot ? "checkmark.seal.fill" : "target")
-                    .font(.system(size: 22, weight: .medium))
+                    .font(PocketSheetType.listIcon)
                     .foregroundStyle(services.areAllScenesShot ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.ink)
                     .frame(width: 34)
 
@@ -148,20 +148,22 @@ struct ShootFolioView: View {
                 Button("Cancel") {
                     cancelEditing()
                 }
-                .font(PocketSheetType.rowSubtitle)
+                .font(PocketSheetType.actionSecondary)
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                .padding(.horizontal, PocketSheetSpace.s)
-                .frame(height: 42)
+                .padding(.horizontal, PocketSheetSpace.xxs)
+                .padding(.horizontal, PocketSheetSpace.m)
+                .frame(minHeight: 44)
                 .accessibilityIdentifier("shootFolio.cancelEdit")
             } else {
                 Button {
                     beginEditing()
                 } label: {
                     Text("Edit")
-                        .font(PocketSheetType.rowSubtitle)
+                        .font(PocketSheetType.actionSecondary)
                         .foregroundStyle(PocketSheetTheme.Color.inverseInk)
-                        .padding(.horizontal, PocketSheetSpace.s)
-                        .frame(height: 42)
+                        .padding(.horizontal, PocketSheetSpace.xxs)
+                        .padding(.horizontal, PocketSheetSpace.m)
+                        .frame(minHeight: 44)
                         .background(PocketSheetTheme.Color.paperRaised.opacity(0.72), in: Capsule())
                         .overlay {
                             Capsule().stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
@@ -178,8 +180,8 @@ struct ShootFolioView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 42, height: 42)
+                    .font(PocketSheetType.navIcon)
+                    .frame(minWidth: 44, minHeight: 44)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
                     .background(PocketSheetTheme.Color.paperRaised, in: Circle())
                     .overlay {
@@ -218,10 +220,12 @@ struct ShootFolioView: View {
                         selection = section
                     } label: {
                         Text(section.rawValue)
-                            .font(PocketSheetType.rowSubtitle)
+                            .font(PocketSheetType.actionSecondary)
                             .foregroundStyle(selection == section ? PocketSheetTheme.Color.paperRaised : PocketSheetTheme.Color.ink)
-                            .padding(.horizontal, PocketSheetSpace.s)
-                            .frame(height: 34)
+                            .padding(.horizontal, PocketSheetSpace.xxs)
+                            .padding(.horizontal, PocketSheetSpace.m)
+                            .padding(.vertical, PocketSheetSpace.xxs)
+                            .frame(minHeight: 44)
                             .background(selection == section ? PocketSheetTheme.Color.inverseInk : PocketSheetTheme.Color.paperRaised.opacity(0.62))
                             .clipShape(Capsule())
                             .overlay {
@@ -282,7 +286,7 @@ private struct ShootFolioEmptyState: View {
         PocketSheetCard {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 Image(systemName: "bookmark.slash")
-                    .font(.system(size: 30, weight: .regular))
+                    .font(PocketSheetType.listIcon)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 Text("No Shoot Folio yet")
                     .font(PocketSheetType.rowTitle)
@@ -352,7 +356,7 @@ struct SceneListView: View {
 
     private func editableSceneRow(scene: Binding<ShotScene>) -> some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-            Text("SCENE \(String(format: "%02d", scene.wrappedValue.number))")
+            Text("Scene \(scene.wrappedValue.number)")
                 .font(PocketSheetType.sectionLabel)
                 .foregroundStyle(PocketSheetTheme.Color.inverseInk)
             TextField("Scene title", text: scene.title)
@@ -380,7 +384,7 @@ struct SceneListView: View {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 HStack(alignment: .top, spacing: PocketSheetSpace.s) {
                     VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                        Text("SCENE \(String(format: "%02d", scene.number))")
+                        Text("Scene \(scene.number)")
                             .font(PocketSheetType.sectionLabel)
                             .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                         Text(scene.title)
@@ -397,10 +401,10 @@ struct SceneListView: View {
                     )
                 }
 
-                FolioDetailLine(title: "What to capture", text: SceneGuidance.capture(for: scene, at: index, in: card))
+                FolioDetailLine(title: "What to film", text: SceneGuidance.capture(for: scene, at: index, in: card))
 
                 if let text = SceneGuidance.onScreenText(at: index, in: card) {
-                    FolioDetailLine(title: "On-screen text", text: text)
+                    FolioDetailLine(title: "Text on screen", text: text)
                 }
 
                 FolioDetailLine(title: "Example", text: SceneGuidance.contextExample(for: scene, in: card))
@@ -435,9 +439,9 @@ struct SceneDetailView: View {
 
     var body: some View {
         PocketSheetScreen {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                 VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
-                    Text("SCENE \(String(format: "%02d", scene.number))")
+                    Text("Scene \(scene.number)")
                         .font(PocketSheetType.sectionLabel)
                         .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                     Text(scene.title)
@@ -452,11 +456,11 @@ struct SceneDetailView: View {
                     }
                 }
 
-                detailBlock(title: "What to capture", text: SceneGuidance.capture(for: scene, at: sceneIndex, in: card))
+                detailBlock(title: "What to film", text: SceneGuidance.capture(for: scene, at: sceneIndex, in: card))
                 detailBlock(title: "Example", text: SceneGuidance.contextExample(for: scene, in: card))
 
                 if let onScreenText = SceneGuidance.onScreenText(at: sceneIndex, in: card) {
-                    detailBlock(title: "On-screen text", text: onScreenText)
+                    detailBlock(title: "Text on screen", text: onScreenText)
                 }
                 if let postInstructions = services.todayCard.postInstructions?.nilIfBlank {
                     detailBlock(title: "Post guidance", text: postInstructions)
@@ -483,11 +487,11 @@ struct SceneDetailView: View {
     private func detailBlock(title: String, text: String) -> some View {
         PocketSheetCard {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-                Text(title.uppercased())
+                Text(title)
                     .font(PocketSheetType.sectionLabel)
-                    .foregroundStyle(PocketSheetTheme.Color.inverseInk)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 Text(text)
-                    .font(PocketSheetType.rowSubtitle)
+                    .font(PocketSheetType.bodyText)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
                     .lineSpacing(4)
             }
@@ -505,11 +509,11 @@ private struct FolioDetailLine: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased())
+            Text(title)
                 .font(PocketSheetType.sectionLabel)
                 .foregroundStyle(PocketSheetTheme.Color.inverseInk)
             Text(text)
-                .font(PocketSheetType.rowSubtitle)
+                .font(PocketSheetType.bodyText)
                 .foregroundStyle(PocketSheetTheme.Color.ink)
                 .lineSpacing(3)
         }
@@ -553,7 +557,7 @@ struct CopyBlock: View {
                     .font(PocketSheetType.sectionLabel)
                     .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                 Text(bodyText ?? emptyText)
-                    .font(PocketSheetType.rowSubtitle)
+                    .font(PocketSheetType.bodyText)
                     .foregroundStyle(bodyText == nil ? PocketSheetTheme.Color.inkMuted : PocketSheetTheme.Color.ink)
                     .lineSpacing(5)
                 if let bodyText {
@@ -605,7 +609,7 @@ struct ScriptTimelineCopyBlock: View {
                             .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                             .fixedSize(horizontal: false, vertical: true)
                         TextEditor(text: $draftScript)
-                            .font(PocketSheetType.rowSubtitle)
+                            .font(PocketSheetType.bodyText)
                             .foregroundStyle(PocketSheetTheme.Color.ink)
                             .scrollContentBackground(.hidden)
                             .frame(minHeight: 180)
@@ -639,13 +643,14 @@ struct ScriptTimelineCopyBlock: View {
                                         .font(PocketSheetType.status)
                                         .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                                     Text(row.audioDialogue)
-                                        .font(PocketSheetType.rowSubtitle)
+                                        .font(PocketSheetType.bodyText)
                                         .foregroundStyle(PocketSheetTheme.Color.ink)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                                 Spacer(minLength: 0)
                             }
-                            .padding(PocketSheetSpace.s)
+                            .padding(.horizontal, PocketSheetSpace.l)
+                            .padding(.vertical, PocketSheetSpace.s)
                             .background(PocketSheetTheme.Color.paperRaised.opacity(0.58))
                             .clipShape(RoundedRectangle(cornerRadius: MCOShape.controlRadius, style: .continuous))
                             .accessibilityIdentifier("shoot.script.line.\(row.sceneNumber)")

@@ -10,7 +10,7 @@ struct TodayPocketPresentation: View {
     let card: GeneratedDailyCardDraft
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+        VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
             packageSummary
 
             if !rows.isEmpty {
@@ -83,7 +83,11 @@ struct TodayPocketPresentation: View {
 
             HStack(alignment: .top, spacing: PocketSheetSpace.s) {
                 if let format = effectiveCard.format?.nilIfBlank {
-                    TodayPocketMeta(label: "Format", value: format.displayTitle + (effectiveCard.durationSeconds.map { " · \($0.formatted()) sec" } ?? ""))
+                    TodayPocketMeta(
+                        label: "Format",
+                        value: format.displayTitle,
+                        detail: effectiveCard.durationSeconds.flatMap { $0 > 0 ? "\($0.formatted()) sec" : nil }
+                    )
                 }
                 if let minutes = effortMinutes {
                     TodayPocketMeta(label: "Effort", value: effortText(minutes: minutes))
@@ -147,13 +151,14 @@ struct TodayPocketPresentation: View {
 private struct TodayPocketMeta: View {
     let label: String
     let value: String
+    var detail: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
             Text(label)
                 .font(PocketSheetType.sectionLabel)
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-            Text(value)
+            Text(detail.map { "\(value) · \($0)" } ?? value)
                 .font(PocketSheetType.rowSubtitle)
                 .foregroundStyle(PocketSheetTheme.Color.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -179,15 +184,12 @@ private struct TodayPocketShotCard: View {
                             .frame(width: 76, height: 58)
                     } else {
                         Image(systemName: scene?.symbol ?? "video")
-                            .font(.system(size: 24, weight: .regular))
+                            .font(PocketSheetType.listIcon)
                             .foregroundStyle(PocketSheetTheme.Color.ink)
                             .frame(width: 76, height: 58)
                             .background(PocketSheetTheme.Color.paperRaised, in: RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
                     }
                     VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                        Text("SHOT \(String(format: "%02d", scene?.number ?? row.sceneNumber))")
-                            .font(PocketSheetType.sectionLabel)
-                            .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                         Text(scene?.title ?? row.visualShot)
                             .font(PocketSheetType.rowTitle)
                             .foregroundStyle(PocketSheetTheme.Color.ink)
@@ -200,12 +202,12 @@ private struct TodayPocketShotCard: View {
                     PocketSheetStatus(text: isShot ? "Shot" : (scene?.duration ?? "Ready"), kind: isShot ? .ready : .pending)
                 }
 
-                TodayPocketInstruction(label: "Capture", text: row.whatToShow)
+                TodayPocketInstruction(label: "What to film", text: row.whatToShow)
                 if row.audioDialogue != "No voiceover specified.", let dialogue = row.audioDialogue.nilIfBlank {
-                    TodayPocketInstruction(label: "Dialogue", text: dialogue)
+                    TodayPocketInstruction(label: "What to say", text: dialogue)
                 }
                 if row.onScreenText != "No on-screen text.", let overlay = row.onScreenText.nilIfBlank {
-                    TodayPocketInstruction(label: "Overlay", text: overlay)
+                    TodayPocketInstruction(label: "Text on screen", text: overlay)
                 }
             }
         }
@@ -226,11 +228,11 @@ private struct TodayPocketInstruction: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-            Text(label.uppercased())
+            Text(label)
                 .font(PocketSheetType.sectionLabel)
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             Text(text)
-                .font(PocketSheetType.rowSubtitle)
+                .font(PocketSheetType.bodyText)
                 .foregroundStyle(PocketSheetTheme.Color.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -244,11 +246,15 @@ struct TodayShootSessionView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var sceneIndex = 0
     @State private var showingPost = false
+    @State private var movingForward = true
+    @State private var lastMarkedAt: ContinuousClock.Instant?
+    @State private var completedFilming = false
+    @Environment(\.pocketReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
             if showingPost || services.areAllScenesShot || services.todayCard.isNonFilmingPost {
-                TodayPostPreparationView()
+                TodayPostPreparationView(filmedShotCount: completedFilming ? services.todayCard.scenes.count : nil)
             } else {
                 shootView
             }
@@ -258,22 +264,28 @@ struct TodayShootSessionView: View {
             showingPost = services.areAllScenesShot
         }
         .onChange(of: services.areAllScenesShot) { _, allShot in
-            if allShot { showingPost = true }
+            if allShot {
+                completedFilming = true
+                showingPost = true
+            }
         }
         .onChange(of: services.todayCard.id) { _, _ in
             sceneIndex = firstUnshotSceneIndex
             showingPost = services.areAllScenesShot
+            completedFilming = false
+            lastMarkedAt = nil
         }
     }
 
     private var shootView: some View {
         PocketSheetScreen {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                 VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                    Text("Start filming")
+                    Text(scene?.title ?? "Start filming")
                         .font(PocketSheetType.screenTitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
                         .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("shoot.scene.\(scene?.number ?? 0)")
                     if !dynamicTypeSize.isAccessibilitySize {
                         Text(services.todayCard.title)
                             .font(PocketSheetType.rowSubtitle)
@@ -287,6 +299,8 @@ struct TodayShootSessionView: View {
                     .accessibilityIdentifier("shoot.progress")
                 if let scene {
                     sessionScene(scene)
+                        .id(scene.id)
+                        .transition(shotTransition)
                 } else {
                     PocketSheetCard {
                         Text("No scenes are ready for filming.")
@@ -299,42 +313,44 @@ struct TodayShootSessionView: View {
             if let scene {
                 PocketSheetCommandBar {
                     PocketSheetPrimaryAction(
-                        title: services.isSceneShot(scene) ? "Done" : "Mark shot",
-                        systemImage: services.isSceneShot(scene) ? "checkmark.circle.fill" : "checkmark.seal"
+                        title: services.isSceneShot(scene) ? "Next shot"
+                            : (services.unshotSceneCount == 1 ? "Finish filming" : "Mark shot"),
+                        systemImage: services.isSceneShot(scene) ? "checkmark.circle.fill" : "checkmark.seal",
+                        animatesSymbol: true
                     ) {
-                        services.markSceneShot(scene)
-                        // Completion never advances the visible scene. The creator
-                        // chooses Next, so repeated taps cannot complete another shot.
-                        if services.areAllScenesShot {
-                            showingPost = true
-                        }
+                        completeOrAdvance(scene)
                     }
-                    .disabled(services.isSceneShot(scene))
                     .accessibilityIdentifier("shoot.complete")
 
                     HStack(spacing: PocketSheetSpace.s) {
                         Button {
-                            sceneIndex = max(sceneIndex - 1, 0)
+                            changeScene(to: max(sceneIndex - 1, 0))
                         } label: {
                             shotNavigationLabel("Previous", symbol: "chevron.left")
                                 .frame(maxWidth: .infinity)
-                                .frame(minHeight: 52)
+                                .padding(.horizontal, PocketSheetSpace.m)
+                                .padding(.vertical, PocketSheetSpace.xxs)
+                                .frame(minHeight: 44)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(PocketSheetTheme.Color.ink)
+                        .buttonStyle(PocketSheetPressFeedbackStyle())
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                        .background(PocketSheetTheme.Color.fillMuted, in: RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
                         .disabled(sceneIndex == 0)
                         .accessibilityLabel("Previous shot")
                         .accessibilityIdentifier("shoot.previous")
 
                         Button {
-                            sceneIndex = min(sceneIndex + 1, max(services.todayCard.scenes.count - 1, 0))
+                            changeScene(to: min(sceneIndex + 1, max(services.todayCard.scenes.count - 1, 0)))
                         } label: {
                             shotNavigationLabel("Next", symbol: "chevron.right")
                                 .frame(maxWidth: .infinity)
-                                .frame(minHeight: 52)
+                                .padding(.horizontal, PocketSheetSpace.m)
+                                .padding(.vertical, PocketSheetSpace.xxs)
+                                .frame(minHeight: 44)
                         }
-                        .buttonStyle(.bordered)
-                        .tint(PocketSheetTheme.Color.ink)
+                        .buttonStyle(PocketSheetPressFeedbackStyle())
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                        .background(PocketSheetTheme.Color.fillMuted, in: RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
                         .disabled(sceneIndex >= services.todayCard.scenes.count - 1)
                         .accessibilityLabel("Next shot")
                         .accessibilityIdentifier("shoot.next")
@@ -350,10 +366,15 @@ struct TodayShootSessionView: View {
     private func shotNavigationLabel(_ title: String, symbol: String) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
             Image(systemName: symbol)
-                .font(.system(size: 24, weight: .semibold))
+                .font(PocketSheetType.navIcon)
         } else {
-            Label(title, systemImage: symbol)
-                .font(PocketSheetType.actionSecondary)
+            HStack(spacing: 0) {
+                Image(systemName: symbol)
+                    .font(PocketSheetType.navIcon)
+                Text(title)
+                    .font(PocketSheetType.actionSecondary)
+                    .padding(.horizontal, PocketSheetSpace.xxs)
+            }
         }
     }
 
@@ -365,25 +386,16 @@ struct TodayShootSessionView: View {
         PocketSheetCard {
             VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
                 sceneHeaderLayout {
-                    VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                        Text("SHOT \(String(format: "%02d", scene.number))")
-                            .font(PocketSheetType.sectionLabel)
-                            .foregroundStyle(PocketSheetTheme.Color.inverseInk)
-                        Text(scene.title)
-                            .font(PocketSheetType.screenTitle)
-                            .foregroundStyle(PocketSheetTheme.Color.ink)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                     Spacer(minLength: PocketSheetSpace.s)
                     PocketSheetStatus(text: row?.timecode ?? scene.duration, kind: services.isSceneShot(scene) ? .ready : .pending)
                 }
 
-                sessionBlock(title: "Capture", text: row?.whatToShow ?? "Capture this scene clearly.")
+                sessionBlock(title: "What to film", text: row?.whatToShow ?? "Capture this scene clearly.")
                 if let dialogue = row?.audioDialogue.nilIfBlank, dialogue != "No voiceover specified." {
-                    sessionBlock(title: "Dialogue", text: dialogue)
+                    sessionBlock(title: "What to say", text: dialogue)
                 }
                 if let overlay = row?.onScreenText.nilIfBlank, overlay != "No on-screen text." {
-                    sessionBlock(title: "Overlay", text: overlay)
+                    sessionBlock(title: "Text on screen", text: overlay)
                 }
                 Text("Use your usual camera app. Hold the final frame for \(scene.duration).")
                     .font(PocketSheetType.rowSubtitle)
@@ -394,6 +406,41 @@ struct TodayShootSessionView: View {
         .accessibilityIdentifier("shoot.scene.\(scene.number)")
     }
 
+    private var shotTransition: AnyTransition {
+        if reduceMotion { return .opacity }
+        return .asymmetric(
+            insertion: .move(edge: movingForward ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: movingForward ? .leading : .trailing).combined(with: .opacity)
+        )
+    }
+
+    private func changeScene(to index: Int) {
+        guard index != sceneIndex else { return }
+        movingForward = index > sceneIndex
+        withAnimation(.easeOut(duration: reduceMotion ? 0.2 : 0.25)) {
+            sceneIndex = index
+        }
+    }
+
+    private func completeOrAdvance(_ scene: ShotScene) {
+        if services.isSceneShot(scene) {
+            guard lastMarkedAt.map({ $0.duration(to: ContinuousClock().now) >= .milliseconds(600) }) ?? true else { return }
+            let nextIndex = sceneIndex + 1 < services.todayCard.scenes.count
+                ? sceneIndex + 1 : firstUnshotSceneIndex
+            changeScene(to: nextIndex)
+        } else {
+            lastMarkedAt = ContinuousClock().now
+            services.markSceneShot(scene)
+            #if canImport(UIKit)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            #endif
+            if services.areAllScenesShot {
+                completedFilming = true
+                showingPost = true
+            }
+        }
+    }
+
     private var sceneHeaderLayout: AnyLayout {
         dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: PocketSheetSpace.s))
@@ -402,11 +449,11 @@ struct TodayShootSessionView: View {
 
     private func sessionBlock(title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-            Text(title.uppercased())
+            Text(title)
                 .font(PocketSheetType.sectionLabel)
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             Text(text)
-                .font(PocketSheetType.rowTitle)
+                .font(PocketSheetType.bodyText)
                 .foregroundStyle(PocketSheetTheme.Color.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -423,6 +470,10 @@ struct TodayShootSessionView: View {
 
 /// Post assembly stays local until the creator confirms the external action.
 struct TodayPostPreparationView: View {
+    var filmedShotCount: Int? = nil
+    @Environment(\.pocketReduceMotion) private var reduceMotion
+    @State private var completionVisible = false
+    @State private var didShowCompletion = false
     private enum EditorField: Hashable { case script, caption }
     @Environment(AppServices.self) private var services
     @FocusState private var focusedEditor: EditorField?
@@ -437,7 +488,7 @@ struct TodayPostPreparationView: View {
 
     var body: some View {
         PocketSheetScreen {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                 VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
                     Text("Post")
                         .font(PocketSheetType.screenTitle)
@@ -497,6 +548,14 @@ struct TodayPostPreparationView: View {
             }
         } bottomBar: {
             PocketSheetCommandBar {
+                if let filmedShotCount, !isEditing {
+                    Text("All \(filmedShotCount.formatted()) \(filmedShotCount == 1 ? "shot" : "shots") filmed")
+                        .font(PocketSheetType.rowSubtitle)
+                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                        .opacity(completionVisible ? 1 : 0)
+                        .accessibilityHidden(!completionVisible)
+                        .allowsHitTesting(false)
+                }
                 if isEditing {
                     HStack(spacing: PocketSheetSpace.s) {
                         PocketSheetSecondaryAction(title: "Cancel") { cancelEditing() }
@@ -529,6 +588,22 @@ struct TodayPostPreparationView: View {
                 }
             }
         }
+        .task(id: filmedShotCount) {
+            guard filmedShotCount != nil, !didShowCompletion else { return }
+            didShowCompletion = true
+            withAnimation(.easeOut(duration: reduceMotion ? 0.2 : 0.18)) {
+                completionVisible = true
+            }
+            do {
+                try await Task.sleep(for: .milliseconds(340))
+            } catch {
+                completionVisible = false
+                return
+            }
+            withAnimation(.easeOut(duration: reduceMotion ? 0.2 : 0.18)) {
+                completionVisible = false
+            }
+        }
         .navigationTitle("Post")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isSavingEdits)
@@ -537,6 +612,7 @@ struct TodayPostPreparationView: View {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { focusedEditor = nil }
+                    .font(PocketSheetType.actionSecondary)
                     .accessibilityIdentifier("post.keyboardDone")
             }
         }
@@ -562,7 +638,7 @@ struct TodayPostPreparationView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     TextEditor(text: $draftScript)
                         .focused($focusedEditor, equals: .script)
-                        .font(PocketSheetType.rowSubtitle)
+                        .font(PocketSheetType.bodyText)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 150)
@@ -576,7 +652,7 @@ struct TodayPostPreparationView: View {
                         .foregroundStyle(PocketSheetTheme.Color.inverseInk)
                     TextEditor(text: $draftCaption)
                         .focused($focusedEditor, equals: .caption)
-                        .font(PocketSheetType.rowSubtitle)
+                        .font(PocketSheetType.bodyText)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 120)

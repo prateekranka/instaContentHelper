@@ -2,6 +2,8 @@ import SwiftUI
 
 /// Plan hub: selected date → five ideas or Other → one day-only generation → draft / Approve.
 struct PlanHubView: View {
+    private enum LightEditField: Hashable { case script, caption }
+    @FocusState private var focusedLightEditField: LightEditField?
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
@@ -128,6 +130,8 @@ struct PlanHubView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if canMakeAvailable {
                 approveDock
+            } else if canLightEditReadyPackage {
+                lightEditDock
             }
         }
         .navigationBarHidden(true)
@@ -326,7 +330,6 @@ struct PlanHubView: View {
     private var canLightEditReadyPackage: Bool {
         canGenerate
             && !isGeneratingSelectedDay
-            && !services.isUpdatingReadyDayPackage
             && DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status)
     }
 
@@ -491,6 +494,7 @@ struct PlanHubView: View {
 
                 if canLightEditReadyPackage {
                     lightEditBlock
+                        .disabled(services.isUpdatingReadyDayPackage)
                 }
                 unpublishActionBlock
 
@@ -529,6 +533,7 @@ struct PlanHubView: View {
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                     TextEditor(text: $lightEditScript)
+                        .focused($focusedLightEditField, equals: .script)
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
                         .scrollContentBackground(.hidden)
@@ -545,6 +550,7 @@ struct PlanHubView: View {
                     .font(PocketSheetType.sectionLabel)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
                 TextEditor(text: $lightEditCaption)
+                    .focused($focusedLightEditField, equals: .caption)
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
                     .scrollContentBackground(.hidden)
@@ -556,20 +562,33 @@ struct PlanHubView: View {
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                PocketSheetSecondaryAction(
-                    title: services.isUpdatingReadyDayPackage ? "Saving…" : (hasScriptEdit ? "Save edits" : "Save caption")
-                ) {
-                    saveLightEdit()
-                }
-                .disabled(!canSaveLightEdit)
-                .opacity(canSaveLightEdit ? 1 : 0.48)
-                .accessibilityIdentifier("daily.ready.edit.save")
             }
+        }
+    }
+
+    private var lightEditDock: some View {
+        PocketSheetSecondaryAction(
+            title: services.isUpdatingReadyDayPackage ? "Saving…" : (hasScriptEdit ? "Save edits" : "Save caption")
+        ) {
+            saveLightEdit()
+        }
+        .disabled(!canSaveLightEdit)
+        .opacity(canSaveLightEdit ? 1 : 0.48)
+        .accessibilityIdentifier("daily.ready.edit.save")
+        .padding(.horizontal, PocketSheetSpace.l)
+        .padding(.top, PocketSheetSpace.s)
+        .padding(.bottom, PocketSheetSpace.xs)
+        .background(PocketSheetTheme.Color.paper)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(PocketSheetTheme.Color.hairline)
+                .frame(height: 1)
         }
     }
 
     private var canSaveLightEdit: Bool {
         canLightEditReadyPackage
+            && !services.isUpdatingReadyDayPackage
             && lightEditCaption.nilIfBlank != nil
             && (!hasEditableScript || lightEditScript.nilIfBlank != nil)
             && (lightEditCaption != (displayedCard?.caption ?? "")
@@ -725,6 +744,7 @@ struct PlanHubView: View {
 
     private func saveLightEdit() {
         guard canSaveLightEdit else { return }
+        focusedLightEditField = nil
         let dateString = scheduledDateString
         let caption = lightEditCaption
         let scenes = ShotScript.editing(lightEditScript, scenes: lightEditScenes)

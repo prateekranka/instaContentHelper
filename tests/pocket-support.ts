@@ -206,7 +206,11 @@ export async function finishLoopFilming(screen: Screen) {
   for (let shot = 1; shot <= count; shot += 1) {
     await expect(screen.getByTestId('shoot.progress')).toContainText(`Shot ${shot} of`);
     await screen.getByTestId('shoot.complete').tap();
-    if (shot < count) await screen.getByTestId('shoot.next').tap();
+    if (shot < count) {
+      await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+      await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
+      await screen.getByTestId('shoot.next').tap();
+    }
   }
   await expect(screen.getByTestId('post.markPosted')).toBeVisible();
 }
