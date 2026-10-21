@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - codex/day-at-a-time-generation
+      - redesign/creator-loop
 
 permissions:
   contents: read
@@ -15,6 +16,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  agent-rules:
+    name: Creator loop agent rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository history for the fixed Step 5 baseline
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0
+      - name: Check agent rules
+        run: python3 scripts/check-agent-rules.py
+      - name: Prove rules reject past mistakes
+        run: python3 scripts/prove-agent-rules.py
   deno:
     name: Deno contracts
     runs-on: ubuntu-latest
