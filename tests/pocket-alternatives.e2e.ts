@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
-import { selectTab, startFromOnboarding } from './pocket-support';
+import { selectTab, startFromOnboarding, scrollToControl } from './pocket-support';
 
 test('partial filming survives relaunch and backup preview preserves the main idea', { timeout: 240_000 }, async ({ app, screen, device }) => {
   await startFromOnboarding(app, screen);
@@ -24,7 +24,7 @@ test('partial filming survives relaunch and backup preview preserves the main id
   await app.back();
   await screen.getByTestId('today.notEasier').tap();
   await screen.getByRole('button', /10-second story/).tap();
-  await screen.scrollUntilVisible(screen.getByTestId('backup.confirmPosted'));
+  await scrollToControl(screen, screen.getByTestId('backup.confirmPosted'));
   await expect(screen.getByTestId('backup.confirmPosted')).toBeVisible();
   await app.screenshot('pocket-backup-preview');
   const cancel = await screen.getByRole('button', 'Cancel', { exact: true }).boundingBox();
@@ -42,7 +42,7 @@ test('partial filming survives relaunch and backup preview preserves the main id
   await expect(screen.getByTestId('today.startFilming')).toContainText('Continue filming');
   await screen.getByTestId('today.notEasier').tap();
   await screen.getByRole('button', /Caption-only post/).tap();
-  await screen.scrollUntilVisible(screen.getByTestId('backup.confirmPosted'));
+  await scrollToControl(screen, screen.getByTestId('backup.confirmPosted'));
   const confirm = await screen.getByTestId('backup.confirmPosted').boundingBox();
   expect(confirm.height).toBeGreaterThanOrEqual(44);
   expect(confirm.y + confirm.height).toBeLessThanOrEqual(874);

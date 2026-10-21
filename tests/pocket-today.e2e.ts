@@ -77,13 +77,13 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
   await screen.getByTestId('post.copy.caption').tap();
   expect(await device.clipboard()).toBe(savedCaption);
   await screen.getByTestId('post.markPosted').tap();
-  await screen.scrollUntilVisible(screen.getByText('Posted', { exact: true }), { direction: 'up' });
+  await scrollToControl(screen, screen.getByText('Posted', { exact: true }), 'up');
   await expect(screen.getByText('Posted', { exact: true })).toBeVisible();
   await app.screenshot('pocket-posted');
   await screen.getByTestId('post.undoPosted').tap();
   await expect(screen.getByTestId('post.markPosted')).toBeEnabled();
   await screen.getByTestId('post.markPosted').tap();
-  await screen.scrollUntilVisible(screen.getByText('Posted', { exact: true }), { direction: 'up' });
+  await scrollToControl(screen, screen.getByText('Posted', { exact: true }), 'up');
   await expect(screen.getByText('Posted', { exact: true })).toBeVisible();
   await device.openApp('com.prateekranka.creatorcontenthelper', {
     relaunch: true,
@@ -103,7 +103,7 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
       '-MCO_QA_SESSION', process.env.POCKET_E2E_SESSION!, '-MCO_FORCE_ONBOARDING', '0'],
   });
   await selectTab(screen, 'You');
-  await screen.scrollUntilVisible(screen.getByText(title, { exact: true }));
+  await scrollToControl(screen, screen.getByText(title, { exact: true }));
   await expect(screen.getByText(title, { exact: true })).toHaveCount(1);
   await app.screenshot('pocket-single-archive-entry');
 });

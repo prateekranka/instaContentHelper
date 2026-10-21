@@ -24,7 +24,7 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
   await scrollToControl(screen, screen.getByTestId('you.voice.save'));
   await screen.getByTestId('you.voice.save').tap();
   await expect(screen.getByTestId('you.voice.save')).toBeDisabled();
-  await screen.scrollUntilVisible(screen.getByRole('button', 'Back to Plan', { exact: true }), { direction: 'up' });
+  await scrollToControl(screen, screen.getByRole('button', 'Back to Plan', { exact: true }), 'up');
   await screen.getByRole('button', 'Back to Plan', { exact: true }).tap();
   await scrollToControl(screen, screen.getByTestId('plan.daygen.idea.0'));
   await expect(screen.getByTestId('plan.daygen.idea.0')).toBeEnabled();
@@ -36,7 +36,7 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
   await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
   await screen.getByTestId('daily.availableOnToday').tap();
   await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
+  await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
   await expect(screen.getByTestId('plan.title')).toBeVisible();
   await expect(days.nth(1)).toBeSelected();
   await scrollToControl(screen, screen.getByTestId('plan.package.tab.caption'));
@@ -53,7 +53,7 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
   await expect(screen.getByRole('button', 'Overwrite', { exact: true })).toBeVisible();
   await screen.getByRole('button', 'Cancel', { exact: true }).tap();
   await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
+  await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
   await scrollToControl(screen, days.nth(2));
   await days.nth(2).tap();
   await scrollToControl(screen, days.nth(1), 'up');
@@ -74,7 +74,7 @@ test('Plan keeps seven dates separate and supports cancelling or confirming a fu
   await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
   await screen.getByTestId('daily.availableOnToday').tap();
   await expect(screen.getByTestId('daily.availableOnToday')).toBeHidden();
-  await screen.scrollUntilVisible(screen.getByTestId('plan.title'), { direction: 'up' });
+  await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
   await scrollToControl(screen, days.nth(2));
   await days.nth(2).tap();
   await scrollToControl(screen, days.nth(1), 'up');

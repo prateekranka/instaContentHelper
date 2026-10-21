@@ -41,18 +41,25 @@ export async function tapEditorControl(screen: Screen, id: string) {
 // can land on the fixed command bar when Dynamic Type makes that bar tall.
 export async function scrollToControl(screen: Screen, locator: Locator, direction: 'up' | 'down' = 'down', bottom?: number) {
   const shell = screen.getByTestId(/^shell\.tab\./, { visible: true });
-  const scrollView = shell.getByRole('scroll-view').first();
+  const scope = await shell.count() === 1 ? shell : screen;
+  const containingScrollView = screen.getByRole('scroll-view', { visible: true }).filter({ has: locator }).first();
+  const scrollView = scope === shell ? shell.getByRole('scroll-view').first()
+    : await containingScrollView.count() === 1
+      ? containingScrollView : scope.getByRole('scroll-view', { visible: true }).first();
   if (await locator.count() === 0) await scrollView.scrollUntilVisible(locator, { direction });
   const initialBox = await stableBox(locator);
   const scrollBox = await scrollView.boundingBox();
-  const tabBar = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
+  const tabs = screen.getByRole('tablist', 'Tab Bar', { exact: true, visible: true });
+  const tabBar = await tabs.count() === 1 ? await tabs.boundingBox()
+    : { x: scrollBox.x, y: scrollBox.y + scrollBox.height, width: scrollBox.width, height: 0 };
   const visibleTop = Math.max(8, scrollBox.y + 2);
+  const targetTop = Math.max(8, scrollBox.y - 0.5);
   const keyboard = screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
   const keyboardTop = await keyboard.count() === 1 ? (await keyboard.boundingBox()).y : tabBar.y;
   const viewportBottom = Math.min(tabBar.y - 8, keyboardTop - 8, bottom ?? tabBar.y);
   let visibleBottom = Math.min(viewportBottom, scrollBox.y + scrollBox.height - 2);
   for (const role of ['button', 'link'] as const) {
-    const controls = shell.getByRole(role, { visible: true });
+    const controls = scope.getByRole(role, { visible: true });
     const contentControls = await scrollView.getByRole(role, { visible: true }).all();
     const contentBoxes = await Promise.all(contentControls.map(control => control.boundingBox()));
     for (const control of await controls.all()) {
@@ -79,8 +86,8 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
       const box = attempt === 0 ? initialBox : await stableBox(locator);
       const inScrollView = await scrollView.filter({ has: locator }).count() > 0;
       const targetBottom = inScrollView ? visibleBottom : viewportBottom;
-      if (box.y >= visibleTop && box.y + box.height <= targetBottom) return;
-      lastDirection = box.y < visibleTop ? 'up' : 'down';
+      if (box.y >= targetTop && box.y + box.height <= targetBottom) return;
+      lastDirection = box.y < targetTop ? 'up' : 'down';
     }
     expect(visibleBottom).toBeGreaterThan(visibleTop);
     expect(swipeRight).toBeGreaterThan(swipeLeft);
@@ -89,7 +96,7 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   }
   await expect(locator).toBeVisible();
   const box = await locator.boundingBox();
-  expect(box.y).toBeGreaterThanOrEqual(visibleTop);
+  expect(box.y).toBeGreaterThanOrEqual(targetTop);
   const inScrollView = await scrollView.filter({ has: locator }).count() > 0;
   expect(box.y + box.height).toBeLessThanOrEqual(inScrollView ? visibleBottom : viewportBottom);
 }

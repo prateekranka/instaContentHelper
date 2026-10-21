@@ -27,7 +27,7 @@ async function editScript(screen: Screen, device: Device, transform: (script: st
 
 async function archiveHas(screen: Screen, title: string) {
   await selectTab(screen, 'You');
-  await screen.scrollUntilVisible(screen.getByText(title, { exact: true }));
+  await scrollToControl(screen, screen.getByText(title, { exact: true }));
   await expect(screen.getByText(title, { exact: true })).toHaveCount(1);
 }
 
@@ -210,7 +210,7 @@ test('loop R3-F1: a new decision cannot erase an older failed decision', { timeo
   await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
   await relaunchLoopSession(device, session, { MCO_FAIL_TODAY_DECISION_SYNC_ONCE: '0' });
   await archiveHas(screen, "Yesterday's loop package");
-  await screen.scrollUntilVisible(screen.getByText('Loop old-decision package', { exact: true }));
+  await scrollToControl(screen, screen.getByText('Loop old-decision package', { exact: true }));
   await expect(screen.getByText('Loop old-decision package', { exact: true })).toHaveCount(1);
 });
 
@@ -310,7 +310,7 @@ test('loop R3-L1 R2-7: posting a replacement retains two distinct archive record
   await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
   await relaunchLoopSession(device, session);
   await archiveHas(screen, 'Loop ready package');
-  await screen.scrollUntilVisible(screen.getByText(replacement!, { exact: true }));
+  await scrollToControl(screen, screen.getByText(replacement!, { exact: true }));
   await expect(screen.getByText(replacement!, { exact: true })).toHaveCount(1);
 });
 
@@ -416,20 +416,26 @@ test('loop R3-C6: onboarding interests survive the same fixture session relaunch
 
 test('loop R2-7: a future caption edit is displayed, copied, and restored', async ({ screen, device }) => {
   const session = await ready(screen, device);
-  await openLoopPlanDay(screen, 1);
+  const openFutureCaption = async () => {
+    await openLoopPlanDay(screen, 1);
+    const tab = screen.getByTestId('plan.package.tab.caption');
+    await tapVisibleControl(screen, tab);
+    await expect(tab).toBeSelected();
+  };
+  await openFutureCaption();
   const caption = 'Saved future loop caption.';
   await clearThenType(screen, screen.getByTestId('daily.ready.edit.caption'), caption);
   await tapVisibleControl(screen, screen.getByTestId('daily.ready.edit.save'));
   await expect(screen.getByTestId('daily.ready.edit.save')).toHaveText('Save caption');
   await expect(screen.getByTestId('daily.ready.edit.save')).toBeDisabled();
   await openLoopPlanDay(screen, 2);
-  await openLoopPlanDay(screen, 1);
+  await openFutureCaption();
   await scrollToControl(screen, screen.getByTestId('daily.ready.edit.caption'));
   await expect(screen.getByTestId('daily.ready.edit.caption')).toHaveValue(caption);
   await copyPlanCaption(screen);
   expect(await device.clipboard()).toBe(caption);
   await relaunchLoopSession(device, session);
-  await openLoopPlanDay(screen, 1);
+  await openFutureCaption();
   await scrollToControl(screen, screen.getByTestId('daily.ready.edit.caption'));
   await expect(screen.getByTestId('daily.ready.edit.caption')).toHaveValue(caption);
 });
@@ -477,7 +483,7 @@ test('loop R3-C7: Post refuses blank script and caption without changing the sav
   await dismissKeyboard(screen, 'post.keyboardDone');
   await expect(save).toBeDisabled();
   const error = screen.getByText('Keep some text in Script and Caption before saving.', { exact: true });
-  await screen.scrollUntilVisible(error, { direction: 'up' });
+  await scrollToControl(screen, error, 'up');
   await expect(error).toBeVisible();
   await expect(screen.getByTestId('post.cancel')).toBeVisible();
   await clearThenType(screen, script, 'A valid script draft that must not be saved.', 'selection');

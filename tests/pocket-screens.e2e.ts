@@ -5,22 +5,6 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { selectTab, scrollToControl, tapEditorControl, tapVisibleControl, dismissKeyboard } from './pocket-support';
 
-async function scrollBackupConfirmationIntoView(screen: Screen) {
-  const scroller = screen.getByRole('scroll-view').nth(0);
-  const bounds = await scroller.boundingBox();
-  if (!bounds) throw new Error('Backup sheet scroll view has no visible bounds');
-
-  const confirmation = screen.getByTestId('backup.confirmPosted');
-  const x = bounds.x + bounds.width / 2;
-  for (let attempt = 0; attempt < 4 && await confirmation.count() === 0; attempt += 1) {
-    await screen.swipe({
-      from: { x, y: bounds.y + bounds.height * 0.84 },
-      to: { x, y: bounds.y + bounds.height * 0.38 },
-    });
-  }
-  await expect(confirmation).toBeVisible();
-}
-
 const bundleId = 'com.prateekranka.creatorcontenthelper';
 const test = mobileTest.extend<{ catalogSnapshot: { read(): Promise<EngineSnapshot> } }>();
 let readSnapshot: () => Promise<EngineSnapshot>;
@@ -156,13 +140,13 @@ test('catalog onboarding, Today states, filming, post text, and backup sheets', 
   await expect(screen.getByText('Other ideas', { exact: true })).toBeVisible();
   await capture(app, device, '14-other-ideas');
   await screen.getByRole('button', /10-second story/).tap();
-  await screen.scrollUntilVisible(screen.getByTestId('backup.confirmPosted'));
+  await scrollToControl(screen, screen.getByTestId('backup.confirmPosted'));
   await expect(screen.getByTestId('backup.confirmPosted')).toBeVisible();
   await capture(app, device, '15-story-backup');
   const cancel = await screen.getByRole('button', 'Cancel', { exact: true }).boundingBox();
   await screen.tapAt({ x: cancel.x + cancel.width / 2, y: cancel.y + cancel.height / 2 });
   await screen.getByRole('button', /Caption-only post/).tap();
-  await scrollBackupConfirmationIntoView(screen);
+  await scrollToControl(screen, screen.getByTestId('backup.confirmPosted'));
   await expect(screen.getByTestId('backup.confirmPosted')).toBeVisible();
   await capture(app, device, '16-caption-backup');
 });
