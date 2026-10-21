@@ -1100,7 +1100,7 @@ struct FixtureTodayCardRepository: TodayCardRepository {
     init(publishedStore: FixturePublishedContentStore? = nil) { server = publishedStore?.server ?? .shared }
 
     func creatorDays(for context: WorkspaceContext) async throws -> [SupabaseCreatorDayRow]? {
-        let response: SupabaseCreatorDaysResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .days, creatorID: context.creatorID), context: context)
+        let response: SupabaseCreatorDaysResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .days, creatorID: context.creatorID, includeAllPieces: true), context: context)
         return response.days
     }
 
@@ -1252,11 +1252,7 @@ struct FixtureDayGenerationRepository: DayGenerationRepository {
         } else {
             invocation = try await server.generation("generate-week", body: SupabaseDailyGenerationRequest(pieceID: pieceID, creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dayBrief: intent.dayBrief ?? "", responseMode: .async, idempotencyKey: intent.id), context: context, delayNanoseconds: artificialDelayNanoseconds)
         }
-        switch invocation {
-        case .completed(let response): return .completed(response.domainResult)
-        case .running(let response): return .running(response.generationID, pollAfterSeconds: response.pollAfterSeconds ?? 1)
-        case .failed(let response): return .failed(response.error ?? "invalid_generated_day")
-        }
+        return try invocation.outboxResponse(for: intent, pieceID: pieceID, defaultPollAfterSeconds: 1)
     }
 
     func generateDay(creatorID: UUID, scheduledDate: String, dayBrief: String, pieceID: UUID?, context: WorkspaceContext) async throws -> DailyGenerationResult {

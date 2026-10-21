@@ -123,18 +123,35 @@ Done means the implementation exists locally. PostgreSQL execution and app runti
 - Phase 2 review fix: only an explicit `piece_id` bypasses the soft-lock 409; date-only requests remain blocked unless recovering.
 - Phase 2 changes no screens, accessibility identifiers, outbox intents, or client cache schema.
   Build, source-check, and e2e results are recorded below.
-- Phases 3 to 6 remain open.
+- **Phase 3: Done locally (2026-10-21).** `Piece` uses workspace, creator, and piece ID as identity.
+  Scheduled date and position belong to the piece. `DayStore` owns pieces by ID and an ordered date index.
+  Cached card projections use piece IDs. Existing date lookups, `todayCard`, and screens still select position 0.
+- Outbox intents save a device-created piece ID before send. Generation ownership and reply reconciliation
+  use piece IDs. Schema 4 loads saved days at position 0 and binds local pieces through shared revision IDs,
+  including archive revisions. Binding retains revision history, filming marks, decisions, and queued work.
+  Migrated generation intents retain date-only request identity so their saved idempotency keys still replay.
+- Older cache schemas remain readable. Migration keeps a recovery copy until the schema 4 snapshot saves atomically.
+  Focused Swift typechecking and source checks are the phase 3 gates. The owner runs the full build and unchanged e2e suites separately.
+- Phases 4 to 6 remain open.
 
 ## Phase 2 validation
-
-- `python3 scripts/check-agen## Phase 2 validation
 
 - `python3 scripts/check-agent-rules.py` passed all six groups with zero violations.
 - The Debug app built in `DerivedData/Verify` with Xcode 27.1 beta.
 - On that installed build, all 12 e2e groups, 35 loop tests, and 7 screen tests passed (run `p2full-212119`, 2026-10-21).
 - Backend CI passed 410 tests, and the local database test passed.
 
-for each `creator_days` row, insert one `content_pieces` row with the same workspace, creator, and
+## Phase 3 validation
+
+- `python3 scripts/check-agent-rules.py` passed all six groups with zero violations.
+- The Debug app built in `DerivedData/Verify` and was installed and checked on the simulator.
+- Run `p3full-224709` (2026-10-21): 11 of 12 groups, 35 loop tests, and 7 screen tests passed. The ready group
+  failed one known, intermittent check (script blank lines after relaunch, also seen before phase 3). Two reruns
+  of the ready group passed (`p3re-ready-235139`, `p3re-ready-235314`). The bug is queued for phase 4.
+
+## Migrating saved work without loss
+
+- **Server:** for each `creator_days` row, insert one `content_pieces` row with the same workspace, creator, and
   date, position 0, and the same `current_revision_id` and `generation_run_id`. Set `piece_id` on every
   `daily_cards` row for that creator and date, current and previous. Archive rows already point at a revision, so
   they need no change. Run it in one transaction, and check row counts before and after.

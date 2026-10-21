@@ -2,6 +2,7 @@ import Foundation
 
 struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
+    var pieceID: UUID? = nil
     var title: String
     var context: String
     var effortLabel: String
@@ -46,6 +47,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case pieceID
         case title
         case context
         case effortLabel
@@ -83,6 +85,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(id, forKey: .id)
+        try values.encodeIfPresent(pieceID, forKey: .pieceID)
         try values.encode(title, forKey: .title)
         try values.encode(context, forKey: .context)
         try values.encode(effortLabel, forKey: .effortLabel)
@@ -120,6 +123,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
+        pieceID = try values.decodeIfPresent(UUID.self, forKey: .pieceID)
         title = try values.decodeIfPresent(String.self, forKey: .title) ?? ""
         context = try values.decodeIfPresent(String.self, forKey: .context) ?? ""
         effortLabel = try values.decodeIfPresent(String.self, forKey: .effortLabel) ?? ""
@@ -691,6 +695,7 @@ struct DailyDecision: Codable, Hashable, Sendable {
 }
 
 struct ArchiveEntry: Identifiable, Codable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     let id: UUID
     let dailyCardID: UUID?
     let day: String
@@ -1113,6 +1118,7 @@ extension GeneratedWeekDraft {
 
 struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
+    var pieceID: UUID? = nil
     var scheduledDate: String
     var status: String
     var title: String
@@ -1163,6 +1169,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case pieceID
         case scheduledDate
         case status
         case title
@@ -1208,6 +1215,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
     func encode(to encoder: Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(id, forKey: .id)
+        try values.encodeIfPresent(pieceID, forKey: .pieceID)
         try values.encode(scheduledDate, forKey: .scheduledDate)
         try values.encode(status, forKey: .status)
         try values.encode(title, forKey: .title)
@@ -1253,6 +1261,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
+        pieceID = try values.decodeIfPresent(UUID.self, forKey: .pieceID)
         scheduledDate = try values.decode(String.self, forKey: .scheduledDate)
         status = try values.decodeIfPresent(String.self, forKey: .status) ?? ""
         title = try values.decodeIfPresent(String.self, forKey: .title) ?? ""
@@ -1415,7 +1424,7 @@ extension GeneratedDailyCardDraft {
     }
 
     func dailyCard(completionState: CompletionState?) -> DailyCard {
-        DailyCard(
+        var card = DailyCard(
             id: id,
             title: title,
             context: SupabaseDateFormatting.contextLine(for: scheduledDate),
@@ -1453,6 +1462,8 @@ extension GeneratedDailyCardDraft {
             assumptions: assumptions,
             storyboardThumbnailAssets: storyboardThumbnailAssets
         )
+        card.pieceID = pieceID
+        return card
     }
 
     /// Builds a Plan-style draft model from a published Today card for inline package rendering.
@@ -1496,6 +1507,7 @@ extension GeneratedDailyCardDraft {
             sourceNote: card.sourceNote ?? "",
             storyboardThumbnailAssets: card.storyboardThumbnailAssets ?? []
         )
+        pieceID = card.pieceID
     }
 }
 
@@ -1957,10 +1969,10 @@ struct ReferenceReviewResult: Hashable, Sendable {
 }
 
 
-struct DayIdentity: Codable, Hashable, Sendable {
+struct PieceIdentity: Codable, Hashable, Sendable {
     let workspaceID: UUID
     let creatorID: UUID
-    let scheduledDate: String
+    let pieceID: UUID
 }
 
 struct DayGenerationRun: Codable, Hashable, Sendable {
@@ -2077,33 +2089,78 @@ enum DayTransitionError: LocalizedError {
     }
 }
 
-struct Day: Codable, Hashable, Sendable, Identifiable {
-    var id: DayIdentity { identity }
-    let identity: DayIdentity
+struct Piece: Codable, Hashable, Sendable, Identifiable {
+    var id: PieceIdentity { identity }
+    private(set) var identity: PieceIdentity
     private(set) var revision: DayRevision?
     private(set) var lifecycle: DayLifecycle = .unavailable
     private(set) var previousRevisions: [DayRevision] = []
     private(set) var lastKnownLifecycle: DayLifecycle?
     private(set) var serverUpdatedAt: String?
 
-    init(identity: DayIdentity) {
+    var scheduledDate: String
+    private(set) var position: Int
+    private(set) var requiresServerBinding: Bool
+
+    init(identity: PieceIdentity, scheduledDate: String, position: Int = 0, requiresServerBinding: Bool = false) {
         self.identity = identity
+        self.scheduledDate = scheduledDate
+        self.position = position
+        self.requiresServerBinding = requiresServerBinding
+    }
+
+    mutating func requireServerBinding() {
+        requiresServerBinding = true
+    }
+
+    mutating func mergeSavedWork(from saved: Piece) {
+        if revision == nil || revision?.id == saved.revision?.id {
+            revision = saved.revision ?? revision
+            lifecycle = saved.lifecycle
+            lastKnownLifecycle = saved.lastKnownLifecycle
+            serverUpdatedAt = saved.serverUpdatedAt ?? serverUpdatedAt
+        }
+        for item in [saved.revision].compactMap({ $0 }) + saved.previousRevisions where item.id != revision?.id {
+            if let index = previousRevisions.firstIndex(where: { $0.id == item.id }) {
+                previousRevisions[index] = item
+            } else {
+                previousRevisions.append(item)
+            }
+        }
+    }
+
+    mutating func bind(to pieceID: UUID, position: Int) {
+        identity = PieceIdentity(workspaceID: identity.workspaceID, creatorID: identity.creatorID, pieceID: pieceID)
+        self.position = position
+        requiresServerBinding = false
+        revision?.content.pieceID = pieceID
+        for index in previousRevisions.indices { previousRevisions[index].content.pieceID = pieceID }
     }
 
     enum CodingKeys: String, CodingKey {
-        case identity, revision, lifecycle, previousRevisions, lastKnownLifecycle, serverUpdatedAt
+        case identity, scheduledDate, position, requiresServerBinding, revision, lifecycle, previousRevisions, lastKnownLifecycle, serverUpdatedAt
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        identity = try values.decode(DayIdentity.self, forKey: .identity)
+        let savedIdentity = try values.nestedContainer(keyedBy: IdentityCodingKeys.self, forKey: .identity)
+        let savedPieceID = try savedIdentity.decodeIfPresent(UUID.self, forKey: .pieceID)
+        identity = PieceIdentity(
+            workspaceID: try savedIdentity.decode(UUID.self, forKey: .workspaceID),
+            creatorID: try savedIdentity.decode(UUID.self, forKey: .creatorID),
+            pieceID: savedPieceID ?? UUID()
+        )
+        scheduledDate = try values.decodeIfPresent(String.self, forKey: .scheduledDate)
+            ?? savedIdentity.decode(String.self, forKey: .scheduledDate)
+        position = try values.decodeIfPresent(Int.self, forKey: .position) ?? 0
+        requiresServerBinding = try values.decodeIfPresent(Bool.self, forKey: .requiresServerBinding) ?? (savedPieceID == nil)
         revision = try values.decodeIfPresent(DayRevision.self, forKey: .revision)
         lifecycle = try values.decodeIfPresent(DayLifecycle.self, forKey: .lifecycle) ?? .unavailable
         previousRevisions = try values.decodeIfPresent([DayRevision].self, forKey: .previousRevisions) ?? []
         lastKnownLifecycle = try values.decodeIfPresent(DayLifecycle.self, forKey: .lastKnownLifecycle)
         serverUpdatedAt = try values.decodeIfPresent(String.self, forKey: .serverUpdatedAt)
-        if let revision, revision.content.scheduledDate != identity.scheduledDate || revision.filmingProgress.revisionID != revision.id {
-            throw DecodingError.dataCorruptedError(forKey: .revision, in: values, debugDescription: "Mismatched Day revision")
+        if let revision, revision.content.scheduledDate != scheduledDate || revision.filmingProgress.revisionID != revision.id {
+            throw DecodingError.dataCorruptedError(forKey: .revision, in: values, debugDescription: "Mismatched Piece revision")
         }
         if revision == nil, lifecycle.exposesReadyPackage || lifecycle == .draft {
             lastKnownLifecycle = lifecycle
@@ -2119,11 +2176,15 @@ struct Day: Codable, Hashable, Sendable, Identifiable {
         }
     }
 
+    private enum IdentityCodingKeys: String, CodingKey {
+        case workspaceID, creatorID, pieceID, scheduledDate
+    }
+
     mutating func transition(_ move: DayTransition) throws {
         var next = self
         switch move {
         case .reconcile(let content, let completion, let updatedAt):
-            guard content.scheduledDate == identity.scheduledDate else {
+            guard content.scheduledDate == scheduledDate else {
                 throw DayTransitionError.mismatchedRevision
             }
             if let updatedAt, let previous = serverUpdatedAt,
@@ -2164,10 +2225,10 @@ struct Day: Codable, Hashable, Sendable, Identifiable {
                 next.lifecycle = next.resolvedLifecycle()
             }
         case .retain(let content, let completion):
-            guard content.scheduledDate == identity.scheduledDate, revision?.id != content.id else {
+            guard content.scheduledDate == scheduledDate, revision?.id != content.id else {
                 throw DayTransitionError.mismatchedRevision
             }
-            var retained = Day(identity: identity)
+            var retained = Piece(identity: identity, scheduledDate: scheduledDate, position: position, requiresServerBinding: requiresServerBinding)
             try retained.transition(.reconcile(content, completion, nil))
             if let saved = retained.revision, !next.previousRevisions.contains(where: { $0.id == saved.id }) {
                 next.previousRevisions.append(saved)
@@ -2255,7 +2316,9 @@ struct Day: Codable, Hashable, Sendable, Identifiable {
     private mutating func install(_ content: GeneratedDailyCardDraft) throws {
         var content = content
         content.normalizeShotContent()
-        guard content.scheduledDate == identity.scheduledDate else { throw DayTransitionError.mismatchedRevision }
+        guard content.pieceID == nil || content.pieceID == identity.pieceID else { throw DayTransitionError.mismatchedRevision }
+        content.pieceID = requiresServerBinding ? nil : identity.pieceID
+        guard content.scheduledDate == scheduledDate else { throw DayTransitionError.mismatchedRevision }
         guard content.title.nilIfBlank != nil,
               !["Checking today's plan", "No ready package"].contains(content.title),
               !content.sceneList.isEmpty || content.script.nilIfBlank != nil || content.caption.nilIfBlank != nil else {
@@ -2293,9 +2356,7 @@ struct Day: Codable, Hashable, Sendable, Identifiable {
     }
 
     private static func timestamp(_ value: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        SupabaseDateFormatting.timestamp(from: value)
     }
 
     private func resolvedLifecycle() -> DayLifecycle {

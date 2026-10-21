@@ -20,6 +20,9 @@ struct ContentIntent: Codable, Hashable, Sendable, Identifiable {
     var workspaceID: UUID
     var creatorID: UUID
     var scheduledDate: String
+    var pieceID: UUID?
+    var usesLegacyGenerationIdentity: Bool?
+    var usesLegacyPieceTarget: Bool?
     var revisionID: UUID
     var idempotencyKey: String = UUID().uuidString
     var createdAt: Date = Date()
@@ -44,14 +47,17 @@ struct ContentIntent: Codable, Hashable, Sendable, Identifiable {
     var profileSaved = false
     var firstIdeaSkipped = false
 
+    var generationPieceID: UUID? { usesLegacyGenerationIdentity == true ? nil : pieceID }
+
     var isGeneration: Bool {
         kind == .generate || kind == .replaceDay || kind == .firstIdea
     }
 
-    init(kind: ContentIntentKind, context: WorkspaceContext, scheduledDate: String, revisionID: UUID = UUID()) {
+    init(kind: ContentIntentKind, context: WorkspaceContext, scheduledDate: String, revisionID: UUID = UUID(), pieceID: UUID? = nil) {
         self.kind = kind
         workspaceID = context.workspaceID
         creatorID = context.creatorID
+        self.pieceID = pieceID
         self.scheduledDate = scheduledDate
         self.revisionID = revisionID
         if kind != .replaceDay { requestedRevisionID = revisionID }
@@ -62,6 +68,32 @@ enum OutboxGenerationResponse: Sendable {
     case running(UUID, pollAfterSeconds: Int)
     case completed(DailyGenerationResult)
     case failed(String)
+}
+
+extension SupabaseDailyGenerationInvocation {
+    func outboxResponse(for intent: ContentIntent, pieceID: UUID?, defaultPollAfterSeconds: Int) throws -> OutboxGenerationResponse {
+        let serverPieceID: UUID?
+        let generationID: UUID
+        let result: OutboxGenerationResponse
+        switch self {
+        case .completed(let response):
+            guard response.pieceID == nil || response.dailyCard.pieceID == nil || response.pieceID == response.dailyCard.pieceID else { throw DayTransitionError.mismatchedRevision }
+            serverPieceID = response.pieceID ?? response.dailyCard.pieceID
+            generationID = response.generationID
+            result = .completed(response.domainResult)
+        case .running(let response):
+            serverPieceID = response.pieceID
+            generationID = response.generationID
+            result = .running(generationID, pollAfterSeconds: response.pollAfterSeconds ?? defaultPollAfterSeconds)
+        case .failed(let response):
+            serverPieceID = response.pieceID
+            generationID = response.generationID
+            result = .failed(response.error ?? "invalid_generated_day")
+        }
+        guard pieceID == nil || serverPieceID == pieceID,
+              intent.generationID == nil || intent.generationID == generationID else { throw DayTransitionError.mismatchedRevision }
+        return result
+    }
 }
 
 enum OutboxReplayResult: Sendable {

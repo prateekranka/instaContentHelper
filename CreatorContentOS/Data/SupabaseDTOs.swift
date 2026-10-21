@@ -336,7 +336,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     }
 
     func domainCard() -> DailyCard {
-        DailyCard(
+        var card = DailyCard(
             id: id,
             title: title,
             context: SupabaseDateFormatting.contextLine(for: scheduledDate),
@@ -376,10 +376,12 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             assumptions: assumptions?.compactMap(\.displayText),
             storyboardThumbnailAssets: storyboardThumbnailAssets.isEmpty ? nil : storyboardThumbnailAssets
         )
+        card.pieceID = pieceID
+        return card
     }
 
     func generatedDailyCardDraft() -> GeneratedDailyCardDraft {
-        GeneratedDailyCardDraft(
+        var card = GeneratedDailyCardDraft(
             id: id,
             scheduledDate: scheduledDate,
             status: Self.draftReviewStatus(dbStatus: status, reviewState: reviewState),
@@ -424,6 +426,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             sourceNote: sourceNote ?? "",
             storyboardThumbnailAssets: storyboardThumbnailAssets
         )
+        card.pieceID = pieceID
+        return card
     }
 
     private static func draftReviewStatus(dbStatus: String, reviewState: String?) -> String {
@@ -979,6 +983,7 @@ struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
             outputLine: outputLine ?? decision.displayTitle,
             hasPostThumbnail: hasPostThumbnail
         )
+        entry.pieceID = pieceID ?? dailyCard?.pieceID
         entry.captionSnapshot = captionSnapshot ?? dailyCard?.caption
         entry.scheduledDate = archiveDate
         entry.decisionAt = decisionAt
@@ -1499,7 +1504,12 @@ enum SupabaseDateFormatting {
     }
 
     static func timestamp(from value: String) -> Date? {
-        formatters.withLock { $0.timestamp.date(from: value) }
+        formatters.withLock { cache in
+            cache.timestamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let fractional = cache.timestamp.date(from: value)
+            cache.timestamp.formatOptions = [.withInternetDateTime]
+            return fractional ?? cache.timestamp.date(from: value)
+        }
     }
 
     static func effortLabel(shootability: String?, minutes: Int?) -> String {

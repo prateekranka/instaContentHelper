@@ -299,6 +299,7 @@ struct SupabaseWriteArchiveEntryResponse: Decodable, Hashable, Sendable {
             outputLine: outputLine ?? decision.displayTitle,
             hasPostThumbnail: hasPostThumbnail
         )
+        entry.pieceID = pieceID
         entry.captionSnapshot = captionSnapshot ?? fallbackCard.caption
         entry.scheduledDate = archiveDate
         entry.decisionAt = decisionAt

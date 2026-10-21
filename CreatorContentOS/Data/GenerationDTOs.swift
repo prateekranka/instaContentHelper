@@ -368,7 +368,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
     }
 
     var domainCard: GeneratedDailyCardDraft {
-        GeneratedDailyCardDraft(
+        var card = GeneratedDailyCardDraft(
             id: id ?? UUID(),
             scheduledDate: scheduledDate,
             status: status ?? "draft",
@@ -413,6 +413,8 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
             sourceNote: sourceNote,
             storyboardThumbnailAssets: storyboardThumbnailAssets ?? []
         )
+        card.pieceID = pieceID
+        return card
     }
 }
 

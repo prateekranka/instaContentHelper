@@ -5,7 +5,7 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
     let client: SupabaseClient
 
     func creatorDays(for context: WorkspaceContext) async throws -> [SupabaseCreatorDayRow]? {
-        let response: SupabaseCreatorDaysResponse = try await client.readContent(.days, context: context)
+        let response: SupabaseCreatorDaysResponse = try await client.readContent(.days, context: context, includeAllPieces: true)
         return response.days
     }
 
@@ -535,11 +535,7 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
                     idempotencyKey: intent.id
                 ))
             }
-            switch invocation {
-            case .completed(let response): return .completed(response.domainResult)
-            case .running(let status): return .running(status.generationID, pollAfterSeconds: status.pollAfterSeconds ?? 3)
-            case .failed(let status): return .failed(status.error ?? "invalid_generated_day")
-            }
+            return try invocation.outboxResponse(for: intent, pieceID: pieceID, defaultPollAfterSeconds: 3)
         } catch {
             if let code = SupabaseFunctionErrorMapper.errorCode(from: error) { throw RepositoryError.edgeFunction(code) }
             throw error
