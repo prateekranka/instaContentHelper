@@ -34,11 +34,11 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
         return response.weekCards.map { $0.domainCard() }
     }
 
-    func replayDecision(_ intent: ContentIntent, context: WorkspaceContext) async throws -> ArchiveEntry {
+    func replayDecision(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> ArchiveEntry {
         guard let card = intent.cardSnapshot else { throw DayTransitionError.incompletePackage }
         do {
             let response: SupabaseWriteContentResponse = try await client.functions.invoke(
-                "write-content", options: FunctionInvokeOptions(body: SupabaseWriteContentRequest.queuedDecision(intent, context: context))
+                "write-content", options: FunctionInvokeOptions(body: SupabaseWriteContentRequest.queuedDecision(intent, context: context, pieceID: pieceID))
             )
             if let error = response.error { throw RepositoryError.edgeFunction(error) }
             guard let entry = response.archiveEntry else { throw RepositoryError.edgeFunction("complete_today_missing_archive") }
@@ -52,10 +52,11 @@ struct SupabaseTodayCardRepository: TodayCardRepository {
     func completeToday(
         card: DailyCard,
         decision: DailyDecision,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> ArchiveEntry {
         let response = try await client.writeContent(
-            .completeToday(card: card, decision: decision, context: context)
+            .completeToday(card: card, decision: decision, context: context, pieceID: pieceID)
         )
         if let entry = response.archiveEntry {
             return entry.domainEntry(fallbackCard: card)
@@ -200,33 +201,33 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         )
     }
 
-    func replayPackage(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxReplayResult {
+    func replayPackage(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> OutboxReplayResult {
         do {
             switch intent.packageAction {
             case .makeReady:
-                let response: SupabaseMakeDayAvailableResponse = try await client.functions.invoke("make-day-available", options: FunctionInvokeOptions(body: SupabaseMakeDayAvailableRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion)))
-                return .available(DayAvailabilityResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, weeklyPlanID: response.weeklyPlanID, weekIsSoftLocked: response.weekIsSoftLocked))
+                let response: SupabaseMakeDayAvailableResponse = try await client.functions.invoke("make-day-available", options: FunctionInvokeOptions(body: SupabaseMakeDayAvailableRequest(pieceID: pieceID, creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion)))
+                return .available(DayAvailabilityResult(pieceID: response.pieceID, dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, weeklyPlanID: response.weeklyPlanID, weekIsSoftLocked: response.weekIsSoftLocked))
             case .returnToDraft:
-                let response: SupabaseUnpublishDayResponse = try await client.functions.invoke("unpublish-day", options: FunctionInvokeOptions(body: SupabaseUnpublishDayRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion)))
-                return .unpublished(DayUnpublishResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, previousStatus: response.previousStatus, clearedLiveDecision: response.clearedLiveDecision, archiveRetained: response.archiveRetained, weeklyPlanID: response.weeklyPlanID))
+                let response: SupabaseUnpublishDayResponse = try await client.functions.invoke("unpublish-day", options: FunctionInvokeOptions(body: SupabaseUnpublishDayRequest(pieceID: pieceID, creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion)))
+                return .unpublished(DayUnpublishResult(pieceID: response.pieceID, dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, previousStatus: response.previousStatus, clearedLiveDecision: response.clearedLiveDecision, archiveRetained: response.archiveRetained, weeklyPlanID: response.weeklyPlanID))
             case .update:
                 guard let package = intent.package else { throw DayTransitionError.incompletePackage }
                 try package.validate()
-                let response: SupabaseUpdateReadyDayPackageResponse = try await client.functions.invoke("update-ready-day-package", options: FunctionInvokeOptions(body: SupabaseUpdateReadyDayPackageRequest(creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, package: package, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion)))
-                return .package(DayPackageUpdateResult(dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, weeklyPlanID: response.weeklyPlanID, title: response.title, caption: response.caption))
+                let response: SupabaseUpdateReadyDayPackageResponse = try await client.functions.invoke("update-ready-day-package", options: FunctionInvokeOptions(body: SupabaseUpdateReadyDayPackageRequest(pieceID: pieceID, creatorID: intent.creatorID, scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, package: package, idempotencyKey: intent.id, expectedVersion: intent.expectedVersion)))
+                return .package(DayPackageUpdateResult(pieceID: response.pieceID, dailyCardID: response.dailyCardID, scheduledDate: response.scheduledDate, status: response.status, weeklyPlanID: response.weeklyPlanID, title: response.title, caption: response.caption))
             case nil: throw DayTransitionError.illegalMove
             }
         } catch {
             let code = SupabaseFunctionErrorMapper.errorCode(from: error) ?? error.localizedDescription
             if code == "daily_card_not_draft" && intent.packageAction == .makeReady
                 || code == "daily_card_already_draft" && intent.packageAction == .returnToDraft {
-                let response: SupabaseCreatorDaysResponse = try await client.readContent(.days, context: context)
+                let response: SupabaseCreatorDaysResponse = try await client.readContent(.days, context: context, includeAllPieces: pieceID == nil ? nil : true)
                 if let row = response.days.first(where: { $0.scheduledDate == intent.scheduledDate && $0.currentRevisionID == intent.revisionID }), let card = row.revision {
                     if intent.packageAction == .makeReady, DayPackageLifecycleStatus.requiresOverwriteConfirmation(card.status) {
-                        return .available(DayAvailabilityResult(dailyCardID: card.id, scheduledDate: card.scheduledDate, status: card.status, weeklyPlanID: card.weeklyPlanID, weekIsSoftLocked: false))
+                        return .available(DayAvailabilityResult(pieceID: card.pieceID, dailyCardID: card.id, scheduledDate: card.scheduledDate, status: card.status, weeklyPlanID: card.weeklyPlanID, weekIsSoftLocked: false))
                     }
                     if intent.packageAction == .returnToDraft, card.status == "draft" {
-                        return .unpublished(DayUnpublishResult(dailyCardID: card.id, scheduledDate: card.scheduledDate, status: "draft", previousStatus: "draft", clearedLiveDecision: false, archiveRetained: true, weeklyPlanID: card.weeklyPlanID))
+                        return .unpublished(DayUnpublishResult(pieceID: card.pieceID, dailyCardID: card.id, scheduledDate: card.scheduledDate, status: "draft", previousStatus: "draft", clearedLiveDecision: false, archiveRetained: true, weeklyPlanID: card.weeklyPlanID))
                     }
                 }
             }
@@ -238,6 +239,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
     func makeDayAvailable(
         scheduledDate: String,
         dailyCardID: UUID?,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> DayAvailabilityResult {
         try await TransientNetworkRetry.run(label: "make-day-available", attempts: 3) {
@@ -246,6 +248,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
                     "make-day-available",
                     options: FunctionInvokeOptions(
                         body: SupabaseMakeDayAvailableRequest(
+                            pieceID: pieceID,
                             creatorID: context.creatorID,
                             scheduledDate: scheduledDate,
                             dailyCardID: dailyCardID
@@ -253,6 +256,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
                     )
                 )
                 return DayAvailabilityResult(
+                    pieceID: response.pieceID,
                     dailyCardID: response.dailyCardID,
                     scheduledDate: response.scheduledDate,
                     status: response.status,
@@ -271,6 +275,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
     func unpublishDay(
         scheduledDate: String,
         dailyCardID: UUID?,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> DayUnpublishResult {
         do {
@@ -278,6 +283,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
                 "unpublish-day",
                 options: FunctionInvokeOptions(
                     body: SupabaseUnpublishDayRequest(
+                        pieceID: pieceID,
                         creatorID: context.creatorID,
                         scheduledDate: scheduledDate,
                         dailyCardID: dailyCardID
@@ -285,6 +291,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
                 )
             )
             return DayUnpublishResult(
+                pieceID: response.pieceID,
                 dailyCardID: response.dailyCardID,
                 scheduledDate: response.scheduledDate,
                 status: response.status,
@@ -305,6 +312,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         scheduledDate: String,
         dailyCardID: UUID?,
         package: ReadyDayPackageUpdate,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> DayPackageUpdateResult {
         do {
@@ -312,6 +320,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
                 "update-ready-day-package",
                 options: FunctionInvokeOptions(
                     body: SupabaseUpdateReadyDayPackageRequest(
+                        pieceID: pieceID,
                         creatorID: context.creatorID,
                         scheduledDate: scheduledDate,
                         dailyCardID: dailyCardID,
@@ -320,6 +329,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
                 )
             )
             return DayPackageUpdateResult(
+                pieceID: response.pieceID,
                 dailyCardID: response.dailyCardID,
                 scheduledDate: response.scheduledDate,
                 status: response.status,
@@ -487,7 +497,7 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
     let client: SupabaseClient
     var runtimeConfiguration: SupabaseRuntimeConfiguration?
 
-    func replayGeneration(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxGenerationResponse {
+    func replayGeneration(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> OutboxGenerationResponse {
         do {
             let invocation: SupabaseDailyGenerationInvocation
             if let generationID = intent.generationID {
@@ -496,6 +506,7 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
                 invocation = try await client.functions.invoke(
                     "replace-day",
                     options: FunctionInvokeOptions(body: SupabaseReplaceDayRequest(
+                        pieceID: pieceID,
                         creatorID: intent.creatorID,
                         scheduledDate: intent.scheduledDate,
                         dailyCardID: intent.revisionID,
@@ -505,6 +516,7 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
                 ) { data, _ in try SupabaseDailyGenerationInvocation.decode(data) }
             } else if let planID = intent.weeklyPlanID, let preserve = intent.preserveManualEdits {
                 invocation = try await invokeDailyGeneration(SupabaseRegenerateDayRequest(
+                    pieceID: pieceID,
                     creatorID: intent.creatorID,
                     weeklyPlanID: planID,
                     scheduledDate: intent.scheduledDate,
@@ -515,6 +527,7 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
                 ))
             } else {
                 invocation = try await invokeDailyGeneration(SupabaseDailyGenerationRequest(
+                    pieceID: pieceID,
                     creatorID: intent.creatorID,
                     scheduledDate: intent.scheduledDate,
                     dayBrief: intent.dayBrief ?? "",
@@ -539,12 +552,14 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
         scheduledDate: String,
         preserveManualEdits: Bool,
         dayGuidance: String?,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> RegeneratedDayResult {
         do {
             logGeneration("regenerate_day invoke_initial scheduled_date=\(scheduledDate) guidance_chars=\(dayGuidance?.count ?? 0)")
             let initial = try await invokeRegenerateDay(
                 SupabaseRegenerateDayRequest(
+                    pieceID: pieceID,
                     creatorID: creatorID,
                     weeklyPlanID: weeklyPlanID,
                     scheduledDate: scheduledDate,
@@ -591,12 +606,14 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
         creatorID: UUID,
         scheduledDate: String,
         dayBrief: String,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult {
         do {
             logGeneration("generate_day invoke_initial scheduled_date=\(scheduledDate) brief_chars=\(dayBrief.count)")
             let initial = try await invokeDailyGeneration(
                 SupabaseDailyGenerationRequest(
+                    pieceID: pieceID,
                     creatorID: creatorID,
                     scheduledDate: scheduledDate,
                     dayBrief: dayBrief,
@@ -1239,26 +1256,28 @@ struct SupabaseArchiveRepository: ArchiveRepository {
     func persistDecision(
         _ entry: ArchiveEntry,
         for card: DailyCard,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws {
         try await client.writeContent(
-            .upsertArchiveDecision(entry, for: card, context: context)
+            .upsertArchiveDecision(entry, for: card, context: context, pieceID: pieceID)
         )
     }
 
     func upsertDecision(
         _ entry: ArchiveEntry,
         for card: DailyCard,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> [ArchiveEntry] {
-        try await persistDecision(entry, for: card, context: context)
+        try await persistDecision(entry, for: card, pieceID: pieceID, context: context)
         return try await entries(for: context)
     }
 }
 
 enum SupabaseSelect {
     static let dailyCard = """
-        id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,review_state,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,creator_fit_score,risk_notes,assumptions,source_note,decision_at,storyboard_thumbnail_assets
+        id,piece_id,workspace_id,creator_id,weekly_plan_id,origin_idea_id,brand_brief_id,key_moment_id,scheduled_date,status,review_state,title,why_today,growth_job,content_pillar,shootability,estimated_shoot_minutes,energy_required,language_mode,scene_list,script,no_voiceover_version,on_screen_text,caption,cta,hashtags,cover_text,post_instructions,brand_event_notes,backup_story,backup_caption_only,audio_option_id,audio_fallback_id,creator_fit_score,risk_notes,assumptions,source_note,decision_at,storyboard_thumbnail_assets
         """
 
     static let weeklyPlan = """
@@ -1270,12 +1289,14 @@ private extension SupabaseClient {
     func readContent<Response: Decodable>(
         _ action: SupabaseReadContentRequest.Action,
         context: WorkspaceContext,
-        todayDate: String? = nil
+        todayDate: String? = nil,
+        includeAllPieces: Bool? = nil
     ) async throws -> Response {
         let requestBody = SupabaseReadContentRequest(
             action: action,
             creatorID: context.creatorID,
-            todayDate: todayDate
+            todayDate: todayDate,
+            includeAllPieces: includeAllPieces
         )
         var attempts = 0
         while true {
@@ -1358,3 +1379,92 @@ struct SupabaseRuntimeHealthRepository: RuntimeHealthRepository {
 }
 
 private struct EmptyJSONBody: Encodable, Sendable {}
+
+extension SupabaseTodayCardRepository {
+    func replayDecision(_ intent: ContentIntent, context: WorkspaceContext) async throws -> ArchiveEntry {
+        try await replayDecision(intent, pieceID: nil, context: context)
+    }
+
+    func completeToday(
+        card: DailyCard,
+        decision: DailyDecision,
+        context: WorkspaceContext
+    ) async throws -> ArchiveEntry {
+        try await completeToday(card: card, decision: decision, pieceID: nil, context: context)
+    }
+}
+
+extension SupabaseWeeklyPlanRepository {
+    func replayPackage(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxReplayResult {
+        try await replayPackage(intent, pieceID: nil, context: context)
+    }
+
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult {
+        try await makeDayAvailable(scheduledDate: scheduledDate, dailyCardID: dailyCardID, pieceID: nil, context: context)
+    }
+
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult {
+        try await unpublishDay(scheduledDate: scheduledDate, dailyCardID: dailyCardID, pieceID: nil, context: context)
+    }
+
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        package: ReadyDayPackageUpdate,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult {
+        try await updateReadyDayPackage(scheduledDate: scheduledDate, dailyCardID: dailyCardID, package: package, pieceID: nil, context: context)
+    }
+}
+
+extension SupabaseDayGenerationRepository {
+    func replayGeneration(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxGenerationResponse {
+        try await replayGeneration(intent, pieceID: nil, context: context)
+    }
+
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        try await generateDay(creatorID: creatorID, scheduledDate: scheduledDate, dayBrief: dayBrief, pieceID: nil, context: context)
+    }
+
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        dayGuidance: String?,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        try await regenerateDay(creatorID: creatorID, weeklyPlanID: weeklyPlanID, scheduledDate: scheduledDate, preserveManualEdits: preserveManualEdits, dayGuidance: dayGuidance, pieceID: nil, context: context)
+    }
+}
+
+extension SupabaseArchiveRepository {
+    func persistDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        context: WorkspaceContext
+    ) async throws {
+        try await persistDecision(entry, for: card, pieceID: nil, context: context)
+    }
+
+    func upsertDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        context: WorkspaceContext
+    ) async throws -> [ArchiveEntry] {
+        try await upsertDecision(entry, for: card, pieceID: nil, context: context)
+    }
+}

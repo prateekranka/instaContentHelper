@@ -1,9 +1,9 @@
 import Foundation
 
 enum SupabaseWriteContentRequest: Encodable, Sendable {
-    case queuedDecision(ContentIntent, context: WorkspaceContext)
-    case completeToday(card: DailyCard, decision: DailyDecision, context: WorkspaceContext)
-    case upsertArchiveDecision(ArchiveEntry, for: DailyCard, context: WorkspaceContext)
+    case queuedDecision(ContentIntent, context: WorkspaceContext, pieceID: UUID? = nil)
+    case completeToday(card: DailyCard, decision: DailyDecision, context: WorkspaceContext, pieceID: UUID? = nil)
+    case upsertArchiveDecision(ArchiveEntry, for: DailyCard, context: WorkspaceContext, pieceID: UUID? = nil)
     case selectIdeaForNextOpenDay(idea: WeeklyIdea, plan: WeeklyPlan, context: WorkspaceContext)
     case updateWeeklySetup(sections: [WeeklySetupSection], plan: WeeklyPlan, context: WorkspaceContext)
     case updateWeeklyBrief(text: String, plan: WeeklyPlan, context: WorkspaceContext)
@@ -16,6 +16,7 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
         case intentAction = "intent_action"
         case creatorID = "creator_id"
         case dailyCardID = "daily_card_id"
+        case pieceID = "piece_id"
         case decision
         case decisionAt = "decision_at"
         case archiveDate = "archive_date"
@@ -52,7 +53,8 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
 
         switch self {
-        case .queuedDecision(let intent, let context):
+        case .queuedDecision(let intent, let context, let pieceID):
+            try container.encodeIfPresent(pieceID, forKey: .pieceID)
             guard let decision = intent.decision else { throw DayTransitionError.incompletePackage }
             try container.encode("complete_today", forKey: .action)
             try container.encode(context.creatorID, forKey: .creatorID)
@@ -62,14 +64,16 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
             try container.encode(intent.id, forKey: .idempotencyKey)
             try container.encode(intent.undoPosted ? "undoPosted" : "decide", forKey: .intentAction)
 
-        case .completeToday(let card, let decision, let context):
+        case .completeToday(let card, let decision, let context, let pieceID):
+            try container.encodeIfPresent(pieceID, forKey: .pieceID)
             try container.encode("complete_today", forKey: .action)
             try container.encode(context.creatorID, forKey: .creatorID)
             try container.encode(card.id, forKey: .dailyCardID)
             try container.encode(SupabaseWriteDecisionRequest(decision: decision), forKey: .decision)
             try container.encode(SupabaseDateFormatting.isoTimestampString(), forKey: .decisionAt)
 
-        case .upsertArchiveDecision(let entry, let card, let context):
+        case .upsertArchiveDecision(let entry, let card, let context, let pieceID):
+            try container.encodeIfPresent(pieceID, forKey: .pieceID)
             try container.encode("upsert_archive_decision", forKey: .action)
             try container.encode(context.creatorID, forKey: .creatorID)
             try container.encode(card.id, forKey: .dailyCardID)
@@ -216,6 +220,7 @@ struct SupabaseWriteDecisionRequest: Encodable, Sendable {
 }
 
 struct SupabaseWriteContentResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var action: String?
     var error: String?
     var dailyCardID: UUID?
@@ -227,6 +232,7 @@ struct SupabaseWriteContentResponse: Decodable, Hashable, Sendable {
     var creatorProfile: SupabaseCreatorProfileRow?
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case action
         case error
         case dailyCardID = "daily_card_id"
@@ -240,12 +246,14 @@ struct SupabaseWriteContentResponse: Decodable, Hashable, Sendable {
 }
 
 struct SupabaseWriteDailyCardResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var id: UUID
     var status: String
     var decisionAt: String?
     var completedByMemberID: UUID?
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case id
         case status
         case decisionAt = "decision_at"
@@ -254,6 +262,7 @@ struct SupabaseWriteDailyCardResponse: Decodable, Hashable, Sendable {
 }
 
 struct SupabaseWriteArchiveEntryResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var id: UUID
     var dailyCardID: UUID
     var archiveDate: String
@@ -266,6 +275,7 @@ struct SupabaseWriteArchiveEntryResponse: Decodable, Hashable, Sendable {
     var decisionAt: String?
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case id
         case dailyCardID = "daily_card_id"
         case archiveDate = "archive_date"

@@ -29,6 +29,7 @@ enum GenerationResponseMode: String, Encodable, Sendable {
 }
 
 struct SupabaseRegenerateDayRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
     var weeklyPlanID: UUID
     var scheduledDate: String
@@ -43,6 +44,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
     var timeZone: String = TimeZone.current.identifier
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
         case timeZone = "time_zone"
         case weeklyPlanID = "weekly_plan_id"
@@ -62,6 +64,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
 /// references, uses the day brief as the only brief, and returns the same
 /// storyboard + caption card payload as regenerate_day.
 struct SupabaseDailyGenerationRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
     var scheduledDate: String
     var dayBrief: String
@@ -74,6 +77,7 @@ struct SupabaseDailyGenerationRequest: Encodable, Sendable {
     var timeZone: String = TimeZone.current.identifier
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
         case timeZone = "time_zone"
         case scheduledDate = "scheduled_date"
@@ -87,6 +91,7 @@ struct SupabaseDailyGenerationRequest: Encodable, Sendable {
 }
 
 struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var generationID: UUID
     var weeklyPlanID: UUID
     var status: String
@@ -98,6 +103,7 @@ struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
     var generatedAt: String
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case generationID = "generation_id"
         case weeklyPlanID = "weekly_plan_id"
         case status
@@ -111,6 +117,7 @@ struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
 
     var domainResult: DailyGenerationResult {
         DailyGenerationResult(
+            pieceID: pieceID ?? dailyCard.pieceID,
             generationID: generationID,
             weeklyPlanID: weeklyPlanID,
             status: status,
@@ -125,6 +132,7 @@ struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
 }
 
 struct DailyGenerationResult: Codable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var generationID: UUID
     var weeklyPlanID: UUID
     var status: String
@@ -208,6 +216,7 @@ struct SupabaseGenerationStatusRequest: Encodable, Sendable {
 }
 
 struct SupabaseGenerationStatusResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var generationID: UUID
     var status: String
     var weeklyPlanID: UUID?
@@ -217,6 +226,7 @@ struct SupabaseGenerationStatusResponse: Decodable, Hashable, Sendable {
     var error: String?
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case generationID = "generation_id"
         case status
         case weeklyPlanID = "weekly_plan_id"
@@ -267,6 +277,7 @@ private struct SupabaseGenerationStatusProbe: Decodable {
 }
 
 struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var id: UUID?
     var scheduledDate: String
     var status: String?
@@ -311,6 +322,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
     var storyboardThumbnailAssets: [StoryboardThumbnailAsset]?
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case id
         case scheduledDate = "scheduled_date"
         case status
@@ -592,9 +604,10 @@ private extension ProductionTimelineItem {
 }
 
 struct SupabaseReplaceDayRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
     var scheduledDate: String
-    var dailyCardID: UUID
+    var dailyCardID: UUID? = nil
     var dayBrief: String
     var idempotencyKey: String
     var responseMode: GenerationResponseMode = .async
@@ -602,6 +615,7 @@ struct SupabaseReplaceDayRequest: Encodable, Sendable {
     var timeZone: String = TimeZone.current.identifier
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
         case timeZone = "time_zone"
         case scheduledDate = "scheduled_date"

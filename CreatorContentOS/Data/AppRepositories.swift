@@ -100,9 +100,16 @@ protocol TodayCardRepository: Sendable {
     func todayCard(for context: WorkspaceContext) async throws -> DailyCard
     func weekCards(for context: WorkspaceContext) async throws -> [DailyCard]
     func replayDecision(_ intent: ContentIntent, context: WorkspaceContext) async throws -> ArchiveEntry
+    func replayDecision(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> ArchiveEntry
     func completeToday(
         card: DailyCard,
         decision: DailyDecision,
+        context: WorkspaceContext
+    ) async throws -> ArchiveEntry
+    func completeToday(
+        card: DailyCard,
+        decision: DailyDecision,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> ArchiveEntry
 }
@@ -235,6 +242,7 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
 
 protocol WeeklyPlanRepository: Sendable {
     func replayPackage(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxReplayResult
+    func replayPackage(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> OutboxReplayResult
 
     func currentPublishedPlan(for context: WorkspaceContext) async throws -> WeeklyPlan
     func currentGeneratedDraft(for context: WorkspaceContext) async throws -> GeneratedWeekDraft?
@@ -274,11 +282,23 @@ protocol WeeklyPlanRepository: Sendable {
         dailyCardID: UUID?,
         context: WorkspaceContext
     ) async throws -> DayAvailabilityResult
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult
 
     /// Demotes a ready/decision day to draft. Clears live Decision; retains Archive rows.
     func unpublishDay(
         scheduledDate: String,
         dailyCardID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> DayUnpublishResult
 
@@ -290,15 +310,30 @@ protocol WeeklyPlanRepository: Sendable {
         package: ReadyDayPackageUpdate,
         context: WorkspaceContext
     ) async throws -> DayPackageUpdateResult
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        package: ReadyDayPackageUpdate,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult
 }
 
 protocol DayGenerationRepository: Sendable {
     func replayGeneration(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxGenerationResponse
+    func replayGeneration(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> OutboxGenerationResponse
 
     func generateDay(
         creatorID: UUID,
         scheduledDate: String,
         dayBrief: String,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult
 
@@ -308,6 +343,15 @@ protocol DayGenerationRepository: Sendable {
         scheduledDate: String,
         preserveManualEdits: Bool,
         dayGuidance: String?,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        dayGuidance: String?,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> DailyGenerationResult
 
@@ -487,9 +531,21 @@ protocol ArchiveRepository: Sendable {
         for card: DailyCard,
         context: WorkspaceContext
     ) async throws
+    func persistDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws
     func upsertDecision(
         _ entry: ArchiveEntry,
         for card: DailyCard,
+        context: WorkspaceContext
+    ) async throws -> [ArchiveEntry]
+    func upsertDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        pieceID: UUID?,
         context: WorkspaceContext
     ) async throws -> [ArchiveEntry]
 }
@@ -514,6 +570,7 @@ struct WeeklyPublishResult: Hashable, Sendable {
 }
 
 struct DayAvailabilityResult: Hashable, Sendable {
+    var pieceID: UUID? = nil
     var dailyCardID: UUID
     var scheduledDate: String
     var status: String
@@ -522,6 +579,7 @@ struct DayAvailabilityResult: Hashable, Sendable {
 }
 
 struct DayUnpublishResult: Hashable, Sendable {
+    var pieceID: UUID? = nil
     var dailyCardID: UUID
     var scheduledDate: String
     var status: String
@@ -574,6 +632,7 @@ extension ReadyDayPackageUpdate {
 }
 
 struct DayPackageUpdateResult: Hashable, Sendable {
+    var pieceID: UUID? = nil
     var dailyCardID: UUID
     var scheduledDate: String
     var status: String
@@ -874,5 +933,113 @@ extension WeeklyPlanRepository {
             return .package(try await updateReadyDayPackage(scheduledDate: intent.scheduledDate, dailyCardID: intent.revisionID, package: package, context: context))
         case nil: throw DayTransitionError.illegalMove
         }
+    }
+}
+
+extension TodayCardRepository {
+    func replayDecision(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> ArchiveEntry {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await replayDecision(intent, context: context)
+    }
+
+    func completeToday(
+        card: DailyCard,
+        decision: DailyDecision,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> ArchiveEntry {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await completeToday(card: card, decision: decision, context: context)
+    }
+}
+
+extension WeeklyPlanRepository {
+    func replayPackage(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> OutboxReplayResult {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await replayPackage(intent, context: context)
+    }
+
+    func makeDayAvailable(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayAvailabilityResult {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await makeDayAvailable(scheduledDate: scheduledDate, dailyCardID: dailyCardID, context: context)
+    }
+
+    func unpublishDay(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayUnpublishResult {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await unpublishDay(scheduledDate: scheduledDate, dailyCardID: dailyCardID, context: context)
+    }
+
+    func updateReadyDayPackage(
+        scheduledDate: String,
+        dailyCardID: UUID?,
+        package: ReadyDayPackageUpdate,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DayPackageUpdateResult {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await updateReadyDayPackage(scheduledDate: scheduledDate, dailyCardID: dailyCardID, package: package, context: context)
+    }
+}
+
+extension DayGenerationRepository {
+    func replayGeneration(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> OutboxGenerationResponse {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await replayGeneration(intent, context: context)
+    }
+
+    func generateDay(
+        creatorID: UUID,
+        scheduledDate: String,
+        dayBrief: String,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await generateDay(creatorID: creatorID, scheduledDate: scheduledDate, dayBrief: dayBrief, context: context)
+    }
+
+    func regenerateDay(
+        creatorID: UUID,
+        weeklyPlanID: UUID,
+        scheduledDate: String,
+        preserveManualEdits: Bool,
+        dayGuidance: String?,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> DailyGenerationResult {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await regenerateDay(creatorID: creatorID, weeklyPlanID: weeklyPlanID, scheduledDate: scheduledDate, preserveManualEdits: preserveManualEdits, dayGuidance: dayGuidance, context: context)
+    }
+}
+
+extension ArchiveRepository {
+    func persistDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await persistDecision(entry, for: card, context: context)
+    }
+
+    func upsertDecision(
+        _ entry: ArchiveEntry,
+        for card: DailyCard,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws -> [ArchiveEntry] {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        return try await upsertDecision(entry, for: card, context: context)
     }
 }

@@ -149,6 +149,7 @@ struct SupabaseShotSceneDTO: Codable, Hashable, Sendable {
 }
 
 struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var id: UUID
     var workspaceID: UUID
     var creatorID: UUID
@@ -201,6 +202,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     var storyboardThumbnailAssets: [StoryboardThumbnailAsset]
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case id
         case workspaceID = "workspace_id"
         case creatorID = "creator_id"
@@ -255,6 +257,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        pieceID = try container.decodeIfPresent(UUID.self, forKey: .pieceID)
         id = try container.decode(UUID.self, forKey: .id)
         workspaceID = try container.decode(UUID.self, forKey: .workspaceID)
         creatorID = try container.decode(UUID.self, forKey: .creatorID)
@@ -926,9 +929,16 @@ struct SupabaseCreatorProfileRow: Codable, Hashable, Sendable {
 }
 
 struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     struct DailyCardSummary: Codable, Hashable, Sendable {
         var title: String?
         var caption: String?
+        var pieceID: UUID? = nil
+
+        enum CodingKeys: String, CodingKey {
+            case title, caption
+            case pieceID = "piece_id"
+        }
     }
 
     var id: UUID
@@ -944,6 +954,7 @@ struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
     var decisionAt: String? = nil
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case id
         case dailyCardID = "daily_card_id"
         case archiveDate = "archive_date"
@@ -1087,14 +1098,16 @@ struct SupabasePublishWeekResponse: Decodable, Hashable, Sendable {
 }
 
 struct SupabaseMakeDayAvailableRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
-    var scheduledDate: String
+    var scheduledDate: String? = nil
     var dailyCardID: UUID?
 
     var idempotencyKey: String? = nil
     var expectedVersion: String? = nil
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
         case scheduledDate = "scheduled_date"
         case dailyCardID = "daily_card_id"
@@ -1104,8 +1117,9 @@ struct SupabaseMakeDayAvailableRequest: Encodable, Sendable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(pieceID, forKey: .pieceID)
         try container.encode(creatorID, forKey: .creatorID)
-        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encodeIfPresent(scheduledDate, forKey: .scheduledDate)
         try container.encodeIfPresent(dailyCardID, forKey: .dailyCardID)
         try container.encodeIfPresent(idempotencyKey, forKey: .idempotencyKey)
         try container.encodeIfPresent(expectedVersion, forKey: .expectedVersion)
@@ -1113,6 +1127,7 @@ struct SupabaseMakeDayAvailableRequest: Encodable, Sendable {
 }
 
 struct SupabaseMakeDayAvailableResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var dailyCardID: UUID
     var scheduledDate: String
     var status: String
@@ -1120,6 +1135,7 @@ struct SupabaseMakeDayAvailableResponse: Decodable, Hashable, Sendable {
     var weekIsSoftLocked: Bool
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case dailyCardID = "daily_card_id"
         case scheduledDate = "scheduled_date"
         case status
@@ -1129,14 +1145,16 @@ struct SupabaseMakeDayAvailableResponse: Decodable, Hashable, Sendable {
 }
 
 struct SupabaseUnpublishDayRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
-    var scheduledDate: String
+    var scheduledDate: String? = nil
     var dailyCardID: UUID?
 
     var idempotencyKey: String? = nil
     var expectedVersion: String? = nil
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
         case scheduledDate = "scheduled_date"
         case dailyCardID = "daily_card_id"
@@ -1146,8 +1164,9 @@ struct SupabaseUnpublishDayRequest: Encodable, Sendable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(pieceID, forKey: .pieceID)
         try container.encode(creatorID, forKey: .creatorID)
-        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encodeIfPresent(scheduledDate, forKey: .scheduledDate)
         try container.encodeIfPresent(dailyCardID, forKey: .dailyCardID)
         try container.encodeIfPresent(idempotencyKey, forKey: .idempotencyKey)
         try container.encodeIfPresent(expectedVersion, forKey: .expectedVersion)
@@ -1155,6 +1174,7 @@ struct SupabaseUnpublishDayRequest: Encodable, Sendable {
 }
 
 struct SupabaseUnpublishDayResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var dailyCardID: UUID
     var scheduledDate: String
     var status: String
@@ -1164,6 +1184,7 @@ struct SupabaseUnpublishDayResponse: Decodable, Hashable, Sendable {
     var weeklyPlanID: UUID
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case dailyCardID = "daily_card_id"
         case scheduledDate = "scheduled_date"
         case status
@@ -1175,8 +1196,9 @@ struct SupabaseUnpublishDayResponse: Decodable, Hashable, Sendable {
 }
 
 struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
-    var scheduledDate: String
+    var scheduledDate: String? = nil
     var dailyCardID: UUID?
     var package: ReadyDayPackageUpdate
 
@@ -1184,6 +1206,7 @@ struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
     var expectedVersion: String? = nil
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
         case scheduledDate = "scheduled_date"
         case dailyCardID = "daily_card_id"
@@ -1215,8 +1238,9 @@ struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(pieceID, forKey: .pieceID)
         try container.encode(creatorID, forKey: .creatorID)
-        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encodeIfPresent(scheduledDate, forKey: .scheduledDate)
         try container.encodeIfPresent(dailyCardID, forKey: .dailyCardID)
         try container.encodeIfPresent(idempotencyKey, forKey: .idempotencyKey)
         try container.encodeIfPresent(expectedVersion, forKey: .expectedVersion)
@@ -1246,6 +1270,7 @@ struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
 }
 
 struct SupabaseUpdateReadyDayPackageResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var dailyCardID: UUID
     var scheduledDate: String
     var status: String
@@ -1254,6 +1279,7 @@ struct SupabaseUpdateReadyDayPackageResponse: Decodable, Hashable, Sendable {
     var caption: String?
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case dailyCardID = "daily_card_id"
         case scheduledDate = "scheduled_date"
         case status
