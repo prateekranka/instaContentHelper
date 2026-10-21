@@ -5,7 +5,10 @@ import {
   normalizeGenerateDayRequest,
   normalizeRegenerateDayRequest,
 } from "./generation.ts";
-import { markGenerationRunFailed } from "./generation-run-store.ts";
+import {
+  markGenerationRunFailed,
+  readGenerationRunStatus,
+} from "./generation-run-store.ts";
 
 export type GenerationIntent = {
   idempotencyKey: string;
@@ -100,6 +103,21 @@ export async function generationReplayResponse(
   if (canonicalJSON(run.request_identity) !== canonicalJSON(intent.identity)) {
     return jsonResponse({ error: "idempotency_key_conflict" }, 409);
   }
+  if (
+    run.status === "running" && typeof run.updated_at === "string" &&
+    Date.parse(run.updated_at) < Date.now() - 600_000
+  ) {
+    await markGenerationRunFailed(admin, String(run.id), "generation_stale");
+    const latest = await readGenerationRunStatus(
+      admin,
+      String(run.id),
+      String(run.workspace_id),
+    );
+    if (latest.error || !latest.data) {
+      return jsonResponse({ error: "generation_lookup_failed" }, 500);
+    }
+    run = { ...run, ...latest.data };
+  }
   if (run.status === "completed") {
     return jsonResponse({
       ...(run.output_snapshot as Record<string, unknown>),
@@ -107,13 +125,6 @@ export async function generationReplayResponse(
       idempotency_key: intent.idempotencyKey,
       replayed: true,
     });
-  }
-  if (
-    run.status === "running" && typeof run.updated_at === "string" &&
-    Date.parse(run.updated_at) < Date.now() - 600_000
-  ) {
-    await markGenerationRunFailed(admin, String(run.id), "generation_stale");
-    run = { ...run, status: "failed", error_code: "generation_stale" };
   }
   return jsonResponse({
     generation_id: run.id,

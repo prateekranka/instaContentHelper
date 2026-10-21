@@ -295,7 +295,8 @@ enum DebugLaunchFlags {
         draft.sceneList = draft.sceneList.enumerated().map { index, scene in
             ShotScene(
                 id: UUID(uuidString: String(format: "1407E44A-1F70-4B96-8EE2-%012d", index + 1))!,
-                number: scene.number, title: scene.title, duration: scene.duration, symbol: scene.symbol
+                number: scene.number, title: scene.title, duration: scene.duration, symbol: scene.symbol,
+                dialogue: scene.dialogue
             )
         }
         draft = uiFixtureData.applying(to: longContent ? draft.withLongContent : draft)
@@ -305,9 +306,16 @@ enum DebugLaunchFlags {
            ["ready", "line-script", "blank-copy", "stale-pointer", "legacy-cache", "legacy-backup", "old-decision"].contains(scenario) {
             draft.title = "Loop \(scenario) package"
             if scenario == "line-script" {
-                draft.script = draft.sceneList.map { "Creator line \($0.number)." }.joined(separator: "\n")
+                draft.sceneList = ShotScript.editing(
+                    draft.sceneList.map { "Creator line \($0.number)." }.joined(separator: "\n"),
+                    scenes: draft.sceneList
+                )
             }
             if scenario == "blank-copy" {
+                draft.sceneList = ShotScript.editing(
+                    Array(repeating: "", count: draft.sceneList.count).joined(separator: "\n"),
+                    scenes: draft.sceneList
+                )
                 draft.script = ""
                 draft.caption = ""
                 draft.audioOptionNotes = ""

@@ -1,6 +1,6 @@
 # Creator loop server contract
 
-Implemented through phase 6, including round 4 generation recovery, history protection, repost persistence, and shot validation. Local changes only.
+Implemented through phase 6, including round 5 local-date generation, replacement recovery, decision replay, and shot ownership corrections. Local changes only.
 No live migration or deployment is authorized.
 The approved scope is section 3 of `creator-loop-redesign.md`.
 
@@ -38,6 +38,12 @@ Existing actions and fields remain accepted. Full-week generation remains retire
 | `regenerate_day` | Existing `creator_id`, `weekly_plan_id`, `scheduled_date`, `preserve_manual_edits`, `day_guidance`, `input_overrides`, `mock`, and `response_mode`; optional `idempotency_key`. |
 | `status` | Existing `generation_id` and optional `creator_id`. |
 
+Native generation and replacement requests send `time_zone`, the phone's IANA time zone identifier.
+The server validates the identifier and computes today in that zone. Missing or invalid zones use UTC.
+A new generation or regeneration accepts today and future dates in that zone. A keyed replay still returns its saved run.
+The time zone affects date validation and is excluded from request identity, so travel does not change an accepted intent.
+`FakeServer` uses the same date rule.
+
 An idempotency key is a nonblank string with at most 200 characters after trimming.
 The key is unique within a workspace and creator, across dates and generation actions.
 If an old caller omits it, the server assigns a fresh UUID key. Such separate requests are separate generation intents.
@@ -65,6 +71,8 @@ A running replay returns HTTP 202 and the existing run ID.
 
 Generation errors, validation errors, and persistence errors close runs with `completed_at`.
 A status poll closes a stale single-day worker with `generation_stale`. It does not resume that worker.
+After a stale failure write, status and keyed replay read the persisted run again. If completion won the race,
+they return its completed snapshot. A failed lookup remains retryable; it cannot manufacture a terminal failure.
 The existing worker heartbeat rules determine status-poll staleness.
 A keyed replay or server claim also closes a running run after ten minutes without a database update.
 Revision insertion and the completed run snapshot commit in one transaction. Worker interruption after insertion cannot leave a saved draft behind a running run. Finalization can enrich an already completed snapshot; failure writes still apply only to running runs. Database guards reject reopening a terminal run.
@@ -109,6 +117,10 @@ One SQL transaction archives the old revision, removes its ready status, and ins
 The transaction does not call an AI provider. Provider work starts only after that transaction commits.
 If the transaction fails, it rolls back all three changes. A provider failure after acceptance closes the run;
 it leaves the archived revision and its filming data available for recovery.
+If an accepted replacement fails, its archived, non-current pointer is recovery data, not a current package.
+Both `replace-day` and ordinary `generate_day` can start a new keyed run for this date. They reuse its plan,
+including a locked plan, without changing other dates or rewriting the archived entry.
+The native Plan view shows the idea launcher and does not require overwrite confirmation for this recovery data.
 The old revision remains the day pointer until the new revision is saved. Acceptance sets its status to archived and is_current to false. Late decisions and undo return historical_revision_immutable, even before provider work finishes. Exact historical retries still return the saved entry.
 
 Success and replay responses match the day-generation responses above.
@@ -142,14 +154,22 @@ If `scene_list` is supplied, it must be an array. Each element must be an object
 - `title`: a string.
 - `duration`: a string, including the client's existing `"5 sec"` form.
 - `dialogue`: an optional string. An omitted value and an empty string are valid; explicit null is invalid.
+- `number`: an optional integer that fits the native signed 64-bit `Int`. Reject strings, fractions, booleans, null, and out-of-range numbers.
+- `symbol`: an optional string. Explicit null is invalid.
+- Shot IDs must be unique within the list. UUID comparisons ignore letter case.
 
 Reject a malformed array or shot with HTTP 400, `invalid_package_scene_list`, and `field = scene_list`.
 For an invalid shot, include its zero-based `shot_index`. Invalid list types have no shot index.
 No part of a rejected patch is written. An omitted `scene_list` keeps the stored shots;
-an empty array remains valid. This validation checks types, without new nonblank, duration-format, or uniqueness rules.
+an empty array remains valid. Validation checks native field types and unique IDs, without new nonblank or duration-format rules.
 Additional shot metadata is retained, including the current client's `number` and `symbol` fields.
 The edge function, SQL RPC, and `FakeServer` enforce the same shot shape. Native stored-card and generation decoders process each shot separately; a malformed shot cannot discard valid siblings.
-Round 4 updates the phase 6 validation function in the new `20261021100000_round4_creator_loop_recovery.sql` migration.
+Round 5 updates validation in the new `20261021120000_round5_creator_loop_recovery.sql` migration.
+It adds `daily_cards.shot_content_owned`. An explicit scene-list write sets this marker, including `[]`.
+Native cache models keep the same marker. Only unowned content can migrate script and timelines into shots;
+normalization then marks the native content as owned. Owned empty lists stay empty on replies, refresh, and relaunch.
+Regeneration with edit preservation retains saved shot IDs, dialogue, and ownership, plus existing manual fields.
+Legacy shots without dialogue keep the prior generated-script behavior. `FakeServer` applies the same preservation rules.
 Earlier migrations remain unchanged. Replacing the SQL function preserves its service-only execution grants.
 
 A valid edit keeps the revision ID and ready status. It cannot change an existing posted archive snapshot.

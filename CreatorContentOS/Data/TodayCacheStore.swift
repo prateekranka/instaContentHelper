@@ -82,8 +82,9 @@ final class DayStore {
         outbox.append(intent)
     }
 
-    func restoreOutbox(_ intents: [ContentIntent]) {
-        outbox = intents
+    func restoreIntent(_ intent: ContentIntent, at index: Int) {
+        guard !outbox.contains(where: { $0.id == intent.id }) else { return }
+        outbox.insert(intent, at: min(index, outbox.count))
     }
 
     func updateIntent(_ intent: ContentIntent) {
@@ -195,7 +196,10 @@ final class DayStore {
         if let value = patch.backupCaptionOnly { content.backupCaptionOnly = value }
         if let value = patch.shootability { content.shootability = value }
         if let value = patch.estimatedShootMinutes { content.estimatedShootMinutes = value }
-        if let value = patch.sceneList { content.sceneList = value }
+        if let value = patch.sceneList {
+            content.sceneList = value
+            content.shotContentOwned = true
+        }
         content.normalizeShotContent()
         try transition(.edit(content), on: date)
     }
@@ -208,7 +212,19 @@ final class DayStore {
     }
 
     func mergeArchive(_ entries: [ArchiveEntry], authoritative: Bool = false) {
-        for entry in entries {
+        for incoming in entries {
+            var entry = incoming
+            if let pending = outbox.last(where: { $0.kind == .decide && $0.revisionID == entry.dailyCardID }),
+               let snapshot = pending.archiveSnapshot, entry.decision != snapshot.decision {
+                entry = ArchiveEntry(
+                    id: incoming.id, dailyCardID: incoming.dailyCardID, day: incoming.day, date: incoming.date,
+                    cardTitle: incoming.cardTitle, decision: snapshot.decision,
+                    outputLine: snapshot.outputLine, hasPostThumbnail: snapshot.hasPostThumbnail
+                )
+                entry.captionSnapshot = incoming.captionSnapshot
+                entry.scheduledDate = incoming.scheduledDate
+                entry.decisionAt = snapshot.decisionAt
+            }
             if let index = archiveEntries.firstIndex(where: { existing in
                 if let revisionID = entry.dailyCardID { return existing.dailyCardID == revisionID }
                 return existing.id == entry.id

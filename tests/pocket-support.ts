@@ -235,3 +235,15 @@ export async function approveLoopPackage(screen: Screen) {
   await approve.tap();
   await expect(approve).toBeHidden();
 }
+
+export async function openLoopTodayRoot(screen: Screen) {
+  await selectTab(screen, 'Today');
+  for (let depth = 0; depth < 4; depth++) {
+    if (await screen.getByTestId('today.startFilming').count() > 0) break;
+    const back = screen.getByTestId('BackButton');
+    await expect(back).toBeVisible();
+    await back.tap();
+  }
+  await scrollToControl(screen, screen.getByTestId('today.startFilming'), 'up');
+  await expect(screen.getByTestId('today.startFilming')).toBeVisible();
+}

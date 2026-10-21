@@ -139,6 +139,7 @@ struct ArchiveTimelineRow: View {
                     .font(PocketSheetType.rowTitle)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
                 Text(entry.outputLine)
+                    .accessibilityIdentifier("archive.output.\(entry.cardTitle)")
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }

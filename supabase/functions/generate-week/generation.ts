@@ -12,9 +12,9 @@ import {
 import type { AIOutputQualityMetrics } from "./generation-quality.ts";
 
 import {
+  buildAllowedDayContentPillars,
   combineText,
   CONTENT_PILLARS,
-  buildAllowedDayContentPillars,
   GenerateWeekValidationError,
   GYM_PRIMARY_DAY_CAP,
   isDateString,
@@ -47,9 +47,11 @@ export type { AIOutputQualityMetrics } from "./generation-quality.ts";
 
 export {
   buildAllowedDayContentPillars,
+  coerceGeneratedDayOutputShape,
   CONTENT_PILLARS,
   GenerateWeekValidationError,
   GYM_PRIMARY_DAY_CAP,
+  hasConflictingWeekdayClaim,
   isDateString,
   isRetryableGeneratedJSONError,
   isUUID,
@@ -61,8 +63,6 @@ export {
   optionalSceneList,
   parseGeneratedDayJSON,
   parseGeneratedWeekJSON,
-  coerceGeneratedDayOutputShape,
-  hasConflictingWeekdayClaim,
   storedBackupLine,
   validateGeneratedDayOutput,
   validateGeneratedWeek,
@@ -183,6 +183,8 @@ const DEFAULT_AI_REQUEST_TIMEOUT_MS = 240_000;
 const DEFAULT_AI_DAY_REQUEST_TIMEOUT_MS = 75_000;
 
 export type GeneratedScene = {
+  id?: string;
+  dialogue?: string;
   number: number;
   title: string;
   duration: string;
@@ -207,6 +209,7 @@ export type GeneratedOnScreenTextTimelineItem = {
 };
 
 export type GeneratedDailyCard = {
+  shot_content_owned?: boolean;
   id?: string;
   scheduled_date: string;
   format: "Reel" | "Post" | "Story";
@@ -440,8 +443,17 @@ export function preserveManualDailyCardEdits(
     return card;
   }
 
+  const scenes = optionalSceneList(existing.scene_list);
+  const shotOwned = scenes !== undefined &&
+    (existing.shot_content_owned === true ||
+      (scenes.length > 0 &&
+        scenes.every((scene) => scene.dialogue !== undefined)));
   return {
     ...card,
+    shot_content_owned: shotOwned,
+    script: shotOwned && typeof existing.script === "string"
+      ? existing.script
+      : card.script,
     title: optionalNonBlankString(existing.title) ?? card.title,
     why_today: optionalNonBlankString(existing.why_today) ?? card.why_today,
     shootability: optionalNonBlankString(existing.shootability) ??
@@ -450,7 +462,7 @@ export function preserveManualDailyCardEdits(
       existing.estimated_shoot_minutes,
     ) ??
       card.estimated_shoot_minutes,
-    scene_list: optionalSceneList(existing.scene_list) ?? card.scene_list,
+    scene_list: scenes ?? card.scene_list,
     caption: optionalNonBlankString(existing.caption) ?? card.caption,
     backup_story: storedBackupLine(existing.backup_story) ??
       card.backup_story,
@@ -555,7 +567,9 @@ function profileContentPillars(
     .filter((item): item is string => Boolean(item));
 }
 
-function profileMentionsHyrox(profile: Record<string, unknown> | null): boolean {
+function profileMentionsHyrox(
+  profile: Record<string, unknown> | null,
+): boolean {
   const text = [
     stringValue(profile?.positioning),
     ...profileContentPillars(profile),
@@ -579,7 +593,9 @@ function buildProfileDrivenDayIdentity(
     return `Creator profile: ${positioning}`;
   }
   if (pillars.length > 0) {
-    return `Creator documenting ${pillars.join(", ")}; first-person, honest, and specific — not a generic coach.`;
+    return `Creator documenting ${
+      pillars.join(", ")
+    }; first-person, honest, and specific — not a generic coach.`;
   }
   return "Creator documenting their own interests and routines; first-person, honest, and specific — not a generic coach.";
 }
@@ -2438,9 +2454,7 @@ function dayRepairFocusedInstruction(
     case "instructor_ending":
       return "Rewrite in first-person lived observation. Remove coach/instructor framing and banned endings.";
     default:
-      return `Fix the validation issue${
-        path ? ` at ${path}` : ""
-      }: ${message}`;
+      return `Fix the validation issue${path ? ` at ${path}` : ""}: ${message}`;
   }
 }
 

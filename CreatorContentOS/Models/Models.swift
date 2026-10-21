@@ -14,6 +14,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     var primarySurface: String?
     var durationSeconds: Int?
     var scenes: [ShotScene]
+    var shotContentOwned: Bool
     var shotTimeline: [ProductionTimelineItem]?
     var voiceoverTimeline: [ProductionTimelineItem]?
     var onScreenTextTimeline: [ProductionTimelineItem]?
@@ -56,6 +57,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         case primarySurface
         case durationSeconds
         case scenes
+        case shotContentOwned
         case shotTimeline
         case voiceoverTimeline
         case onScreenTextTimeline
@@ -92,6 +94,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         try values.encodeIfPresent(primarySurface, forKey: .primarySurface)
         try values.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
         try values.encode(scenes, forKey: .scenes)
+        try values.encode(shotContentOwned, forKey: .shotContentOwned)
         try values.encodeIfPresent(shotTimeline, forKey: .shotTimeline)
         try values.encodeIfPresent(voiceoverTimeline, forKey: .voiceoverTimeline)
         try values.encodeIfPresent(onScreenTextTimeline, forKey: .onScreenTextTimeline)
@@ -128,6 +131,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         primarySurface = try values.decodeIfPresent(String.self, forKey: .primarySurface)
         durationSeconds = try values.decodeIfPresent(Int.self, forKey: .durationSeconds)
         scenes = try values.decodeIfPresent([ShotScene].self, forKey: .scenes) ?? []
+        shotContentOwned = try values.decodeIfPresent(Bool.self, forKey: .shotContentOwned) ?? false
         shotTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .shotTimeline)
         voiceoverTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .voiceoverTimeline)
         onScreenTextTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .onScreenTextTimeline)
@@ -164,6 +168,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         primarySurface: String? = nil,
         durationSeconds: Int? = nil,
         scenes: [ShotScene],
+        shotContentOwned: Bool = false,
         shotTimeline: [ProductionTimelineItem]? = nil,
         voiceoverTimeline: [ProductionTimelineItem]? = nil,
         onScreenTextTimeline: [ProductionTimelineItem]? = nil,
@@ -197,6 +202,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.primarySurface = primarySurface
         self.durationSeconds = durationSeconds
         self.scenes = scenes
+        self.shotContentOwned = shotContentOwned
         self.shotTimeline = shotTimeline
         self.voiceoverTimeline = voiceoverTimeline
         self.onScreenTextTimeline = onScreenTextTimeline
@@ -358,10 +364,14 @@ enum ShotScript {
 
 extension DailyCard {
     mutating func normalizeShotContent() {
-        scenes = ShotScript.migrate(
-            scenes: scenes, revisionID: id, script: script ?? "", shots: shotTimeline ?? [],
-            voiceover: voiceoverTimeline ?? [], overlays: onScreenTextTimeline ?? []
-        )
+        if !shotContentOwned {
+            scenes = ShotScript.migrate(
+                scenes: scenes, revisionID: id, script: script ?? "", shots: shotTimeline ?? [],
+                voiceover: voiceoverTimeline ?? [], overlays: onScreenTextTimeline ?? []
+            )
+            shotContentOwned = true
+        }
+        for index in scenes.indices where scenes[index].dialogue == nil { scenes[index].dialogue = "" }
         if !scenes.isEmpty {
             script = ShotScript.text(for: scenes)
             durationSeconds = scenes.reduce(0) { $0 + $1.durationSeconds }
@@ -1119,6 +1129,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
     var hook: String?
     var saveShareReason: String?
     var sceneList: [ShotScene]
+    var shotContentOwned: Bool
     var shotTimeline: [ProductionTimelineItem]
     var voiceoverTimeline: [ProductionTimelineItem]
     var onScreenTextTimeline: [ProductionTimelineItem]
@@ -1168,6 +1179,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
         case hook
         case saveShareReason
         case sceneList
+        case shotContentOwned
         case shotTimeline
         case voiceoverTimeline
         case onScreenTextTimeline
@@ -1212,6 +1224,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
         try values.encodeIfPresent(hook, forKey: .hook)
         try values.encodeIfPresent(saveShareReason, forKey: .saveShareReason)
         try values.encode(sceneList, forKey: .sceneList)
+        try values.encode(shotContentOwned, forKey: .shotContentOwned)
         try values.encode(shotTimeline, forKey: .shotTimeline)
         try values.encode(voiceoverTimeline, forKey: .voiceoverTimeline)
         try values.encode(onScreenTextTimeline, forKey: .onScreenTextTimeline)
@@ -1256,6 +1269,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
         hook = try values.decodeIfPresent(String.self, forKey: .hook)
         saveShareReason = try values.decodeIfPresent(String.self, forKey: .saveShareReason)
         sceneList = try values.decodeIfPresent([ShotScene].self, forKey: .sceneList) ?? []
+        shotContentOwned = try values.decodeIfPresent(Bool.self, forKey: .shotContentOwned) ?? false
         shotTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .shotTimeline) ?? []
         voiceoverTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .voiceoverTimeline) ?? []
         onScreenTextTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .onScreenTextTimeline) ?? []
@@ -1300,6 +1314,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
         hook: String? = nil,
         saveShareReason: String? = nil,
         sceneList: [ShotScene],
+        shotContentOwned: Bool = false,
         shotTimeline: [ProductionTimelineItem] = [],
         voiceoverTimeline: [ProductionTimelineItem] = [],
         onScreenTextTimeline: [ProductionTimelineItem] = [],
@@ -1341,6 +1356,7 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
         self.hook = hook
         self.saveShareReason = saveShareReason
         self.sceneList = sceneList
+        self.shotContentOwned = shotContentOwned
         self.shotTimeline = shotTimeline
         self.voiceoverTimeline = voiceoverTimeline
         self.onScreenTextTimeline = onScreenTextTimeline
@@ -1370,10 +1386,14 @@ struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
 
 extension GeneratedDailyCardDraft {
     mutating func normalizeShotContent() {
-        sceneList = ShotScript.migrate(
-            scenes: sceneList, revisionID: id, script: script, shots: shotTimeline,
-            voiceover: voiceoverTimeline, overlays: onScreenTextTimeline
-        )
+        if !shotContentOwned {
+            sceneList = ShotScript.migrate(
+                scenes: sceneList, revisionID: id, script: script, shots: shotTimeline,
+                voiceover: voiceoverTimeline, overlays: onScreenTextTimeline
+            )
+            shotContentOwned = true
+        }
+        for index in sceneList.indices where sceneList[index].dialogue == nil { sceneList[index].dialogue = "" }
         if !sceneList.isEmpty {
             script = ShotScript.text(for: sceneList)
             durationSeconds = sceneList.reduce(0) { $0 + $1.durationSeconds }
@@ -1411,6 +1431,7 @@ extension GeneratedDailyCardDraft {
             primarySurface: primarySurface,
             durationSeconds: durationSeconds,
             scenes: sceneList,
+            shotContentOwned: shotContentOwned,
             shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
             voiceoverTimeline: voiceoverTimeline.isEmpty ? nil : voiceoverTimeline,
             onScreenTextTimeline: onScreenTextTimeline.isEmpty ? nil : onScreenTextTimeline,
@@ -1453,6 +1474,7 @@ extension GeneratedDailyCardDraft {
             durationSeconds: card.durationSeconds,
             hook: card.hook,
             sceneList: card.scenes,
+            shotContentOwned: card.shotContentOwned,
             shotTimeline: card.shotTimeline ?? [],
             voiceoverTimeline: card.voiceoverTimeline ?? [],
             onScreenTextTimeline: card.onScreenTextTimeline ?? [],

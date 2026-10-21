@@ -69,7 +69,7 @@ Revision insertion and the completed run snapshot commit together. Terminal runs
 
 Package edits reject blank or invalid text. Both SQL and the edge function validate every supplied shot.
 Each shot requires a UUID string `id` and string `title` and `duration`; `dialogue` is optional and must be a string when supplied.
-The existing client metadata fields remain valid. The new migration leaves earlier migrations unchanged.
+The optional `number` and `symbol` fields must match native types. IDs must be unique within a scene list. The new migration leaves earlier migrations unchanged.
 See [the server contract](creator-loop-server-contract.md) for error codes and response fields.
 
 ### One fake server for fixtures
@@ -84,7 +84,9 @@ It does not call a live service. Existing test setup adapters that still have ca
 
 `ShotScene` keeps stable identity, dialogue, and duration.
 `ShotScript` builds the full script and cumulative timecodes from those shots.
-Legacy script and timeline fields are normalized into shot content on load.
+Legacy script and timeline fields are normalized only while `shotContentOwned` is false.
+Normalization sets the native cache marker. Explicit scene-list writes also set the server
+`shot_content_owned` marker, including empty lists, so old timelines cannot restore removed shots.
 Editors show one line per numbered shot. Shorter input retains later shot lines;
 extra lines join the final shot. A blank line clears only that shot's dialogue.
 Duration edits change subsequent cumulative timecodes.
@@ -124,3 +126,17 @@ The 17 UI items from step 4 remain later work. They are outside these implementa
 
 The stopped patch job's saved patch and stash remain historical references.
 The implemented lifecycle, outbox, fake server, and shot model define the current design.
+
+## Round 5 local corrections
+
+The local fixes and source traces are recorded in [the round 5 report](creator-loop-round5-fixes.md).
+Generation validates dates in the client's IANA time zone, with UTC fallback.
+An archived pointer left by an accepted replacement failure remains available for recovery;
+Plan treats it as having no current package and offers ideas again.
+Pending decisions override stale archive reads. Mark posted waits for Unpublish to finish,
+and decision replies reconcile the current day as well as Archive.
+Terminal cleanup restores only its own intent after a cache failure and keeps newer queued work.
+Caption-only posts can save a caption without adding a script.
+The two saved round 4 loop failures were test targeting and navigation errors. Their assertions
+now target the loop entry and return to the Today root before reading its action.
+No iOS build, simulator run, e2e run, or local database migration is included in this round.

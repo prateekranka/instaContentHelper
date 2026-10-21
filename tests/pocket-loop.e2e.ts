@@ -5,7 +5,7 @@ import {
   selectTab, tapEditorControl, tapVisibleControl, scrollToControl, clearThenType,
   dismissKeyboard, openLoopSession, relaunchLoopSession,
   openLoopEditor, saveLoopEditor, finishLoopFilming, openLoopPlanDay,
-  requestLoopReplacement, approveLoopPackage,
+  requestLoopReplacement, approveLoopPackage, openLoopTodayRoot,
 } from './pocket-support';
 
 async function ready(screen: Screen, device: Device, flags: Record<string, string> = {}) {
@@ -500,19 +500,17 @@ test('loop R4-L1: Undo posted updates the single Archive entry after relaunch', 
   await screen.getByTestId('post.markPosted').tap();
   await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
   await archiveHas(screen, 'Loop ready package');
-  await expect(screen.getByText('Posted', { exact: true })).toHaveCount(1);
-  await selectTab(screen, 'Today');
+  await expect(screen.getByTestId('archive.output.Loop ready package')).toHaveText('Posted');
+  await openLoopTodayRoot(screen);
   await screen.getByTestId('today.startFilming').tap();
   await screen.getByTestId('post.undoPosted').tap();
   await expect(screen.getByTestId('post.markPosted')).toBeVisible();
   await archiveHas(screen, 'Loop ready package');
-  await expect(screen.getByText('Shot today, ready to post', { exact: true })).toHaveCount(1);
-  await expect(screen.getByText('Posted', { exact: true })).toBeHidden();
+  await expect(screen.getByTestId('archive.output.Loop ready package')).toHaveText('Shot today, ready to post');
   await relaunchLoopSession(device, session);
   await expect(screen.getByTestId('today.startFilming')).toContainText('Get post text');
   await archiveHas(screen, 'Loop ready package');
-  await expect(screen.getByText('Shot today, ready to post', { exact: true })).toHaveCount(1);
-  await expect(screen.getByText('Posted', { exact: true })).toBeHidden();
+  await expect(screen.getByTestId('archive.output.Loop ready package')).toHaveText('Shot today, ready to post');
 });
 
 test('loop R4-C3: repost after Unpublish and Make ready persists one Posted archive entry', { timeout: 240_000 }, async ({ screen, device }) => {
@@ -525,7 +523,7 @@ test('loop R4-C3: repost after Unpublish and Make ready persists one Posted arch
   await screen.getByRole('group', 'Unpublish this day?', { exact: true })
     .getByRole('button', 'Unpublish', { exact: true }).tap();
   await approveLoopPackage(screen);
-  await selectTab(screen, 'Today');
+  await openLoopTodayRoot(screen);
   await expect(screen.getByTestId('today.startFilming')).toContainText('Get post text');
   await screen.getByTestId('today.startFilming').tap();
   await screen.getByTestId('post.markPosted').tap();
@@ -533,11 +531,11 @@ test('loop R4-C3: repost after Unpublish and Make ready persists one Posted arch
   await relaunchLoopSession(device, session);
   await expect(screen.getByTestId('today.startFilming')).toContainText('View posted content');
   await archiveHas(screen, 'Loop ready package');
-  await expect(screen.getByText('Posted', { exact: true })).toHaveCount(1);
+  await expect(screen.getByTestId('archive.output.Loop ready package')).toHaveText('Posted');
   await relaunchLoopSession(device, session);
   await expect(screen.getByTestId('today.startFilming')).toContainText('View posted content');
   await archiveHas(screen, 'Loop ready package');
-  await expect(screen.getByText('Posted', { exact: true })).toHaveCount(1);
+  await expect(screen.getByTestId('archive.output.Loop ready package')).toHaveText('Posted');
 });
 
 test('loop R4-C2: legacy backup cache retains its partial filming marks', async ({ app, screen, device }) => {

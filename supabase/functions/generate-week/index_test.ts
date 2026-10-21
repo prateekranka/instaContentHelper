@@ -1444,7 +1444,7 @@ Deno.test("generate-week status returns completed single-day snapshot", async ()
   assertEquals(body.daily_card.id, dailyCardIDs[2]);
 });
 
-Deno.test("regenerate_day accepts a past scheduled_date inside the draft week for retry recovery", async () => {
+Deno.test("regenerate_day rejects a past scheduled_date for a new generation", async () => {
   overrideTodayISO(() => "2026-07-01");
   try {
     const response = await handleGenerateWeekRequest(
@@ -1471,9 +1471,9 @@ Deno.test("regenerate_day accepts a past scheduled_date inside the draft week fo
         },
       },
     );
-    assertEquals(response.status, 200);
+    assertEquals(response.status, 400);
     const body = await response.json();
-    assertEquals(body.target_scheduled_date, "2026-06-10");
+    assertEquals(body.error, "past_generation_date_not_allowed");
   } finally {
     overrideTodayISO(() => "2026-01-01");
   }

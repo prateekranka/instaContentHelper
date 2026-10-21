@@ -236,8 +236,7 @@ const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const PROMPT_VERSION = "creator-weekly-generation-v1";
 
-let todayISOProvider: () => string = () =>
-  new Date().toISOString().slice(0, 10);
+let todayISOProvider: ((timeZone?: unknown) => string) | undefined;
 
 export function availableParallelDayJobSlots(
   jobs: Parameters<typeof availableParallelDayJobSlotsFromWorker>[0],
@@ -257,8 +256,26 @@ export function overrideTodayISO(provider: () => string): void {
   todayISOProvider = provider;
 }
 
-function isDateBeforeToday(dateStr: string): boolean {
-  return dateStr < todayISOProvider();
+function isDateBeforeToday(dateStr: string, timeZone?: unknown): boolean {
+  if (todayISOProvider) return dateStr < todayISOProvider(timeZone);
+  let zone = "UTC";
+  if (typeof timeZone === "string" && !/^[+-]/.test(timeZone)) {
+    try {
+      zone = new Intl.DateTimeFormat("en-US", { timeZone }).resolvedOptions()
+        .timeZone;
+    } catch {
+      zone = "UTC";
+    }
+  }
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value;
+  return dateStr < `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 function pastDateNotAllowedResponse(): Response {
@@ -431,7 +448,12 @@ async function handleGenerateDayRequest(
     }, 400);
   }
 
-  if (isDateBeforeToday(request.scheduled_date)) {
+  if (
+    isDateBeforeToday(
+      request.scheduled_date,
+      (rawBody as Record<string, unknown>).time_zone,
+    )
+  ) {
     return pastDateNotAllowedResponse();
   }
 
@@ -464,7 +486,9 @@ async function handleGenerateDayRequest(
     mock: request.mock,
     response_mode: request.response_mode,
     day_guidance: request.day_brief,
-    replace_day: intent.replace,
+    replace_day: intent.replace ||
+      ("recovering" in containerResult && containerResult.recovering === true),
+    time_zone: (rawBody as Record<string, unknown>).time_zone,
   };
 
   const preparedResult = await prepareDayGeneration(
@@ -503,7 +527,9 @@ async function findReplacementPlan(
   workspaceID: string,
   request: GenerateDayRequest,
   intent: GenerationIntent,
-): Promise<{ weeklyPlanID: string } | { response: Response }> {
+): Promise<
+  { weeklyPlanID: string; recovering?: boolean } | { response: Response }
+> {
   const { data, error } = await admin.from("daily_cards").select(
     "id,weekly_plan_id",
   )
@@ -511,14 +537,63 @@ async function findReplacementPlan(
     .eq("scheduled_date", request.scheduled_date).eq("is_current", true)
     .maybeSingle();
   if (error) return generationPersistFailure("replacement_card_lookup", error);
+  if (!data) {
+    const recovery = await findArchivedDayPlan(
+      admin,
+      workspaceID,
+      request,
+      intent.expectedRevisionID,
+    );
+    if (recovery) return recovery;
+  }
   if (
     !data ||
-    (intent.expectedRevisionID && data.id !== intent.expectedRevisionID)
+    (intent.expectedRevisionID &&
+      String(data.id).toLowerCase() !== intent.expectedRevisionID.toLowerCase())
   ) {
     return { response: jsonResponse({ error: "daily_card_not_found" }, 404) };
   }
   intent.expectedRevisionID = String(data.id);
   return { weeklyPlanID: String(data.weekly_plan_id) };
+}
+
+async function findArchivedDayPlan(
+  admin: SupabaseAdminClient,
+  workspaceID: string,
+  request: GenerateDayRequest,
+  expectedRevisionID?: string,
+): Promise<
+  { weeklyPlanID: string; recovering: true } | { response: Response } | null
+> {
+  const recovery = await admin.from("creator_days").select(
+    "current_revision_id",
+  )
+    .eq("workspace_id", workspaceID).eq("creator_id", request.creator_id)
+    .eq("scheduled_date", request.scheduled_date).maybeSingle();
+  if (recovery.error) {
+    return generationPersistFailure("replacement_day_lookup", recovery.error);
+  }
+  const revisionID = recovery.data?.current_revision_id;
+  if (
+    !revisionID ||
+    (expectedRevisionID &&
+      String(revisionID).toLowerCase() !== expectedRevisionID.toLowerCase())
+  ) return null;
+  const archived = await admin.from("daily_cards").select("id,weekly_plan_id")
+    .eq("id", revisionID).eq("workspace_id", workspaceID).eq(
+      "creator_id",
+      request.creator_id,
+    )
+    .eq("status", "archived").eq("is_current", false).maybeSingle();
+  if (archived.error) {
+    return generationPersistFailure(
+      "replacement_recovery_lookup",
+      archived.error,
+    );
+  }
+  return archived.data
+    ? { weeklyPlanID: String(archived.data.weekly_plan_id), recovering: true }
+    : null;
 }
 
 /**
@@ -530,7 +605,15 @@ async function ensureDayPlanContainer(
   admin: SupabaseAdminClient,
   session: VerifiedDeviceSession,
   request: GenerateDayRequest,
-): Promise<{ weeklyPlanID: string } | { response: Response }> {
+): Promise<
+  { weeklyPlanID: string; recovering?: boolean } | { response: Response }
+> {
+  const recovery = await findArchivedDayPlan(
+    admin,
+    session.workspaceID,
+    request,
+  );
+  if (recovery) return recovery;
   const weekStartDate = weekStartDateForDate(request.scheduled_date);
 
   const existingResult = await findLatestDraftDayPlanContainer(
@@ -685,6 +768,15 @@ async function prepareDayGeneration(
           : "invalid_generation_payload",
       }, 400),
     };
+  }
+
+  if (
+    isDateBeforeToday(
+      request.scheduled_date,
+      (rawBody as Record<string, unknown>).time_zone,
+    )
+  ) {
+    return { response: pastDateNotAllowedResponse() };
   }
 
   const creatorResult = await readCreator(

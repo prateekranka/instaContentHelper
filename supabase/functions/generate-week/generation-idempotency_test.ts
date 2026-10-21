@@ -127,6 +127,19 @@ Deno.test("a stale keyed run closes instead of starting another worker", async (
     eq() {
       return this;
     },
+    select() {
+      return this;
+    },
+    maybeSingle() {
+      return Promise.resolve({
+        data: {
+          id: "run",
+          status: update.status,
+          error_code: update.error_code,
+        },
+        error: null,
+      });
+    },
     then(resolve: (value: unknown) => void) {
       resolve({ error: null });
     },

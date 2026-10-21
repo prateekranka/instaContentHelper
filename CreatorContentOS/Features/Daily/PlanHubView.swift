@@ -293,7 +293,8 @@ struct PlanHubView: View {
     }
 
     private var isSelectedDayUnavailable: Bool {
-        services.dayStore.day(for: scheduledDateString)?.lifecycle == .unavailable
+        guard let day = services.dayStore.day(for: scheduledDateString) else { return false }
+        return day.lifecycle == .unavailable && day.revision?.content.status != "archived"
     }
 
     private var isGeneratingSelectedDay: Bool {
@@ -339,7 +340,8 @@ struct PlanHubView: View {
 
     private var displayedCard: GeneratedDailyCardDraft? {
         guard !isSelectedDayUnavailable else { return nil }
-        return services.dayPackage(for: scheduledDateString)
+        guard let package = services.dayPackage(for: scheduledDateString), package.status != "archived" else { return nil }
+        return package
     }
 
     // MARK: - Sections

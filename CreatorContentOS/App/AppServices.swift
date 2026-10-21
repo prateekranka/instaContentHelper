@@ -197,7 +197,8 @@ final class AppServices {
 
     /// Resolves the Plan package for a date from session cards or the latest draft summary.
     func dayPackage(for scheduledDate: String) -> GeneratedDailyCardDraft? {
-        dayStore.day(for: scheduledDate)?.revision?.content
+        guard let content = dayStore.day(for: scheduledDate)?.revision?.content, content.status != "archived" else { return nil }
+        return content
     }
 
     /// Today Shoot Folio card with Gemini storyboard thumbnails from Plan when Today is missing them.
@@ -514,6 +515,8 @@ final class AppServices {
     }
 
     var canMarkPosted: Bool {
+        guard !isUnpublishingDay,
+              !dayStore.outbox.contains(where: { $0.kind == .editPackage && $0.packageAction == .returnToDraft && $0.revisionID == todayCard.id }) else { return false }
         guard case .ready = todayContentState else { return false }
         return (areAllScenesShot || todayCard.isNonFilmingPost) && todayCard.completionState != .posted
     }
@@ -540,6 +543,7 @@ final class AppServices {
     }
 
     private func canApplyTodayDecision(_ decision: DailyDecision) -> Bool {
+        if decision.completionState == .posted, !canMarkPosted { return false }
         guard var day = dayStore.day(for: currentTodayDateString) else { return false }
         do { try day.transition(.decide(decision)); return true }
         catch { return false }
@@ -2091,6 +2095,14 @@ final class AppServices {
         outboxReplayTask = nil
     }
 
+    private func finishIntentPersisting(_ id: String, source: String) throws {
+        guard let index = dayStore.outbox.firstIndex(where: { $0.id == id }) else { return }
+        let intent = dayStore.outbox[index]
+        dayStore.finishIntent(id)
+        do { try persistDaySnapshot(source: source) }
+        catch { dayStore.restoreIntent(intent, at: index); throw error }
+    }
+
     private func drainOutbox() async {
         var attempted: Set<String> = []
         var blocked: Set<UUID> = []
@@ -2104,10 +2116,7 @@ final class AppServices {
             if intent.isGeneration { generatingDayBriefDates.insert(intent.scheduledDate) }
             do {
                 let result = try await replayIntent(intent)
-                let pending = dayStore.outbox
-                dayStore.finishIntent(intent.id)
-                do { try persistDaySnapshot(source: "outbox-done") }
-                catch { dayStore.restoreOutbox(pending); throw error }
+                try finishIntentPersisting(intent.id, source: "outbox-done")
                 outboxResults[intent.id] = result
                 if intent.kind == .decide { lastTodayDecisionSyncError = nil }
                 lastRepositoryError = nil
@@ -2121,25 +2130,21 @@ final class AppServices {
                     try? dayStore.transition(.generationRejected, on: intent.scheduledDate)
                 }
                 if code == "daily_card_not_found" {
-                    let pending = dayStore.outbox
                     do {
                         if intent.kind == .firstIdea { try await saveFirstIdeaProfile(intent, status: .failed) }
-                        dayStore.finishIntent(intent.id)
-                        try persistDaySnapshot(source: "outbox-revision-removed")
-                    } catch { dayStore.restoreOutbox(pending) }
+                        try finishIntentPersisting(intent.id, source: "outbox-revision-removed")
+                    } catch { lastRepositoryError = error.localizedDescription }
                 } else if error is OutboxTerminalFailure || code == "past_generation_date_not_allowed" {
                     if code == "past_generation_date_not_allowed" {
                         var terminal = intent
                         terminal.terminalFailureCode = code
                         dayStore.updateIntent(terminal)
                     }
-                    let pending = dayStore.outbox
                     do {
                         try persistDaySnapshot(source: "outbox-terminal-recorded")
                         if intent.kind == .firstIdea { try await saveFirstIdeaProfile(intent, status: .failed) }
-                        dayStore.finishIntent(intent.id)
-                        try persistDaySnapshot(source: "outbox-terminal-failure")
-                    } catch { dayStore.restoreOutbox(pending) }
+                        try finishIntentPersisting(intent.id, source: "outbox-terminal-failure")
+                    } catch { lastRepositoryError = error.localizedDescription }
                 } else {
                     blocked.insert(intent.revisionID)
                     if intent.isGeneration { await reconcileInterruptedGeneration(intent) }
@@ -2172,6 +2177,11 @@ final class AppServices {
         case .decide:
             let entry = try await repositories.today.replayDecision(original, context: context)
             guard entry.dailyCardID == original.revisionID else { throw DayTransitionError.mismatchedRevision }
+            if var content = dayStore.day(for: original.scheduledDate)?.revision?.content,
+               content.id == original.revisionID, content.status != "archived" {
+                content.status = entry.decision.supabaseStatus
+                try dayStore.receive(content, completion: entry.decision, authoritativeDecision: true)
+            }
             dayStore.mergeArchive([entry], authoritative: true)
             return .decision(entry)
         case .editPackage:

@@ -171,6 +171,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     var hook: String?
     var saveShareReason: String?
     @SupabaseShotScenes var sceneList: [SupabaseShotSceneDTO]
+    var shotContentOwned: Bool
     var shotTimeline: [ProductionTimelineItem]
     var voiceoverTimeline: [ProductionTimelineItem]
     var onScreenTextTimeline: [ProductionTimelineItem]
@@ -222,6 +223,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         case hook
         case saveShareReason = "save_share_reason"
         case sceneList = "scene_list"
+        case shotContentOwned = "shot_content_owned"
         case shotTimeline = "shot_timeline"
         case voiceoverTimeline = "voiceover_timeline"
         case onScreenTextTimeline = "on_screen_text_timeline"
@@ -281,6 +283,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             ?? postInstructionObject?["hook"]?.displayText
         saveShareReason = try container.decodeIfPresent(String.self, forKey: .saveShareReason)
             ?? postInstructionObject?["save_share_reason"]?.displayText
+        shotContentOwned = try container.decodeIfPresent(Bool.self, forKey: .shotContentOwned) ?? false
         sceneList = (try? container.decode(SupabaseShotScenes.self, forKey: .sceneList))?.wrappedValue ?? []
         let decodedShotTimeline = (try? container.decode([ProductionTimelineItem].self, forKey: .shotTimeline)) ?? []
         shotTimeline = decodedShotTimeline.isEmpty
@@ -347,6 +350,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             scenes: sceneList.enumerated().map { index, scene in
                 scene.domainScene(fallbackNumber: index + 1, revisionID: id)
             },
+            shotContentOwned: shotContentOwned,
             shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
             voiceoverTimeline: voiceoverTimeline.isEmpty ? nil : voiceoverTimeline,
             onScreenTextTimeline: onScreenTextTimeline.isEmpty ? nil : onScreenTextTimeline,
@@ -391,6 +395,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             sceneList: sceneList.enumerated().map { index, scene in
                 scene.domainScene(fallbackNumber: index + 1, revisionID: id)
             },
+            shotContentOwned: shotContentOwned,
             shotTimeline: shotTimeline,
             voiceoverTimeline: voiceoverTimeline,
             onScreenTextTimeline: onScreenTextTimeline,

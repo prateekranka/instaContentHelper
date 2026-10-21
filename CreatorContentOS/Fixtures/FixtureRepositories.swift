@@ -257,12 +257,17 @@ actor FakeServer {
             }
             if let sceneList = patch["scene_list"] {
                 guard case .array(let scenes) = sceneList else { return Self.failure("invalid_package_scene_list", status: 400, field: "scene_list") }
+                var shotIDs: Set<UUID> = []
                 for (index, scene) in scenes.enumerated() {
                     guard let shot = scene.objectValue,
-                          shot.uuid("id") != nil, shot.text("title") != nil, shot.text("duration") != nil,
-                          shot["dialogue"] == nil || shot.text("dialogue") != nil else {
+                          let id = shot.uuid("id"), shot.text("title") != nil, shot.text("duration") != nil,
+                          shot["dialogue"] == nil || shot.text("dialogue") != nil,
+                          shot["symbol"] == nil || shot.text("symbol") != nil,
+                          shot["number"] == nil || Self.validShotNumber(shot["number"]),
+                          !shotIDs.contains(id) else {
                         return FakeServerResponse(statusCode: 400, body: .object(["error": .string("invalid_package_scene_list"), "field": .string("scene_list"), "shot_index": .number(Double(index))]))
                     }
+                    shotIDs.insert(id)
                 }
             }
         }
@@ -296,10 +301,14 @@ actor FakeServer {
         default:
             guard Self.readyStatuses.contains(oldStatus) else { return Self.failure("daily_card_not_ready", status: 409) }
             for field in fields {
-                if let text = patch.text(field) { row[field] = .string(text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                if let text = patch.text(field) {
+                    let trimmedCharacters: CharacterSet = field == "script" ? CharacterSet(charactersIn: " ") : .whitespacesAndNewlines
+                    row[field] = .string(text.trimmingCharacters(in: trimmedCharacters))
+                }
             }
             if let minutes = patch["estimated_shoot_minutes"], minutes != .null { row["estimated_shoot_minutes"] = minutes }
             if case .array(let scenes) = patch["scene_list"] {
+                row["shot_content_owned"] = .bool(true)
                 let stored = row["scene_list"]?.decoded([SupabaseShotSceneDTO].self) ?? []
                 row["scene_list"] = .array(scenes.map { value in
                     guard var scene = value.objectValue, scene["id"] == nil,
@@ -478,7 +487,7 @@ actor FakeServer {
             try refreshRun(key)
             return runResponse(key, replayed: true)
         }
-        guard date >= Self.serverTodayDate else { return Self.failure("past_generation_date_not_allowed", status: 400) }
+        guard date >= Self.serverTodayDate(timeZone: payload.text("time_zone")) else { return Self.failure("past_generation_date_not_allowed", status: 400) }
 #if DEBUG
         if DebugLaunchFlags.failFirstIdea { return Self.failure("fixture_first_idea_generation_failed", status: 503) }
         if DebugLaunchFlags.failFirstIdeaOnce, !state.consumedFailures.contains("first-idea-generation") {
@@ -487,6 +496,7 @@ actor FakeServer {
         }
 #endif
         let existing = state.days[date]?.currentRevisionID.flatMap { state.revisions[$0] }
+        let recovering = existing?.text("status") == "archived" && existing?.flag("is_current") == false
         let plan: WeeklyPlan
         if isReplacement {
             guard let existing, payload.uuid("daily_card_id") == nil || payload.uuid("daily_card_id") == existing.uuid("id") else { return Self.failure("daily_card_not_found", status: 404) }
@@ -501,11 +511,11 @@ actor FakeServer {
         }
         guard let start = plan.weekStartDate, start <= date, date <= SupabaseDateFormatting.weekEndDate(starting: start) else { return Self.failure("date_not_in_plan", status: 400) }
         if !isReplacement {
-            guard !plan.isSoftLocked else { return Self.failure("existing_published_week_locked", status: 409) }
-            if let existing, existing.text("status") != "draft" { return Self.failure("replace_day_required", status: 409) }
+            guard !plan.isSoftLocked || recovering else { return Self.failure("existing_published_week_locked", status: 409) }
+            if let existing, existing.text("status") != "draft", !recovering { return Self.failure("replace_day_required", status: 409) }
         }
         if let previous = state.days[date]?.generationKey, state.runs[previous]?.status == "running" { failRun(previous, code: "generation_superseded") }
-        if isReplacement, let existing { archiveRevision(existing) }
+        if isReplacement, !recovering, let existing { archiveRevision(existing) }
         state.plans[plan.id] = plan
         state.plan = plan
         let run = FakeServerRun(planID: plan.id, scheduledDate: date, identity: identity,
@@ -546,7 +556,25 @@ actor FakeServer {
             ShotScene(id: ShotScene.stableID(revisionID: run.revisionID, number: scene.number), number: scene.number,
                       title: scene.title, duration: scene.duration, symbol: scene.symbol, dialogue: scene.dialogue)
         }
-        if let oldID = state.days[run.scheduledDate]?.currentRevisionID, let old = state.revisions[oldID] { archiveRevision(old) }
+        if let oldID = state.days[run.scheduledDate]?.currentRevisionID, let old = state.revisions[oldID] {
+            if run.identity.flag("preserve_manual_edits"), old.flag("is_current"), old.text("status") == "draft" {
+                let saved = try FakeJSON.decode(.object(old), as: SupabaseDailyCardRow.self).generatedDailyCardDraft()
+                result.dailyCard.title = saved.title.nilIfBlank ?? result.dailyCard.title
+                result.dailyCard.whyToday = saved.whyToday.nilIfBlank ?? result.dailyCard.whyToday
+                result.dailyCard.shootability = saved.shootability.nilIfBlank ?? result.dailyCard.shootability
+                result.dailyCard.estimatedShootMinutes = saved.estimatedShootMinutes
+                let storedScenes = old["scene_list"]?.decoded([SupabaseShotSceneDTO].self) ?? []
+                let shotOwned = old.flag("shot_content_owned") || !storedScenes.isEmpty && storedScenes.allSatisfy { $0.dialogue != nil }
+                result.dailyCard.sceneList = storedScenes.enumerated().map { $0.element.domainScene(fallbackNumber: $0.offset + 1, revisionID: oldID) }
+                result.dailyCard.shotContentOwned = shotOwned
+                if shotOwned { result.dailyCard.script = saved.script }
+                result.dailyCard.caption = saved.caption.nilIfBlank ?? result.dailyCard.caption
+                result.dailyCard.backupStory = saved.backupStory.nilIfBlank ?? result.dailyCard.backupStory
+                result.dailyCard.backupCaptionOnly = saved.backupCaptionOnly.nilIfBlank ?? result.dailyCard.backupCaptionOnly
+                result.dailyCard.normalizeShotContent()
+            }
+            if old.flag("is_current") { archiveRevision(old) }
+        }
         let row = try Self.revision(result.dailyCard, planID: run.planID, context: context, generationID: run.id)
         state.revisions[run.revisionID] = row
         state.days[run.scheduledDate]?.currentRevisionID = run.revisionID
@@ -647,6 +675,7 @@ actor FakeServer {
         row["status"] = .string(DayPackageLifecycleStatus.isDraftPackage(draft.status) ? "draft" : draft.status)
         row["is_current"] = .bool(true)
         row["generation_run_id"] = generationID.map { .string($0.uuidString) } ?? .null
+        row["shot_content_owned"] = .bool(draft.shotContentOwned)
         row["scene_list"] = try FakeJSON.value(draft.sceneList)
         return row
     }
@@ -687,10 +716,15 @@ actor FakeServer {
         return lhs == rhs
     }
 
-    private static var serverTodayDate: String {
+    private static func validShotNumber(_ value: SupabaseJSONValue?) -> Bool {
+        guard case .number(let number) = value else { return false }
+        return number.isFinite && number.rounded(.towardZero) == number && number >= -9_223_372_036_854_775_808 && number < 9_223_372_036_854_775_808
+    }
+
+    private static func serverTodayDate(timeZone: String?) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.timeZone = timeZone.flatMap { TimeZone.knownTimeZoneIdentifiers.contains($0) || $0 == "UTC" ? TimeZone(identifier: $0) : nil } ?? TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: Date())
     }

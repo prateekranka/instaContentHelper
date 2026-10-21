@@ -556,11 +556,29 @@ async function readSingleDayGenerationStatus(
   );
   if (!isActive) {
     await host.markGenerationRunFailed(admin, generationID, "generation_stale");
+    const latest = await readGenerationRunStatus(
+      admin,
+      generationID,
+      session.workspaceID,
+    );
+    if (latest.error || !latest.data) {
+      return jsonResponse({ error: "generation_lookup_failed" }, 500);
+    }
+    if (latest.data.status === "completed") {
+      if (!isDayDraftResponseSnapshot(latest.data.output_snapshot)) {
+        return jsonResponse({ error: "generation_lookup_failed" }, 500);
+      }
+      return jsonResponse(latest.data.output_snapshot);
+    }
     return jsonResponse({
       generation_id: generationID,
-      status: "failed",
-      error: "generation_stale",
-      poll_after_seconds: null,
+      weekly_plan_id: latest.data.weekly_plan_id,
+      target_scheduled_date: latest.data.target_scheduled_date,
+      status: latest.data.status,
+      error: latest.data.status === "failed"
+        ? latest.data.error_code
+        : undefined,
+      poll_after_seconds: latest.data.status === "running" ? 2 : null,
     });
   }
 

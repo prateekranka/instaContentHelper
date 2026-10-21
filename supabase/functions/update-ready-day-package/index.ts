@@ -151,13 +151,20 @@ export async function handleUpdateReadyDayPackageRequest(
         field: "scene_list",
       }, 400);
     }
+    const shotIDs = new Set<string>();
     for (const [shotIndex, shot] of scenes.entries()) {
       if (
         typeof shot !== "object" || shot === null || Array.isArray(shot) ||
         typeof shot.id !== "string" || !SHOT_UUID_PATTERN.test(shot.id) ||
         typeof shot.title !== "string" ||
         typeof shot.duration !== "string" ||
-        ("dialogue" in shot && typeof shot.dialogue !== "string")
+        ("dialogue" in shot && typeof shot.dialogue !== "string") ||
+        ("symbol" in shot && typeof shot.symbol !== "string") ||
+        ("number" in shot &&
+          (!Number.isInteger(shot.number) ||
+            shot.number < -9223372036854775808 ||
+            shot.number >= 9223372036854775808)) ||
+        shotIDs.has(shot.id.toLowerCase())
       ) {
         return jsonResponse({
           error: "invalid_package_scene_list",
@@ -165,6 +172,7 @@ export async function handleUpdateReadyDayPackageRequest(
           shot_index: shotIndex,
         }, 400);
       }
+      shotIDs.add(shot.id.toLowerCase());
     }
   }
 

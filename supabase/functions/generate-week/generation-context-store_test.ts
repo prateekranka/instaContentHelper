@@ -453,6 +453,7 @@ Deno.test("readDailyCardsForPlan uses dayGenerationCardSelect and ascending date
     "energy_required",
     "language_mode",
     "scene_list",
+    "shot_content_owned",
     "script",
     "no_voiceover_version",
     "on_screen_text",

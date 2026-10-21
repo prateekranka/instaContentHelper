@@ -40,8 +40,11 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
     var clientContext: SupabaseGenerationClientContext? = nil
     var idempotencyKey: String? = nil
 
+    var timeZone: String = TimeZone.current.identifier
+
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
+        case timeZone = "time_zone"
         case weeklyPlanID = "weekly_plan_id"
         case scheduledDate = "scheduled_date"
         case preserveManualEdits = "preserve_manual_edits"
@@ -68,8 +71,11 @@ struct SupabaseDailyGenerationRequest: Encodable, Sendable {
     var clientContext: SupabaseGenerationClientContext? = nil
     var idempotencyKey: String? = nil
 
+    var timeZone: String = TimeZone.current.identifier
+
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
+        case timeZone = "time_zone"
         case scheduledDate = "scheduled_date"
         case dayBrief = "day_brief"
         case responseMode = "response_mode"
@@ -278,6 +284,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
     var hook: String?
     var saveShareReason: String?
     @SupabaseShotScenes var sceneList: [SupabaseShotSceneDTO]
+    var shotContentOwned: Bool? = nil
     var shotTimeline: [ProductionTimelineItem]?
     var voiceoverTimeline: [ProductionTimelineItem]?
     var onScreenTextTimeline: [ProductionTimelineItem]?
@@ -321,6 +328,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
         case hook
         case saveShareReason = "save_share_reason"
         case sceneList = "scene_list"
+        case shotContentOwned = "shot_content_owned"
         case shotTimeline = "shot_timeline"
         case voiceoverTimeline = "voiceover_timeline"
         case onScreenTextTimeline = "on_screen_text_timeline"
@@ -368,6 +376,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
             sceneList: sceneList.enumerated().map { index, scene in
                 scene.domainScene(fallbackNumber: index + 1, revisionID: id)
             },
+            shotContentOwned: shotContentOwned ?? false,
             shotTimeline: shotTimeline ?? [],
             voiceoverTimeline: voiceoverTimeline ?? [],
             onScreenTextTimeline: onScreenTextTimeline ?? [],
@@ -590,8 +599,11 @@ struct SupabaseReplaceDayRequest: Encodable, Sendable {
     var idempotencyKey: String
     var responseMode: GenerationResponseMode = .async
 
+    var timeZone: String = TimeZone.current.identifier
+
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
+        case timeZone = "time_zone"
         case scheduledDate = "scheduled_date"
         case dailyCardID = "daily_card_id"
         case dayBrief = "day_brief"

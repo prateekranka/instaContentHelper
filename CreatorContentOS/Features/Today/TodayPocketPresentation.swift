@@ -482,8 +482,8 @@ struct TodayPostPreparationView: View {
 
                 if isEditing {
                     editor.disabled(isSavingEdits)
-                    if draftScript.nilIfBlank == nil || draftCaption.nilIfBlank == nil {
-                        Text("Keep some text in Script and Caption before saving.")
+                    if !canSaveEdits {
+                        Text(saveRequirementMessage)
                             .font(PocketSheetType.rowSubtitle)
                             .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                             .fixedSize(horizontal: false, vertical: true)
@@ -506,7 +506,7 @@ struct TodayPostPreparationView: View {
                             title: services.isUpdatingReadyDayPackage ? "Saving…" : "Save",
                             systemImage: "checkmark"
                         ) { saveEdits() }
-                            .disabled(isSavingEdits || services.isUpdatingReadyDayPackage || draftScript.nilIfBlank == nil || draftCaption.nilIfBlank == nil)
+                            .disabled(isSavingEdits || services.isUpdatingReadyDayPackage || !canSaveEdits)
                             .accessibilityIdentifier("post.save")
                     }
                 } else {
@@ -628,10 +628,18 @@ struct TodayPostPreparationView: View {
         isEditing = false
     }
 
+    private var canSaveEdits: Bool {
+        draftCaption.nilIfBlank != nil && (services.todayCard.isNonFilmingPost || draftScript.nilIfBlank != nil)
+    }
+
+    private var saveRequirementMessage: String {
+        services.todayCard.isNonFilmingPost ? "Keep some text in Caption before saving." : "Keep some text in Script and Caption before saving."
+    }
+
     private func saveEdits() {
         guard !isSavingEdits else { return }
-        if draftScript.nilIfBlank == nil || draftCaption.nilIfBlank == nil {
-            saveError = "Keep some text in Script and Caption before saving."
+        if !canSaveEdits {
+            saveError = saveRequirementMessage
             return
         }
         isSavingEdits = true
@@ -647,7 +655,7 @@ struct TodayPostPreparationView: View {
             do {
                 _ = try await services.updateReadyDayPackage(
                     scheduledDate: date,
-                    package: ReadyDayPackageUpdate(caption: caption, script: script, sceneList: scenes)
+                    package: ReadyDayPackageUpdate(caption: caption, script: script.nilIfBlank == nil ? nil : script, sceneList: services.todayCard.isNonFilmingPost ? nil : scenes)
                 )
                 if services.todayCard.id == cardID {
                     saveError = nil
