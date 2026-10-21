@@ -397,16 +397,8 @@ struct LegacyTodayDecision: Codable, Hashable, Sendable {
 
 protocol TodayCacheStoring {
     func loadSnapshot(for context: WorkspaceContext) throws -> CachedTodaySnapshot?
-    func saveSnapshot(_ snapshot: CachedTodaySnapshot, for context: WorkspaceContext) throws
     func clearSnapshot(for context: WorkspaceContext) throws
     @MainActor func saveSnapshotInBackground(_ snapshot: CachedTodaySnapshot, for context: WorkspaceContext) async throws
-}
-
-extension TodayCacheStoring {
-    @MainActor
-    func saveSnapshotInBackground(_ snapshot: CachedTodaySnapshot, for context: WorkspaceContext) async throws {
-        try saveSnapshot(snapshot, for: context)
-    }
 }
 
 struct FileTodayCacheStore: TodayCacheStoring, Sendable {
