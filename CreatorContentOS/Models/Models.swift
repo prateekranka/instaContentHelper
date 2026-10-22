@@ -2101,12 +2101,21 @@ struct Piece: Codable, Hashable, Sendable, Identifiable {
     var scheduledDate: String
     private(set) var position: Int
     private(set) var requiresServerBinding: Bool
+    private(set) var isLifecyclePlaceholder: Bool
 
-    init(identity: PieceIdentity, scheduledDate: String, position: Int = 0, requiresServerBinding: Bool = false) {
+    init(identity: PieceIdentity, scheduledDate: String, position: Int = 0, requiresServerBinding: Bool = false, isLifecyclePlaceholder: Bool = false) {
         self.identity = identity
         self.scheduledDate = scheduledDate
         self.position = position
         self.requiresServerBinding = requiresServerBinding
+        self.isLifecyclePlaceholder = isLifecyclePlaceholder
+    }
+
+    mutating func move(to date: String, position: Int) {
+        scheduledDate = date
+        self.position = position
+        revision?.content.scheduledDate = date
+        for index in previousRevisions.indices { previousRevisions[index].content.scheduledDate = date }
     }
 
     mutating func requireServerBinding() {
@@ -2133,12 +2142,13 @@ struct Piece: Codable, Hashable, Sendable, Identifiable {
         identity = PieceIdentity(workspaceID: identity.workspaceID, creatorID: identity.creatorID, pieceID: pieceID)
         self.position = position
         requiresServerBinding = false
+        isLifecyclePlaceholder = false
         revision?.content.pieceID = pieceID
         for index in previousRevisions.indices { previousRevisions[index].content.pieceID = pieceID }
     }
 
     enum CodingKeys: String, CodingKey {
-        case identity, scheduledDate, position, requiresServerBinding, revision, lifecycle, previousRevisions, lastKnownLifecycle, serverUpdatedAt
+        case identity, scheduledDate, position, requiresServerBinding, isLifecyclePlaceholder, revision, lifecycle, previousRevisions, lastKnownLifecycle, serverUpdatedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -2159,6 +2169,8 @@ struct Piece: Codable, Hashable, Sendable, Identifiable {
         previousRevisions = try values.decodeIfPresent([DayRevision].self, forKey: .previousRevisions) ?? []
         lastKnownLifecycle = try values.decodeIfPresent(DayLifecycle.self, forKey: .lastKnownLifecycle)
         serverUpdatedAt = try values.decodeIfPresent(String.self, forKey: .serverUpdatedAt)
+        isLifecyclePlaceholder = try values.decodeIfPresent(Bool.self, forKey: .isLifecyclePlaceholder)
+            ?? (revision == nil && previousRevisions.isEmpty && serverUpdatedAt == nil && (lifecycle == .empty || lifecycle == .unavailable))
         if let revision, revision.content.scheduledDate != scheduledDate || revision.filmingProgress.revisionID != revision.id {
             throw DecodingError.dataCorruptedError(forKey: .revision, in: values, debugDescription: "Mismatched Piece revision")
         }
@@ -2209,6 +2221,7 @@ struct Piece: Codable, Hashable, Sendable, Identifiable {
             }
             next.lastKnownLifecycle = lifecycle
             next.lifecycle = .generating(run)
+            next.isLifecyclePlaceholder = false
         case .generated(let content):
             guard case .generating = lifecycle else { throw DayTransitionError.illegalMove }
             try next.install(content)
@@ -2344,6 +2357,7 @@ struct Piece: Codable, Hashable, Sendable, Identifiable {
             current.decision = nil
         }
         revision = current
+        isLifecyclePlaceholder = false
     }
 
     private mutating func applyCompletion(_ completion: CompletionState?) {

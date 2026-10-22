@@ -240,7 +240,63 @@ struct WeeklyRepositoryContent: Hashable, Sendable {
     }
 }
 
+struct PieceMoveTarget: Codable, Hashable, Sendable {
+    var pieceID: UUID
+    var scheduledDate: String
+    var position: Int
+
+    enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
+        case scheduledDate = "scheduled_date"
+        case position
+    }
+}
+
+struct PieceMoveResult: Codable, Hashable, Sendable {
+    var pieceID: UUID
+    var sourceScheduledDate: String
+    var scheduledDate: String
+    var position: Int
+    var affectedPieces: [PieceMoveTarget]
+    var replayed: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
+        case sourceScheduledDate = "source_scheduled_date"
+        case scheduledDate = "scheduled_date"
+        case position
+        case affectedPieces = "affected_pieces"
+        case replayed
+    }
+}
+
+struct MovePieceRequest: Encodable, Sendable {
+    var creatorID: UUID
+    var pieceID: UUID
+    var scheduledDate: String
+    var targetScheduledDate: String
+    var idempotencyKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case creatorID = "creator_id"
+        case pieceID = "piece_id"
+        case scheduledDate = "scheduled_date"
+        case targetScheduledDate = "target_scheduled_date"
+        case idempotencyKey = "idempotency_key"
+    }
+
+    init(intent: ContentIntent) throws {
+        guard let pieceID = intent.pieceID, let target = intent.targetScheduledDate else { throw DayTransitionError.mismatchedRevision }
+        creatorID = intent.creatorID
+        self.pieceID = pieceID
+        scheduledDate = intent.scheduledDate
+        targetScheduledDate = target
+        idempotencyKey = intent.idempotencyKey
+    }
+}
+
 protocol WeeklyPlanRepository: Sendable {
+    func movePiece(_ intent: ContentIntent, context: WorkspaceContext) async throws -> PieceMoveResult
     func replayPackage(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxReplayResult
     func replayPackage(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> OutboxReplayResult
 
@@ -460,6 +516,10 @@ extension StoryboardThumbnailRepository {
 }
 
 extension WeeklyPlanRepository {
+    func movePiece(_ intent: ContentIntent, context: WorkspaceContext) async throws -> PieceMoveResult {
+        throw RepositoryError.edgeFunction("move_piece_unavailable")
+    }
+
     func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
         let publishedPlan = try await currentPublishedPlan(for: context)
         let generatedDraft = try await currentGeneratedDraft(for: context)
@@ -921,6 +981,7 @@ extension TodayCardRepository {
 }
 
 extension WeeklyPlanRepository {
+
     func replayPackage(_ intent: ContentIntent, context: WorkspaceContext) async throws -> OutboxReplayResult {
         switch intent.packageAction {
         case .makeReady:
@@ -954,6 +1015,7 @@ extension TodayCardRepository {
 }
 
 extension WeeklyPlanRepository {
+
     func replayPackage(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> OutboxReplayResult {
         guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
         return try await replayPackage(intent, context: context)

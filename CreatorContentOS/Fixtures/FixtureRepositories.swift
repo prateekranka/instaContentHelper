@@ -86,15 +86,17 @@ private struct FakeServerSnapshot: Codable, Sendable {
     var plan: WeeklyPlan = .raceWeek
     var ideas: [FakeObject] = []
     var consumedFailures: Set<String> = []
+    var moves: [String: FakeObject] = [:]
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, revisions, pieces, archives, runs, profile, plans, plan, ideas, consumedFailures
+        case schemaVersion, revisions, pieces, archives, runs, profile, plans, plan, ideas, consumedFailures, moves
     }
 
     init() {}
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        moves = try values.decodeIfPresent([String: FakeObject].self, forKey: .moves) ?? [:]
         schemaVersion = try values.decode(Int.self, forKey: .schemaVersion)
         revisions = try values.decode([UUID: FakeObject].self, forKey: .revisions)
         pieces = try values.decodeIfPresent([UUID: FakeServerPiece].self, forKey: .pieces) ?? [:]
@@ -223,6 +225,9 @@ actor FakeServer {
         delayNanoseconds: UInt64 = DebugLaunchFlags.fixtureFirstIdeaDelayNanoseconds
     ) async throws -> FakeServerResponse {
         let payload = try FakeJSON.object(body)
+        if function == "move-piece", payload.uuid("creator_id") == nil {
+            return Self.failure("invalid_move_piece_payload", status: 400)
+        }
         guard context.workspaceID == self.context.workspaceID,
               context.creatorID == self.context.creatorID,
               payload.uuid("creator_id") == context.creatorID else {
@@ -239,6 +244,9 @@ actor FakeServer {
                 response = try generate(payload, replacing: function == "replace-day", delayNanoseconds: delayNanoseconds)
             case "make-day-available", "unpublish-day", "update-ready-day-package", "publish-day":
                 response = try lifecycle(function, payload: payload)
+            case "move-piece":
+                try completeDueRuns()
+                response = try movePiece(payload)
             case "write-content": response = try write(payload)
             case "generate-plan-ideas":
                 let date = payload.text("scheduled_date") ?? SupabaseDateFormatting.todayDateString()
@@ -420,6 +428,60 @@ actor FakeServer {
         }
         state.revisions[id] = row
         state.pieces[row.uuid("piece_id")!]?.updatedAt = SupabaseDateFormatting.isoTimestampString()
+        return Self.success(result)
+    }
+
+    private func movePiece(_ payload: FakeObject) throws -> FakeServerResponse {
+        guard let id = payload.uuid("piece_id") else { return Self.failure("invalid_piece_id", status: 400) }
+        guard let source = payload.text("scheduled_date"), Self.validDate(source),
+              let target = payload.text("target_scheduled_date"), Self.validDate(target),
+              let key = payload.text("idempotency_key")?.nilIfBlank, key.count <= 200 else {
+            return Self.failure("invalid_move_piece_payload", status: 400)
+        }
+        let identity: FakeObject = ["piece_id": .string(id.uuidString), "scheduled_date": .string(source), "target_scheduled_date": .string(target)]
+        if let saved = state.moves[key] {
+            guard saved["request_identity"] == .object(identity) else { return Self.failure("idempotency_key_conflict", status: 409) }
+            var result = saved["result"]!.objectValue!
+            result["replayed"] = .bool(true)
+            return Self.success(result)
+        }
+        guard let piece = state.pieces[id] else { return Self.failure("piece_not_found", status: 404) }
+        guard piece.workspaceID == context.workspaceID, piece.creatorID == context.creatorID else { return Self.failure("piece_scope_mismatch", status: 409) }
+        guard piece.removedAt == nil else { return Self.failure("piece_removed", status: 409) }
+        guard piece.scheduledDate == source else { return Self.failure("piece_date_conflict", status: 409) }
+        guard !state.runs.values.contains(where: { $0.pieceID == id && $0.status == "running" }) else { return Self.failure("piece_generation_running", status: 409) }
+        if source != target {
+            let position = (state.pieces.values.filter { $0.scheduledDate == target && $0.removedAt == nil }.map(\.position).max() ?? -1) + 1
+            state.pieces[id]?.scheduledDate = target
+            state.pieces[id]?.position = position
+            state.pieces[id]?.updatedAt = SupabaseDateFormatting.isoTimestampString()
+            for (position, other) in state.pieces.values.filter({ $0.scheduledDate == source && $0.removedAt == nil }).sorted(by: { $0.position < $1.position }).enumerated() {
+                state.pieces[other.id]?.position = position
+                state.pieces[other.id]?.updatedAt = SupabaseDateFormatting.isoTimestampString()
+            }
+            for revisionID in state.revisions.keys where state.revisions[revisionID]?.uuid("piece_id") == id {
+                state.revisions[revisionID]?["scheduled_date"] = .string(target)
+            }
+            for runKey in state.runs.keys where state.runs[runKey]?.pieceID == id {
+                state.runs[runKey]?.scheduledDate = target
+                if var result = state.runs[runKey]?.result?.objectValue {
+                    result["target_scheduled_date"] = .string(target)
+                    result["scheduled_date"] = .string(target)
+                    if var card = result["daily_card"]?.objectValue {
+                        card["scheduled_date"] = .string(target)
+                        result["daily_card"] = .object(card)
+                    }
+                    state.runs[runKey]?.result = .object(result)
+                }
+            }
+        }
+        let affected = state.pieces.values.filter { [source, target].contains($0.scheduledDate) && $0.removedAt == nil }
+            .sorted { ($0.scheduledDate, $0.position) < ($1.scheduledDate, $1.position) }.map {
+                PieceMoveTarget(pieceID: $0.id, scheduledDate: $0.scheduledDate, position: $0.position)
+            }
+        let result = try FakeJSON.object(PieceMoveResult(pieceID: id, sourceScheduledDate: source, scheduledDate: target,
+            position: state.pieces[id]!.position, affectedPieces: affected, replayed: false))
+        state.moves[key] = ["request_identity": .object(identity), "result": .object(result)]
         return Self.success(result)
     }
 
@@ -1131,6 +1193,10 @@ struct FixtureTodayCardRepository: TodayCardRepository {
 }
 
 struct FixtureWeeklyPlanRepository: WeeklyPlanRepository {
+
+    func movePiece(_ intent: ContentIntent, context: WorkspaceContext) async throws -> PieceMoveResult {
+        try await server.invoke("move-piece", body: MovePieceRequest(intent: intent), context: context)
+    }
     let server: FakeServer
     init(publishedStore: FixturePublishedContentStore? = nil) {
         server = publishedStore?.server ?? .shared

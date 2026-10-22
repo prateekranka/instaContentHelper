@@ -6,12 +6,61 @@ enum ContentIntentKind: String, Codable, Hashable, Sendable {
     case generate
     case replaceDay
     case firstIdea
+    case movePiece
 }
 
 enum PackageIntentAction: String, Codable, Hashable, Sendable {
     case update
     case makeReady
     case returnToDraft
+}
+
+enum PieceMoveErrorDisplay {
+    private static func code(for error: Error) -> String {
+        SupabaseFunctionErrorMapper.errorCode(from: error) ?? error.localizedDescription
+    }
+
+    static func isTerminal(_ error: Error) -> Bool {
+        ["invalid_piece_id", "invalid_move_piece_payload", "invalid_json", "method_not_allowed",
+         "piece_not_found", "piece_scope_mismatch", "piece_removed", "piece_date_conflict",
+         "idempotency_key_conflict", "creator_not_found", "missing_device_token",
+         "invalid_device_token", "role_not_allowed"].contains(code(for: error))
+    }
+
+    static func message(for error: Error, isQueued: Bool) -> String {
+        switch code(for: error) {
+        case "piece_generation_running":
+            return isQueued
+                ? "This piece is still being prepared. Your move is saved for retry."
+                : "Wait for this piece to finish, then try the move again."
+        case "piece_date_conflict":
+            return "This piece has moved. Open its current date and try again."
+        case "piece_removed":
+            return "This piece was removed and cannot be moved."
+        case "piece_not_found":
+            return "This piece is no longer available. Refresh Plan and try again."
+        case "piece_scope_mismatch", "creator_not_found":
+            return "This piece is not available for this creator. Refresh Plan and try again."
+        case "missing_device_token", "invalid_device_token":
+            return "Sign in again before moving this piece."
+        case "role_not_allowed":
+            return "Your account cannot move this piece."
+        case "invalid_piece_id", "invalid_move_piece_payload", "invalid_json", "method_not_allowed", "idempotency_key_conflict":
+            return "This move could not be completed. Choose the date again."
+        case "piece_move_pending":
+            return isQueued
+                ? "This piece already has a saved move. Wait for it to finish."
+                : "Choose the date again to move this piece."
+        case "move_piece_failed", "missing_function_secrets", "creator_lookup_failed", "device_lookup_failed", "member_lookup_failed":
+            return isQueued
+                ? "Moves are unavailable right now. Your move is saved and will retry."
+                : "Moves are unavailable right now. Try again later."
+        default:
+            return isQueued
+                ? "This move is saved. It will try again when the connection returns."
+                : "This move could not be saved. Try again."
+        }
+    }
 }
 
 struct ContentIntent: Codable, Hashable, Sendable, Identifiable {
@@ -21,6 +70,8 @@ struct ContentIntent: Codable, Hashable, Sendable, Identifiable {
     var creatorID: UUID
     var scheduledDate: String
     var pieceID: UUID?
+    var targetScheduledDate: String?
+    var usesDateOnlyGenerationIdentity: Bool?
     var usesLegacyGenerationIdentity: Bool?
     var usesLegacyPieceTarget: Bool?
     var revisionID: UUID
@@ -47,7 +98,7 @@ struct ContentIntent: Codable, Hashable, Sendable, Identifiable {
     var profileSaved = false
     var firstIdeaSkipped = false
 
-    var generationPieceID: UUID? { usesLegacyGenerationIdentity == true ? nil : pieceID }
+    var generationPieceID: UUID? { usesLegacyGenerationIdentity == true || usesDateOnlyGenerationIdentity == true ? nil : pieceID }
 
     var isGeneration: Bool {
         kind == .generate || kind == .replaceDay || kind == .firstIdea
@@ -101,6 +152,7 @@ enum OutboxReplayResult: Sendable {
     case package(DayPackageUpdateResult)
     case available(DayAvailabilityResult)
     case unpublished(DayUnpublishResult)
+    case moved(PieceMoveResult)
     case generated(GeneratedDailyCardDraft)
     case firstIdea(OnboardingFirstIdeaHandoffResult)
 }

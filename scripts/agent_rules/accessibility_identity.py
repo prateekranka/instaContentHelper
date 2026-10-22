@@ -4,6 +4,27 @@ from .support import Finding, tokens
 
 HISTORY = []
 RECONSTRUCTED = "Step 4 operator correction: you.screen.account on both scaffold and identity child"
+CONTAINER_IDENTIFIERS = ('"plan.package.panel.', '"plan.script.timeline"')
+
+
+def container_findings(sources):
+    findings = []
+    containment = [".", "accessibilityElement", "(", "children", ":", ".", "contain", ")", "."]
+    for file, source in sources.items():
+        if not file.endswith(".swift"):
+            continue
+        stream = tokens(source)
+        for i, token in enumerate(stream):
+            if token.value != "accessibilityIdentifier" or i + 2 >= len(stream):
+                continue
+            argument = stream[i + 2]
+            if stream[i + 1].value != "(" or argument.kind != "string":
+                continue
+            if argument.value.startswith(CONTAINER_IDENTIFIERS):
+                preceding = [item.value for item in stream[max(0, i - len(containment)):i]]
+                if preceding != containment:
+                    findings.append(Finding(file, token.line, f"Container {argument.value} must put .accessibilityElement(children: .contain) immediately before its identifier so child controls keep their identifiers."))
+    return findings
 
 
 def identifiers(sources):
@@ -25,7 +46,7 @@ def check(repository):
     after = identifiers(repository.sources)
     allowed = Counter(value for value, file, line in before)
     seen = Counter()
-    findings = []
+    findings = container_findings(repository.sources)
     for value, file, line in after:
         seen[value] += 1
         if seen[value] > max(allowed[value], 1):

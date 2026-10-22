@@ -107,7 +107,32 @@ final class DayStore {
         }
     }
 
+    func orderedPieces(on date: String) -> [Piece] {
+        (pieceIDsByDate[date] ?? []).compactMap { pieces[$0] }
+    }
+
     func piece(for pieceID: UUID) -> Piece? { pieces[pieceID] }
+
+    func applyMove(_ result: PieceMoveResult, intentID: String? = nil) throws {
+        guard let moved = pieces[result.pieceID], [result.sourceScheduledDate, result.scheduledDate].contains(moved.scheduledDate),
+              result.affectedPieces.contains(where: { $0.pieceID == result.pieceID && $0.scheduledDate == result.scheduledDate && $0.position == result.position }) else {
+            throw DayTransitionError.mismatchedRevision
+        }
+        for target in result.affectedPieces {
+            guard var piece = pieces[target.pieceID] else { continue }
+            guard piece.scheduledDate == target.scheduledDate || target.pieceID == result.pieceID else { continue }
+            piece.move(to: target.scheduledDate, position: target.position)
+            pieces[target.pieceID] = piece
+            cardProjections[target.pieceID] = nil
+            changeVersion += 1
+            pieceVersions[target.pieceID] = changeVersion
+        }
+        for index in outbox.indices where outbox[index].pieceID == result.pieceID && outbox[index].id != intentID {
+            outbox[index].scheduledDate = result.scheduledDate
+            outbox[index].cardSnapshot?.scheduledDate = result.scheduledDate
+        }
+        rebuildDateIndex(preferredPieceIDs: Set(result.affectedPieces.map(\.pieceID)))
+    }
 
     func piece(revisionID: UUID) -> Piece? {
         pieces.values.first { $0.revision?.id == revisionID || $0.previousRevisions.contains { $0.id == revisionID } }
@@ -124,19 +149,60 @@ final class DayStore {
     }
 
     @discardableResult
-    func ensurePiece(on date: String, pieceID: UUID? = nil, position: Int? = nil, requiresServerBinding: Bool = false) -> UUID {
+    func ensurePiece(on date: String, pieceID: UUID? = nil, position: Int? = nil, requiresServerBinding: Bool = false, isLifecyclePlaceholder: Bool = false) -> UUID {
         if let pieceID, pieces[pieceID] != nil { return pieceID }
         if pieceID == nil, let existing = day(for: date) { return existing.identity.pieceID }
         let id = pieceID ?? UUID()
         let nextPosition = (pieceIDsByDate[date]?.compactMap { pieces[$0]?.position }.max() ?? -1) + 1
-        pieces[id] = Piece(identity: PieceIdentity(workspaceID: context.workspaceID, creatorID: context.creatorID, pieceID: id), scheduledDate: date, position: position ?? nextPosition, requiresServerBinding: requiresServerBinding)
-        rebuildDateIndex()
+        pieces[id] = Piece(identity: PieceIdentity(workspaceID: context.workspaceID, creatorID: context.creatorID, pieceID: id), scheduledDate: date, position: position ?? nextPosition, requiresServerBinding: requiresServerBinding, isLifecyclePlaceholder: isLifecyclePlaceholder)
+        rebuildDateIndex(preferredPieceIDs: [id])
         return id
     }
 
-    private func rebuildDateIndex() {
-        pieceIDsByDate = Dictionary(grouping: pieces.values, by: \.scheduledDate).mapValues {
-            $0.sorted { ($0.position, $0.requiresServerBinding ? 1 : 0, $0.identity.pieceID.uuidString) < ($1.position, $1.requiresServerBinding ? 1 : 0, $1.identity.pieceID.uuidString) }.map { $0.identity.pieceID }
+    func prepareDateOnlyGeneration(pieceID: UUID) {
+        pieces[pieceID]?.requireServerBinding()
+    }
+
+    func removeUnsavedPiece(_ pieceID: UUID) {
+        guard pieces[pieceID]?.revision == nil, !outbox.contains(where: { $0.pieceID == pieceID }) else { return }
+        pieces[pieceID] = nil
+        cardProjections[pieceID] = nil
+        pieceVersions[pieceID] = nil
+        rebuildDateIndex()
+    }
+
+    private func rebuildDateIndex(preferredPieceIDs: Set<UUID> = []) {
+        let queuedPieceIDs = Set(outbox.compactMap(\.pieceID))
+        pieceIDsByDate = Dictionary(grouping: pieces.values, by: \.scheduledDate).mapValues { datedPieces in
+            let placeholders = Set(datedPieces.filter {
+                $0.isLifecyclePlaceholder && $0.revision == nil && $0.previousRevisions.isEmpty
+                    && !queuedPieceIDs.contains($0.identity.pieceID) && ($0.lifecycle == .empty || $0.lifecycle == .unavailable)
+            }.map { $0.identity.pieceID })
+            let hasRealPiece = datedPieces.contains { !placeholders.contains($0.identity.pieceID) }
+            let retained = datedPieces.filter { !hasRealPiece || !placeholders.contains($0.identity.pieceID) }
+            for id in placeholders where hasRealPiece {
+                pieces[id] = nil
+                cardProjections[id] = nil
+                pieceVersions[id] = nil
+                changeVersion += 1
+            }
+            let ordered = retained.sorted {
+                ($0.position, preferredPieceIDs.contains($0.identity.pieceID) ? 0 : 1, $0.requiresServerBinding ? 1 : 0, $0.identity.pieceID.uuidString)
+                    < ($1.position, preferredPieceIDs.contains($1.identity.pieceID) ? 0 : 1, $1.requiresServerBinding ? 1 : 0, $1.identity.pieceID.uuidString)
+            }
+            let prioritized = ordered.filter { preferredPieceIDs.contains($0.identity.pieceID) }
+                + ordered.filter { !preferredPieceIDs.contains($0.identity.pieceID) }
+            var occupied = Set<Int>()
+            for var piece in prioritized {
+                var position = max(0, piece.position)
+                while occupied.contains(position) { position += 1 }
+                occupied.insert(position)
+                if position != piece.position {
+                    piece.move(to: piece.scheduledDate, position: position)
+                    pieces[piece.identity.pieceID] = piece
+                }
+            }
+            return retained.compactMap { pieces[$0.identity.pieceID] }.sorted { $0.position < $1.position }.map { $0.identity.pieceID }
         }
     }
 
@@ -163,21 +229,14 @@ final class DayStore {
     func restore(_ snapshot: DayStoreSnapshot) {
         var snapshot = snapshot
         snapshot.migrateIntentPieces(for: context)
-        for saved in snapshot.pieces where saved.identity.workspaceID == context.workspaceID && saved.identity.creatorID == context.creatorID {
-            for existing in pieces.values where existing.scheduledDate == saved.scheduledDate && existing.position == saved.position && existing.identity.pieceID != saved.identity.pieceID {
-                pieces[existing.identity.pieceID] = nil
-                cardProjections[existing.identity.pieceID] = nil
-                pieceVersions[existing.identity.pieceID] = nil
-            }
-        }
         for piece in snapshot.pieces where piece.identity.workspaceID == context.workspaceID && piece.identity.creatorID == context.creatorID {
             cardProjections[piece.identity.pieceID] = nil
             pieces[piece.identity.pieceID] = piece
             changeVersion += 1
             pieceVersions[piece.identity.pieceID] = changeVersion
         }
-        rebuildDateIndex()
         outbox = snapshot.outbox.filter { $0.workspaceID == context.workspaceID && $0.creatorID == context.creatorID }
+        rebuildDateIndex()
         archiveEntries.removeAll()
         mergeArchive(snapshot.archiveEntries)
     }
@@ -222,7 +281,7 @@ final class DayStore {
     func changed(pieceID: UUID, since version: Int) -> Bool { (pieceVersions[pieceID] ?? 0) > version }
 
     func transition(_ move: DayTransition, on date: String) throws {
-        try transition(move, pieceID: ensurePiece(on: date))
+        try transition(move, pieceID: ensurePiece(on: date, isLifecyclePlaceholder: true))
     }
 
     func transition(_ move: DayTransition, pieceID: UUID) throws {
@@ -287,11 +346,16 @@ final class DayStore {
             rebuildDateIndex()
         }
         let id = ensurePiece(on: scheduledDate, pieceID: pieceID, position: position)
-        guard var piece = pieces[id], piece.scheduledDate == scheduledDate else { throw DayTransitionError.mismatchedRevision }
+        guard var piece = pieces[id] else { throw DayTransitionError.mismatchedRevision }
+        if piece.scheduledDate != scheduledDate {
+            guard !outbox.contains(where: { $0.pieceID == id && $0.kind == .movePiece }) else { return id }
+            piece.move(to: scheduledDate, position: position ?? piece.position)
+            for index in outbox.indices where outbox[index].pieceID == id { outbox[index].scheduledDate = scheduledDate }
+        }
         piece.bind(to: id, position: position ?? piece.position)
         pieces[id] = piece
         cardProjections[id] = nil
-        rebuildDateIndex()
+        rebuildDateIndex(preferredPieceIDs: [id])
         return id
     }
 
@@ -311,6 +375,9 @@ final class DayStore {
     }
 
     func receive(_ package: GeneratedDailyCardDraft, pieceID: UUID? = nil, completion: CompletionState? = nil, updatedAt: String? = nil, readVersion: Int? = nil, authoritativeDecision: Bool = false) throws {
+        let knownID = (pieceID ?? package.pieceID).flatMap { pieces[$0]?.identity.pieceID }
+            ?? piece(revisionID: package.id)?.identity.pieceID
+        if let readVersion, let knownID, changed(pieceID: knownID, since: readVersion) { return }
         let id = try incomingPieceID(package, pieceID: pieceID)
         if let readVersion, changed(pieceID: id, since: readVersion) { return }
         let localDecision = pieces[id]?.revision
@@ -323,6 +390,8 @@ final class DayStore {
     }
 
     func receivePublished(_ card: DailyCard, readVersion: Int? = nil) throws {
+        let knownID = card.pieceID.flatMap { pieces[$0]?.identity.pieceID } ?? piece(revisionID: card.id)?.identity.pieceID
+        if let readVersion, let knownID, changed(pieceID: knownID, since: readVersion) { return }
         guard card.scheduledDate != nil else { throw DayTransitionError.mismatchedRevision }
         var package = GeneratedDailyCardDraft(fromPublishedCard: card)
         let id = try incomingPieceID(package, pieceID: card.pieceID)
@@ -348,6 +417,9 @@ final class DayStore {
                       card.scheduledDate == row.scheduledDate, card.id == row.currentRevisionID else { throw DayTransitionError.mismatchedRevision }
             }
             let serverID = row.pieceID ?? row.revision?.pieceID ?? row.generation?.pieceID
+            if let serverID, pieces[serverID] != nil, changed(pieceID: serverID, since: readVersion) { continue }
+            if let serverID, let local = pieces[serverID], local.scheduledDate != row.scheduledDate,
+               outbox.contains(where: { $0.pieceID == serverID && $0.kind == .movePiece }) { continue }
             let id: UUID
             if let serverID {
                 guard row.revision?.pieceID == nil || row.revision?.pieceID == serverID,

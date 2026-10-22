@@ -2,7 +2,7 @@ const localURL = Deno.env.get("MCO_LOCAL_DATABASE_URL");
 
 Deno.test({
   name:
-    "local database creator loop transactions, independent pieces, and frozen replaced revisions",
+    "local database creator loop transactions, independent pieces, idempotent moves with source compaction and retained work, and frozen replaced revisions",
   ignore: !localURL,
   async fn() {
     const parsed = new URL(localURL!);

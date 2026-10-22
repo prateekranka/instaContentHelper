@@ -242,8 +242,8 @@ export async function finishLoopFilming(screen: Screen) {
 
 export async function openLoopPlanDay(screen: Screen, index: number) {
   await selectTab(screen, 'Plan');
-  await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
-  const day = screen.getByTestId(/^plan\.sevenDaySelector\.day\./).nth(index);
+  const date = await planDateAtOffset(screen, index);
+  const day = screen.getByTestId(`plan.sevenDaySelector.day.${date}`);
   await tapVisibleControl(screen, day);
   await expect(day).toBeSelected();
   return day;
@@ -275,4 +275,37 @@ export async function openLoopTodayRoot(screen: Screen) {
   }
   await scrollToControl(screen, screen.getByTestId('today.startFilming'), 'up');
   await expect(screen.getByTestId('today.startFilming')).toBeVisible();
+}
+
+export async function selectPlanPiece(screen: Screen, position: number) {
+  const piece = screen.getByTestId(`plan.piece.${position}`);
+  await scrollToControl(screen, piece, 'up');
+  await piece.tap();
+  await expect(piece).toBeSelected();
+}
+
+export async function addPlanPiece(screen: Screen, idea = 0) {
+  await tapVisibleControl(screen, screen.getByTestId('plan.piece.add'));
+  await scrollToControl(screen, screen.getByTestId(`plan.daygen.idea.${idea}`), 'up');
+  await screen.getByTestId(`plan.daygen.idea.${idea}`).tap();
+}
+
+async function planDateAtOffset(screen: Screen, index: number) {
+  await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
+  const firstDay = screen.getByTestId(/^plan\.sevenDaySelector\.day\./).first();
+  await scrollToControl(screen, firstDay);
+  const label = await firstDay.textContent();
+  const today = label?.match(/\d{4}-\d{2}-\d{2}$/)?.[0];
+  expect(today).toBeTruthy();
+  const target = new Date(`${today}T12:00:00Z`);
+  target.setUTCDate(target.getUTCDate() + index);
+  return target.toISOString().slice(0, 10);
+}
+
+export async function movePlanPiece(screen: Screen, dayIndex: number) {
+  const target = await planDateAtOffset(screen, dayIndex);
+  await tapVisibleControl(screen, screen.getByTestId('plan.piece.move'));
+  const date = screen.getByTestId(`plan.move.date.${target}`);
+  await tapVisibleControl(screen, date);
+  await expect(screen.getByTestId('plan.move.cancel')).toBeHidden();
 }

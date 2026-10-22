@@ -13,6 +13,10 @@ struct PlanHubView: View {
     @State private var visibleMonth = Date()
     @State private var generationStartTime: Date?
     @State private var showCalendarSheet = false
+    @State private var isAddingPiece = false
+    @State private var packageScrollRequest = 0
+    @State private var showMoveSheet = false
+    @State private var moveError: String?
     @State private var showUnpublishConfirmation = false
     @State private var showOverwriteConfirmation = false
     @State private var pendingGenerationBrief: String?
@@ -33,6 +37,15 @@ struct PlanHubView: View {
     var initialSelectedDate: String? = nil
 
     var body: some View {
+        ScrollViewReader { proxy in
+            planScreen
+                .onChange(of: packageScrollRequest) { _, _ in
+                    proxy.scrollTo("plan.package.top", anchor: .top)
+                }
+        }
+    }
+
+    private var planScreen: some View {
         PocketSheetScreen(
             topContentPadding: PocketSheetSpace.xxs,
             bottomContentPadding: 120,
@@ -42,6 +55,7 @@ struct PlanHubView: View {
                 header
                 selectedDateHeader
                 sevenDaySelector
+                pieceChoices
                 if let otherLabel = otherDayGeneratingLabel {
                     Text("Still drafting \(otherLabel) in the background — you can keep planning other days.")
                         .font(PocketSheetType.rowSubtitle)
@@ -88,6 +102,12 @@ struct PlanHubView: View {
                     generationProgressBlock
                 }
                 if let error = surfacedGenerationError {
+                    if hasPendingGeneration {
+                        PocketSheetPrimaryAction(title: "Try again", systemImage: "arrow.clockwise") {
+                            Task { await services.replayOutboxImmediately() }
+                        }
+                        .accessibilityIdentifier("plan.piece.retry")
+                    }
                     let cancelled = Self.isCancellationMessage(error)
                     AdminSignalBlock(
                         title: "",
@@ -121,6 +141,26 @@ struct PlanHubView: View {
                     )
                 }
                 resultBlock
+                    .id("plan.package.top")
+                if let moveError {
+                    PocketSheetFeedbackBanner(message: moveError, kind: .issue)
+                        .accessibilityIdentifier("plan.piece.move.error")
+                }
+                if selectedPieces.contains(where: { !$0.requiresServerBinding || $0.revision != nil }), isSelectedDayEligible, !shouldShowIdeaLauncher, !isGeneratingSelectedDay {
+                    PocketSheetSecondaryAction(title: "Add a piece") {
+                        resetIdeaLauncherState()
+                        isAddingPiece = true
+                        refreshDayIdeasIfNeeded()
+                    }
+                    .accessibilityIdentifier("plan.piece.add")
+                }
+                if isAddingPiece || showReplaceIdeaLauncher {
+                    PocketSheetSecondaryAction(title: "Cancel") {
+                        resetIdeaLauncherState()
+                        packageScrollRequest += 1
+                    }
+                        .accessibilityIdentifier("plan.piece.cancel")
+                }
                 PlanGenerationInputsSummary(setup: setupSummary, selectedDate: scheduledDateString)
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isGeneratingSelectedDay)
@@ -147,6 +187,11 @@ struct PlanHubView: View {
                 }
             )
         }
+        .sheet(isPresented: $showMoveSheet) {
+            PlanPieceMoveSheet(sourceDate: scheduledDateString, today: planTodayDate) { date in
+                moveSelectedPiece(to: date)
+            }
+        }
         .alert("Unpublish this day?", isPresented: $showUnpublishConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Unpublish", role: .destructive) {
@@ -166,7 +211,10 @@ struct PlanHubView: View {
                 pendingGenerationBrief = nil
             }
         } message: {
-            Text("This replaces the current draft or package for this day with a new draft. Any live Decision clears; Archive history stays. You will need to approve again.")
+            Text("This replaces this piece with a new draft. Any live Decision clears; Archive history stays. You will need to approve again.")
+        }
+        .onChange(of: selectedPieceID) { _, _ in
+            resetLightEdit(displayedCard)
         }
         .onChange(of: displayedCard?.id) { _, _ in
             resetLightEdit(displayedCard)
@@ -247,14 +295,17 @@ struct PlanHubView: View {
         otherIdeaText = ""
         pendingGenerationBrief = nil
         showReplaceIdeaLauncher = false
+        isAddingPiece = false
+        moveError = nil
     }
 
     /// Empty eligible day: idea launcher. After idea select / while generating / with a package: hide it.
     private var shouldShowIdeaLauncher: Bool {
         guard isSelectedDayEligible, !isSelectedDayUnavailable else { return false }
-        if isGeneratingSelectedDay || hasDispatchedGeneration {
+        if isGeneratingSelectedDay || hasDispatchedGeneration || hasPendingGeneration {
             return false
         }
+        if isAddingPiece { return true }
         if displayedCard != nil {
             return showReplaceIdeaLauncher
         }
@@ -297,13 +348,18 @@ struct PlanHubView: View {
     }
 
     private var isSelectedDayUnavailable: Bool {
-        guard let day = services.dayStore.day(for: scheduledDateString) else { return false }
+        guard !isAddingPiece, let day = selectedPiece else { return false }
         return day.lifecycle == .unavailable && day.revision?.content.status != "archived"
     }
 
     private var isGeneratingSelectedDay: Bool {
-        if case .generating = services.dayStore.day(for: scheduledDateString)?.lifecycle { return true }
-        return services.generatingDayBriefDates.contains(scheduledDateString)
+        guard !isAddingPiece, surfacedGenerationError == nil else { return false }
+        if case .generating = selectedPiece?.lifecycle { return true }
+        return services.dayStore.outbox.contains { $0.isGeneration && $0.pieceID == selectedPieceID }
+    }
+
+    private var hasPendingGeneration: Bool {
+        !isAddingPiece && services.dayStore.outbox.contains { $0.isGeneration && $0.pieceID == selectedPieceID }
     }
 
     private var otherDayGeneratingLabel: String? {
@@ -314,6 +370,7 @@ struct PlanHubView: View {
 
     private var canMakeAvailable: Bool {
         canGenerate
+            && !shouldShowIdeaLauncher
             && !isGeneratingSelectedDay
             && !services.isMakingDayAvailable
             && displayedCard != nil
@@ -322,6 +379,7 @@ struct PlanHubView: View {
 
     private var canUnpublish: Bool {
         canGenerate
+            && !shouldShowIdeaLauncher
             && !isGeneratingSelectedDay
             && !services.isUnpublishingDay
             && DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status)
@@ -329,6 +387,7 @@ struct PlanHubView: View {
 
     private var canLightEditReadyPackage: Bool {
         canGenerate
+            && !shouldShowIdeaLauncher
             && !isGeneratingSelectedDay
             && DayPackageLifecycleStatus.requiresOverwriteConfirmation(displayedCard?.status)
     }
@@ -338,13 +397,60 @@ struct PlanHubView: View {
     }
 
     private var surfacedGenerationError: String? {
-        services.dayBriefGenerationErrors[scheduledDateString]
+        guard !isAddingPiece else { return nil }
+        return selectedPieceID.flatMap { services.pieceGenerationErrors[$0] }
     }
 
     private var displayedCard: GeneratedDailyCardDraft? {
-        guard !isSelectedDayUnavailable else { return nil }
-        guard let package = services.dayPackage(for: scheduledDateString), package.status != "archived" else { return nil }
+        guard !isAddingPiece, !isSelectedDayUnavailable else { return nil }
+        guard let package = services.dayPackage(for: scheduledDateString, pieceID: selectedPieceID), package.status != "archived" else { return nil }
         return package
+    }
+
+    private var selectedPieces: [Piece] { services.dayStore.orderedPieces(on: scheduledDateString) }
+
+    private var selectedPieceID: UUID? {
+        if let saved = appState.planSelectedPiece(on: scheduledDateString, context: services.context),
+           selectedPieces.contains(where: { $0.identity.pieceID == saved }) { return saved }
+        return selectedPieces.first?.identity.pieceID
+    }
+
+    private var selectedPiece: Piece? { selectedPieceID.flatMap { services.dayStore.piece(for: $0) } }
+
+    @ViewBuilder
+    private var pieceChoices: some View {
+        if selectedPieces.count > 1 {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                Text("Pieces for this day")
+                    .font(PocketSheetType.sectionTitle)
+                    .accessibilityAddTraits(.isHeader)
+                ForEach(selectedPieces) { piece in
+                    Button {
+                        resetIdeaLauncherState()
+                        appState.selectPlanPiece(piece.identity.pieceID, on: scheduledDateString, context: services.context)
+                        resetLightEdit(displayedCard)
+                    } label: {
+                        HStack(alignment: .top, spacing: PocketSheetSpace.s) {
+                            Text("\(piece.position + 1). \(piece.revision?.content.title ?? "New piece")")
+                                .font(PocketSheetType.rowTitle)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: PocketSheetSpace.xs)
+                            if !isAddingPiece, piece.identity.pieceID == selectedPieceID {
+                                Image(systemName: "checkmark").font(PocketSheetType.bodyText)
+                            }
+                        }
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                        .padding(.vertical, PocketSheetSpace.s)
+                        .padding(.horizontal, PocketSheetSpace.l)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .background(PocketSheetTheme.Color.fillMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(!isAddingPiece && piece.identity.pieceID == selectedPieceID ? [.isSelected] : [])
+                    .accessibilityIdentifier("plan.piece.\(piece.position)")
+                }
+            }
+        }
     }
 
     // MARK: - Sections
@@ -403,7 +509,6 @@ struct PlanHubView: View {
                         Text(formatted.weekday)
                             .font(PocketSheetType.sectionLabel)
                             .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                            .textCase(.uppercase)
                         Text(formatted.label)
                             .font(PocketSheetType.rowTitle)
                             .foregroundStyle(PocketSheetTheme.Color.ink)
@@ -497,6 +602,15 @@ struct PlanHubView: View {
                         .disabled(services.isUpdatingReadyDayPackage)
                 }
                 unpublishActionBlock
+                if let progress = selectedPiece?.revision?.filmingProgress, !progress.shotSceneIDs.isEmpty {
+                    Text("\(progress.shotSceneIDs.count) of \(card.sceneList.count) shots filmed")
+                        .font(PocketSheetType.rowSubtitle)
+                        .accessibilityIdentifier("plan.piece.filming")
+                }
+                PocketSheetSecondaryAction(title: "Move to another date") {
+                    showMoveSheet = true
+                }
+                .accessibilityIdentifier("plan.piece.move")
 
                 if isSelectedDayEligible, !showReplaceIdeaLauncher {
                     Button {
@@ -681,6 +795,8 @@ struct PlanHubView: View {
     private func generate(brief: String, confirmOverwrite: Bool) {
         guard !hasDispatchedGeneration || confirmOverwrite else { return }
         let dateString = scheduledDateString
+        let pieceID = selectedPieceID
+        let adding = isAddingPiece
         hasDispatchedGeneration = true
         generationStartTime = Date()
         showReplaceIdeaLauncher = false
@@ -690,12 +806,18 @@ struct PlanHubView: View {
                 _ = try await services.generateDayCard(
                     scheduledDate: dateString,
                     dayBrief: brief,
-                    confirmOverwrite: confirmOverwrite
+                    confirmOverwrite: confirmOverwrite,
+                    pieceID: pieceID,
+                    addingPiece: adding,
+                    onPieceSaved: { id in
+                        appState.selectPlanPiece(id, on: dateString, context: services.context)
+                        if scheduledDateString == dateString { isAddingPiece = false }
+                    }
                 )
                 guard scheduledDateString == dateString else { return }
                 isOtherIdeaOpen = false
                 otherIdeaText = ""
-                resetLightEdit(services.dayPackage(for: dateString))
+                resetLightEdit(displayedCard)
             } catch {
                 if !isGeneratingSelectedDay {
                     hasDispatchedGeneration = false
@@ -706,14 +828,15 @@ struct PlanHubView: View {
 
     private func makeAvailableOnToday() {
         let dateString = scheduledDateString
+        let pieceID = selectedPieceID
         Task { @MainActor in
             do {
-                let shouldOpenToday = try await services.makeDayAvailable(scheduledDate: dateString)
+                let shouldOpenToday = try await services.makeDayAvailable(scheduledDate: dateString, pieceID: pieceID)
                 if shouldOpenToday {
                     navigateToTodayAfterAvailable()
                 }
                 guard scheduledDateString == dateString else { return }
-                resetLightEdit(services.dayPackage(for: dateString))
+                resetLightEdit(displayedCard)
             } catch {
                 // Surfaced via services.lastMakeDayAvailableError; stay on Plan.
             }
@@ -731,11 +854,12 @@ struct PlanHubView: View {
 
     private func unpublishSelectedDay() {
         let dateString = scheduledDateString
+        let pieceID = selectedPieceID
         Task { @MainActor in
             do {
-                _ = try await services.unpublishDay(scheduledDate: dateString)
+                _ = try await services.unpublishDay(scheduledDate: dateString, pieceID: pieceID)
                 guard scheduledDateString == dateString else { return }
-                resetLightEdit(services.dayPackage(for: dateString))
+                resetLightEdit(displayedCard)
             } catch {
                 // Surfaced via services.lastUnpublishDayError.
             }
@@ -746,6 +870,7 @@ struct PlanHubView: View {
         guard canSaveLightEdit else { return }
         focusedLightEditField = nil
         let dateString = scheduledDateString
+        let pieceID = selectedPieceID
         let caption = lightEditCaption
         let scenes = ShotScript.editing(lightEditScript, scenes: lightEditScenes)
         let script = scenes.isEmpty ? lightEditScript : ShotScript.text(for: scenes)
@@ -755,14 +880,31 @@ struct PlanHubView: View {
                     scheduledDate: dateString,
                     package: ReadyDayPackageUpdate(
                         caption: caption,
-                        script: script.nilIfBlank,
+                        script: script.nilIfBlank == nil ? nil : script,
                         sceneList: scenes.isEmpty ? nil : scenes
-                    )
+                    ),
+                    pieceID: pieceID
                 )
                 guard scheduledDateString == dateString else { return }
-                resetLightEdit(services.dayPackage(for: dateString))
+                resetLightEdit(displayedCard)
             } catch {
                 // Surfaced via services.lastReadyDayPackageEditError.
+            }
+        }
+    }
+
+    private func moveSelectedPiece(to date: String) {
+        guard let pieceID = selectedPieceID else { return }
+        moveError = nil
+        showMoveSheet = false
+        Task { @MainActor in
+            do {
+                let moved = try await services.movePiece(pieceID, to: date)
+                appState.selectPlanPiece(moved.pieceID, on: moved.scheduledDate, context: services.context)
+                if let movedDate = Self.parseLocalDate(moved.scheduledDate) { selectedDate = movedDate }
+            } catch {
+                let isQueued = services.dayStore.outbox.contains { $0.kind == .movePiece && $0.pieceID == pieceID }
+                moveError = PieceMoveErrorDisplay.message(for: error, isQueued: isQueued)
             }
         }
     }
@@ -1065,5 +1207,58 @@ private struct PlanSevenDaySelector: View {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
+    }
+}
+
+private struct PlanPieceMoveSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var weekOffset = 0
+    let sourceDate: String
+    let today: Date
+    let onMove: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
+                    Text("Choose a date for this piece. Your edits and filmed shots stay with it.")
+                        .font(PocketSheetType.bodyText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(spacing: PocketSheetSpace.s) {
+                        ForEach(dates, id: \.self) { date in
+                            let value = SupabaseDateFormatting.dateString(from: date)
+                            PocketSheetSecondaryAction(title: SupabaseDateFormatting.displayDate(for: value)) {
+                                onMove(value)
+                            }
+                            .disabled(value == sourceDate)
+                            .accessibilityIdentifier("plan.move.date.\(value)")
+                        }
+                    }
+                    PocketSheetSecondaryAction(title: "Next week") { weekOffset += 1 }
+                        .accessibilityIdentifier("plan.move.next")
+                    if weekOffset > 0 {
+                        PocketSheetSecondaryAction(title: "Previous week") { weekOffset -= 1 }
+                            .accessibilityIdentifier("plan.move.previous")
+                    }
+                }
+                .padding(PocketSheetSpace.l)
+            }
+            .background(PocketSheetTheme.Color.paper)
+            .navigationTitle("Move to another date")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .font(PocketSheetType.actionSecondary)
+                        .accessibilityIdentifier("plan.move.cancel")
+                }
+            }
+        }
+        .tint(PocketSheetTheme.Color.ink)
+    }
+
+    private var dates: [Date] {
+        let start = PlanDayDateFormatting.calendar.startOfDay(for: today)
+        return (0..<7).compactMap { PlanDayDateFormatting.calendar.date(byAdding: .day, value: max(0, weekOffset) * 7 + $0, to: start) }
     }
 }

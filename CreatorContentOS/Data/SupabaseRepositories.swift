@@ -131,6 +131,16 @@ struct SupabaseTesterAccessRepository: TesterAccessRepository {
 struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
     let client: SupabaseClient
 
+    func movePiece(_ intent: ContentIntent, context: WorkspaceContext) async throws -> PieceMoveResult {
+        do {
+            return try await client.functions.invoke("move-piece", options: FunctionInvokeOptions(body: MovePieceRequest(intent: intent)))
+        } catch {
+            if let code = SupabaseFunctionErrorMapper.errorCode(from: error) { throw RepositoryError.edgeFunction(code) }
+            throw error
+        }
+    }
+
+
     func currentWeeklyContent(for context: WorkspaceContext) async throws -> WeeklyRepositoryContent {
         let response: SupabaseWeeklyReadResponse = try await client.readContent(.weekly, context: context)
         return try makeWeeklyContent(from: response)

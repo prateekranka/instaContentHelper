@@ -487,105 +487,116 @@ struct TodayPostPreparationView: View {
     @State private var didCopyCaption = false
 
     var body: some View {
-        PocketSheetScreen {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
-                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                    Text("Post")
-                        .font(PocketSheetType.screenTitle)
-                        .foregroundStyle(PocketSheetTheme.Color.ink)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(services.todayCard.title)
-                        .font(PocketSheetType.rowSubtitle)
-                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                }
-
-                PocketSheetFeedbackBanner(message: services.lastActionMessage, kind: .ready)
-                if let error = services.lastTodayDecisionSyncError?.nilIfBlank {
-                    PocketSheetFeedbackBanner(message: "Not saved to your account yet. \(error) ContentHelper tries again each time it refreshes.", kind: .issue)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("post.syncError")
-                }
-                if let saveError {
-                    PocketSheetFeedbackBanner(message: saveError, kind: .issue)
-                }
-
-                if services.todayCard.completionState == .posted {
-                    PocketSheetCard {
-                        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-                            Label("Posted", systemImage: "checkmark.circle.fill")
-                                .font(PocketSheetType.rowTitle)
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                PocketSheetScreen(showsBottomBar: !isEditing) {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
+                        VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
+                            Text("Post")
+                                .font(PocketSheetType.screenTitle)
                                 .foregroundStyle(PocketSheetTheme.Color.ink)
-                            Text(!services.hasPendingTodayDecision
-                                ? "Posted status is saved for this card. You can undo it while keeping all completed shots."
-                                : "Posted on this phone. It is not saved to your account yet.")
+                                .accessibilityAddTraits(.isHeader)
+                            Text(services.todayCard.title)
                                 .font(PocketSheetType.rowSubtitle)
                                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         }
-                    }
-                    .accessibilityIdentifier("post.posted")
-                } else {
-                    Text("Post in your usual app. ContentHelper does not publish it. Confirm here after the post is live.")
-                        .font(PocketSheetType.rowSubtitle)
-                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("post.manualInstructions")
-                }
 
-                if isEditing {
-                    editor.disabled(isSavingEdits)
-                    if !canSaveEdits {
-                        Text(saveRequirementMessage)
-                            .font(PocketSheetType.rowSubtitle)
-                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                } else {
-                    if !services.todayCard.isNonFilmingPost || PackageCopyText.script(for: services.todayCard).nilIfBlank != nil {
-                        copyBlock(title: "Script", text: PackageCopyText.script(for: services.todayCard).nilIfBlank, emptyText: "No script recorded.", didCopy: $didCopyScript)
-                    }
-                    copyBlock(title: "Caption", text: services.todayCard.caption?.nilIfBlank, emptyText: "No caption recorded.", didCopy: $didCopyCaption)
-                }
-            }
-        } bottomBar: {
-            PocketSheetCommandBar {
-                if let filmedShotCount, !isEditing {
-                    Text("All \(filmedShotCount.formatted()) \(filmedShotCount == 1 ? "shot" : "shots") filmed")
-                        .font(PocketSheetType.rowSubtitle)
-                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                        .opacity(completionVisible ? 1 : 0)
-                        .accessibilityHidden(!completionVisible)
-                        .allowsHitTesting(false)
-                }
-                if isEditing {
-                    HStack(spacing: PocketSheetSpace.s) {
-                        PocketSheetSecondaryAction(title: "Cancel") { cancelEditing() }
-                            .disabled(isSavingEdits)
-                            .accessibilityIdentifier("post.cancel")
-                        PocketSheetPrimaryAction(
-                            title: services.isUpdatingReadyDayPackage ? "Saving…" : "Save",
-                            systemImage: "checkmark"
-                        ) { saveEdits() }
-                            .disabled(isSavingEdits || services.isUpdatingReadyDayPackage || !canSaveEdits)
-                            .accessibilityIdentifier("post.save")
-                    }
-                } else {
-                    HStack(spacing: PocketSheetSpace.s) {
-                        PocketSheetSecondaryAction(title: "Edit script and caption") { beginEditing() }
-                            .accessibilityIdentifier("post.edit")
+                        PocketSheetFeedbackBanner(message: services.lastActionMessage, kind: .ready)
+                        if let error = services.lastTodayDecisionSyncError?.nilIfBlank {
+                            PocketSheetFeedbackBanner(message: "Not saved to your account yet. \(error) ContentHelper tries again each time it refreshes.", kind: .issue)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityIdentifier("post.syncError")
+                        }
+                        if let saveError {
+                            PocketSheetFeedbackBanner(message: saveError, kind: .issue)
+                        }
+
                         if services.todayCard.completionState == .posted {
-                            PocketSheetPrimaryAction(title: "Undo posted", systemImage: "arrow.uturn.backward") {
-                                services.undoPosted()
+                            PocketSheetCard {
+                                VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                                    Label("Posted", systemImage: "checkmark.circle.fill")
+                                        .font(PocketSheetType.rowTitle)
+                                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                                    Text(!services.hasPendingTodayDecision
+                                        ? "Posted status is saved for this card. You can undo it while keeping all completed shots."
+                                        : "Posted on this phone. It is not saved to your account yet.")
+                                        .font(PocketSheetType.rowSubtitle)
+                                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                                }
                             }
-                            .accessibilityIdentifier("post.undoPosted")
+                            .accessibilityIdentifier("post.posted")
                         } else {
-                            PocketSheetPrimaryAction(title: "Mark posted", systemImage: "paperplane.fill") {
-                                services.markPosted()
+                            Text("Post in your usual app. ContentHelper does not publish it. Confirm here after the post is live.")
+                                .font(PocketSheetType.rowSubtitle)
+                                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("post.manualInstructions")
+                        }
+
+                        if isEditing {
+                            editor.disabled(isSavingEdits)
+                            if !canSaveEdits {
+                                Text(saveRequirementMessage)
+                                    .font(PocketSheetType.rowSubtitle)
+                                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            .disabled(!services.canMarkPosted)
-                            .accessibilityIdentifier("post.markPosted")
+                        } else {
+                            if !services.todayCard.isNonFilmingPost || PackageCopyText.script(for: services.todayCard).nilIfBlank != nil {
+                                copyBlock(title: "Script", text: PackageCopyText.script(for: services.todayCard).nilIfBlank == nil ? nil : PackageCopyText.script(for: services.todayCard), emptyText: "No script recorded.", didCopy: $didCopyScript)
+                            }
+                            copyBlock(title: "Caption", text: services.todayCard.caption?.nilIfBlank, emptyText: "No caption recorded.", didCopy: $didCopyCaption)
+                        }
+                    }
+                } bottomBar: {
+                    PocketSheetCommandBar {
+                        if let filmedShotCount, !isEditing {
+                            Text("All \(filmedShotCount.formatted()) \(filmedShotCount == 1 ? "shot" : "shots") filmed")
+                                .font(PocketSheetType.rowSubtitle)
+                                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                                .opacity(completionVisible ? 1 : 0)
+                                .accessibilityHidden(!completionVisible)
+                                .allowsHitTesting(false)
+                        }
+                        if !isEditing {
+                            HStack(spacing: PocketSheetSpace.s) {
+                                PocketSheetSecondaryAction(title: "Edit script and caption") { beginEditing() }
+                                    .accessibilityIdentifier("post.edit")
+                                if services.todayCard.completionState == .posted {
+                                    PocketSheetPrimaryAction(title: "Undo posted", systemImage: "arrow.uturn.backward") {
+                                        services.undoPosted()
+                                    }
+                                    .accessibilityIdentifier("post.undoPosted")
+                                } else {
+                                    PocketSheetPrimaryAction(title: "Mark posted", systemImage: "paperplane.fill") {
+                                        services.markPosted()
+                                    }
+                                    .disabled(!services.canMarkPosted)
+                                    .accessibilityIdentifier("post.markPosted")
+                                }
+                            }
                         }
                     }
                 }
+                .clipped()
+                .onChange(of: focusedEditor) { _, field in
+                    if let field {
+                        proxy.scrollTo(field, anchor: .center)
+                    }
+                }
+                .onGeometryChange(for: CGSize.self) { geometry in
+                    geometry.size
+                } action: { _ in
+                    if let focusedEditor {
+                        proxy.scrollTo(focusedEditor, anchor: .center)
+                    }
+                }
+            }
+            if isEditing {
+                editActions
+                    .padding(.horizontal, PocketSheetSpace.l)
+                    .padding(.vertical, PocketSheetSpace.s)
+                    .background(PocketSheetTheme.Color.paper)
             }
         }
         .task(id: filmedShotCount) {
@@ -625,6 +636,20 @@ struct TodayPostPreparationView: View {
         }
     }
 
+    private var editActions: some View {
+        HStack(spacing: PocketSheetSpace.s) {
+            PocketSheetSecondaryAction(title: "Cancel") { cancelEditing() }
+                .disabled(isSavingEdits)
+                .accessibilityIdentifier("post.cancel")
+            PocketSheetPrimaryAction(
+                title: services.isUpdatingReadyDayPackage ? "Saving…" : "Save",
+                systemImage: "checkmark"
+            ) { saveEdits() }
+                .disabled(isSavingEdits || services.isUpdatingReadyDayPackage || !canSaveEdits)
+                .accessibilityIdentifier("post.save")
+        }
+    }
+
     private var editor: some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
             PocketSheetCard {
@@ -641,7 +666,8 @@ struct TodayPostPreparationView: View {
                         .font(PocketSheetType.bodyText)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
                         .scrollContentBackground(.hidden)
-                        .frame(minHeight: 150)
+                        .frame(height: 150)
+                        .id(EditorField.script)
                         .accessibilityIdentifier("post.script.editor")
                 }
             }
@@ -655,7 +681,8 @@ struct TodayPostPreparationView: View {
                         .font(PocketSheetType.bodyText)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
                         .scrollContentBackground(.hidden)
-                        .frame(minHeight: 120)
+                        .frame(height: 120)
+                        .id(EditorField.caption)
                         .accessibilityIdentifier("post.caption.editor")
                 }
             }

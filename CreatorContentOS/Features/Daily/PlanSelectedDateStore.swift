@@ -5,6 +5,13 @@ protocol PlanSelectedDateStoring: Sendable {
     func load() -> String?
     func save(_ scheduledDate: String?)
     func clear()
+    func loadPiece(for key: String) -> UUID?
+    func savePiece(_ pieceID: UUID, for key: String)
+}
+
+extension PlanSelectedDateStoring {
+    func loadPiece(for key: String) -> UUID? { nil }
+    func savePiece(_ pieceID: UUID, for key: String) {}
 }
 
 struct UserDefaultsPlanSelectedDateStore: PlanSelectedDateStoring, @unchecked Sendable {
@@ -27,6 +34,14 @@ struct UserDefaultsPlanSelectedDateStore: PlanSelectedDateStoring, @unchecked Se
             return
         }
         defaults.set(scheduledDate, forKey: key)
+    }
+
+    func loadPiece(for key: String) -> UUID? {
+        defaults.string(forKey: "ch-plan-selected-piece." + key).flatMap(UUID.init(uuidString:))
+    }
+
+    func savePiece(_ pieceID: UUID, for key: String) {
+        defaults.set(pieceID.uuidString, forKey: "ch-plan-selected-piece." + key)
     }
 
     func clear() {

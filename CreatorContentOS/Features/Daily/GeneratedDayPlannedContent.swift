@@ -183,7 +183,10 @@ struct GeneratedStoryboardBreakdownContent: View {
     }
 
     private var displayedThumbnailError: String? {
-        services.storyboardThumbnailErrors[card.id] ?? thumbnailError
+        guard let error = services.storyboardThumbnailErrors[card.id] ?? thumbnailError else { return nil }
+        if error == "storyboard_thumbnail_generation_not_configured" { return nil }
+        if error == AIConsentCopy.errorCode || error == AIConsentCopy.blockedMessage { return AIConsentCopy.blockedMessage }
+        return "We couldn't prepare the visuals. Try again."
     }
 
     private var storyboardPreparationTaskID: String {
@@ -500,6 +503,7 @@ struct GeneratedScriptTimelineBlock: View {
             PocketSheetCard {
                 GeneratedScriptTimelineContent(card: card, showsSectionChrome: true)
             }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("plan.script.timeline")
         }
     }
@@ -570,6 +574,7 @@ struct GeneratedScriptTimelineContent: View {
                 PackageCopyButton(title: "Copy full script", text: copyableScript)
                     .accessibilityIdentifier("plan.package.copyScript")
             }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("plan.script.timeline")
         } else {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {

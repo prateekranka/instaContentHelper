@@ -132,7 +132,37 @@ Done means the implementation exists locally. PostgreSQL execution and app runti
   Migrated generation intents retain date-only request identity so their saved idempotency keys still replay.
 - Older cache schemas remain readable. Migration keeps a recovery copy until the schema 4 snapshot saves atomically.
   Focused Swift typechecking and source checks are the phase 3 gates. The owner runs the full build and unchanged e2e suites separately.
-- Phases 4 to 6 remain open.
+- **Phase 4: Done locally (2026-10-22).** Plan lists pieces in position order with `plan.piece.<position>` choices.
+  It remembers the selected piece for each scoped date through the Plan selection store. One piece keeps the
+  existing package view, with Add a piece and Move to another date. Add opens the existing launcher;
+  cancelling saves no piece. The first saved generation intent creates the extra piece ID and appends it.
+- Generation, retry, replacement, package editing, approval, and unpublish target the selected Plan piece.
+  An unloaded date's first generation uses a date-only request, then binds to the server's position-0 piece.
+  This also handles an older empty local placeholder. Extra pieces use device-created IDs.
+- The new move RPC and edge route retain piece/revision identity and saved work, append at the target,
+  compact source positions, and maintain both compatibility mirrors. FakeServer follows the same contract.
+  A durable move intent survives relaunch and reuses its request key. Running generation defers a move.
+- New e2e cases cover two pieces across relaunch, independent replacement, movement with filming marks,
+  independent generation failure/retry, and blank shot lines with retained shot order.
+  Post script copy and Plan script saves retain blank lines. The blank-line regression compares exact clipboard values.
+  The two existing Post relaunch assertions ignore trailing whitespace on both sides because iOS snapshot values can trim it.
+- Phase 4 source and focused Swift checks passed. Backend CI passed 427 tests with no failures and two ignored checks.
+  The TypeScript check has the same three `scroll-view` declaration errors on HEAD and the changed test sources.
+  Full app build, e2e (including largest Dynamic Type), and PostgreSQL execution remain owner gates.
+  See [the phase 4 design notes](several-pieces-phase4-report.md) for the move contract and the first-piece rule.
+- **Phase 4 review fixes, round 1 (2026-10-22):** `ensurePiece` retains phase 3 defaults. Date-only first-piece
+  identity is explicit in generation paths, including onboarding generation and first-idea retargeting.
+  Plan copy checks open the Script tab. The retry test opens the short Caption panel before reading the light-edit script.
+  Move choices start at today; Previous week is absent on the first week. Permanent move rejections leave the outbox,
+  while running generation and temporary failures retain their request with a correct message.
+  Idea settings uses sentence case. Storyboard feedback hides unavailable configuration codes.
+  The supplied runtime failures were inspected; runtime checks are not rerun in this review.
+- **Phase 4 review fixes, rounds 2 to 5 (2026-10-22):** Plan panels keep each child's accessibility identifier, and
+  the agent rule check rejects a container identifier that overrides its children. Post keeps Save and Cancel in a
+  fixed row below bounded editors, and the active editor scrolls into view. An empty lifecycle placeholder yields to a
+  real piece on the same date, and a date never keeps two pieces at one position. Cancel after "Add a piece" returns
+  to the package title. Tests scroll before each assertion and address shots and dates by their own identifiers.
+- Phases 5 and 6 remain open. Today, Post, and day review still select position 0.
 
 ## Phase 2 validation
 
@@ -148,6 +178,14 @@ Done means the implementation exists locally. PostgreSQL execution and app runti
 - Run `p3full-224709` (2026-10-21): 11 of 12 groups, 35 loop tests, and 7 screen tests passed. The ready group
   failed one known, intermittent check (script blank lines after relaunch, also seen before phase 3). Two reruns
   of the ready group passed (`p3re-ready-235139`, `p3re-ready-235314`). The bug is queued for phase 4.
+
+## Phase 4 validation
+
+- `python3 scripts/check-agent-rules.py` passed all six groups with zero violations.
+- The Debug app built in `DerivedData/Verify` and was installed and checked on the simulator.
+- Run `p4final-054055` (2026-10-22): all 12 groups and 38 loop tests passed. The screen catalog passed 7 of 7 in
+  `p4final-screens3-115027`; earlier screen runs failed only on app launch timeouts while the Mac was overloaded.
+- Backend CI passed 427 tests. The move migration was applied to the local database only, and the local database test passed.
 
 ## Migrating saved work without loss
 

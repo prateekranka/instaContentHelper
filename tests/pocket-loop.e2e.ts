@@ -6,6 +6,7 @@ import {
   dismissKeyboard, openLoopSession, relaunchLoopSession,
   openLoopEditor, saveLoopEditor, finishLoopFilming, openLoopPlanDay,
   requestLoopReplacement, approveLoopPackage, openLoopTodayRoot,
+  addPlanPiece, selectPlanPiece, movePlanPiece,
 } from './pocket-support';
 
 async function ready(screen: Screen, device: Device, flags: Record<string, string> = {}) {
@@ -563,4 +564,114 @@ test('loop R4-C2: legacy backup cache retains its partial filming marks', async 
   await app.back();
   await archiveHas(screen, 'Loop legacy-backup package');
   await expect(screen.getByText('Used backup: 10-second story', { exact: true })).toBeVisible();
+});
+
+test('loop P4: moving a piece retains filmed shots through relaunch and return to Today', { timeout: 240_000 }, async ({ app, screen, device }) => {
+  const session = await ready(screen, device);
+  await screen.getByTestId('today.startFilming').tap();
+  await screen.getByTestId('shoot.complete').tap();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await app.back();
+  await openLoopPlanDay(screen, 0);
+  await movePlanPiece(screen, 1);
+  await scrollToControl(screen, screen.getByTestId('plan.piece.1'), 'up');
+  await expect(screen.getByTestId('plan.piece.1')).toBeSelected();
+  await scrollToControl(screen, screen.getByTestId('plan.piece.filming'));
+  await expect(screen.getByTestId('plan.piece.filming')).toContainText('1 of');
+  await relaunchLoopSession(device, session);
+  await selectTab(screen, 'Plan');
+  await scrollToControl(screen, screen.getByTestId('plan.piece.1'), 'up');
+  await expect(screen.getByTestId('plan.piece.1')).toBeSelected();
+  await scrollToControl(screen, screen.getByTestId('plan.package.title'));
+  await expect(screen.getByTestId('plan.package.title')).toHaveText('Loop ready package');
+  await scrollToControl(screen, screen.getByTestId('plan.piece.filming'));
+  await expect(screen.getByTestId('plan.piece.filming')).toContainText('1 of');
+  await movePlanPiece(screen, 0);
+  await openLoopTodayRoot(screen);
+  await expect(screen.getByTestId('today.startFilming')).toContainText('Continue filming');
+  await screen.getByTestId('today.startFilming').tap();
+  await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 2 of');
+  await screen.getByTestId('shoot.previous').tap();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+});
+
+test('loop P4: a failed second piece and its retry leave piece 0 unchanged', { timeout: 360_000 }, async ({ screen, device }) => {
+  const session = await ready(screen, device, { MCO_FAIL_FIRST_IDEA_ONCE: '1' });
+  await openLoopPlanDay(screen, 0);
+  const showScriptEditor = async () => {
+    await scrollToControl(screen, screen.getByTestId('plan.package.tab.caption'), 'up');
+    await tapVisibleControl(screen, screen.getByTestId('plan.package.tab.caption'));
+    const editor = screen.getByTestId('plan.package.script.editor');
+    await scrollToControl(screen, editor);
+    return editor;
+  };
+  const script0 = await (await showScriptEditor()).inputValue();
+  await addPlanPiece(screen);
+  await scrollToControl(screen, screen.getByTestId('plan.piece.retry'));
+  await expect(screen.getByTestId('plan.piece.retry')).toBeVisible({ timeout: 45_000 });
+  await selectPlanPiece(screen, 0);
+  await scrollToControl(screen, screen.getByTestId('plan.package.title'));
+  await expect(screen.getByTestId('plan.package.title')).toHaveText('Loop ready package');
+  await expect(await showScriptEditor()).toHaveValue(script0);
+  await selectPlanPiece(screen, 1);
+  await tapVisibleControl(screen, screen.getByTestId('plan.piece.retry'));
+  await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
+  await selectPlanPiece(screen, 0);
+  await expect(await showScriptEditor()).toHaveValue(script0);
+  await relaunchLoopSession(device, session, { MCO_FAIL_FIRST_IDEA_ONCE: '0' });
+  await selectTab(screen, 'Plan');
+  await scrollToControl(screen, screen.getByTestId('plan.piece.1'), 'up');
+  await expect(screen.getByTestId('plan.piece.1')).toHaveCount(1);
+  await scrollToControl(screen, screen.getByTestId('plan.piece.0'), 'up');
+  await expect(screen.getByTestId('plan.piece.0')).toHaveCount(1);
+  await expect(screen.getByTestId('plan.piece.0')).toBeSelected();
+  await scrollToControl(screen, screen.getByTestId('plan.package.title'));
+  await expect(screen.getByTestId('plan.package.title')).toHaveText('Loop ready package');
+  await expect(await showScriptEditor()).toHaveValue(script0);
+});
+
+test('loop P4: blank shot dialogue preserves script and shot order after relaunch', { timeout: 360_000 }, async ({ app, screen, device }) => {
+  const session = await openLoopSession(device, 'line-script');
+  await finishLoopFilming(screen);
+  await screen.getByTestId('post.edit').tap();
+  const script = screen.getByTestId('post.script.editor');
+  await scrollToControl(screen, script);
+  const original = await script.inputValue();
+  const count = original.split('\n').length;
+  expect(count).toBeGreaterThan(1);
+  const saved = ['Saved opening line.', ...Array(count - 1).fill('')].join('\n');
+  await device.setClipboard(saved);
+  const clipboardReadback = await device.clipboard();
+  expect(clipboardReadback).toBe(saved.slice(0, -1));
+  await clearThenType(screen, script, '');
+  await script.pressSequentially(saved);
+  await dismissKeyboard(screen, 'post.keyboardDone');
+  await tapEditorControl(screen, 'post.save');
+  await expect(screen.getByTestId('post.edit')).toBeVisible();
+  await device.setClipboard('Copy has not run.');
+  await tapVisibleControl(screen, screen.getByTestId('post.copy.script'));
+  expect(await device.clipboard()).toBe(clipboardReadback);
+  await app.back();
+  await openLoopEditor(screen);
+  const orderedTitles = [];
+  for (let index = 0; index < count; index += 1) {
+    const title = screen.getByTestId(`shootFolio.scene.${index + 1}.title`);
+    await scrollToControl(screen, title);
+    orderedTitles.push(await title.inputValue());
+  }
+  await relaunchLoopSession(device, session);
+  await openLoopEditor(screen);
+  for (let index = 0; index < count; index += 1) {
+    const title = screen.getByTestId(`shootFolio.scene.${index + 1}.title`);
+    await scrollToControl(screen, title);
+    await expect(title).toHaveValue(orderedTitles[index]);
+  }
+  await scrollToControl(screen, screen.getByTestId('shootFolio.cancelEdit'), 'up');
+  await tapVisibleControl(screen, screen.getByTestId('shootFolio.cancelEdit'));
+  await app.back();
+  await screen.getByTestId('today.startFilming').tap();
+  await expect(screen.getByTestId('post.edit')).toBeVisible();
+  await device.setClipboard('Copy has not run.');
+  await tapVisibleControl(screen, screen.getByTestId('post.copy.script'));
+  expect(await device.clipboard()).toBe(clipboardReadback);
 });

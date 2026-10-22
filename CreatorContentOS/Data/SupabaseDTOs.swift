@@ -1535,7 +1535,7 @@ enum SupabaseDateFormatting {
         return withFormatter(format: "yyyy-MM-dd") { $0.date(from: trimmedDate) }
     }
 
-    private static func dateString(from date: Date) -> String {
+    static func dateString(from date: Date) -> String {
         withFormatter(format: "yyyy-MM-dd") { $0.string(from: date) }
     }
 }

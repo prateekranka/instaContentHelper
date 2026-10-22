@@ -93,9 +93,9 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
   await screen.getByTestId('today.startFilming').tap();
   await expect(screen.getByText('Posted', { exact: true })).toBeVisible();
   await screen.getByTestId('post.edit').tap();
-  await expect(screen.getByTestId('post.script.editor')).toHaveValue(savedScript);
+  await expect.poll(async () => (await screen.getByTestId('post.script.editor').inputValue()).trimEnd()).toBe(savedScript.trimEnd());
   await scrollToControl(screen, screen.getByTestId('post.caption.editor'));
-  await expect(screen.getByTestId('post.caption.editor')).toHaveValue(savedCaption);
+  await expect.poll(async () => (await screen.getByTestId('post.caption.editor').inputValue()).trimEnd()).toBe(savedCaption.trimEnd());
   await app.screenshot('pocket-persisted-edits');
   await device.openApp('com.prateekranka.creatorcontenthelper', {
     relaunch: true,

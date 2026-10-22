@@ -2,7 +2,7 @@
 
 Implemented through phase 6, including round 5 local-date generation, replacement recovery, decision replay, and shot ownership corrections. Local changes only.
 No live migration or deployment is authorized.
-The approved scope includes phase 1 of `several-pieces-per-date-plan.md` (option A).
+The approved scope includes phases 1 to 4 of `several-pieces-per-date-plan.md` (option A).
 
 ## Records and invariants
 
@@ -94,6 +94,63 @@ deno test --allow-env --allow-read --allow-run=psql supabase/functions/_shared/c
 The migration fixture substitutes only the schema name, runs the new migration over seeded old records,
 checks saved content and pointers, and rolls back. It does not change public records.
 Backend CI skips this harness without a local URL. A passing Deno suite does not prove PostgreSQL execution.
+
+## HTTP: `move-piece` (several pieces, phase 4)
+
+Migration `20261021150000_move_content_piece.sql` adds service-only RPC `move_content_piece(payload jsonb)`.
+POST uses the existing device token. Owner, editor, and creator roles can move work in their authenticated workspace.
+The handler checks that the creator is active in that workspace. Clients supply `creator_id`, `piece_id`,
+`scheduled_date` (the expected source), `target_scheduled_date`, and `idempotency_key` (1 to 200 characters after trimming).
+Both dates must be valid `yyyy-MM-dd` dates. Moving saved work to a past date is permitted; generation date rules stay unchanged.
+
+The RPC locks the request key, then both dates in calendar order, with the same date lock used by piece creation.
+It rechecks scope, removal, and the expected source under lock. An active generation defers the move.
+No request key is consumed on a business error. Once generation finishes, the same saved move can retry.
+The client outbox puts a move after earlier generation for that piece and before later work for that piece.
+Failed non-generation work remains queued and receives the new date after the move succeeds.
+
+The piece appends after the target's existing pieces. The source's active positions become contiguous from 0.
+Updates run in ascending position order, so `content_pieces_active_date_position_key` stays valid throughout.
+The compatibility trigger updates both position-0 mirrors. An empty source loses its `creator_days` row.
+A move to the same date is an idempotent no-op and keeps its position.
+
+Piece IDs, revision IDs, revision content, shot IDs and order, lifecycle status, filming progress, and decisions stay unchanged.
+Every revision receives the new scheduled date. Generation run targets and saved result dates follow the piece.
+Job dates follow their revisions or piece-owned runs. The job foreign key is deferred until commit.
+Older job uniqueness by plan/date and run/date is replaced by non-unique lookup indexes; job ID,
+run/day-index uniqueness, and revision foreign keys remain. Job upsert uses that stable run/day-index key. This also permits moves of saved full-week work.
+Archive rows keep their original decision dates, text snapshots, and exact revision links.
+The historical revision guard permits only this RPC's date-only relocation during its active transaction.
+It continues to reject direct date changes and content changes.
+
+`content_piece_moves` stores the normalized request identity and result in the same transaction.
+The same key and identity return the saved result with `replayed = true`, without moving again.
+The same key with another piece or date returns `idempotency_key_conflict`.
+API roles, including `service_role`, cannot insert or edit these records directly.
+
+Success returns `piece_id`, `source_scheduled_date`, `scheduled_date` (target), `position`, `replayed`,
+and `affected_pieces`, an ordered array of `{piece_id, scheduled_date, position}` for both dates.
+FakeServer uses the same request, response, ordering, retained-work rules, and business error codes.
+The client persists the move before send. A lost reply or relaunch reuses its saved key.
+After acknowledgement, DayStore moves current and previous revisions together and retargets queued work.
+
+| HTTP | Error | Meaning |
+| --- | --- | --- |
+| 400 | `invalid_piece_id` | Missing or malformed piece ID. |
+| 400 | `invalid_move_piece_payload` | Missing scope, invalid dates, or missing/oversized key. |
+| 404 | `piece_not_found` | The piece does not exist. |
+| 409 | `piece_scope_mismatch` | The piece belongs to another workspace or creator. |
+| 409 | `piece_removed` | The piece was removed. |
+| 409 | `piece_date_conflict` | The source date changed before this request. |
+| 409 | `piece_generation_running` | Generation must finish before the move. The saved request can retry. |
+| 409 | `idempotency_key_conflict` | This key already identifies another move. |
+| 500 | `move_piece_failed` | RPC transport or unexpected persistence failure. |
+
+Existing authentication and creator lookup errors remain, including `creator_not_found` (404) and `creator_lookup_failed` (500).
+Backend tests cover route validation, authenticated scope, role checks, replies, and error forwarding.
+The rollback-only database harness adds append, source compaction, mirrors, historical work, decisions,
+job dates, replay, conflicts, busy generation, removed pieces, scope, and grant checks.
+The owner applies the migration locally and runs that harness. No database execution is claimed here.
 
 ## HTTP: `generate-week`
 

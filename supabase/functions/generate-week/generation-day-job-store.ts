@@ -271,7 +271,7 @@ export async function upsertDayJobRows(
 ): Promise<{ jobs: QueuedDayJobRecord[] } | { error: unknown }> {
   const { data, error } = await admin
     .from("weekly_generation_day_jobs")
-    .upsert(rows, { onConflict: "generation_run_id,scheduled_date" })
+    .upsert(rows, { onConflict: "generation_run_id,day_index" })
     .select(queuedDayJobSelect())
     .order("day_index", { ascending: true });
 
