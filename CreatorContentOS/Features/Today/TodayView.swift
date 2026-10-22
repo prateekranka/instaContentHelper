@@ -19,6 +19,8 @@ struct TodayView: View {
                         message: "Not saved to your account yet. \(decisionError) ContentHelper tries again each time it refreshes.",
                         kind: .issue
                     )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("today.syncError")
                 }
                 if dynamicTypeSize.isAccessibilitySize, case .ready = services.todayContentState {
                     primaryAction
@@ -26,6 +28,7 @@ struct TodayView: View {
                         notEasierAction
                     }
                 }
+                pieceChoices
                 switch services.todayContentState {
                 case .ready:
                     if let package = services.todayExecutionPackageDraft() {
@@ -36,8 +39,16 @@ struct TodayView: View {
                 case .loading:
                     TodayLoadingCard()
                 case .missingPublishedCard(let date):
-                    MissingTodayCardView(date: date) {
-                        appState.preparePlan(selecting: date)
+                    if services.todayPieces.count > 1,
+                       let id = services.selectedTodayPieceID,
+                       let piece = services.dayStore.piece(for: id) {
+                        Text(piece.revision?.content.title ?? "Preparing your piece")
+                            .font(PocketSheetType.screenTitle)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("today.pieceDraft.title")
+                    }
+                    MissingTodayCardView(date: date, isSelectedPiece: services.todayPieces.count > 1) {
+                        prepareSelectedPieceInPlan()
                     }
                 case .unavailable:
                     TodayUnavailableView(isRetrying: services.isRefreshingRepository) {
@@ -67,6 +78,41 @@ struct TodayView: View {
         .navigationBarHidden(true)
     }
 
+    @ViewBuilder
+    private var pieceChoices: some View {
+        if services.unfinishedTodayPieces.count > 1 {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                Text("Pieces for today")
+                    .font(PocketSheetType.sectionTitle)
+                    .accessibilityAddTraits(.isHeader)
+                ForEach(services.unfinishedTodayPieces) { piece in
+                    Button {
+                        services.selectTodayPiece(piece.identity.pieceID)
+                    } label: {
+                        HStack(alignment: .top, spacing: PocketSheetSpace.s) {
+                            Text(piece.revision?.content.title ?? "Preparing your piece")
+                                .font(PocketSheetType.rowTitle)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: PocketSheetSpace.xs)
+                            if services.selectedTodayPieceID == piece.identity.pieceID {
+                                Image(systemName: "checkmark")
+                                    .font(PocketSheetType.bodyText)
+                            }
+                        }
+                        .foregroundStyle(PocketSheetTheme.Color.ink)
+                        .padding(.vertical, PocketSheetSpace.s)
+                        .padding(.horizontal, PocketSheetSpace.l)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .background(PocketSheetTheme.Color.fillMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(services.selectedTodayPieceID == piece.identity.pieceID ? [.isSelected] : [])
+                    .accessibilityIdentifier("today.piece.\(piece.position)")
+                }
+            }
+        }
+    }
+
     private var notEasierAction: some View {
         PocketSheetSecondaryAction(title: "Need something easier?") {
             sheet = .notToday
@@ -75,8 +121,8 @@ struct TodayView: View {
     }
 
     private var primaryActionTitle: String {
-        if services.todayCard.completionState == .posted { return "View posted content" }
-        if services.todayCard.isNonFilmingPost { return "Get post text" }
+        if services.selectedTodayCard.completionState == .posted { return "View posted content" }
+        if services.selectedTodayCard.isNonFilmingPost { return "Get post text" }
         if services.areAllScenesShot { return "Get post text" }
         if services.shotSceneCount > 0 { return "Continue filming" }
         return "Start filming"
@@ -114,6 +160,7 @@ struct TodayView: View {
             NavigationLink(value: CreatorRoute.plan(selectedDate: planDateForReadyCard)) {
                 Label("Plan", systemImage: "calendar")
             }
+            .simultaneousGesture(TapGesture().onEnded { prepareSelectedPieceInPlan() })
             if dynamicTypeSize.isAccessibilitySize && services.canChooseEasierOption {
                 Button {
                     sheet = .notToday
@@ -139,11 +186,11 @@ struct TodayView: View {
 
     @ViewBuilder
     private var primaryAction: some View {
-        if !services.todayCard.scenes.isEmpty || services.todayCard.isNonFilmingPost {
+        if !services.selectedTodayCard.scenes.isEmpty || services.selectedTodayCard.isNonFilmingPost {
             NavigationLink(value: CreatorRoute.todayShootSession) {
                 primaryActionLabel(
                     title: primaryActionTitle,
-                    systemImage: services.todayCard.isNonFilmingPost ? "text.bubble" : "video.fill"
+                    systemImage: services.selectedTodayCard.isNonFilmingPost ? "text.bubble" : "video.fill"
                 )
             }
             .buttonStyle(PocketSheetPressFeedbackStyle())
@@ -171,8 +218,16 @@ struct TodayView: View {
         .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
     }
 
+    private func prepareSelectedPieceInPlan() {
+        let date = services.currentTodayDateString
+        appState.preparePlan(selecting: date)
+        if let pieceID = services.selectedTodayPieceID {
+            appState.selectPlanPiece(pieceID, on: date, context: services.context)
+        }
+    }
+
     private var planDateForReadyCard: String {
-        services.todayCard.scheduledDate?.nilIfBlank ?? services.currentTodayDateString
+        services.selectedTodayCard.scheduledDate?.nilIfBlank ?? services.currentTodayDateString
     }
 
     private var todayDateLine: String {
@@ -181,7 +236,7 @@ struct TodayView: View {
         }
 
         let todayDateString = services.currentTodayDateString
-        guard let scheduledDate = services.todayCard.scheduledDate,
+        guard let scheduledDate = services.selectedTodayCard.scheduledDate,
               let date = Self.apiDateFormatter.date(from: scheduledDate),
               !SupabaseDateFormatting.isDatePast(scheduledDate, todayString: todayDateString)
         else {
@@ -286,6 +341,7 @@ private struct TodayUnavailableView: View {
 
 private struct MissingTodayCardView: View {
     let date: String
+    var isSelectedPiece = false
     let onPlan: () -> Void
 
     var body: some View {
@@ -296,10 +352,10 @@ private struct MissingTodayCardView: View {
                     .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
-                    Text("Nothing ready for today")
+                    Text(isSelectedPiece ? "This piece needs review" : "Nothing ready for today")
                         .font(PocketSheetType.rowTitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
-                    Text("There’s no ready package for this date yet. Open Plan to generate one and make it available on Today.")
+                    Text(isSelectedPiece ? "Open this piece in Plan and make it ready before filming." : "There’s no ready package for this date yet. Open Plan to generate one and make it available on Today.")
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .lineSpacing(4)

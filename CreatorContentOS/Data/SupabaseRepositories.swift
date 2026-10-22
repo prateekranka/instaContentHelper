@@ -682,6 +682,18 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
         revisionInstructions: String?,
         context: WorkspaceContext
     ) async throws -> [StoryboardThumbnailAsset] {
+        try await generateStoryboardThumbnails(creatorID: creatorID, dailyCardID: dailyCardID, pieceID: nil, rowIndexes: rowIndexes, force: force, revisionInstructions: revisionInstructions, context: context)
+    }
+
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        pieceID: UUID?,
+        rowIndexes: [Int]?,
+        force: Bool,
+        revisionInstructions: String?,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset] {
         do {
             let response: SupabaseGenerateStoryboardThumbnailResponse = try await client.functions.invoke(
                 "generate-storyboard-thumbnail",
@@ -691,7 +703,8 @@ struct SupabaseDayGenerationRepository: DayGenerationRepository, StoryboardThumb
                         dailyCardID: dailyCardID,
                         rowIndexes: rowIndexes,
                         force: force,
-                        revisionInstructions: revisionInstructions
+                        revisionInstructions: revisionInstructions,
+                        pieceID: pieceID
                     )
                 )
             )

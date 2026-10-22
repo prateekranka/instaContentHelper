@@ -3,7 +3,7 @@ import { expect, type App } from 'e2e';
 import type { EngineSnapshot, SemanticNode } from 'e2e/engine';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { selectTab, scrollToControl, tapEditorControl, tapVisibleControl, dismissKeyboard } from './pocket-support';
+import { selectTab, scrollToControl, tapEditorControl, tapVisibleControl, dismissKeyboard, openLoopSession, openLoopPlanDay, addPlanPiece, approveLoopPackage, openLoopTodayRoot, selectTodayPiece } from './pocket-support';
 
 const bundleId = 'com.prateekranka.creatorcontenthelper';
 const test = mobileTest.extend<{ catalogSnapshot: { read(): Promise<EngineSnapshot> } }>();
@@ -428,4 +428,25 @@ test('break-ui uses the widest foldable window and preserves light appearance', 
     await device.setOrientation('portrait');
     if (isFoldable) await device.fold('closed');
   }
+});
+
+test('screen catalog: Today with two pieces', { timeout: 420_000 }, async ({ app, screen, device }) => {
+  await openLoopSession(device, 'ready');
+  await openLoopPlanDay(screen, 0);
+  await addPlanPiece(screen, 1);
+  await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
+  await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
+  await approveLoopPackage(screen);
+  await openLoopTodayRoot(screen);
+  await scrollToControl(screen, screen.getByTestId('today.piece.0'), 'up');
+  await expect(screen.getByTestId('today.piece.0')).toBeSelected();
+  await scrollToControl(screen, screen.getByTestId('today.piece.1'));
+  await expect(screen.getByTestId('today.piece.1')).toBeVisible();
+  await capture(app, device, 'today-two-pieces');
+  await selectTodayPiece(screen, 1);
+  await capture(app, device, 'today-two-pieces-second-selected');
+  await tapVisibleControl(screen, screen.getByTestId('today.startFilming'));
+  await scrollToControl(screen, screen.getByTestId('shoot.complete'));
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
+  await capture(app, device, 'today-two-pieces-filming');
 });

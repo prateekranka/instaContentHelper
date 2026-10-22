@@ -309,3 +309,11 @@ export async function movePlanPiece(screen: Screen, dayIndex: number) {
   await tapVisibleControl(screen, date);
   await expect(screen.getByTestId('plan.move.cancel')).toBeHidden();
 }
+
+export async function selectTodayPiece(screen: Screen, position: number) {
+  const piece = screen.getByTestId(`today.piece.${position}`);
+  await scrollToControl(screen, piece, 'up');
+  await piece.tap();
+  await scrollToControl(screen, piece, 'up');
+  await expect(piece).toBeSelected();
+}

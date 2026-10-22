@@ -7,6 +7,11 @@ struct ShootFolioView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
     @Environment(AppState.self) private var appState
+    @State private var pieceID: UUID?
+    private var projection: DayCardProjection? { services.todayPieceProjection(pieceID: pieceID) }
+    private var card: DailyCard { projection?.card ?? (pieceID == nil ? services.selectedTodayCard : .emptyTodayPlaceholder) }
+    private var canMarkPosted: Bool { card.pieceID.map { services.canMarkPosted(pieceID: $0) } ?? false }
+    private var allScenesShot: Bool { projection?.areAllScenesShot ?? false }
     @State private var selection: PackageSection = .scenes
     @State private var isEditing = false
     @State private var draftScenes: [ShotScene] = []
@@ -20,7 +25,7 @@ struct ShootFolioView: View {
             VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                 header
 
-                if case .ready = services.todayContentState {
+                if projection != nil {
                     PocketSheetFeedbackBanner(message: services.lastActionMessage, kind: .ready)
                     if let saveError {
                         PocketSheetFeedbackBanner(message: saveError, kind: .issue)
@@ -39,27 +44,27 @@ struct ShootFolioView: View {
                             sceneProgress
                         }
                         SceneListView(
-                            card: services.todayShootFolioCard,
+                            card: card,
                             isEditing: isEditing,
                             draftScenes: $draftScenes
                         )
                     case .script:
                         ScriptTimelineCopyBlock(
-                            card: services.todayShootFolioCard,
+                            card: card,
                             isEditing: isEditing,
                             draftScript: $draftScript
                         )
                     case .caption:
-                        CopyBlock(title: "Caption", bodyText: PackageCopyText.caption(for: services.todayCard), emptyText: "No caption recorded for today.")
+                        CopyBlock(title: "Caption", bodyText: PackageCopyText.caption(for: card), emptyText: "No caption recorded for today.")
                     case .audio:
-                        CopyBlock(title: "Audio", bodyText: services.todayCard.audioOptionNotes?.nilIfBlank, emptyText: "No audio notes recorded for today.")
+                        CopyBlock(title: "Audio", bodyText: card.audioOptionNotes?.nilIfBlank, emptyText: "No audio notes recorded for today.")
                     }
                 } else {
                     ShootFolioEmptyState(state: services.todayContentState)
                 }
             }
         } bottomBar: {
-            if case .ready = services.todayContentState {
+            if projection != nil {
                 if isEditing {
                     PocketSheetCommandBar {
                         PocketSheetPrimaryAction(
@@ -75,22 +80,23 @@ struct ShootFolioView: View {
                 } else if selection == .scenes {
                     PocketSheetCommandBar {
                         PocketSheetPrimaryAction(
-                            title: services.canMarkPosted ? "Mark as posted" : (services.areAllScenesShot ? "All scenes shot" : "Mark all as shot"),
-                            systemImage: services.canMarkPosted ? "paperplane.fill" : (services.areAllScenesShot ? "checkmark.circle.fill" : "checkmark.seal")
+                            title: canMarkPosted ? "Mark as posted" : (allScenesShot ? "All scenes shot" : "Mark all as shot"),
+                            systemImage: canMarkPosted ? "paperplane.fill" : (allScenesShot ? "checkmark.circle.fill" : "checkmark.seal")
                         ) {
-                            if services.canMarkPosted {
-                                services.markPosted()
+                            if canMarkPosted {
+                                services.markPosted(pieceID: card.pieceID)
                             } else {
-                                services.markAllScenesShot()
+                                services.markAllScenesShot(pieceID: card.pieceID)
                             }
                         }
-                        .disabled(services.areAllScenesShot && !services.canMarkPosted)
+                        .disabled(allScenesShot && !canMarkPosted)
                     }
                 }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
+            if pieceID == nil { pieceID = services.selectedTodayPieceID }
             _ = services.hydrateTodayStoryboardThumbnailsFromPlanPackage()
             if startsInEditingMode, !isEditing {
                 beginEditing()
@@ -101,24 +107,24 @@ struct ShootFolioView: View {
     private var sceneProgress: some View {
         PocketSheetCard {
             HStack(alignment: .center, spacing: PocketSheetSpace.m) {
-                Image(systemName: services.areAllScenesShot ? "checkmark.seal.fill" : "target")
+                Image(systemName: allScenesShot ? "checkmark.seal.fill" : "target")
                     .font(PocketSheetType.listIcon)
-                    .foregroundStyle(services.areAllScenesShot ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.ink)
+                    .foregroundStyle(allScenesShot ? PocketSheetTheme.Color.ink : PocketSheetTheme.Color.ink)
                     .frame(width: 34)
 
                 VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                    Text(services.areAllScenesShot ? "All scenes shot" : "\(services.shotSceneCount.formatted()) of \(services.todayCard.scenes.count.formatted()) \(services.todayCard.scenes.count == 1 ? "scene" : "scenes") shot")
+                    Text(allScenesShot ? "All scenes shot" : "\((projection?.shotSceneCount ?? 0).formatted()) of \(card.scenes.count.formatted()) \(card.scenes.count == 1 ? "scene" : "scenes") shot")
                         .font(PocketSheetType.rowTitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
-                    Text(services.areAllScenesShot ? "Ready for post assembly." : "\(services.unshotSceneCount.formatted()) remaining before the shoot is complete.")
+                    Text(allScenesShot ? "Ready for post assembly." : "\((projection?.unshotSceneCount ?? 0).formatted()) remaining before the shoot is complete.")
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 }
 
                 Spacer(minLength: PocketSheetSpace.s)
                 PocketSheetStatus(
-                    text: services.areAllScenesShot ? "Complete" : "\(services.unshotSceneCount.formatted()) left",
-                    kind: services.areAllScenesShot ? .ready : .pending
+                    text: allScenesShot ? "Complete" : "\((projection?.unshotSceneCount ?? 0).formatted()) left",
+                    kind: allScenesShot ? .ready : .pending
                 )
             }
         }
@@ -131,7 +137,7 @@ struct ShootFolioView: View {
                 Text("Shoot Folio")
                     .font(PocketSheetType.screenTitle)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
-                Text(isEditing ? "Editing scenes & script" : (services.todayCard.title.nilIfBlank ?? "Today's shoot"))
+                Text(isEditing ? "Editing scenes & script" : (card.title.nilIfBlank ?? "Today's shoot"))
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             }
@@ -196,11 +202,11 @@ struct ShootFolioView: View {
     }
 
     private var planDateForReadyCard: String {
-        services.todayCard.scheduledDate?.nilIfBlank ?? services.currentTodayDateString
+        card.scheduledDate?.nilIfBlank ?? services.currentTodayDateString
     }
 
     private var isReady: Bool {
-        if case .ready = services.todayContentState {
+        if projection != nil {
             return true
         } else {
             return false
@@ -209,7 +215,7 @@ struct ShootFolioView: View {
 
     private var hasDraftChanges: Bool {
         draftScript.nilIfBlank != nil
-            && (draftScenes != services.todayCard.scenes || draftScript != PackageCopyText.script(for: services.todayCard))
+            && (draftScenes != card.scenes || draftScript != PackageCopyText.script(for: card))
     }
 
     private var sectionTabs: some View {
@@ -239,8 +245,8 @@ struct ShootFolioView: View {
     }
 
     private func beginEditing() {
-        draftScenes = services.todayCard.scenes
-        draftScript = PackageCopyText.script(for: services.todayCard)
+        draftScenes = card.scenes
+        draftScript = PackageCopyText.script(for: card)
         saveError = nil
         isEditing = true
         if selection != .scenes && selection != .script {
@@ -249,8 +255,8 @@ struct ShootFolioView: View {
     }
 
     private func cancelEditing() {
-        draftScenes = services.todayCard.scenes
-        draftScript = PackageCopyText.script(for: services.todayCard)
+        draftScenes = card.scenes
+        draftScript = PackageCopyText.script(for: card)
         saveError = nil
         isEditing = false
     }
@@ -258,6 +264,7 @@ struct ShootFolioView: View {
     private func saveEdits() {
         guard hasDraftChanges, !services.isUpdatingReadyDayPackage else { return }
         let dateString = planDateForReadyCard
+        let selectedPieceID = card.pieceID
         let scenes = ShotScript.editing(draftScript, scenes: draftScenes)
         let script = scenes.isEmpty ? draftScript : ShotScript.text(for: scenes)
         Task { @MainActor in
@@ -267,7 +274,8 @@ struct ShootFolioView: View {
                     package: ReadyDayPackageUpdate(
                         script: script,
                         sceneList: scenes
-                    )
+                    ),
+                    pieceID: selectedPieceID
                 )
                 saveError = nil
                 isEditing = false
@@ -348,7 +356,7 @@ struct SceneListView: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Scene \(scene.number), \(scene.title), \(timecode(for: index, scene: scene)), \(services.isSceneShot(scene) ? "shot" : "not shot")")
+                    .accessibilityLabel("Scene \(scene.number), \(scene.title), \(timecode(for: index, scene: scene)), \(services.isSceneShot(scene, pieceID: card.pieceID) ? "shot" : "not shot")")
                 }
             }
         }
@@ -396,8 +404,8 @@ struct SceneListView: View {
                     }
                     Spacer(minLength: PocketSheetSpace.s)
                     PocketSheetStatus(
-                        text: services.isSceneShot(scene) ? "Shot" : scene.duration,
-                        kind: services.isSceneShot(scene) ? .ready : .pending
+                        text: services.isSceneShot(scene, pieceID: card.pieceID) ? "Shot" : scene.duration,
+                        kind: services.isSceneShot(scene, pieceID: card.pieceID) ? .ready : .pending
                     )
                 }
 
@@ -450,8 +458,8 @@ struct SceneDetailView: View {
                     HStack(spacing: PocketSheetSpace.s) {
                         PocketSheetStatus(text: scene.duration)
                         PocketSheetStatus(
-                            text: services.isSceneShot(scene) ? "Shot" : "Not shot",
-                            kind: services.isSceneShot(scene) ? .ready : .pending
+                            text: services.isSceneShot(scene, pieceID: card.pieceID) ? "Shot" : "Not shot",
+                            kind: services.isSceneShot(scene, pieceID: card.pieceID) ? .ready : .pending
                         )
                     }
                 }
@@ -462,22 +470,22 @@ struct SceneDetailView: View {
                 if let onScreenText = SceneGuidance.onScreenText(at: sceneIndex, in: card) {
                     detailBlock(title: "Text on screen", text: onScreenText)
                 }
-                if let postInstructions = services.todayCard.postInstructions?.nilIfBlank {
+                if let postInstructions = card.postInstructions?.nilIfBlank {
                     detailBlock(title: "Post guidance", text: postInstructions)
                 }
-                if let backupStory = services.todayCard.backupStory?.nilIfBlank {
+                if let backupStory = card.backupStory?.nilIfBlank {
                     detailBlock(title: "Backup option", text: backupStory)
                 }
             }
         } bottomBar: {
             PocketSheetCommandBar {
                 PocketSheetPrimaryAction(
-                    title: services.isSceneShot(scene) ? "Scene shot" : "Mark shot",
-                    systemImage: services.isSceneShot(scene) ? "checkmark.circle.fill" : "checkmark.seal"
+                    title: services.isSceneShot(scene, pieceID: card.pieceID) ? "Scene shot" : "Mark shot",
+                    systemImage: services.isSceneShot(scene, pieceID: card.pieceID) ? "checkmark.circle.fill" : "checkmark.seal"
                 ) {
-                    services.markSceneShot(scene)
+                    services.markSceneShot(scene, pieceID: card.pieceID)
                 }
-                .disabled(services.isSceneShot(scene))
+                .disabled(services.isSceneShot(scene, pieceID: card.pieceID))
             }
         }
         .navigationTitle("Scene \(scene.number)")

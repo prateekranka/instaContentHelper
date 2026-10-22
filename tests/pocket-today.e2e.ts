@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
-import { selectTab, startFromOnboarding, tapEditorControl, dismissKeyboard, scrollToControl } from './pocket-support';
+import { selectTab, startFromOnboarding, tapEditorControl, dismissKeyboard, scrollToControl, openLoopSession, openLoopPlanDay, approveLoopPackage, openLoopTodayRoot, selectTodayPiece, relaunchLoopSession, tapVisibleControl } from './pocket-support';
 
 test('Pocket opens with one ready idea and a reachable filming action', async ({ app, screen, device }) => {
   if (process.env.POCKET_E2E_INSTALL === '1') await device.installApp();
@@ -107,3 +107,52 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
   await expect(screen.getByText(title, { exact: true })).toHaveCount(1);
   await app.screenshot('pocket-single-archive-entry');
 });
+
+for (const large of [false, true]) {
+  test(`Today keeps two independent pieces and its selection${large ? ' at the largest text size' : ''}`, { timeout: 420_000 }, async ({ screen, device }) => {
+    const session = await openLoopSession(device, 'ready', large ? { MCO_DYNAMIC_TYPE_ACCESSIBILITY5: '1' } : {});
+    await openLoopPlanDay(screen, 0);
+    await tapVisibleControl(screen, screen.getByTestId('plan.package.tab.caption'));
+    await tapVisibleControl(screen, screen.getByTestId('plan.piece.add'));
+    await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
+    await tapVisibleControl(screen, screen.getByTestId('plan.daygen.idea.1'));
+    await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
+    await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
+    await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
+    await scrollToControl(screen, screen.getByTestId('plan.package.title'));
+    const secondTitle = await screen.getByTestId('plan.package.title').textContent();
+    await approveLoopPackage(screen);
+    await openLoopTodayRoot(screen);
+    await scrollToControl(screen, screen.getByTestId('today.title'), 'up');
+    await scrollToControl(screen, screen.getByTestId('today.piece.0'));
+    await expect(screen.getByTestId('today.piece.0')).toBeSelected();
+    await scrollToControl(screen, screen.getByTestId('today.piece.1'));
+    await selectTodayPiece(screen, 1);
+    await scrollToControl(screen, screen.getByTestId('today.package.title'));
+    await expect(screen.getByTestId('today.package.title')).toHaveText(secondTitle!);
+    await selectTab(screen, 'You');
+    await selectTab(screen, 'Today');
+    await scrollToControl(screen, screen.getByTestId('today.title'), 'up');
+    await scrollToControl(screen, screen.getByTestId('today.piece.1'));
+    await expect(screen.getByTestId('today.piece.1')).toBeSelected();
+    await relaunchLoopSession(device, session);
+    await scrollToControl(screen, screen.getByTestId('today.piece.1'));
+    await expect(screen.getByTestId('today.piece.1')).toBeSelected();
+    await tapVisibleControl(screen, screen.getByTestId('today.startFilming'));
+    await scrollToControl(screen, screen.getByTestId('shoot.complete'));
+    await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
+    await screen.getByTestId('shoot.complete').tap();
+    await scrollToControl(screen, screen.getByTestId('shoot.complete'));
+    await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+    await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
+    await relaunchLoopSession(device, session);
+    await scrollToControl(screen, screen.getByTestId('today.piece.0'));
+    await selectTodayPiece(screen, 0);
+    await scrollToControl(screen, screen.getByTestId('today.startFilming'), large ? 'up' : 'down');
+    await expect(screen.getByTestId('today.startFilming')).toContainText('Start filming');
+    await scrollToControl(screen, screen.getByTestId('today.piece.1'));
+    await selectTodayPiece(screen, 1);
+    await scrollToControl(screen, screen.getByTestId('today.startFilming'), large ? 'up' : 'down');
+    await expect(screen.getByTestId('today.startFilming')).toContainText('Continue filming');
+  });
+}

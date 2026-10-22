@@ -527,6 +527,9 @@ actor FakeServer {
 
     private func decide(_ payload: FakeObject) throws -> FakeServerResponse {
 #if DEBUG
+        if DebugLaunchConfiguration.isEnabled("MCO_FAIL_TODAY_DECISION_SYNC") {
+            return Self.failure("fixture_today_decision_sync_failed", status: 503)
+        }
         if DebugLaunchFlags.failTodayDecisionSyncOnce, !state.consumedFailures.contains("today-decision-sync") {
             state.consumedFailures.insert("today-decision-sync")
             return Self.failure("fixture_today_decision_sync_failed", status: 503)

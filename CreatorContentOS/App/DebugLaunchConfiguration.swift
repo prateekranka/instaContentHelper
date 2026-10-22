@@ -20,6 +20,7 @@ enum DebugLaunchConfiguration {
         "MCO_FAIL_FIRST_IDEA",
         "MCO_FAIL_FIRST_IDEA_ONCE",
         "MCO_FAIL_TODAY_DECISION_SYNC_ONCE",
+        "MCO_FAIL_TODAY_DECISION_SYNC",
         "MCO_LONG_CONTENT",
         "MCO_BREAK_UI_DATA",
         "MCO_BREAK_UI_320",

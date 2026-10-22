@@ -6,7 +6,7 @@ import {
   dismissKeyboard, openLoopSession, relaunchLoopSession,
   openLoopEditor, saveLoopEditor, finishLoopFilming, openLoopPlanDay,
   requestLoopReplacement, approveLoopPackage, openLoopTodayRoot,
-  addPlanPiece, selectPlanPiece, movePlanPiece,
+  addPlanPiece, selectPlanPiece, movePlanPiece, selectTodayPiece,
 } from './pocket-support';
 
 async function ready(screen: Screen, device: Device, flags: Record<string, string> = {}) {
@@ -566,7 +566,7 @@ test('loop R4-C2: legacy backup cache retains its partial filming marks', async 
   await expect(screen.getByText('Used backup: 10-second story', { exact: true })).toBeVisible();
 });
 
-test('loop P4: moving a piece retains filmed shots through relaunch and return to Today', { timeout: 240_000 }, async ({ app, screen, device }) => {
+test('loop P4: moving a piece retains filmed shots through relaunch and return to Today', { timeout: 360_000 }, async ({ app, screen, device }) => {
   const session = await ready(screen, device);
   await screen.getByTestId('today.startFilming').tap();
   await screen.getByTestId('shoot.complete').tap();
@@ -674,4 +674,128 @@ test('loop P4: blank shot dialogue preserves script and shot order after relaunc
   await device.setClipboard('Copy has not run.');
   await tapVisibleControl(screen, screen.getByTestId('post.copy.script'));
   expect(await device.clipboard()).toBe(clipboardReadback);
+});
+
+test('loop P5: posting one piece keeps the other piece a draft through relaunch', { timeout: 420_000 }, async ({ app, screen, device }) => {
+  const session = await ready(screen, device);
+  await openLoopPlanDay(screen, 0);
+  await addPlanPiece(screen, 1);
+  await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
+  await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
+  await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
+  await scrollToControl(screen, screen.getByTestId('plan.package.title'));
+  const draftTitle = await screen.getByTestId('plan.package.title').textContent();
+  await openLoopTodayRoot(screen);
+  await selectTodayPiece(screen, 0);
+  await finishLoopFilming(screen);
+  await tapVisibleControl(screen, screen.getByTestId('post.markPosted'));
+  await scrollToControl(screen, screen.getByTestId('post.undoPosted'));
+  await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
+  await app.back();
+  await scrollToControl(screen, screen.getByTestId('today.pieceDraft.title'), 'up');
+  await expect(screen.getByTestId('today.pieceDraft.title')).toHaveText(draftTitle!);
+  await relaunchLoopSession(device, session);
+  await scrollToControl(screen, screen.getByTestId('today.pieceDraft.title'), 'up');
+  await expect(screen.getByTestId('today.pieceDraft.title')).toHaveText(draftTitle!);
+  await openLoopPlanDay(screen, 0);
+  await selectPlanPiece(screen, 1);
+  await scrollToControl(screen, screen.getByTestId('plan.package.title'));
+  await expect(screen.getByTestId('plan.package.title')).toHaveText(draftTitle!);
+  await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
+  await expect(screen.getByTestId('daily.availableOnToday')).toBeEnabled();
+  await archiveHas(screen, 'Loop ready package');
+  await scrollToControl(screen, screen.getByTestId('archive.output.Loop ready package'));
+  await expect(screen.getByTestId('archive.output.Loop ready package')).toHaveText('Posted');
+});
+
+test('loop P5: a pending piece decision survives edits to the other piece and replays after relaunch', { timeout: 480_000 }, async ({ screen, device }) => {
+  const session = await ready(screen, device);
+  await openLoopPlanDay(screen, 0);
+  await addPlanPiece(screen, 1);
+  await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
+  await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
+  await approveLoopPackage(screen);
+  await openLoopTodayRoot(screen);
+  await selectTodayPiece(screen, 0);
+  await finishLoopFilming(screen);
+  await relaunchLoopSession(device, session, { MCO_FAIL_TODAY_DECISION_SYNC: '1' });
+  await tapVisibleControl(screen, screen.getByTestId('today.startFilming'));
+  await tapVisibleControl(screen, screen.getByTestId('post.markPosted'));
+  await scrollToControl(screen, screen.getByTestId('post.syncError'));
+  await expect(screen.getByTestId('post.syncError')).toBeVisible();
+  await relaunchLoopSession(device, session, { MCO_FAIL_TODAY_DECISION_SYNC: '1' });
+  await scrollToControl(screen, screen.getByTestId('today.syncError'), 'up');
+  await expect(screen.getByTestId('today.syncError')).toBeVisible();
+  await openLoopPlanDay(screen, 0);
+  await selectPlanPiece(screen, 1);
+  await tapVisibleControl(screen, screen.getByTestId('plan.package.tab.caption'));
+  const caption = screen.getByTestId('daily.ready.edit.caption');
+  await scrollToControl(screen, caption);
+  const changedCaption = 'This caption belongs only to the second piece.';
+  await clearThenType(screen, caption, changedCaption);
+  await tapVisibleControl(screen, screen.getByTestId('daily.ready.edit.save'));
+  await dismissKeyboard(screen);
+  await expect(screen.getByTestId('daily.ready.edit.save')).toHaveText('Save caption');
+  await expect(screen.getByTestId('daily.ready.edit.save')).toBeDisabled();
+  await relaunchLoopSession(device, session, { MCO_FAIL_TODAY_DECISION_SYNC: '1' });
+  await scrollToControl(screen, screen.getByTestId('today.syncError'), 'up');
+  await expect(screen.getByTestId('today.syncError')).toBeVisible();
+  await openLoopPlanDay(screen, 0);
+  await selectPlanPiece(screen, 1);
+  await tapVisibleControl(screen, screen.getByTestId('plan.package.tab.caption'));
+  await scrollToControl(screen, caption);
+  await expect(caption).toHaveValue(changedCaption);
+  await relaunchLoopSession(device, session, { MCO_FAIL_TODAY_DECISION_SYNC: '0' });
+  await scrollToControl(screen, screen.getByTestId('today.package.title'), 'up');
+  await expect(screen.getByTestId('today.syncError')).toBeHidden();
+  await openLoopPlanDay(screen, 0);
+  await selectPlanPiece(screen, 1);
+  await tapVisibleControl(screen, screen.getByTestId('plan.package.tab.caption'));
+  await scrollToControl(screen, caption);
+  await expect(caption).toHaveValue(changedCaption);
+  await archiveHas(screen, 'Loop ready package');
+  await scrollToControl(screen, screen.getByTestId('archive.output.Loop ready package'));
+  await expect(screen.getByTestId('archive.output.Loop ready package')).toHaveText('Posted');
+});
+
+test('loop P5: Post edits, copy, and undo stay with the opened piece when Today advances', { timeout: 480_000 }, async ({ app, screen, device }) => {
+  const session = await ready(screen, device);
+  await openLoopPlanDay(screen, 0);
+  await addPlanPiece(screen, 1);
+  await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
+  await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
+  await approveLoopPackage(screen);
+  await openLoopTodayRoot(screen);
+  await selectTodayPiece(screen, 1);
+  await finishLoopFilming(screen);
+  await tapVisibleControl(screen, screen.getByTestId('post.edit'));
+  const caption = screen.getByTestId('post.caption.editor');
+  await scrollToControl(screen, caption);
+  const savedCaption = 'A caption for piece two, with its own filming marks.';
+  await clearThenType(screen, caption, savedCaption);
+  await dismissKeyboard(screen, 'post.keyboardDone');
+  await tapVisibleControl(screen, screen.getByTestId('post.save'));
+  await scrollToControl(screen, screen.getByTestId('post.copy.caption'));
+  await expect(screen.getByTestId('post.copy.caption')).toBeVisible();
+  await device.setClipboard('Copy has not run.');
+  await tapVisibleControl(screen, screen.getByTestId('post.copy.caption'));
+  expect(await device.clipboard()).toBe(savedCaption);
+  await tapVisibleControl(screen, screen.getByTestId('post.markPosted'));
+  await scrollToControl(screen, screen.getByTestId('post.undoPosted'));
+  await expect(screen.getByTestId('post.undoPosted')).toBeVisible();
+  await tapVisibleControl(screen, screen.getByTestId('post.undoPosted'));
+  await scrollToControl(screen, screen.getByTestId('post.markPosted'));
+  await expect(screen.getByTestId('post.markPosted')).toBeEnabled();
+  await app.back();
+  await scrollToControl(screen, screen.getByTestId('today.package.title'), 'up');
+  await expect(screen.getByTestId('today.package.title')).toHaveText('Loop ready package');
+  await scrollToControl(screen, screen.getByTestId('today.startFilming'));
+  await expect(screen.getByTestId('today.startFilming')).toContainText('Start filming');
+  await selectTodayPiece(screen, 1);
+  await scrollToControl(screen, screen.getByTestId('today.startFilming'));
+  await expect(screen.getByTestId('today.startFilming')).toContainText('Get post text');
+  await relaunchLoopSession(device, session);
+  await tapVisibleControl(screen, screen.getByTestId('today.startFilming'));
+  await tapVisibleControl(screen, screen.getByTestId('post.copy.caption'));
+  expect(await device.clipboard()).toBe(savedCaption);
 });

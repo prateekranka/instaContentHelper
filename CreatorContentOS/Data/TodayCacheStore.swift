@@ -101,9 +101,11 @@ final class DayStore {
     }
 
     var readyCards: [DailyCard] {
-        pieceIDsByDate.keys.sorted().compactMap { date in
-            guard day(for: date)?.lifecycle.exposesReadyPackage == true else { return nil }
-            return projection(for: date)?.card
+        pieceIDsByDate.keys.sorted().flatMap { date in
+            orderedPieces(on: date).compactMap { piece in
+                guard piece.lifecycle.exposesReadyPackage else { return nil as DailyCard? }
+                return projection(pieceID: piece.identity.pieceID)?.card
+            }
         }
     }
 

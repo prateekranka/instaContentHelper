@@ -152,10 +152,12 @@ struct SupabaseGenerateStoryboardThumbnailRequest: Encodable, Hashable, Sendable
     var rowIndexes: [Int]?
     var force: Bool
     var revisionInstructions: String?
+    var pieceID: UUID? = nil
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
         case dailyCardID = "daily_card_id"
+        case pieceID = "piece_id"
         case rowIndexes = "row_indexes"
         case force
         case revisionInstructions = "revision_instructions"

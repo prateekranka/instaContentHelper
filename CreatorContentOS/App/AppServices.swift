@@ -27,35 +27,73 @@ final class AppServices {
     private var generationSummaryMetadata: GeneratedWeekDraft?
     private var generationSummaryDates: Set<String> = []
 
-    private var todayProjection: DayCardProjection? {
-        let date = currentTodayDateString
-        guard dayStore.day(for: date)?.lifecycle.exposesReadyPackage == true else { return nil }
-        return dayStore.projection(for: date)
+    private let todaySelectedPieceStore = TodaySelectedPieceStore()
+    private var todaySelectedPieces: [String: UUID] = [:]
+
+    var todayPieces: [Piece] {
+        dayStore.orderedPieces(on: currentTodayDateString).filter {
+            !$0.isLifecyclePlaceholder && ($0.revision?.content.status != "archived")
+        }
     }
 
+    var unfinishedTodayPieces: [Piece] {
+        todayPieces.filter { piece in
+            guard let decision = piece.revision?.decision?.completionState else { return true }
+            return decision == .shot
+        }
+    }
+
+    private var todaySelectionKey: String {
+        "\(context.workspaceID).\(context.creatorID).\(currentTodayDateString)"
+    }
+
+    var selectedTodayPieceID: UUID? {
+        let saved = todaySelectedPieces[todaySelectionKey] ?? todaySelectedPieceStore.load(for: todaySelectionKey)
+        let choices = unfinishedTodayPieces.isEmpty ? todayPieces : unfinishedTodayPieces
+        return choices.first { $0.identity.pieceID == saved }?.identity.pieceID ?? choices.first?.identity.pieceID ?? dayStore.day(for: currentTodayDateString)?.identity.pieceID
+    }
+
+    func selectTodayPiece(_ pieceID: UUID) {
+        guard todayPieces.contains(where: { $0.identity.pieceID == pieceID }) else { return }
+        todaySelectedPieces[todaySelectionKey] = pieceID
+        todaySelectedPieceStore.save(pieceID, for: todaySelectionKey)
+    }
+
+    func todayPieceProjection(pieceID: UUID? = nil) -> DayCardProjection? {
+        guard let id = pieceID ?? selectedTodayPieceID,
+              let piece = dayStore.piece(for: id), piece.scheduledDate == currentTodayDateString,
+              piece.lifecycle.exposesReadyPackage else { return nil }
+        return dayStore.projection(pieceID: id)
+    }
+
+    var selectedTodayCard: DailyCard {
+        todayPieceProjection()?.card ?? DailyCard(
+            id: context.creatorID,
+            title: "No ready package",
+            context: SupabaseDateFormatting.contextLine(for: currentTodayDateString),
+            effortLabel: "",
+            whyToday: "Generate or make a draft available.",
+            scheduledDate: currentTodayDateString,
+            scenes: []
+        )
+    }
+
+    @available(*, deprecated, message: "Read selectedTodayCard or use receivePublishedCard for seed inputs.")
     var todayCard: DailyCard {
-        get {
-            if let projection = todayProjection { return projection.card }
-            return DailyCard(
-                id: context.creatorID,
-                title: "No ready package",
-                context: SupabaseDateFormatting.contextLine(for: currentTodayDateString),
-                effortLabel: "",
-                whyToday: "Generate or make a draft available.",
-                scheduledDate: currentTodayDateString,
-                scenes: []
-            )
-        }
-        set {
-            do { try dayStore.receivePublished(newValue) }
-            catch { lastRepositoryError = error.localizedDescription }
-        }
+        get { selectedTodayCard }
+        set { receivePublishedCard(newValue) }
+    }
+
+    func receivePublishedCard(_ card: DailyCard) {
+        do { try dayStore.receivePublished(card) }
+        catch { lastRepositoryError = error.localizedDescription }
     }
 
     var shotSceneIDs: Set<UUID> {
-        get { dayStore.day(for: currentTodayDateString)?.revision?.filmingProgress.shotSceneIDs ?? [] }
+        get { selectedTodayPieceID.flatMap { dayStore.piece(for: $0)?.revision?.filmingProgress.shotSceneIDs } ?? [] }
         set {
-            do { try dayStore.transition(.markShots(newValue), on: currentTodayDateString) }
+            guard let pieceID = selectedTodayPieceID else { return }
+            do { try dayStore.transition(.markShots(newValue), pieceID: pieceID) }
             catch { lastRepositoryError = error.localizedDescription }
         }
     }
@@ -93,7 +131,7 @@ final class AppServices {
     var lastRepositoryError: String?
     var lastTodayDecisionSyncError: String?
     var hasPendingTodayDecision: Bool {
-        dayStore.outbox.contains { $0.kind == .decide && $0.revisionID == todayCard.id }
+        dayStore.outbox.contains { $0.kind == .decide && $0.revisionID == selectedTodayCard.id }
     }
     var lastRepositoryRefreshAttemptAt: Date?
     var lastRepositoryRefreshAt: Date?
@@ -107,7 +145,7 @@ final class AppServices {
     var lastRuntimeHealthError: String?
     var todayContentState: TodayContentState {
         get {
-            guard let day = dayStore.day(for: currentTodayDateString) else {
+            guard let day = selectedTodayPieceID.flatMap({ dayStore.piece(for: $0) }) else {
                 return isLoadingToday ? .loading : .unavailable
             }
             switch day.lifecycle {
@@ -208,26 +246,6 @@ final class AppServices {
         return content
     }
 
-    /// Today Shoot Folio card with Gemini storyboard thumbnails from Plan when Today is missing them.
-    var todayShootFolioCard: DailyCard {
-        var card = todayCard
-        let assets = resolvedStoryboardThumbnailAssets(for: card)
-        if !assets.isEmpty {
-            card.storyboardThumbnailAssets = assets
-        }
-        if card.voiceoverTimeline?.isEmpty != false,
-           let package = dayPackage(for: card.scheduledDate ?? currentTodayDateString),
-           !package.voiceoverTimeline.isEmpty {
-            card.voiceoverTimeline = package.voiceoverTimeline
-        }
-        if card.shotTimeline?.isEmpty != false,
-           let package = dayPackage(for: card.scheduledDate ?? currentTodayDateString),
-           !package.shotTimeline.isEmpty {
-            card.shotTimeline = package.shotTimeline
-        }
-        return card
-    }
-
     /// Prefer Plan/session Gemini storyboard assets when the published Today card lacks them.
     func resolvedStoryboardThumbnailAssets(for card: DailyCard) -> [StoryboardThumbnailAsset] {
         if Self.hasUsableStoryboardThumbnails(card.storyboardThumbnailAssets) {
@@ -237,22 +255,15 @@ final class AppServices {
         return dayStore.card(revisionID: card.id)?.storyboardThumbnailAssets ?? card.storyboardThumbnailAssets ?? []
     }
 
-    /// Copies Plan Gemini thumbnails onto `todayCard` so Shoot Folio can render them.
     @discardableResult
     func hydrateTodayStoryboardThumbnailsFromPlanPackage() -> Bool {
-        let assets = resolvedStoryboardThumbnailAssets(for: todayCard)
-        guard Self.hasUsableStoryboardThumbnails(assets) else { return false }
-        let existing = todayCard.storyboardThumbnailAssets ?? []
-        guard existing != assets else { return false }
-        todayCard.storyboardThumbnailAssets = assets
-        if let package = dayPackage(for: todayCard.scheduledDate ?? currentTodayDateString) {
-            if todayCard.voiceoverTimeline?.isEmpty != false, !package.voiceoverTimeline.isEmpty {
-                todayCard.voiceoverTimeline = package.voiceoverTimeline
-            }
-            if todayCard.shotTimeline?.isEmpty != false, !package.shotTimeline.isEmpty {
-                todayCard.shotTimeline = package.shotTimeline
-            }
-        }
+        let card = selectedTodayCard
+        let assets = resolvedStoryboardThumbnailAssets(for: card)
+        guard Self.hasUsableStoryboardThumbnails(assets), card.storyboardThumbnailAssets != assets else { return false }
+        guard let pieceID = card.pieceID, var package = dayPackage(for: card.scheduledDate ?? currentTodayDateString, pieceID: pieceID) else { return false }
+        package.storyboardThumbnailAssets = assets
+        do { try dayStore.receive(package) }
+        catch { lastRepositoryError = error.localizedDescription; return false }
         saveTodaySnapshot(source: "storyboard-thumbnail-hydrate")
         return true
     }
@@ -463,110 +474,104 @@ final class AppServices {
         completeToday(with: DailyDecision(completionState: completionState))
     }
 
-    var shotSceneCount: Int {
-        todayProjection?.shotSceneCount ?? 0
+    var shotSceneCount: Int { todayPieceProjection()?.shotSceneCount ?? 0 }
+    var unshotSceneCount: Int { todayPieceProjection()?.unshotSceneCount ?? 0 }
+    var areAllScenesShot: Bool { todayPieceProjection()?.areAllScenesShot ?? false }
+
+    func isSceneShot(_ scene: ShotScene, pieceID: UUID? = nil) -> Bool {
+        guard let id = pieceID ?? selectedTodayPieceID else { return false }
+        return dayStore.piece(for: id)?.revision?.filmingProgress.shotSceneIDs.contains(scene.id) == true
     }
 
-    var unshotSceneCount: Int {
-        todayProjection?.unshotSceneCount ?? 0
-    }
-
-    var areAllScenesShot: Bool {
-        todayProjection?.areAllScenesShot ?? false
-    }
-
-    func isSceneShot(_ scene: ShotScene) -> Bool {
-        shotSceneIDs.contains(scene.id)
-    }
-
-    func markSceneShot(_ scene: ShotScene) {
-        guard todayCard.scenes.contains(where: { $0.id == scene.id }),
-              !shotSceneIDs.contains(scene.id) else { return }
-        shotSceneIDs.insert(scene.id)
+    func markSceneShot(_ scene: ShotScene, pieceID: UUID? = nil) {
+        guard let id = pieceID ?? selectedTodayPieceID,
+              let projection = todayPieceProjection(pieceID: id),
+              projection.card.scenes.contains(where: { $0.id == scene.id }),
+              !isSceneShot(scene, pieceID: id) else { return }
+        var marks = dayStore.piece(for: id)?.revision?.filmingProgress.shotSceneIDs ?? []
+        marks.insert(scene.id)
+        do { try dayStore.transition(.markShots(marks), pieceID: id) }
+        catch { lastRepositoryError = error.localizedDescription; return }
         lastActionMessage = "Scene \(scene.number) marked shot."
-        if areAllScenesShot, dayStore.day(for: currentTodayDateString)?.revision?.decision == nil {
-            completeToday(with: DailyDecision.shot)
+        if todayPieceProjection(pieceID: id)?.areAllScenesShot == true, dayStore.piece(for: id)?.revision?.decision == nil {
+            completeToday(with: DailyDecision.shot, pieceID: id)
         } else {
             saveTodaySnapshot(source: "shot-progress")
         }
     }
 
-    func markAllScenesShot() {
-        shotSceneIDs.formUnion(todayCard.scenes.map(\.id))
+    func markAllScenesShot(pieceID: UUID? = nil) {
+        guard let id = pieceID ?? selectedTodayPieceID, let projection = todayPieceProjection(pieceID: id) else { return }
+        do { try dayStore.transition(.markShots(Set(projection.card.scenes.map(\.id))), pieceID: id) }
+        catch { lastRepositoryError = error.localizedDescription; return }
         lastActionMessage = "All scenes marked shot."
-        if dayStore.day(for: currentTodayDateString)?.revision?.decision == nil {
-            completeToday(with: DailyDecision.shot)
+        if dayStore.piece(for: id)?.revision?.decision == nil {
+            completeToday(with: DailyDecision.shot, pieceID: id)
         } else {
             saveTodaySnapshot(source: "shot-progress")
         }
     }
 
-    /// Records the card as posted once all scenes are shot. Produces the green
-    /// success toast the creator sees after shipping. The Shoot Folio only
-    /// reveals this action after every scene is marked shot.
-    func markPosted() {
-        guard canMarkPosted else { return }
+    func markPosted(pieceID: UUID? = nil) {
+        guard let id = pieceID ?? selectedTodayPieceID, canMarkPosted(pieceID: id) else { return }
         lastActionMessage = "Content marked as posted."
-        completeToday(with: DailyDecision.posted)
+        completeToday(with: DailyDecision.posted, pieceID: id)
     }
 
-    /// Replaces a posted decision with the existing shot decision while keeping
-    /// every completed scene. The archive upsert uses the daily card ID, so this
-    /// updates the current decision instead of creating a second archive row.
-    func undoPosted() {
-        guard todayCard.completionState == .posted else { return }
-        lastActionMessage = todayCard.isNonFilmingPost
-            ? "Posted status removed."
-            : "Posted status removed. Scenes stay marked shot."
-        completeToday(with: DailyDecision.shot)
+    func undoPosted(pieceID: UUID? = nil) {
+        guard let id = pieceID ?? selectedTodayPieceID,
+              let card = todayPieceProjection(pieceID: id)?.card, card.completionState == .posted else { return }
+        lastActionMessage = card.isNonFilmingPost ? "Posted status removed." : "Posted status removed. Scenes stay marked shot."
+        completeToday(with: DailyDecision.shot, pieceID: id)
     }
 
-    var canMarkPosted: Bool {
-        guard !isUnpublishingDay,
-              !dayStore.outbox.contains(where: { $0.kind == .editPackage && $0.packageAction == .returnToDraft && $0.revisionID == todayCard.id }) else { return false }
-        guard case .ready = todayContentState else { return false }
-        return (areAllScenesShot || todayCard.isNonFilmingPost) && todayCard.completionState != .posted
+    var canMarkPosted: Bool { selectedTodayPieceID.map { canMarkPosted(pieceID: $0) } ?? false }
+
+    func canMarkPosted(pieceID: UUID) -> Bool {
+        guard !isUnpublishingDay, let projection = todayPieceProjection(pieceID: pieceID),
+              !dayStore.outbox.contains(where: { $0.kind == .editPackage && $0.packageAction == .returnToDraft && $0.pieceID == pieceID }) else { return false }
+        return (projection.areAllScenesShot || projection.card.isNonFilmingPost) && projection.card.completionState != .posted
     }
 
     var canChooseEasierOption: Bool {
-        todayCard.completionState != .shot && todayCard.completionState != .posted
+        selectedTodayCard.completionState != .shot && selectedTodayCard.completionState != .posted
     }
 
-    func completeToday(with decision: DailyDecision) {
-        let isFilmingDecision = decision.completionState == .shot || decision.completionState == .posted
-        guard isFilmingDecision || canChooseEasierOption else { return }
-        guard canApplyTodayDecision(decision) else { return }
+    func completeToday(with decision: DailyDecision, pieceID: UUID? = nil) {
+        guard let id = pieceID ?? selectedTodayPieceID, canApplyTodayDecision(decision, pieceID: id) else { return }
         Task {
-            guard await prepareTodayDecision(decision) != nil else { return }
+            guard await prepareTodayDecision(decision, pieceID: id) != nil else { return }
             await replayOutboxImmediately()
         }
     }
 
     @discardableResult
     func completeTodayImmediately(with decision: DailyDecision) async -> ArchiveEntry {
-        let fallback = makeArchiveEntry(for: todayCard, decision: decision)
-        guard canApplyTodayDecision(decision), let intent = await prepareTodayDecision(decision) else { return fallback }
+        let fallback = makeArchiveEntry(for: selectedTodayCard, decision: decision)
+        guard let id = selectedTodayPieceID, canApplyTodayDecision(decision, pieceID: id),
+              let intent = await prepareTodayDecision(decision, pieceID: id) else { return fallback }
         await replayOutboxImmediately()
         if case .decision(let entry) = outboxResults[intent.id] { return entry }
         return intent.archiveSnapshot ?? fallback
     }
 
-    private func canApplyTodayDecision(_ decision: DailyDecision) -> Bool {
-        if decision.completionState == .posted, !canMarkPosted { return false }
-        guard var day = dayStore.day(for: currentTodayDateString) else { return false }
-        do { try day.transition(.decide(decision)); return true }
+    private func canApplyTodayDecision(_ decision: DailyDecision, pieceID: UUID) -> Bool {
+        if decision.completionState == .posted, !canMarkPosted(pieceID: pieceID) { return false }
+        guard var piece = dayStore.piece(for: pieceID), todayPieceProjection(pieceID: pieceID) != nil else { return false }
+        do { try piece.transition(.decide(decision)); return true }
         catch { return false }
     }
 
     @ObservationIgnored private var decisionPreparationTask: Task<ContentIntent?, Never>?
 
-    private func prepareTodayDecision(_ decision: DailyDecision) async -> ContentIntent? {
-        let card = todayCard
+    private func prepareTodayDecision(_ decision: DailyDecision, pieceID: UUID) async -> ContentIntent? {
+        guard let card = todayPieceProjection(pieceID: pieceID)?.card else { return nil }
         let previous = decisionPreparationTask
         let task = Task { @MainActor in
             if let previous { _ = await previous.value }
-            guard todayCard.id == card.id, canApplyTodayDecision(decision) else { return nil as ContentIntent? }
-            return await persistTodayDecision(decision, card: todayCard)
+            guard todayPieceProjection(pieceID: pieceID)?.card.id == card.id,
+                  canApplyTodayDecision(decision, pieceID: pieceID) else { return nil as ContentIntent? }
+            return await persistTodayDecision(decision, card: card)
         }
         decisionPreparationTask = task
         return await task.value
@@ -590,7 +595,9 @@ final class AppServices {
             if let entry = intent.archiveSnapshot { dayStore.mergeArchive([entry], authoritative: intent.undoPosted) }
             try await persistDaySnapshot(source: "decision")
             lastTodayDecisionSyncError = nil
-            Task { await cancelTodayNotification() }
+            if decision.completionState != .shot, selectedTodayPieceID != intent.pieceID,
+               let nextID = selectedTodayPieceID { selectTodayPiece(nextID) }
+            Task { await scheduleTodayNotificationIfNeededImmediately() }
             return intent
         } catch {
             lastTodayDecisionSyncError = error.localizedDescription
@@ -1108,6 +1115,7 @@ final class AppServices {
             let assets = try await repositories.storyboardThumbnails.generateStoryboardThumbnails(
                 creatorID: context.creatorID,
                 dailyCardID: card.id,
+                pieceID: card.pieceID ?? dayStore.piece(revisionID: card.id)?.identity.pieceID,
                 rowIndexes: rowIndexes,
                 force: force,
                 revisionInstructions: revisionInstructions,
@@ -1124,8 +1132,9 @@ final class AppServices {
         }
     }
 
-    func prepareStoryboardThumbnailsForVisibleCard(dailyCardID: UUID) async {
+    func prepareStoryboardThumbnailsForVisibleCard(dailyCardID: UUID, pieceID: UUID? = nil) async {
         guard let card = resolvedDailyCardForStoryboardThumbnail(dailyCardID: dailyCardID),
+              pieceID == nil || dayStore.piece(revisionID: dailyCardID)?.identity.pieceID == pieceID,
               !generatingStoryboardThumbnailCardIDs.contains(card.id)
         else { return }
 
@@ -1450,7 +1459,7 @@ final class AppServices {
                 latestGenerationSummary = draft.markedPublished
                 }
             if let todayCard = result.todayCard {
-                self.todayCard = todayCard
+                receivePublishedCard(todayCard)
             }
             lastPublishSummary = result.summary
             lastActionMessage = "Week published. Creator Today is updated."
@@ -1904,13 +1913,14 @@ final class AppServices {
     }
 
     func scheduleTodayNotificationIfNeededImmediately() async {
-        guard case .ready = todayContentState else {
+        guard let piece = unfinishedTodayPieces.first(where: { $0.lifecycle.exposesReadyPackage && $0.revision?.decision == nil }),
+              let card = todayPieceProjection(pieceID: piece.identity.pieceID)?.card else {
             await cancelTodayNotification()
             return
         }
         do {
             lastNotificationSchedule = try await notifications.scheduleTodayReminder(
-                for: todayCard,
+                for: card,
                 context: context
             )
             lastNotificationError = nil
@@ -2508,7 +2518,7 @@ final class AppServices {
         case .unpublished(let reply):
             guard replyMatches(pieceID: reply.pieceID, revisionID: reply.dailyCardID, date: reply.scheduledDate, intent: intent), reply.dailyCardID == intent.revisionID else { throw DayTransitionError.mismatchedRevision }
             if current, dayStore.piece(for: intent)?.lifecycle.exposesReadyPackage == true { try dayStore.transition(.returnToDraft, for: intent) }
-            if current, intent.scheduledDate == currentTodayDateString { await cancelTodayNotification() }
+            if current, intent.scheduledDate == currentTodayDateString { await scheduleTodayNotificationIfNeededImmediately() }
         case .package(let reply):
             guard replyMatches(pieceID: reply.pieceID, revisionID: reply.dailyCardID, date: reply.scheduledDate, intent: intent), reply.dailyCardID == intent.revisionID else { throw DayTransitionError.mismatchedRevision }
             if current, let patch = intent.package { try dayStore.updatePackage(on: intent.scheduledDate, revisionID: reply.dailyCardID, patch: patch, title: reply.title, caption: reply.caption) }

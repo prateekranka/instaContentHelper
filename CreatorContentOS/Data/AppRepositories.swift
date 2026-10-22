@@ -500,6 +500,16 @@ protocol StoryboardThumbnailRepository: Sendable {
         revisionInstructions: String?,
         context: WorkspaceContext
     ) async throws -> [StoryboardThumbnailAsset]
+
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        pieceID: UUID?,
+        rowIndexes: [Int]?,
+        force: Bool,
+        revisionInstructions: String?,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset]
 }
 
 extension StoryboardThumbnailRepository {
@@ -513,6 +523,19 @@ extension StoryboardThumbnailRepository {
     ) async throws -> [StoryboardThumbnailAsset] {
         throw RepositoryError.notConfigured("storyboard_thumbnail_generation_not_configured")
     }
+
+    func generateStoryboardThumbnails(
+        creatorID: UUID,
+        dailyCardID: UUID,
+        pieceID: UUID?,
+        rowIndexes: [Int]?,
+        force: Bool,
+        revisionInstructions: String?,
+        context: WorkspaceContext
+    ) async throws -> [StoryboardThumbnailAsset] {
+        try await generateStoryboardThumbnails(creatorID: creatorID, dailyCardID: dailyCardID, rowIndexes: rowIndexes, force: force, revisionInstructions: revisionInstructions, context: context)
+    }
+
 }
 
 extension WeeklyPlanRepository {

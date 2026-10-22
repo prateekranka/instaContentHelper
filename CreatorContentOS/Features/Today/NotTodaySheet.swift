@@ -5,7 +5,11 @@ struct NotTodaySheet: View {
     @Environment(AppServices.self) private var services
     @Environment(AppState.self) private var appState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var pieceID: UUID?
     @State private var detail: BackupDetail?
+    private var card: DailyCard {
+        services.todayPieceProjection(pieceID: pieceID)?.card ?? (pieceID == nil ? services.selectedTodayCard : .emptyTodayPlaceholder)
+    }
 
     var body: some View {
         ZStack {
@@ -60,8 +64,9 @@ struct NotTodaySheet: View {
                 .padding(.bottom, PocketSheetSpace.l)
             }
         }
+        .onAppear { if pieceID == nil { pieceID = services.selectedTodayPieceID } }
         .sheet(item: $detail) { detail in
-            BackupDecisionSheet(detail: detail) {
+            BackupDecisionSheet(detail: detail, pieceID: pieceID) {
                 complete(detail.decision)
             }
             .environment(\.dynamicTypeSize, dynamicTypeSize)
@@ -71,15 +76,15 @@ struct NotTodaySheet: View {
     }
 
     private var backupStorySubtitle: String {
-        services.todayCard.backupStory?.nilIfBlank ?? ""
+        card.backupStory?.nilIfBlank ?? ""
     }
 
     private var backupCaptionSubtitle: String {
-        services.todayCard.backupCaptionOnly?.nilIfBlank ?? ""
+        card.backupCaptionOnly?.nilIfBlank ?? ""
     }
 
     private func complete(_ decision: DailyDecision) {
-        services.completeToday(with: decision)
+        services.completeToday(with: decision, pieceID: pieceID)
         services.lastActionMessage = decision.confirmationMessage
         dismiss()
     }
@@ -120,6 +125,7 @@ private struct BackupDecisionSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppServices.self) private var services
     let detail: BackupDetail
+    let pieceID: UUID?
     let onUseBackup: () -> Void
 
     var body: some View {
@@ -129,9 +135,6 @@ private struct BackupDecisionSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
                         VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
-                            Text(eyebrow)
-                                .font(PocketSheetType.sectionLabel)
-                                .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                             Text(title)
                                 .font(PocketSheetType.screenTitle)
                                 .foregroundStyle(PocketSheetTheme.Color.ink)
@@ -179,11 +182,7 @@ private struct BackupDecisionSheet: View {
         }
     }
 
-    private var card: DailyCard { services.todayCard }
-
-    private var eyebrow: String {
-        detail == .story ? "BACKUP" : "BACKUP"
-    }
+    private var card: DailyCard { services.todayPieceProjection(pieceID: pieceID)?.card ?? .emptyTodayPlaceholder }
 
     private var title: String {
         detail == .story ? "10-second story" : "Caption-only post"
@@ -241,7 +240,7 @@ private struct BackupCopyBlock: View {
     var body: some View {
         PocketSheetCard {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-                Text(label.uppercased())
+                Text(label)
                     .font(PocketSheetType.sectionLabel)
                     .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
                 Text(text)

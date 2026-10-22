@@ -162,7 +162,27 @@ Done means the implementation exists locally. PostgreSQL execution and app runti
   fixed row below bounded editors, and the active editor scrolls into view. An empty lifecycle placeholder yields to a
   real piece on the same date, and a date never keeps two pieces at one position. Cancel after "Add a piece" returns
   to the package title. Tests scroll before each assertion and address shots and dates by their own identifiers.
-- Phases 5 and 6 remain open. Today, Post, and day review still select position 0.
+- **Phase 5: Done locally (2026-10-22).** Today selects unfinished pieces in position order and saves
+  each date's selection under its workspace and creator. With one unfinished piece, the choice list is absent.
+  Ready pieces keep the existing main card and action. A selected draft opens its own piece in Plan.
+- Today, filming, Shoot Folio, Post, backups, and skip use the selected piece. Open filming and Post screens
+  retain that piece ID. Posting advances Today while Post keeps the posted piece available for copy and Undo.
+  When no unfinished piece remains, Today keeps the existing completed-package presentation.
+- Screen reads no longer use `todayCard`. `todayPieceProjection(pieceID:)` is the common accessor
+  into the existing piece/revision cache. `selectedTodayCard` supplies the existing empty placeholder.
+  A deprecated `todayCard` alias forwards existing callers into the same projection and store import path.
+  Progress transitions and durable package/decision intents carry piece IDs. Thumbnail requests carry the
+  piece ID and exact revision ID. No second mutable package owner or cache schema is added.
+- Added e2e sources cover a posted piece beside a retained draft through relaunch, a held decision beside
+  an edit to another piece, selected-piece Post copy/edit/Undo, and selection/filming isolation at normal
+  and largest Dynamic Type. The screen catalog adds the two-piece Today and filming states.
+  The DEBUG-only `MCO_FAIL_TODAY_DECISION_SYNC` flag holds decision failures until cleared.
+  Existing e2e test bodies and shared helper behavior are unchanged; imports and new tests/helpers are additive.
+- Focused Swift typechecking passed for all 14 changed Swift files. All six agent-rule groups passed.
+  TypeScript has the same three `scroll-view` errors as HEAD, with no new errors. The direct npm command
+  could not resolve the registry, so both source sets used the same cached TypeScript compiler through npx.
+  `git diff --check` passed.
+- **Phase 6 remains open.** Day review and approval keep their existing behavior.
 
 ## Phase 2 validation
 
@@ -186,6 +206,19 @@ Done means the implementation exists locally. PostgreSQL execution and app runti
 - Run `p4final-054055` (2026-10-22): all 12 groups and 38 loop tests passed. The screen catalog passed 7 of 7 in
   `p4final-screens3-115027`; earlier screen runs failed only on app launch timeouts while the Mac was overloaded.
 - Backend CI passed 427 tests. The move migration was applied to the local database only, and the local database test passed.
+
+## Phase 5 validation
+
+- `python3 scripts/check-agent-rules.py` passed all six groups with zero violations.
+- The Debug app built in `DerivedData/Verify` and was installed and checked on the simulator.
+- Review round 1 moved Plan's piece controls above the storyboard. Existing Plan tests failed, so that move was
+  reverted. The largest-text Today test now opens the Caption tab before "Add a piece" and scrolls up to the filming action.
+- Run `p5full-142139` (2026-10-22): 10 of 12 groups, 37 of 41 loop tests, and 7 of 8 screen tests passed while
+  other simulators held the Mac load near 150. Every failure was a runner transport loss, an app launch timeout,
+  or a test timeout. Reruns at low load passed all of them: `p5re-plan-161504` (3 of 3), `p5re-loop-161504`
+  (R3-L3, R3-L4, R3-C3), `p5re2-screens-164123` (two-piece Today), and `p5re3-loop-203222` (piece move).
+- The piece move test took 220 of its 240 seconds in phase 4. Its limit is now 360 seconds, like the other phase 4 loop test.
+- No server files changed in phase 5.
 
 ## Migrating saved work without loss
 
@@ -218,4 +251,17 @@ Done means the implementation exists locally. PostgreSQL execution and app runti
 - `todayCard` has 127 uses. Change it in phase 5 behind one selected-piece projection, not with search and replace.
 - Two pieces on one date can generate at the same time. Check how the day-job lane cap
   (`claim_queued_day_job`) treats two runs for one creator and date before phase 4.
-- Notifications, reminders, and the weekly plan read one package per date. Check them in phase 5.
+- Notifications, reminders, and the weekly plan were checked in phase 5. See the audit below.
+
+## Phase 5 date-reader audit
+
+| Reader | Phase 5 result |
+| --- | --- |
+| Today data | Both production and fixture `creatorDays` reads already request `include_all_pieces`. Today now selects from the ordered pieces rather than the date's position-0 pointer. |
+| Notifications and reminders | The app has one local Today reminder per workspace and creator, through `TodayNotificationScheduler`. Scheduling now chooses the first unfinished, ready piece with no filming decision, in position order. It does not depend on the selected piece or position 0. Posting, using a backup, skipping, and unpublishing reschedule from the remaining pieces. It cancels when none qualifies. The existing single-piece reminder policy, time, permission flow, and copy remain. There is no separate active reminder reader. |
+| Weekly ready cards | `DayStore.readyCards` and `AppServices.weekCards` now include every ready piece, ordered by date and position, through the existing piece-keyed card cache. |
+| Legacy weekly plan and generated week summary | `weeklyPlan.days`, `DayStore.packages`, and `latestGenerationSummary` retain the position-0 compatibility projection. These APIs represent seven date slots and their existing review/approval actions. Position 0 is the defined compatibility representative for each slot; it is not the date's complete content list. Expanding these review states and approval counts belongs to phase 6, which this task leaves unchanged. Creator Plan's piece list already reads all ordered pieces and writes its selected piece. Today, filming, and Post do not use the legacy weekly projection. |
+| Legacy repository reads | Date-only `today` and `weekly` repository methods remain compatibility fallbacks when a repository does not implement the all-piece `days` read. Both current production and fixture repositories implement that read. Initializer parameters and publish response fields named `todayCard` remain transport/seed inputs; they are not screen projections. |
+
+Several independent pieces per date remains the product rule. A position-0 compatibility reader must not
+supply a total-piece count or determine whether all pieces on a date are complete.

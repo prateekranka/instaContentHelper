@@ -80,7 +80,7 @@ struct YouView: View {
                     var draft = data.applying(to: GeneratedDailyCardDraft.storyboardBreakdownFixture)
                     draft.scheduledDate = services.currentTodayDateString
                     draft.status = "ready"
-                    services.todayCard = draft.dailyCard(completionState: nil)
+                    services.receivePublishedCard(draft.dailyCard(completionState: nil))
                     services.todayContentState = .ready
                 }
             }

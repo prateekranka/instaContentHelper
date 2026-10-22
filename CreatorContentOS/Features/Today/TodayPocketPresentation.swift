@@ -18,15 +18,15 @@ struct TodayPocketPresentation: View {
                     Text("Shot list")
                         .font(PocketSheetType.sectionLabel)
                         .foregroundStyle(PocketSheetTheme.Color.inverseInk)
-                    Text("\(services.shotSceneCount.formatted()) of \(services.todayCard.scenes.count.formatted()) \(services.todayCard.scenes.count == 1 ? "shot" : "shots") done")
+                    Text("\(services.shotSceneCount.formatted()) of \(services.selectedTodayCard.scenes.count.formatted()) \(services.selectedTodayCard.scenes.count == 1 ? "shot" : "shots") done")
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .accessibilityIdentifier("today.package.sceneProgress")
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         TodayPocketShotCard(
                             row: row,
-                            scene: services.todayCard.scenes[safe: index],
-                            isShot: services.todayCard.scenes[safe: index].map { services.isSceneShot($0) } ?? false
+                            scene: services.selectedTodayCard.scenes[safe: index],
+                            isShot: services.selectedTodayCard.scenes[safe: index].map { services.isSceneShot($0) } ?? false
                         )
                     }
                 }
@@ -36,7 +36,7 @@ struct TodayPocketPresentation: View {
         }
         .task(id: storyboardPreparationTaskID) {
             guard missingThumbnailCount > 0 else { return }
-            await services.prepareStoryboardThumbnailsForVisibleCard(dailyCardID: card.id)
+            await services.prepareStoryboardThumbnailsForVisibleCard(dailyCardID: card.id, pieceID: card.pieceID)
         }
     }
 
@@ -244,6 +244,9 @@ private struct TodayPocketInstruction: View {
 struct TodayShootSessionView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var pieceID: UUID?
+    private var projection: DayCardProjection? { services.todayPieceProjection(pieceID: pieceID) }
+    private var card: DailyCard { projection?.card ?? (pieceID == nil ? services.selectedTodayCard : .emptyTodayPlaceholder) }
     @State private var sceneIndex = 0
     @State private var showingPost = false
     @State private var movingForward = true
@@ -253,25 +256,26 @@ struct TodayShootSessionView: View {
 
     var body: some View {
         Group {
-            if showingPost || services.areAllScenesShot || services.todayCard.isNonFilmingPost {
-                TodayPostPreparationView(filmedShotCount: completedFilming ? services.todayCard.scenes.count : nil)
+            if showingPost || projection?.areAllScenesShot == true || card.isNonFilmingPost {
+                TodayPostPreparationView(pieceID: pieceID, filmedShotCount: completedFilming ? card.scenes.count : nil)
             } else {
                 shootView
             }
         }
         .onAppear {
+            if pieceID == nil { pieceID = services.selectedTodayPieceID }
             sceneIndex = firstUnshotSceneIndex
-            showingPost = services.areAllScenesShot
+            showingPost = projection?.areAllScenesShot == true
         }
-        .onChange(of: services.areAllScenesShot) { _, allShot in
+        .onChange(of: projection?.areAllScenesShot == true) { _, allShot in
             if allShot {
                 completedFilming = true
                 showingPost = true
             }
         }
-        .onChange(of: services.todayCard.id) { _, _ in
+        .onChange(of: card.id) { _, _ in
             sceneIndex = firstUnshotSceneIndex
-            showingPost = services.areAllScenesShot
+            showingPost = projection?.areAllScenesShot == true
             completedFilming = false
             lastMarkedAt = nil
         }
@@ -287,13 +291,13 @@ struct TodayShootSessionView: View {
                         .accessibilityAddTraits(.isHeader)
                         .accessibilityIdentifier("shoot.scene.\(scene?.number ?? 0)")
                     if !dynamicTypeSize.isAccessibilitySize {
-                        Text(services.todayCard.title)
+                        Text(card.title)
                             .font(PocketSheetType.rowSubtitle)
                             .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     }
                 }
 
-                Text("Shot \((sceneIndex + 1).formatted()) of \(services.todayCard.scenes.count.formatted())")
+                Text("Shot \((sceneIndex + 1).formatted()) of \(card.scenes.count.formatted())")
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .accessibilityIdentifier("shoot.progress")
@@ -313,9 +317,9 @@ struct TodayShootSessionView: View {
             if let scene {
                 PocketSheetCommandBar {
                     PocketSheetPrimaryAction(
-                        title: services.isSceneShot(scene) ? "Next shot"
-                            : (services.unshotSceneCount == 1 ? "Finish filming" : "Mark shot"),
-                        systemImage: services.isSceneShot(scene) ? "checkmark.circle.fill" : "checkmark.seal",
+                        title: services.isSceneShot(scene, pieceID: pieceID) ? "Next shot"
+                            : (projection?.unshotSceneCount == 1 ? "Finish filming" : "Mark shot"),
+                        systemImage: services.isSceneShot(scene, pieceID: pieceID) ? "checkmark.circle.fill" : "checkmark.seal",
                         animatesSymbol: true
                     ) {
                         completeOrAdvance(scene)
@@ -340,7 +344,7 @@ struct TodayShootSessionView: View {
                         .accessibilityIdentifier("shoot.previous")
 
                         Button {
-                            changeScene(to: min(sceneIndex + 1, max(services.todayCard.scenes.count - 1, 0)))
+                            changeScene(to: min(sceneIndex + 1, max(card.scenes.count - 1, 0)))
                         } label: {
                             shotNavigationLabel("Next", symbol: "chevron.right")
                                 .frame(maxWidth: .infinity)
@@ -351,7 +355,7 @@ struct TodayShootSessionView: View {
                         .buttonStyle(PocketSheetPressFeedbackStyle())
                         .foregroundStyle(PocketSheetTheme.Color.ink)
                         .background(PocketSheetTheme.Color.fillMuted, in: RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
-                        .disabled(sceneIndex >= services.todayCard.scenes.count - 1)
+                        .disabled(sceneIndex >= card.scenes.count - 1)
                         .accessibilityLabel("Next shot")
                         .accessibilityIdentifier("shoot.next")
                     }
@@ -380,14 +384,14 @@ struct TodayShootSessionView: View {
 
     @ViewBuilder
     private func sessionScene(_ scene: ShotScene) -> some View {
-        let card = services.todayShootFolioCard
+        let card = self.card
         let rows = GeneratedStoryboardBreakdown.rows(for: card)
         let row = rows[safe: sceneIndex]
         PocketSheetCard {
             VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
                 sceneHeaderLayout {
                     Spacer(minLength: PocketSheetSpace.s)
-                    PocketSheetStatus(text: row?.timecode ?? scene.duration, kind: services.isSceneShot(scene) ? .ready : .pending)
+                    PocketSheetStatus(text: row?.timecode ?? scene.duration, kind: services.isSceneShot(scene, pieceID: pieceID) ? .ready : .pending)
                 }
 
                 sessionBlock(title: "What to film", text: row?.whatToShow ?? "Capture this scene clearly.")
@@ -423,18 +427,18 @@ struct TodayShootSessionView: View {
     }
 
     private func completeOrAdvance(_ scene: ShotScene) {
-        if services.isSceneShot(scene) {
+        if services.isSceneShot(scene, pieceID: pieceID) {
             guard lastMarkedAt.map({ $0.duration(to: ContinuousClock().now) >= .milliseconds(600) }) ?? true else { return }
-            let nextIndex = sceneIndex + 1 < services.todayCard.scenes.count
+            let nextIndex = sceneIndex + 1 < card.scenes.count
                 ? sceneIndex + 1 : firstUnshotSceneIndex
             changeScene(to: nextIndex)
         } else {
             lastMarkedAt = ContinuousClock().now
-            services.markSceneShot(scene)
+            services.markSceneShot(scene, pieceID: pieceID)
             #if canImport(UIKit)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             #endif
-            if services.areAllScenesShot {
+            if projection?.areAllScenesShot == true {
                 completedFilming = true
                 showingPost = true
             }
@@ -460,16 +464,19 @@ struct TodayShootSessionView: View {
     }
 
     private var scene: ShotScene? {
-        services.todayCard.scenes[safe: sceneIndex]
+        card.scenes[safe: sceneIndex]
     }
 
     private var firstUnshotSceneIndex: Int {
-        services.todayCard.scenes.firstIndex(where: { !services.isSceneShot($0) }) ?? 0
+        card.scenes.firstIndex(where: { !services.isSceneShot($0, pieceID: pieceID) }) ?? 0
     }
 }
 
 /// Post assembly stays local until the creator confirms the external action.
 struct TodayPostPreparationView: View {
+    var pieceID: UUID? = nil
+    private var projection: DayCardProjection? { services.todayPieceProjection(pieceID: pieceID) }
+    private var card: DailyCard { projection?.card ?? (pieceID == nil ? services.selectedTodayCard : .emptyTodayPlaceholder) }
     var filmedShotCount: Int? = nil
     @Environment(\.pocketReduceMotion) private var reduceMotion
     @State private var completionVisible = false
@@ -496,7 +503,7 @@ struct TodayPostPreparationView: View {
                                 .font(PocketSheetType.screenTitle)
                                 .foregroundStyle(PocketSheetTheme.Color.ink)
                                 .accessibilityAddTraits(.isHeader)
-                            Text(services.todayCard.title)
+                            Text(card.title)
                                 .font(PocketSheetType.rowSubtitle)
                                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         }
@@ -511,13 +518,13 @@ struct TodayPostPreparationView: View {
                             PocketSheetFeedbackBanner(message: saveError, kind: .issue)
                         }
 
-                        if services.todayCard.completionState == .posted {
+                        if card.completionState == .posted {
                             PocketSheetCard {
                                 VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                                     Label("Posted", systemImage: "checkmark.circle.fill")
                                         .font(PocketSheetType.rowTitle)
                                         .foregroundStyle(PocketSheetTheme.Color.ink)
-                                    Text(!services.hasPendingTodayDecision
+                                    Text(!services.dayStore.outbox.contains(where: { $0.kind == .decide && $0.revisionID == card.id })
                                         ? "Posted status is saved for this card. You can undo it while keeping all completed shots."
                                         : "Posted on this phone. It is not saved to your account yet.")
                                         .font(PocketSheetType.rowSubtitle)
@@ -542,10 +549,10 @@ struct TodayPostPreparationView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         } else {
-                            if !services.todayCard.isNonFilmingPost || PackageCopyText.script(for: services.todayCard).nilIfBlank != nil {
-                                copyBlock(title: "Script", text: PackageCopyText.script(for: services.todayCard).nilIfBlank == nil ? nil : PackageCopyText.script(for: services.todayCard), emptyText: "No script recorded.", didCopy: $didCopyScript)
+                            if !card.isNonFilmingPost || PackageCopyText.script(for: card).nilIfBlank != nil {
+                                copyBlock(title: "Script", text: PackageCopyText.script(for: card).nilIfBlank == nil ? nil : PackageCopyText.script(for: card), emptyText: "No script recorded.", didCopy: $didCopyScript)
                             }
-                            copyBlock(title: "Caption", text: services.todayCard.caption?.nilIfBlank, emptyText: "No caption recorded.", didCopy: $didCopyCaption)
+                            copyBlock(title: "Caption", text: card.caption?.nilIfBlank, emptyText: "No caption recorded.", didCopy: $didCopyCaption)
                         }
                     }
                 } bottomBar: {
@@ -562,16 +569,16 @@ struct TodayPostPreparationView: View {
                             HStack(spacing: PocketSheetSpace.s) {
                                 PocketSheetSecondaryAction(title: "Edit script and caption") { beginEditing() }
                                     .accessibilityIdentifier("post.edit")
-                                if services.todayCard.completionState == .posted {
+                                if card.completionState == .posted {
                                     PocketSheetPrimaryAction(title: "Undo posted", systemImage: "arrow.uturn.backward") {
-                                        services.undoPosted()
+                                        services.undoPosted(pieceID: card.pieceID)
                                     }
                                     .accessibilityIdentifier("post.undoPosted")
                                 } else {
                                     PocketSheetPrimaryAction(title: "Mark posted", systemImage: "paperplane.fill") {
-                                        services.markPosted()
+                                        services.markPosted(pieceID: card.pieceID)
                                     }
-                                    .disabled(!services.canMarkPosted)
+                                    .disabled(!(card.pieceID.map { services.canMarkPosted(pieceID: $0) } ?? false))
                                     .accessibilityIdentifier("post.markPosted")
                                 }
                             }
@@ -629,10 +636,10 @@ struct TodayPostPreparationView: View {
         }
         .onAppear {
             if !isEditing {
-                draftScenes = services.todayCard.scenes
-                draftScript = PackageCopyText.script(for: services.todayCard)
+                draftScenes = card.scenes
+                draftScript = PackageCopyText.script(for: card)
             }
-            if draftCaption.isEmpty { draftCaption = services.todayCard.caption ?? "" }
+            if draftCaption.isEmpty { draftCaption = card.caption ?? "" }
         }
     }
 
@@ -714,9 +721,9 @@ struct TodayPostPreparationView: View {
     }
 
     private func beginEditing() {
-        draftScenes = services.todayCard.scenes
-        draftScript = PackageCopyText.script(for: services.todayCard)
-        draftCaption = services.todayCard.caption ?? ""
+        draftScenes = card.scenes
+        draftScript = PackageCopyText.script(for: card)
+        draftCaption = card.caption ?? ""
         saveError = nil
         isEditing = true
     }
@@ -724,19 +731,19 @@ struct TodayPostPreparationView: View {
     private func cancelEditing() {
         guard !isSavingEdits else { return }
         focusedEditor = nil
-        draftScenes = services.todayCard.scenes
-        draftScript = PackageCopyText.script(for: services.todayCard)
-        draftCaption = services.todayCard.caption ?? ""
+        draftScenes = card.scenes
+        draftScript = PackageCopyText.script(for: card)
+        draftCaption = card.caption ?? ""
         saveError = nil
         isEditing = false
     }
 
     private var canSaveEdits: Bool {
-        draftCaption.nilIfBlank != nil && (services.todayCard.isNonFilmingPost || draftScript.nilIfBlank != nil)
+        draftCaption.nilIfBlank != nil && (card.isNonFilmingPost || draftScript.nilIfBlank != nil)
     }
 
     private var saveRequirementMessage: String {
-        services.todayCard.isNonFilmingPost ? "Keep some text in Caption before saving." : "Keep some text in Script and Caption before saving."
+        card.isNonFilmingPost ? "Keep some text in Caption before saving." : "Keep some text in Script and Caption before saving."
     }
 
     private func saveEdits() {
@@ -747,20 +754,22 @@ struct TodayPostPreparationView: View {
         }
         isSavingEdits = true
         focusedEditor = nil
-        let cardID = services.todayCard.id
-        let date = services.todayCard.scheduledDate?.nilIfBlank ?? services.currentTodayDateString
+        let cardID = card.id
+        let selectedPieceID = card.pieceID
+        let date = card.scheduledDate?.nilIfBlank ?? services.currentTodayDateString
         let scenes = ShotScript.editing(draftScript, scenes: draftScenes)
         let script = scenes.isEmpty ? draftScript : ShotScript.text(for: scenes)
         let caption = draftCaption
         Task { @MainActor in
             defer { isSavingEdits = false }
-            guard services.todayCard.id == cardID else { return }
+            guard card.id == cardID else { return }
             do {
                 _ = try await services.updateReadyDayPackage(
                     scheduledDate: date,
-                    package: ReadyDayPackageUpdate(caption: caption, script: script.nilIfBlank == nil ? nil : script, sceneList: services.todayCard.isNonFilmingPost ? nil : scenes)
+                    package: ReadyDayPackageUpdate(caption: caption, script: script.nilIfBlank == nil ? nil : script, sceneList: card.isNonFilmingPost ? nil : scenes),
+                    pieceID: selectedPieceID
                 )
-                if services.todayCard.id == cardID {
+                if card.id == cardID {
                     saveError = nil
                     isEditing = false
                 }

@@ -20,10 +20,7 @@ extension AppServices {
     /// Resolves the richest package model for inline Today rendering.
     func todayExecutionPackageDraft() -> GeneratedDailyCardDraft? {
         guard case .ready = todayContentState else { return nil }
-        let date = todayCard.scheduledDate?.nilIfBlank ?? currentTodayDateString
-        if let package = dayPackage(for: date), package.id == todayCard.id {
-            return package
-        }
-        return GeneratedDailyCardDraft(fromPublishedCard: todayShootFolioCard)
+        guard let id = selectedTodayPieceID else { return nil }
+        return dayPackage(for: currentTodayDateString, pieceID: id)
     }
 }
