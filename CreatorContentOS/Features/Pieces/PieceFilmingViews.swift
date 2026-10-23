@@ -74,6 +74,7 @@ struct PieceFilmingView: View {
     @State private var index = 0
     @State private var didPosition = false
     @State private var pickerItem: PhotosPickerItem?
+    @State private var showsPicker = false
     @State private var isImporting = false
     @State private var importError: String?
 
@@ -86,6 +87,7 @@ struct PieceFilmingView: View {
             }
         }
         .onAppear(perform: position)
+        .photosPicker(isPresented: $showsPicker, selection: $pickerItem, matching: .videos)
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
             attach(item)
@@ -146,7 +148,9 @@ struct PieceFilmingView: View {
                 }
             }
             PieceGroup {
-                PhotosPicker(selection: $pickerItem, matching: .videos) {
+                Button {
+                    showsPicker = true
+                } label: {
                     PieceInfoRow(
                         systemImage: "photo.on.rectangle",
                         title: capture?.clip == nil ? "Attach a clip from Photos" : "Replace clip",

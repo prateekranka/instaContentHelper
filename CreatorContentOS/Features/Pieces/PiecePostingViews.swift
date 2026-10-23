@@ -6,6 +6,7 @@ struct PieceReadyToPostView: View {
     @Environment(AppServices.self) private var services
     let pieceID: UUID
     @State private var pickerItem: PhotosPickerItem?
+    @State private var showsPicker = false
     @State private var isImporting = false
     @State private var importError: String?
 
@@ -17,10 +18,15 @@ struct PieceReadyToPostView: View {
                 ContentUnavailableView("This piece is no longer here", systemImage: "doc")
             }
         }
+        .photosPicker(isPresented: $showsPicker, selection: $pickerItem, matching: pickerFilter)
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
             attachFinal(item)
         }
+    }
+
+    private var pickerFilter: PHPickerFilter {
+        services.pieceStore.piece(pieceID)?.content.format.usesFilming == false ? .images : .videos
     }
 
     private func ready(_ piece: ContentPiece) -> some View {
@@ -33,7 +39,9 @@ struct PieceReadyToPostView: View {
             }
             PieceMediaHero(piece: piece, height: 260)
             PieceGroup {
-                PhotosPicker(selection: $pickerItem, matching: isVideo ? .videos : .images) {
+                Button {
+                    showsPicker = true
+                } label: {
                     PieceInfoRow(
                         systemImage: isVideo ? "play.circle" : "photo",
                         title: piece.finalMedia == nil ? (isVideo ? "Choose final video" : "Choose final photo") : (isVideo ? "Final video" : "Final photo"),
