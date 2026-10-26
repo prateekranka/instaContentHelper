@@ -49,5 +49,11 @@
 		<key>UIColorName</key>
 		<string>LaunchScreenBackground</string>
 	</dict>
+	<key>CFBundleDisplayName</key>
+	<string>Mira</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Use your microphone only when you tap Record to turn a request into editable text.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Recognise your spoken request on-device so you can review and edit the transcript before submitting.</string>
 </dict>
 </plist>

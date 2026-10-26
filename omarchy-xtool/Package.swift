@@ -24,6 +24,7 @@ let package = Package(
                 "CreatorContentOS/Config/Runtime.xcconfig",
                 "CreatorContentOS/CreatorContentOS.entitlements",
                 "CreatorContentOS/Info.plist",
+                "CreatorContentOS/Mira",
                 "CreatorContentOS/Resources/Assets.xcassets/AppIcon.appiconset",
                 "CreatorContentOS/Resources/Assets.xcassets/LaunchScreenBackground.colorset",
             ],

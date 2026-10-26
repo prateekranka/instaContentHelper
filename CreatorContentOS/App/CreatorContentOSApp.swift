@@ -14,7 +14,7 @@ struct CreatorContentOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            CreatorContentOSAppView()
+            MiraLaunchView()
                 .environment(appState)
                 .environment(appState.runtime.services)
                 .task {
@@ -23,17 +23,25 @@ struct CreatorContentOSApp: App {
                 .task {
                     await appState.observeAuthenticationChanges()
                 }
-                .task(id: appState.runtime.mode) {
-                    guard appState.authenticationPhase == .live else { return }
-                    let services = appState.runtime.services
-                    if services.loadTodayFromCache() {
-                        await services.scheduleTodayNotificationIfNeededImmediately()
-                    }
-                    await services.refreshFromRepositoriesImmediately()
+        }
+    }
+}
+
+private struct MiraLaunchView: View {
+    var body: some View {
+        Group {
 #if DEBUG
-                    services.applyDebugWeekStartOverrideIfNeeded()
+            if DebugLaunchFlags.forceFixtureUI && DebugLaunchConfiguration.isEnabled(
+                "MCO_LEGACY_POCKET_UI", environment: ProcessInfo.processInfo.environment,
+                arguments: ProcessInfo.processInfo.arguments
+            ) {
+                CreatorContentOSAppView()
+            } else {
+                MiraRootView()
+            }
+#else
+            MiraRootView()
 #endif
-                }
         }
     }
 }
