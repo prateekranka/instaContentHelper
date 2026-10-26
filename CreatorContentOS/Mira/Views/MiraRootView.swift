@@ -49,7 +49,7 @@ struct MiraRootView: View {
                 }
             }.tint(MiraTheme.olive)
         }
-        .aiConsentSheet()
+        .modifier(MiraConsentPresenter())
         .alert(
             "Mira",
             isPresented: Binding(

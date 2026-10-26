@@ -61,14 +61,18 @@ final class MiraStore {
             }
         }
     }
-    func flush() async {
-        guard loaded, !loadFailed else { return }
+    @discardableResult func flush() async -> Bool {
+        guard loaded, !loadFailed else { return false }
         saveTask?.cancel()
         document.sequence += 1
         do {
             try await repository.save(document)
             saveMessage = nil
-        } catch { saveMessage = error.localizedDescription }
+            return true
+        } catch {
+            saveMessage = error.localizedDescription
+            return false
+        }
     }
     func newProject() -> UUID {
         let project = MiraProject()
@@ -150,7 +154,10 @@ final class MiraStore {
         let job = MiraJob(inputRevision: project.inputRevision, input: input)
         update(id) { $0.job = job }
         generationTasks[id] = Task {
-            await flush()
+            guard await flush() else {
+                generationTasks[id] = nil
+                return
+            }
             await perform(id, job: job, service: service, start: true)
             generationTasks[id] = nil
         }
@@ -158,6 +165,10 @@ final class MiraStore {
     func reconnect(_ id: UUID, service: any MiraGenerationService) {
         guard generationTasks[id] == nil, let job = project(id)?.job, job.state == .working else { return }
         generationTasks[id] = Task {
+            guard await flush() else {
+                generationTasks[id] = nil
+                return
+            }
             await perform(id, job: job, service: service, start: true)
             generationTasks[id] = nil
         }

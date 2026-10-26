@@ -169,7 +169,7 @@ struct MiraProfileView: View {
             if case .live = appState.runtime.mode {
                 Text("Account connected")
                 Text(services.aiConsentStatusCopy)
-                Button("Review AI data permission") { services.requestAIConsentPrompt() }
+                NavigationLink("Review AI data permission") { MiraConsentReviewView() }
                 Button("Sign out") { Task { await appState.signOut() } }
             } else {
                 NavigationLink("Connect account") { SignInView() }
@@ -322,6 +322,39 @@ struct MiraBriefView: View {
             p.brief.confirmed = false
             p.brief.revision += 1
             p.touch()
+        }
+    }
+}
+
+struct MiraConsentReviewView: View {
+    @Environment(AppServices.self) private var services
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        MiraPage {
+            MiraSectionTitle(text: "AI data permission")
+            Text(AIConsentCopy.purposeAndDestinations.replacingOccurrences(of: "ContentHelper", with: "Mira"))
+            Text(
+                "Saved local work and manual editing stay available if you decline. On-device microphone audio is not uploaded."
+            )
+            Button("Allow AI partners") {
+                services.acceptAIConsent()
+                dismiss()
+            }.buttonStyle(MiraPrimaryStyle())
+            Button("Decline AI permission") {
+                services.declineAIConsent()
+                dismiss()
+            }
+        }.navigationTitle("AI permission")
+    }
+}
+struct MiraConsentPresenter: ViewModifier {
+    @Environment(AppServices.self) private var services
+    func body(content: Content) -> some View {
+        content.sheet(
+            isPresented: Binding(
+                get: { services.isAIConsentSheetPresented }, set: { services.setAIConsentSheetPresented($0) })
+        ) {
+            NavigationStack { MiraConsentReviewView() }
         }
     }
 }

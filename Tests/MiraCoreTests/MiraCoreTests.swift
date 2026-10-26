@@ -4,6 +4,19 @@ import Testing
 @testable import MiraCore
 
 struct MiraCoreTests {
+    @MainActor @Test func failedImportantSaveReportsFailureBeforeGenerationCanStart() async throws {
+        struct FailingRepository: MiraProjectRepository {
+            func load() async throws -> MiraDocument { MiraDocument() }
+            func save(_ document: MiraDocument) async throws {
+                throw MiraError.storage("Disk write unavailable")
+            }
+        }
+        let store = MiraStore(repository: FailingRepository())
+        await store.load()
+        _ = store.newProject()
+        #expect(await store.flush() == false)
+        #expect(store.saveMessage != nil)
+    }
     @Test func ignoredUnconfirmedBriefDoesNotBlockApplyingANewShotList() throws {
         var project = MiraProject()
         project.brief = MiraBrief(original: "Unconfirmed notes", revision: 4)
