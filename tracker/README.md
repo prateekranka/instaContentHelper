@@ -6,6 +6,8 @@ Run `npm ci`, `npm run check`, and `npm test` in this directory. Set `TRACKER_WR
 
 Deploy this directory to a separate Railway service, attach `/data`, set the secret through hosting secret storage, and expose an HTTPS domain. Run one replica. Never include local `work/` data in deployment inputs.
 
+`initial-state.json` is a safe public bootstrap snapshot of actual locally recorded tasks. On an empty database only, the server validates and transactionally imports its original server-generated timestamps and activity history. A populated volume is never replaced by this snapshot. This preserves pre-deployment activity without inventing new start/completion times. Later updates use the authenticated CLI. `node tracker/scripts/export-progress.mjs` from the repository root refreshes the public documentation snapshot and bootstrap file from `TRACKER_URL`.
+
 Use `TRACKER_URL` and `TRACKER_WRITE_TOKEN` in the agent environment. From the repository root:
 
 ```sh

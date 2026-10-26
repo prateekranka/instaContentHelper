@@ -33,6 +33,26 @@ export class Store {
   list(): Task[] {
     return (this.db.prepare('SELECT body FROM tasks ORDER BY id').all() as {body:string}[]).map(r => JSON.parse(r.body));
   }
+  initialize(snapshot: unknown): boolean {
+    if (this.list().length) return false;
+    const timestamp = z.iso.datetime();
+    const stored = mutation.omit({note:true}).extend({
+      title:z.string().min(1).max(160),description:z.string().max(3000),milestone:z.string().max(100),
+      criteria:z.array(z.string().min(1).max(500)).min(1),status:z.enum(['Planned','Working','Done']),
+      commits:z.array(z.string().regex(/^https:\/\/github\.com\/prateekranka\/instaContentHelper\/commit\/[a-f0-9]{40}$/)),
+      verification:z.string().max(5000),createdAt:timestamp,startedAt:timestamp.nullable(),updatedAt:timestamp,completedAt:timestamp.nullable(),
+      history:z.array(z.object({at:timestamp,note:z.string().min(1).max(5000),status:z.enum(['Planned','Working','Done'])}).strict()).min(1),
+    }).strict();
+    const tasks=z.array(stored).parse(snapshot);
+    if(new Set(tasks.map(t=>t.id)).size!==tasks.length)throw Error('Snapshot has duplicate task IDs');
+    for(const task of tasks)if(task.status==='Done'&&(!task.verification.trim()||(task.codeTask&&!task.commits.length)||task.blocker||!task.completedAt))throw Error('Snapshot completion evidence is missing');
+    this.db.exec('BEGIN IMMEDIATE');
+    try{
+      if(this.list().length){this.db.exec('ROLLBACK');return false;}
+      for(const task of tasks)this.db.prepare('INSERT INTO tasks VALUES(?,?)').run(task.id,JSON.stringify(task));
+      this.db.exec('COMMIT');return true;
+    }catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
   apply(key: string, input: Mutation): Task {
     this.db.exec('BEGIN IMMEDIATE');
     try {

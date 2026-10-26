@@ -1,0 +1,682 @@
+[
+  {
+    "id": "MIRA-001",
+    "title": "Tracker deployment and update CLI",
+    "description": "Public progress with durable records, authenticated updates and honest evidence.",
+    "milestone": "01",
+    "criteria": [
+      "Public HTTPS reads without login",
+      "Authenticated editing only; duplicate mutations are safe",
+      "Records survive restart; mobile and desktop layouts",
+      "Update CLI retains failed mutations"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/b9fd52a1faef8883362ce49c5aca86806bafa8fb",
+      "https://github.com/prateekranka/instaContentHelper/commit/0c5af417470a4a58023084d91846bbf554e44df7",
+      "https://github.com/prateekranka/instaContentHelper/commit/2cd125effba55232dcdd8b420980df474d898283",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c"
+    ],
+    "verification": "PASS: TypeScript; focused SQLite transaction/idempotency/reopen/evidence-gate unit test; TesterArmy e2e desktop/mobile/details/stale refresh flow and screenshots. PASS: public read, anonymous write rejection, authenticated idempotent update and conflicting-key rejection on local server. Public hosting, remote restart durability and another-device HTTPS are NOT verified.",
+    "createdAt": "2026-10-26T16:40:50.474Z",
+    "updatedAt": "2026-10-26T17:54:58.267Z",
+    "startedAt": "2026-10-26T16:40:50.474Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.474Z",
+        "note": "Implementation started; deployment and verification pending.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T16:47:46.041Z",
+        "note": "Authenticated API verification: public reads, rejected anonymous writes and duplicate-safe update checked.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T16:49:11.689Z",
+        "note": "Local tracker implemented and verified. GitHub commits pushed and remote visibility confirmed. Deployment remains blocked.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T16:50:23.863Z",
+        "note": "Authenticated API e2e passed; its commit is pushed and visible on GitHub. Public deployment remains blocked.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T17:54:58.267Z",
+        "note": "Tracker source and local verification remain complete; public HTTPS deployment is still pending. No public URL is claimed.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "No Railway session is saved. Initial approval reached a read-only configuration directory; that directory is now writable. Replacement activation codes expired without a saved login.",
+    "nextAction": "Complete a fresh Railway activation. Deploy tracker/ only, attach /data volume, set the private write token, then verify HTTPS and restart durability."
+  },
+  {
+    "id": "MIRA-002",
+    "title": "Toolchain and native build proof",
+    "description": "Pin omarchy full mode and establish native build and device access.",
+    "milestone": "02",
+    "criteria": [
+      "Pinned tooling and host versions",
+      "Darwin SDK build recorded",
+      "Install and launch on iPhone, or record exact blocker"
+    ],
+    "status": "Working",
+    "codeTask": false,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/ade21baba4b3a393fe10ecccd6264c18b92c94b4",
+      "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c"
+    ],
+    "verification": "Pinned omarchy commit and Swift 6.4.1; generated and corrected the existing-project adapter. Native Swift syntax parses. The real cross-platform coordinator compiles in Linux checks. Full SwiftUI build/install is NOT verified.",
+    "createdAt": "2026-10-26T16:40:50.475Z",
+    "updatedAt": "2026-10-26T17:54:58.275Z",
+    "startedAt": "2026-10-26T16:49:11.765Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.475Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T16:49:11.765Z",
+        "note": "Environment inspection and adapter preparation completed. No native compilation or device success claimed.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T17:03:03.546Z",
+        "note": "Owner waived archive/device access. Continue source and Linux domain checks with omarchy tooling; native full-SwiftUI compilation remains unverified.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T17:54:58.275Z",
+        "note": "Continued implementation through the pinned omarchy adapter as requested; no native runtime proof substituted.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "The owner waived archive/device access. Upstream no-Xcode mode cannot support the app’s NavigationStack/Binding/Environment APIs. Full-mode SDK/xtool are absent.",
+    "nextAction": "Keep native build evidence separate from domain compilation; do not request archive/device access again in this run."
+  },
+  {
+    "id": "MIRA-003",
+    "title": "Visual tokens and navigation",
+    "description": "Warm, accessible notebook with Today and Projects.",
+    "milestone": "03",
+    "criteria": [
+      "Two native navigation stacks",
+      "Labelled profile control; no excluded tabs",
+      "Light and dark palettes, Dynamic Type"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "Visual tokens/navigation source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "createdAt": "2026-10-26T16:40:50.476Z",
+    "updatedAt": "2026-10-26T17:54:58.303Z",
+    "startedAt": "2026-10-26T17:54:58.303Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.476Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.303Z",
+        "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+  },
+  {
+    "id": "MIRA-004",
+    "title": "Models and persistence",
+    "description": "Versioned saved projects, profile and revisions.",
+    "milestone": "04",
+    "criteria": [
+      "Atomic serialized writes and corrupt recovery",
+      "Relaunch restores meaningful position",
+      "History and filmed status survive safe edits"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/e37edef8f5e6fa0af92ae6de24203a768e6695a6",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "11 Swift tests pass: actual project and position reopen, atomic/stale writes, migration/future versions, corrupt recovery, unchanged-shot progress, stale proposals, ignored unconfirmed brief and save-failure gating. Core coordinator compiles on Linux.",
+    "createdAt": "2026-10-26T16:40:50.476Z",
+    "updatedAt": "2026-10-26T17:54:58.279Z",
+    "startedAt": "2026-10-26T17:03:03.540Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.476Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:03:03.540Z",
+        "note": "Implementing native-independent models, revision rules and atomic persistence with Linux Swift checks.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T17:54:58.279Z",
+        "note": "Models, persistence and coordinator implemented and tested; source evidence pushed.",
+        "status": "Working"
+      }
+    ],
+    "nextAction": "Retain native relaunch verification as outstanding; independent Linux proof is recorded in MIRA-017.",
+    "blocker": "Native relaunch flow is not verified; domain save/reopen is verified separately."
+  },
+  {
+    "id": "MIRA-005",
+    "title": "Quick ideas",
+    "description": "Correctable filming constraints and three distinct ideas.",
+    "milestone": "05",
+    "criteria": [
+      "Voice or text request; time differs from Reel duration",
+      "Select, adjust and more ideas preserve saved ideas"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "Quick ideas source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "createdAt": "2026-10-26T16:40:50.477Z",
+    "updatedAt": "2026-10-26T17:54:58.307Z",
+    "startedAt": "2026-10-26T17:54:58.307Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.477Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.307Z",
+        "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+  },
+  {
+    "id": "MIRA-006",
+    "title": "Editable scripts",
+    "description": "Speakable hook, script and caption.",
+    "milestone": "06",
+    "criteria": [
+      "Manual edits autosave",
+      "Language and estimated runtime visible",
+      "Confirm revision before shot list"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "Editable scripts source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "createdAt": "2026-10-26T16:40:50.478Z",
+    "updatedAt": "2026-10-26T17:54:58.310Z",
+    "startedAt": "2026-10-26T17:54:58.310Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.478Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.310Z",
+        "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+  },
+  {
+    "id": "MIRA-007",
+    "title": "Detailed storyboards",
+    "description": "Concrete independently filmable shots.",
+    "milestone": "07",
+    "criteria": [
+      "Recording and edited durations",
+      "Placement, action, words, text and alternatives",
+      "Requirements map to passages or shots"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "Detailed storyboards source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "createdAt": "2026-10-26T16:40:50.478Z",
+    "updatedAt": "2026-10-26T17:54:58.313Z",
+    "startedAt": "2026-10-26T17:54:58.313Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.478Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.313Z",
+        "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+  },
+  {
+    "id": "MIRA-008",
+    "title": "Shooting checklist and resume",
+    "description": "Focused filming steps with honest user-reported progress.",
+    "milestone": "08",
+    "criteria": [
+      "Previous, Next, Mark filmed and easier work",
+      "Resume at same shot after relaunch"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "Shooting/resume source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "createdAt": "2026-10-26T16:40:50.479Z",
+    "updatedAt": "2026-10-26T17:54:58.316Z",
+    "startedAt": "2026-10-26T17:54:58.316Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.479Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.316Z",
+        "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+  },
+  {
+    "id": "MIRA-009",
+    "title": "AI backend and contracts",
+    "description": "Use existing Supabase infrastructure for validated generation.",
+    "milestone": "09",
+    "criteria": [
+      "Credentials remain server-side",
+      "Malformed outputs and ownership rejected",
+      "Live generation demonstrated; fixtures explicitly selected"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0"
+    ],
+    "verification": "Backend type-check and full regression: 398 passed, 0 failed, 1 ignored. New Mira checks cover malformed outputs, language/duration, source-backed briefs, missing codes/health claims, shot boundaries, auth, ownership, replay and cancellation.",
+    "createdAt": "2026-10-26T16:40:50.480Z",
+    "updatedAt": "2026-10-26T17:54:58.282Z",
+    "startedAt": "2026-10-26T17:54:58.282Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.480Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T16:49:11.833Z",
+        "note": "API-dependent implementation has not started while the credential decision is pending.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:03:03.531Z",
+        "note": "Owner confirmed reuse of existing Supabase server-side AI credentials; credential decision resolved.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.282Z",
+        "note": "Credential reuse confirmed by owner. Added the new endpoint using existing server-side provider configuration; no secret copied into app source.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "New Supabase function is not deployed. Supabase CLI authentication is unavailable; live generation is not verified.",
+    "nextAction": "Review the concrete API before/after in docs/mira-handoff.md; deploy to the existing authenticated Supabase project, then verify live generation."
+  },
+  {
+    "id": "MIRA-010",
+    "title": "Durable generation and recovery",
+    "description": "Recover jobs without overwriting work or duplicate submission.",
+    "milestone": "10",
+    "criteria": [
+      "Idempotency, cancel, retry and interrupted recovery",
+      "Input revisions guard late responses"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "Actual migration and job functions passed isolated PostgreSQL checks: idempotency, lease exclusion, interrupted recovery, bounded attempts, cancellation and anonymous access restrictions. Input-revision/late-response behavior passed Swift checks.",
+    "createdAt": "2026-10-26T16:40:50.481Z",
+    "updatedAt": "2026-10-26T17:54:58.285Z",
+    "startedAt": "2026-10-26T17:54:58.285Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.481Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.285Z",
+        "note": "Durable SQL jobs and client recovery implemented. Linux/SQL proof is separate from production integration.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "Production migration, worker recovery and app-to-Supabase reconciliation have not run.",
+    "nextAction": "Complete MIRA-016 live integration. No exactly-once provider-execution claim."
+  },
+  {
+    "id": "MIRA-011",
+    "title": "Contextual revisions and undo",
+    "description": "Review proposed changes before applying.",
+    "milestone": "11",
+    "criteria": [
+      "Script, shot and storyboard targets validated",
+      "Apply and undo preserve history",
+      "Stale storyboards remain available"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "Contextual revisions/undo source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "createdAt": "2026-10-26T16:40:50.481Z",
+    "updatedAt": "2026-10-26T17:54:58.319Z",
+    "startedAt": "2026-10-26T17:54:58.319Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.481Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.319Z",
+        "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+  },
+  {
+    "id": "MIRA-012",
+    "title": "Voice and multilingual behaviour",
+    "description": "Bounded recording with editable transcript and text fallback.",
+    "milestone": "12",
+    "criteria": [
+      "Permissions at point of use",
+      "Interruptions and backgrounding stop capture",
+      "Hindi/English/Hinglish tested on device"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "Voice/language source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "createdAt": "2026-10-26T16:40:50.482Z",
+    "updatedAt": "2026-10-26T17:54:58.322Z",
+    "startedAt": "2026-10-26T17:54:58.322Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.482Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.322Z",
+        "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+  },
+  {
+    "id": "MIRA-013",
+    "title": "Optional pasted brief requirements",
+    "description": "Confirm source-backed requirements without invented details.",
+    "milestone": "13",
+    "criteria": [
+      "Original brief and excerpts preserved",
+      "Missing fields and conflicts shown",
+      "Confirmed context maps to plan"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "Pasted requirements source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "createdAt": "2026-10-26T16:40:50.483Z",
+    "updatedAt": "2026-10-26T17:54:58.325Z",
+    "startedAt": "2026-10-26T17:54:58.325Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.483Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.325Z",
+        "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+  },
+  {
+    "id": "MIRA-014",
+    "title": "Accessibility and physical device validation",
+    "description": "Validate real native use and offline recovery.",
+    "milestone": "14",
+    "criteria": [
+      "Small screen, Dynamic Type and VoiceOver",
+      "Dark mode, contrast and Reduce Motion",
+      "Five real screenshots and offline relaunch",
+      "Speech in quiet and ordinary noise"
+    ],
+    "status": "Planned",
+    "codeTask": false,
+    "commits": [],
+    "verification": "",
+    "createdAt": "2026-10-26T16:40:50.483Z",
+    "updatedAt": "2026-10-26T17:54:58.328Z",
+    "startedAt": null,
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.483Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T16:49:11.902Z",
+        "note": "No device, speech, accessibility or human-usability checks have run.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.328Z",
+        "note": "Owner requested continuing with omarchy tooling without an archive or device requirement.",
+        "status": "Planned"
+      }
+    ],
+    "blocker": "Physical-device validation was waived for this run. No native screenshots or speech/accessibility results exist.",
+    "nextAction": "Retain the explicit acceptance checklist without claiming it passed or asking for device access again."
+  },
+  {
+    "id": "MIRA-015",
+    "title": "Final documentation and handoff",
+    "description": "Repeatable build, verification and honest limitations.",
+    "milestone": "15",
+    "criteria": [
+      "Source and tooling pins documented",
+      "Tracker reconciled with pushed commits",
+      "Device evidence and unverified checks separated"
+    ],
+    "status": "Working",
+    "codeTask": true,
+    "commits": [],
+    "verification": "",
+    "createdAt": "2026-10-26T16:40:50.484Z",
+    "updatedAt": "2026-10-26T17:54:58.289Z",
+    "startedAt": "2026-10-26T17:54:58.289Z",
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T16:40:50.484Z",
+        "note": "Planned from the supplied Mira implementation plan.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T17:54:58.289Z",
+        "note": "Implementation handoff drafted with repeatable checks, source boundaries, consent review, toolchain limits and remaining acceptance. Final hosting reconciliation remains outstanding.",
+        "status": "Working"
+      }
+    ],
+    "blocker": "Public tracker URL and live/native evidence remain unavailable.",
+    "nextAction": "Publish current handoff and progress snapshot; reconcile again after authenticated deployment."
+  },
+  {
+    "id": "MIRA-016",
+    "title": "Live Supabase deployment and generation verification",
+    "description": "Deploy the additive Mira function and migration to the existing Supabase project, then verify actual authenticated generation and recovery.",
+    "milestone": "Live integration",
+    "criteria": [
+      "Review concrete API before/after before production shipping",
+      "Apply new migration and deploy mira-generation using existing server-side secrets",
+      "Verify ideas, scripts, shots, ownership, cancellation and relaunch reconciliation against live service"
+    ],
+    "status": "Planned",
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0"
+    ],
+    "verification": "Source and local contracts pass; no production mutation or live provider request occurred.",
+    "blocker": "No authenticated Supabase CLI/session is available in this environment.",
+    "nextAction": "Use existing Supabase project access securely after concrete API review; do not create or print provider keys.",
+    "codeTask": true,
+    "createdAt": "2026-10-26T17:54:58.292Z",
+    "updatedAt": "2026-10-26T17:54:58.292Z",
+    "startedAt": null,
+    "completedAt": null,
+    "history": [
+      {
+        "at": "2026-10-26T17:54:58.292Z",
+        "note": "Split live integration from source/contract evidence so deployed generation cannot be inferred from local test success.",
+        "status": "Planned"
+      }
+    ]
+  },
+  {
+    "id": "MIRA-017",
+    "title": "Linux workflow and persistence verification",
+    "description": "Compile the real cross-platform Mira workflow/coordinator and verify durable state and revision safety.",
+    "milestone": "Foundation verification",
+    "criteria": [
+      "Actual coordinator and models compile with Swift 6.4.1 on Linux",
+      "Project/position/progress survive repository reopen",
+      "Migration, corrupt recovery, stale writes, cancelled/late results and failed saves are covered"
+    ],
+    "status": "Done",
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/e37edef8f5e6fa0af92ae6de24203a768e6695a6",
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+    ],
+    "verification": "PASS: 11 tests in MiraCoreTests, actual implementation compiled. Native UI/device behavior is outside this verification task.",
+    "blocker": null,
+    "codeTask": true,
+    "createdAt": "2026-10-26T17:54:58.297Z",
+    "updatedAt": "2026-10-26T17:54:58.297Z",
+    "startedAt": "2026-10-26T17:54:58.297Z",
+    "completedAt": "2026-10-26T17:54:58.297Z",
+    "history": [
+      {
+        "at": "2026-10-26T17:54:58.297Z",
+        "note": "Recorded independently verifiable Linux outcome after tests passed and code commits were pushed.",
+        "status": "Done"
+      }
+    ]
+  },
+  {
+    "id": "MIRA-018",
+    "title": "PostgreSQL durable-job verification",
+    "description": "Run the actual additive migration and queue functions in an isolated PostgreSQL 17 instance.",
+    "milestone": "Backend verification",
+    "criteria": [
+      "Repeated same-ID submission reuses its job; changed input conflicts",
+      "Concurrent lease claim is excluded and interrupted leases recover within attempt bound",
+      "Cancelled jobs stay cancelled; anonymous roles cannot read jobs or call queue functions"
+    ],
+    "status": "Done",
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0"
+    ],
+    "verification": "PASS: scripts/mira-sql-check.py against the digest-pinned PostgreSQL 17 image; assertions passed and task-owned container removed. This is not production Supabase proof.",
+    "blocker": null,
+    "codeTask": true,
+    "createdAt": "2026-10-26T17:54:58.300Z",
+    "updatedAt": "2026-10-26T17:54:58.300Z",
+    "startedAt": "2026-10-26T17:54:58.300Z",
+    "completedAt": "2026-10-26T17:54:58.300Z",
+    "history": [
+      {
+        "at": "2026-10-26T17:54:58.300Z",
+        "note": "Recorded local database evidence after successful SQL checks and pushed migration/test source.",
+        "status": "Done"
+      }
+    ]
+  }
+]

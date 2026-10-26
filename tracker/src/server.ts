@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import staticFiles from '@fastify/static';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { Store, mutation } from './store.ts';
 const secret = process.env.TRACKER_WRITE_TOKEN;
@@ -9,6 +9,8 @@ if (!secret || secret.length < 32) throw new Error('TRACKER_WRITE_TOKEN must con
 const dbPath = process.env.TRACKER_DB ?? './work/tracker.sqlite';
 mkdirSync(dirname(dbPath), {recursive:true});
 const store = new Store(dbPath);
+const recorded = new URL('../initial-state.json', import.meta.url);
+if(existsSync(recorded))store.initialize(JSON.parse(readFileSync(recorded,'utf8')));
 const seed = JSON.parse(readFileSync(new URL('../seed.json', import.meta.url), 'utf8'));
 for (const task of seed) if (!store.list().some(t => t.id === task.id)) store.apply(`seed-${task.id}`, mutation.parse(task));
 const app = Fastify({logger:{level:'info', redact:['req.headers.authorization']}, bodyLimit:32_768});

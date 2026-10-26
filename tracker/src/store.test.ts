@@ -15,3 +15,10 @@ test('transactional updates, idempotency, durable reopen, evidence gate and comp
  assert.ok(done.completedAt);store.db.close();store=new Store(path);assert.deepEqual(store.list()[0],done);
  const reopened=store.apply('reopen-test',{id:input.id,status:'Working',note:'Follow-up required'});assert.equal(reopened.completedAt,null);assert.equal(reopened.history[1].status,'Done');store.db.close();
 });
+test('fresh deployment imports original server timestamps/history and never overwrites live records',()=>{
+ const source=new Store(':memory:');const task=source.apply('snapshot-source',{id:'MIRA-088',title:'Recorded work',description:'Preserve history',milestone:'Proof',criteria:['Keep original timestamps'],note:'Original server activity'});
+ const target=new Store(':memory:');assert.equal(target.initialize([task]),true);assert.deepEqual(target.list(),[task]);
+ assert.equal(target.initialize([{...task,title:'Overwrite attempt'}]),false);assert.deepEqual(target.list(),[task]);
+ const invalid=new Store(':memory:');assert.throws(()=>invalid.initialize([{...task,createdAt:'invented'}]));assert.deepEqual(invalid.list(),[]);
+ source.db.close();target.db.close();invalid.db.close();
+});

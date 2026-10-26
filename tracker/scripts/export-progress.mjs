@@ -28,3 +28,4 @@ for(const [name,value] of [['mira-progress.json',JSON.stringify(board,null,2)+'\
  const path=resolve(root,'docs',name);await writeFile(path+'.pending',value);await rename(path+'.pending',path);
 }
 console.log(`Exported ${board.tasks.length} tasks; ${columns[2].length} Done. Hosted tracker: ${hosted?'yes':'no'}.`);
+await writeFile(resolve(root,'tracker/initial-state.json'),JSON.stringify(board.tasks,null,2)+'\n');
