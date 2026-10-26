@@ -1,0 +1,211 @@
+[
+  {
+    "id": "MIRA-001",
+    "title": "Tracker deployment and update CLI",
+    "description": "Public progress with durable records, authenticated updates and honest evidence.",
+    "criteria": [
+      "Public HTTPS reads without login",
+      "Authenticated editing only; duplicate mutations are safe",
+      "Records survive restart; mobile and desktop layouts",
+      "Update CLI retains failed mutations"
+    ],
+    "milestone": "01",
+    "status": "Working",
+    "codeTask": true,
+    "note": "Implementation started; deployment and verification pending."
+  },
+  {
+    "id": "MIRA-002",
+    "title": "Toolchain and native build proof",
+    "description": "Pin omarchy full mode and establish native build and device access.",
+    "criteria": [
+      "Pinned tooling and host versions",
+      "Darwin SDK build recorded",
+      "Install and launch on iPhone, or record exact blocker"
+    ],
+    "milestone": "02",
+    "status": "Planned",
+    "codeTask": false,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-003",
+    "title": "Visual tokens and navigation",
+    "description": "Warm, accessible notebook with Today and Projects.",
+    "criteria": [
+      "Two native navigation stacks",
+      "Labelled profile control; no excluded tabs",
+      "Light and dark palettes, Dynamic Type"
+    ],
+    "milestone": "03",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-004",
+    "title": "Models and persistence",
+    "description": "Versioned saved projects, profile and revisions.",
+    "criteria": [
+      "Atomic serialized writes and corrupt recovery",
+      "Relaunch restores meaningful position",
+      "History and filmed status survive safe edits"
+    ],
+    "milestone": "04",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-005",
+    "title": "Quick ideas",
+    "description": "Correctable filming constraints and three distinct ideas.",
+    "criteria": [
+      "Voice or text request; time differs from Reel duration",
+      "Select, adjust and more ideas preserve saved ideas"
+    ],
+    "milestone": "05",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-006",
+    "title": "Editable scripts",
+    "description": "Speakable hook, script and caption.",
+    "criteria": [
+      "Manual edits autosave",
+      "Language and estimated runtime visible",
+      "Confirm revision before shot list"
+    ],
+    "milestone": "06",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-007",
+    "title": "Detailed storyboards",
+    "description": "Concrete independently filmable shots.",
+    "criteria": [
+      "Recording and edited durations",
+      "Placement, action, words, text and alternatives",
+      "Requirements map to passages or shots"
+    ],
+    "milestone": "07",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-008",
+    "title": "Shooting checklist and resume",
+    "description": "Focused filming steps with honest user-reported progress.",
+    "criteria": [
+      "Previous, Next, Mark filmed and easier work",
+      "Resume at same shot after relaunch"
+    ],
+    "milestone": "08",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-009",
+    "title": "AI backend and contracts",
+    "description": "Use existing Supabase infrastructure for validated generation.",
+    "criteria": [
+      "Credentials remain server-side",
+      "Malformed outputs and ownership rejected",
+      "Live generation demonstrated; fixtures explicitly selected"
+    ],
+    "milestone": "09",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-010",
+    "title": "Durable generation and recovery",
+    "description": "Recover jobs without overwriting work or duplicate submission.",
+    "criteria": [
+      "Idempotency, cancel, retry and interrupted recovery",
+      "Input revisions guard late responses"
+    ],
+    "milestone": "10",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-011",
+    "title": "Contextual revisions and undo",
+    "description": "Review proposed changes before applying.",
+    "criteria": [
+      "Script, shot and storyboard targets validated",
+      "Apply and undo preserve history",
+      "Stale storyboards remain available"
+    ],
+    "milestone": "11",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-012",
+    "title": "Voice and multilingual behaviour",
+    "description": "Bounded recording with editable transcript and text fallback.",
+    "criteria": [
+      "Permissions at point of use",
+      "Interruptions and backgrounding stop capture",
+      "Hindi/English/Hinglish tested on device"
+    ],
+    "milestone": "12",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-013",
+    "title": "Optional pasted brief requirements",
+    "description": "Confirm source-backed requirements without invented details.",
+    "criteria": [
+      "Original brief and excerpts preserved",
+      "Missing fields and conflicts shown",
+      "Confirmed context maps to plan"
+    ],
+    "milestone": "13",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-014",
+    "title": "Accessibility and physical device validation",
+    "description": "Validate real native use and offline recovery.",
+    "criteria": [
+      "Small screen, Dynamic Type and VoiceOver",
+      "Dark mode, contrast and Reduce Motion",
+      "Five real screenshots and offline relaunch",
+      "Speech in quiet and ordinary noise"
+    ],
+    "milestone": "14",
+    "status": "Planned",
+    "codeTask": false,
+    "note": "Planned from the supplied Mira implementation plan."
+  },
+  {
+    "id": "MIRA-015",
+    "title": "Final documentation and handoff",
+    "description": "Repeatable build, verification and honest limitations.",
+    "criteria": [
+      "Source and tooling pins documented",
+      "Tracker reconciled with pushed commits",
+      "Device evidence and unverified checks separated"
+    ],
+    "milestone": "15",
+    "status": "Planned",
+    "codeTask": true,
+    "note": "Planned from the supplied Mira implementation plan."
+  }
+]
