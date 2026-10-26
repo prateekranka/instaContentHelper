@@ -14,9 +14,32 @@ enum MiraFixtures {
         switch input.operation {
         case .ideas:
             let minutes = min(input.constraints.filmingMinutes, 15)
+            if !input.recentIdeas.isEmpty {
+                let options = [
+                    ("What I keep by the door", "Show the one thing you put where you will remember it."),
+                    (
+                        "A kitchen shortcut I actually use",
+                        "Demonstrate one preparation step with ingredients already at home."
+                    ),
+                    (
+                        "A quiet pause before the next task",
+                        "Show a brief everyday pause without giving motivational advice."
+                    ),
+                ]
+                return MiraOutput(
+                    ideas: options.map { title, visual in
+                        MiraIdea(
+                            title: title, hook: "One small thing from my day.", visual: visual,
+                            fit: "One familiar action and one fixed phone position.",
+                            filmingMinutes: min(minutes, 10),
+                            setup: "\(input.constraints.location); phone on a stable surface")
+                    })
+            }
             return MiraOutput(ideas: [
                 MiraIdea(
-                    title: "One breakfast I actually make", hook: "Aaj ka simple breakfast.",
+                    title: "One breakfast I actually make",
+                    hook: input.profile.language == .english
+                        ? "My simple breakfast today." : "Aaj ka simple breakfast.",
                     visual: "Show ingredients, prepare your usual plate, then talk to camera.",
                     fit: "An everyday routine, filmed with your phone at home.", filmingMinutes: minutes,
                     setup: "\(input.constraints.location); phone on a stable shelf; your usual breakfast"),

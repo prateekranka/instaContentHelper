@@ -4,6 +4,35 @@ import Testing
 @testable import MiraCore
 
 struct MiraCoreTests {
+    @Test func savedProjectRestoresPositionHistoryAndFilmingProgress() async throws {
+        var project = MiraProject()
+        let initial = input()
+        try project.apply(MiraFixtures.output(for: initial), operation: .ideas)
+        project.select(project.ideas[0])
+        try project.apply(MiraFixtures.output(for: input(.script)), operation: .script)
+        var boardRequest = input(.storyboard)
+        boardRequest.script = project.script
+        project.job = MiraJob(inputRevision: project.inputRevision, input: boardRequest)
+        try project.apply(MiraFixtures.output(for: boardRequest), operation: .storyboard)
+        project.filmed = [project.storyboard!.shots[0].id]
+        project.shotIndex = 1
+        project.startedFilming = true
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        var document = MiraDocument()
+        document.projects = [project]
+        document.sequence = 1
+        document.position = MiraPosition(projectID: project.id, screen: "shooting", shotIndex: 1)
+        try await MiraFileRepository(directory: folder).save(document)
+        let restored = try await MiraFileRepository(directory: folder).load()
+        #expect(restored.position == document.position)
+        #expect(restored.projects[0].filmed == project.filmed)
+        #expect(restored.projects[0].scripts.count == project.scripts.count)
+        #expect(restored.projects[0].stage == .filming)
+        var more = initial
+        more.recentIdeas = project.ideas.map(\.title)
+        let alternatives = MiraFixtures.output(for: more).ideas!
+        #expect(Set(alternatives.map(\.title)).isDisjoint(with: project.ideas.map(\.title)))
+    }
     func input(_ operation: MiraOperation = .ideas) -> MiraGenerationInput {
         MiraGenerationInput(
             operation: operation, profile: MiraFixtures.mamta, constraints: MiraConstraints(),

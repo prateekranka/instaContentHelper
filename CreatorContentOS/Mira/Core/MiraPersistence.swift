@@ -66,7 +66,13 @@ actor MiraFileRepository: MiraProjectRepository, MiraCreatorProfileRepository {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(document)
-        if let old = try? Data(contentsOf: file), (try? decode(old)) != nil {
+        if FileManager.default.fileExists(atPath: file.path) {
+            let old = try Data(contentsOf: file)
+            let stored = try decode(old)
+            if document.sequence <= stored.sequence {
+                latestSequence = max(latestSequence, stored.sequence)
+                return
+            }
             try old.write(to: backup, options: .atomic)
         }
         try data.write(to: file, options: .atomic)
