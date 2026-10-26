@@ -1,0 +1,439 @@
+{
+  "tasks": [
+    {
+      "id": "MIRA-001",
+      "title": "Tracker deployment and update CLI",
+      "description": "Public progress with durable records, authenticated updates and honest evidence.",
+      "milestone": "01",
+      "criteria": [
+        "Public HTTPS reads without login",
+        "Authenticated editing only; duplicate mutations are safe",
+        "Records survive restart; mobile and desktop layouts",
+        "Update CLI retains failed mutations"
+      ],
+      "status": "Working",
+      "codeTask": true,
+      "commits": [
+        "https://github.com/prateekranka/instaContentHelper/commit/b9fd52a1faef8883362ce49c5aca86806bafa8fb",
+        "https://github.com/prateekranka/instaContentHelper/commit/0c5af417470a4a58023084d91846bbf554e44df7",
+        "https://github.com/prateekranka/instaContentHelper/commit/2cd125effba55232dcdd8b420980df474d898283"
+      ],
+      "verification": "PASS: TypeScript; focused SQLite transaction/idempotency/reopen/evidence-gate unit test; TesterArmy e2e desktop/mobile/details/stale refresh flow and screenshots. PASS: public read, anonymous write rejection, authenticated idempotent update and conflicting-key rejection on local server. Public hosting, remote restart durability and another-device HTTPS are NOT verified.",
+      "createdAt": "2026-10-26T16:40:50.474Z",
+      "updatedAt": "2026-10-26T16:50:23.863Z",
+      "startedAt": "2026-10-26T16:40:50.474Z",
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.474Z",
+          "note": "Implementation started; deployment and verification pending.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-26T16:47:46.041Z",
+          "note": "Authenticated API verification: public reads, rejected anonymous writes and duplicate-safe update checked.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-26T16:49:11.689Z",
+          "note": "Local tracker implemented and verified. GitHub commits pushed and remote visibility confirmed. Deployment remains blocked.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-26T16:50:23.863Z",
+          "note": "Authenticated API e2e passed; its commit is pushed and visible on GitHub. Public deployment remains blocked.",
+          "status": "Working"
+        }
+      ],
+      "blocker": "Railway authentication was not completed; activation code expired. No public tracker has been deployed.",
+      "nextAction": "Complete Railway authentication, deploy only tracker/ with /data volume and write secret, then verify public HTTPS and data after redeployment."
+    },
+    {
+      "id": "MIRA-002",
+      "title": "Toolchain and native build proof",
+      "description": "Pin omarchy full mode and establish native build and device access.",
+      "milestone": "02",
+      "criteria": [
+        "Pinned tooling and host versions",
+        "Darwin SDK build recorded",
+        "Install and launch on iPhone, or record exact blocker"
+      ],
+      "status": "Working",
+      "codeTask": false,
+      "commits": [
+        "https://github.com/prateekranka/instaContentHelper/commit/ade21baba4b3a393fe10ecccd6264c18b92c94b4"
+      ],
+      "verification": "PASS: Swift 6.4.1 --version; pinned omarchy checkout; adapter generated; build wrapper shell syntax. BLOCKED: native build, Apple sign-in, installation and launch. Explicit SDK inventory reports no installed SDKs.",
+      "createdAt": "2026-10-26T16:40:50.475Z",
+      "updatedAt": "2026-10-26T16:49:11.765Z",
+      "startedAt": "2026-10-26T16:49:11.765Z",
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.475Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        },
+        {
+          "at": "2026-10-26T16:49:11.765Z",
+          "note": "Environment inspection and adapter preparation completed. No native compilation or device success claimed.",
+          "status": "Working"
+        }
+      ],
+      "blocker": "No matching Xcode 27 archive/Darwin SDK, xtool or iPhone access; libimobiledevice development metadata absent.",
+      "nextAction": "Supply authenticated Apple SDK archive and device access; complete full-mode install and build. This task and tracker both remain Working because they await separate external access."
+    },
+    {
+      "id": "MIRA-003",
+      "title": "Visual tokens and navigation",
+      "description": "Warm, accessible notebook with Today and Projects.",
+      "milestone": "03",
+      "criteria": [
+        "Two native navigation stacks",
+        "Labelled profile control; no excluded tabs",
+        "Light and dark palettes, Dynamic Type"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.476Z",
+      "updatedAt": "2026-10-26T16:40:50.476Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.476Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    },
+    {
+      "id": "MIRA-004",
+      "title": "Models and persistence",
+      "description": "Versioned saved projects, profile and revisions.",
+      "milestone": "04",
+      "criteria": [
+        "Atomic serialized writes and corrupt recovery",
+        "Relaunch restores meaningful position",
+        "History and filmed status survive safe edits"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.476Z",
+      "updatedAt": "2026-10-26T16:40:50.476Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.476Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    },
+    {
+      "id": "MIRA-005",
+      "title": "Quick ideas",
+      "description": "Correctable filming constraints and three distinct ideas.",
+      "milestone": "05",
+      "criteria": [
+        "Voice or text request; time differs from Reel duration",
+        "Select, adjust and more ideas preserve saved ideas"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.477Z",
+      "updatedAt": "2026-10-26T16:40:50.477Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.477Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    },
+    {
+      "id": "MIRA-006",
+      "title": "Editable scripts",
+      "description": "Speakable hook, script and caption.",
+      "milestone": "06",
+      "criteria": [
+        "Manual edits autosave",
+        "Language and estimated runtime visible",
+        "Confirm revision before shot list"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.478Z",
+      "updatedAt": "2026-10-26T16:40:50.478Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.478Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    },
+    {
+      "id": "MIRA-007",
+      "title": "Detailed storyboards",
+      "description": "Concrete independently filmable shots.",
+      "milestone": "07",
+      "criteria": [
+        "Recording and edited durations",
+        "Placement, action, words, text and alternatives",
+        "Requirements map to passages or shots"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.478Z",
+      "updatedAt": "2026-10-26T16:40:50.478Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.478Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    },
+    {
+      "id": "MIRA-008",
+      "title": "Shooting checklist and resume",
+      "description": "Focused filming steps with honest user-reported progress.",
+      "milestone": "08",
+      "criteria": [
+        "Previous, Next, Mark filmed and easier work",
+        "Resume at same shot after relaunch"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.479Z",
+      "updatedAt": "2026-10-26T16:40:50.479Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.479Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    },
+    {
+      "id": "MIRA-009",
+      "title": "AI backend and contracts",
+      "description": "Use existing Supabase infrastructure for validated generation.",
+      "milestone": "09",
+      "criteria": [
+        "Credentials remain server-side",
+        "Malformed outputs and ownership rejected",
+        "Live generation demonstrated; fixtures explicitly selected"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.480Z",
+      "updatedAt": "2026-10-26T16:49:11.833Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.480Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        },
+        {
+          "at": "2026-10-26T16:49:11.833Z",
+          "note": "API-dependent implementation has not started while the credential decision is pending.",
+          "status": "Planned"
+        }
+      ],
+      "blocker": "Required OpenAI credential choice pending: reuse existing server-side credentials or securely create a new key.",
+      "nextAction": "Owner confirms credential choice. Reuse existing Supabase backend and authentication; do not embed provider secrets."
+    },
+    {
+      "id": "MIRA-010",
+      "title": "Durable generation and recovery",
+      "description": "Recover jobs without overwriting work or duplicate submission.",
+      "milestone": "10",
+      "criteria": [
+        "Idempotency, cancel, retry and interrupted recovery",
+        "Input revisions guard late responses"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.481Z",
+      "updatedAt": "2026-10-26T16:40:50.481Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.481Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    },
+    {
+      "id": "MIRA-011",
+      "title": "Contextual revisions and undo",
+      "description": "Review proposed changes before applying.",
+      "milestone": "11",
+      "criteria": [
+        "Script, shot and storyboard targets validated",
+        "Apply and undo preserve history",
+        "Stale storyboards remain available"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.481Z",
+      "updatedAt": "2026-10-26T16:40:50.481Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.481Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    },
+    {
+      "id": "MIRA-012",
+      "title": "Voice and multilingual behaviour",
+      "description": "Bounded recording with editable transcript and text fallback.",
+      "milestone": "12",
+      "criteria": [
+        "Permissions at point of use",
+        "Interruptions and backgrounding stop capture",
+        "Hindi/English/Hinglish tested on device"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.482Z",
+      "updatedAt": "2026-10-26T16:40:50.482Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.482Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    },
+    {
+      "id": "MIRA-013",
+      "title": "Optional pasted brief requirements",
+      "description": "Confirm source-backed requirements without invented details.",
+      "milestone": "13",
+      "criteria": [
+        "Original brief and excerpts preserved",
+        "Missing fields and conflicts shown",
+        "Confirmed context maps to plan"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.483Z",
+      "updatedAt": "2026-10-26T16:40:50.483Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.483Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    },
+    {
+      "id": "MIRA-014",
+      "title": "Accessibility and physical device validation",
+      "description": "Validate real native use and offline recovery.",
+      "milestone": "14",
+      "criteria": [
+        "Small screen, Dynamic Type and VoiceOver",
+        "Dark mode, contrast and Reduce Motion",
+        "Five real screenshots and offline relaunch",
+        "Speech in quiet and ordinary noise"
+      ],
+      "status": "Planned",
+      "codeTask": false,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.483Z",
+      "updatedAt": "2026-10-26T16:49:11.902Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.483Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        },
+        {
+          "at": "2026-10-26T16:49:11.902Z",
+          "note": "No device, speech, accessibility or human-usability checks have run.",
+          "status": "Planned"
+        }
+      ],
+      "blocker": "No physical iPhone or connected Mac is available.",
+      "nextAction": "Provide physical-device access after a matching native build exists."
+    },
+    {
+      "id": "MIRA-015",
+      "title": "Final documentation and handoff",
+      "description": "Repeatable build, verification and honest limitations.",
+      "milestone": "15",
+      "criteria": [
+        "Source and tooling pins documented",
+        "Tracker reconciled with pushed commits",
+        "Device evidence and unverified checks separated"
+      ],
+      "status": "Planned",
+      "codeTask": true,
+      "commits": [],
+      "verification": "",
+      "createdAt": "2026-10-26T16:40:50.484Z",
+      "updatedAt": "2026-10-26T16:40:50.484Z",
+      "startedAt": null,
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-26T16:40:50.484Z",
+          "note": "Planned from the supplied Mira implementation plan.",
+          "status": "Planned"
+        }
+      ]
+    }
+  ],
+  "fetchedAt": "2026-10-26T16:50:23.930Z",
+  "activityAt": "2026-10-26T16:50:23.863Z"
+}

@@ -1,5 +1,9 @@
 # ContentHelper
 
+## Mira implementation branch
+
+The [Mira implementation plan](docs/mira-implementation-plan.md) supersedes earlier product directions for the `codex/mira-ios-mvp` branch. [Current progress and verification](docs/mira-progress.md) distinguish implemented tracker source from pending public deployment and native work. The existing iOS app remains preserved; the new Mira journey is not yet implemented. [Linux toolchain setup and blockers](docs/mira-toolchain.md) record the pinned adapter and required Apple SDK/device access.
+
 ContentHelper is a native iPhone app built with SwiftUI. The Xcode target and scheme are `CreatorContentOS`. The app bundle is `ContentHelper.app`.
 
 ## Latest creator design and Claude handover
