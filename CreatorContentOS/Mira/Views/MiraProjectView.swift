@@ -201,7 +201,9 @@ struct MiraJobView: View {
             if job.state == .working {
                 ProgressView("Mira is working")
                 Text("Your work is saved. You can leave and reconnect this request later.").font(.callout)
-                Button("Reconnect saved request") { onReconnect(project.id) }
+                if !store.hasActiveRequest(project.id) {
+                    Button("Reconnect saved request") { onReconnect(project.id) }
+                }
                 Button("Cancel generation", role: .cancel) { onCancel(project.id) }
             }
             if let error = job.error { Text(error).font(.callout) }

@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import uuid
+import re
 
 root = pathlib.Path(__file__).resolve().parent.parent
 tooling = root / 'work/omarchy-apple-dev'
@@ -34,6 +35,8 @@ if build_server.exists():
     data['argv'][index+1]='omarchy-xtool';build_server.write_text(json.dumps(data,indent=2)+'\n')
 config = root/'omarchy-xtool/xtool.yml'
 config.write_text(config.read_text().replace('infoPath: Info.plist', 'infoPath: Info.local.plist'))
+manifest=root/'omarchy-xtool/Package.swift'
+manifest.write_text(re.sub(r'^\s*"CreatorContentOS/Mira",\s*\n','',manifest.read_text(),flags=re.M))
 lock = root/'CreatorContentOS.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved'
 if lock.exists():
     shutil.copyfile(lock, root/'omarchy-xtool/Package.resolved')

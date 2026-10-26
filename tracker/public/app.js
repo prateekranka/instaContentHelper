@@ -13,7 +13,7 @@ function details(task){
  $('detail').showModal();
 }
 function render(){
- const tasks=data.tasks;const active=tasks.filter(t=>t.status==='Working');$('focus').textContent=active.length?`Current focus: ${active.map(t=>t.title+(t.blocker?' (blocked)':'')).join('; ')}`:'No task is currently active.';
+ const tasks=data.tasks;const active=tasks.filter(t=>t.status==='Working');const focus=active.find(t=>!t.blocker)??active[0];$('focus').textContent=focus?`Current focus: ${focus.title}${focus.blocker?' (blocked)':''}.${active.length>1?' '+(active.length-1)+' other Working tasks; open their cards for verification and blockers.':''}`:'No task is currently active.';
  $('activity').textContent='Last project activity: '+time(data.activityAt);$('fetched').textContent='Last fetched: '+time(lastFetch);
  $('board').replaceChildren();$('selector').replaceChildren();for(const status of statuses){const items=tasks.filter(t=>t.status===status);const tab=el('button',`${status} (${items.length})`);tab.setAttribute('aria-pressed',String(selected===status));tab.onclick=()=>{selected=status;render();};$('selector').append(tab);
  const column=el('section',undefined,'column');column.setAttribute('aria-label',status);column.hidden=innerWidth<=780&&selected!==status;column.append(el('h2',`${status} · ${items.length}`));

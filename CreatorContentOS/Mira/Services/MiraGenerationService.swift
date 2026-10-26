@@ -1,10 +1,5 @@
 import Foundation
 
-protocol MiraGenerationService: Sendable {
-    func start(_ job: MiraJob) async throws -> MiraJob
-    func status(_ job: MiraJob) async throws -> MiraJob
-    func cancel(_ job: MiraJob) async throws -> MiraJob
-}
 struct MiraSupabaseGenerationService: MiraGenerationService {
     let session: PairedDeviceSession
     private struct Request: Encodable {

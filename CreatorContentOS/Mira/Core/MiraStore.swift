@@ -1,6 +1,12 @@
 import Foundation
 import Observation
 
+protocol MiraGenerationService: Sendable {
+    func start(_ job: MiraJob) async throws -> MiraJob
+    func status(_ job: MiraJob) async throws -> MiraJob
+    func cancel(_ job: MiraJob) async throws -> MiraJob
+}
+
 @MainActor @Observable
 final class MiraStore {
     var document = MiraDocument()
@@ -13,10 +19,14 @@ final class MiraStore {
     private var generationTasks: [UUID: Task<Void, Never>] = [:]
     private var editingDrafts: [UUID: UUID] = [:]
     init(repository: (any MiraProjectRepository)? = nil) {
+        let support =
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+                ".local/share", isDirectory: true)
         self.repository =
             repository
             ?? MiraFileRepository(
-                directory: URL.applicationSupportDirectory.appendingPathComponent("Mira", isDirectory: true))
+                directory: support.appendingPathComponent("Mira", isDirectory: true))
     }
     func load() async {
         guard !loaded else { return }
@@ -30,6 +40,7 @@ final class MiraStore {
         }
     }
     func project(_ id: UUID) -> MiraProject? { document.projects.first { $0.id == id } }
+    func hasActiveRequest(_ id: UUID) -> Bool { generationTasks[id] != nil }
     func update(_ id: UUID, immediate: Bool = true, _ change: (inout MiraProject) -> Void) {
         guard loaded, let index = document.projects.firstIndex(where: { $0.id == id }) else { return }
         change(&document.projects[index])
@@ -119,6 +130,11 @@ final class MiraStore {
             return
         }
         var profile = project.isDemo ? MiraFixtures.mamta : document.profile
+        if operation != .ideas && operation != .script,
+            let currentLanguage = project.script.flatMap({ MiraLanguage(rawValue: $0.language) })
+        {
+            profile.language = currentLanguage
+        }
         if let language { profile.language = language }
         if [.storyboard, .reviseShot, .reviseStoryboard].contains(operation), project.script == nil {
             error = "Choose a script first."

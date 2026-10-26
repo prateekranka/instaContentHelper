@@ -185,9 +185,10 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var script: MiraScript? { scripts.first { $0.id == activeScriptID } }
     var storyboard: MiraStoryboard? { storyboards.first { $0.id == activeStoryboardID } }
     var idea: MiraIdea? { ideas.first { $0.id == selectedIdeaID } }
+    var effectiveBriefRevision: Int { brief.confirmed ? brief.revision : 0 }
     var storyboardIsStale: Bool {
         guard let board = storyboard else { return false }
-        return board.sourceScriptID != activeScriptID || board.requirementsRevision != brief.revision
+        return board.sourceScriptID != activeScriptID || board.requirementsRevision != effectiveBriefRevision
     }
     var stage: MiraStage {
         guard selectedIdeaID != nil else { return .choosing }
@@ -218,6 +219,9 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         guard let pending = job, pending.id == result.id, pending.state != .cancelled else { return false }
         guard result.inputRevision == pending.inputRevision, result.input == pending.input else {
             throw MiraError.invalid("Generation result does not match the saved request.")
+        }
+        if result.state == .succeeded && result.output == nil {
+            throw MiraError.invalid("Generation finished without an artifact. Your saved work is unchanged.")
         }
         if let output = result.output {
             try MiraValidation.validate(output, for: pending.input.operation, input: pending.input)
@@ -270,7 +274,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         }
         if let board = output.storyboard {
             guard let current = script, board.sourceScriptID == current.id,
-                board.requirementsRevision == brief.revision
+                board.requirementsRevision == effectiveBriefRevision
             else {
                 throw MiraError.invalid(
                     "Shot list belongs to an older script or brief. Generate an updated proposal.")
@@ -291,7 +295,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         }
         if var board = output.storyboard {
             guard let current = script, board.sourceScriptID == current.id,
-                board.requirementsRevision == brief.revision
+                board.requirementsRevision == effectiveBriefRevision
             else {
                 throw MiraError.invalid(
                     "Shot list belongs to an older script or brief. Generate an updated proposal.")

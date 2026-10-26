@@ -4,6 +4,23 @@ import Testing
 @testable import MiraCore
 
 struct MiraCoreTests {
+    @Test func ignoredUnconfirmedBriefDoesNotBlockApplyingANewShotList() throws {
+        var project = MiraProject()
+        project.brief = MiraBrief(original: "Unconfirmed notes", revision: 4)
+        let script = MiraScript(
+            hook: "Today", spoken: "A familiar routine.", caption: "At home.", durationSeconds: 30,
+            language: "English")
+        project.scripts = [script]
+        project.activeScriptID = script.id
+        var request = input(.storyboard)
+        request.script = script
+        project.job = MiraJob(inputRevision: project.inputRevision, input: request)
+        try project.apply(MiraFixtures.output(for: request), operation: .storyboard)
+        #expect(!project.storyboardIsStale)
+        project.brief.confirmed = true
+        project.brief.revision += 1
+        #expect(project.storyboardIsStale)
+    }
     @Test func savedProjectRestoresPositionHistoryAndFilmingProgress() async throws {
         var project = MiraProject()
         let initial = input()

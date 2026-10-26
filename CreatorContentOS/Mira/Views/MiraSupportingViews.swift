@@ -72,7 +72,18 @@ struct MiraAskView: View {
                 Button("More conversational") {
                     request = "Less motivational. Make it sound more like my everyday speech."
                 }
-                Picker("Output language", selection: $language) {
+                Picker(
+                    "Output language",
+                    selection: Binding(
+                        get: { language },
+                        set: { value in
+                            language = value
+                            if request.isEmpty {
+                                request =
+                                    "Change the script to \(value.rawValue), keeping my meaning and tone."
+                            }
+                        })
+                ) {
                     ForEach(MiraLanguage.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
             }
@@ -112,7 +123,11 @@ struct MiraAskView: View {
         }.navigationTitle("Ask Mira").toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
         }
-        .onAppear { language = store.document.profile.language }
+        .onAppear {
+            language =
+                store.project(projectID)?.script.flatMap { MiraLanguage(rawValue: $0.language) }
+                ?? store.document.profile.language
+        }
     }
     private var context: String {
         switch operation {

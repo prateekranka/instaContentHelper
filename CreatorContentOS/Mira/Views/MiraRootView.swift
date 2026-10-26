@@ -130,14 +130,14 @@ struct MiraRootView: View {
                 store: store, projectID: id, onAsk: { shot in sheet = .ask(id, .reviseShot, shot) })
         }
     }
-    private func service(_ id: UUID) throws -> any MiraGenerationService {
+    private func service(_ id: UUID, requiresConsent: Bool = true) throws -> any MiraGenerationService {
         if store.project(id)?.isDemo == true { return MiraFixtureGenerationService() }
         guard case .live(let session) = appState.runtime.mode else {
             throw MiraError.invalid(
                 "Connect your account from Profile to use live generation. You can still write manually and open saved work."
             )
         }
-        try services.requireAIConsent(for: .planIdeas)
+        if requiresConsent { try services.requireAIConsent(for: .planIdeas) }
         return MiraSupabaseGenerationService(session: session)
     }
     private func generate(
@@ -156,7 +156,7 @@ struct MiraRootView: View {
     }
     private func cancel(_ id: UUID) {
         do {
-            let value = try service(id)
+            let value = try service(id, requiresConsent: false)
             Task { await store.cancel(id, service: value) }
         } catch { store.error = error.localizedDescription }
     }
@@ -166,7 +166,7 @@ struct MiraRootView: View {
             return
         }
         do {
-            let value = try service(id)
+            let value = try service(id, requiresConsent: false)
             Task {
                 await store.cancel(id, service: value)
                 if store.project(id)?.job?.state != .working {

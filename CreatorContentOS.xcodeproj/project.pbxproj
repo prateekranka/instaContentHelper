@@ -280,7 +280,7 @@
 		CC81E0EE1573C918BD3FA214 /* MiraValidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CreatorContentOS/Mira/Core/MiraValidation.swift"; sourceTree = SOURCE_ROOT; };
 		B32C4EC383B122A24167C858 /* MiraGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CreatorContentOS/Mira/Services/MiraGenerationService.swift"; sourceTree = SOURCE_ROOT; };
 		2981AFF7705C3F916F6D44F9 /* MiraSpeechInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CreatorContentOS/Mira/Services/MiraSpeechInput.swift"; sourceTree = SOURCE_ROOT; };
-		A44334FDBDC798F095F4C54B /* MiraStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CreatorContentOS/Mira/Services/MiraStore.swift"; sourceTree = SOURCE_ROOT; };
+		A44334FDBDC798F095F4C54B /* MiraStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CreatorContentOS/Mira/Core/MiraStore.swift"; sourceTree = SOURCE_ROOT; };
 		671C76A51AF0F3A8EE8A481A /* MiraDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CreatorContentOS/Mira/Views/MiraDesign.swift"; sourceTree = SOURCE_ROOT; };
 		A72516EC13302B48D66CA7A3 /* MiraProjectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CreatorContentOS/Mira/Views/MiraProjectView.swift"; sourceTree = SOURCE_ROOT; };
 		F487A8E6BDA00C846B64D13D /* MiraRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CreatorContentOS/Mira/Views/MiraRootView.swift"; sourceTree = SOURCE_ROOT; };
