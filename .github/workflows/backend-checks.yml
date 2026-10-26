@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - codex/day-at-a-time-generation
+      - codex/mira-ios-mvp
 
 permissions:
   contents: read

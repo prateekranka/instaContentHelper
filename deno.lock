@@ -1,6 +1,8 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@supabase/supabase-js@2": "2.107.0",
     "npm:@e2e-dev/mobile@~0.9.2": "0.9.2_e2e@0.15.2",
     "npm:@supabase/auth-js@2.107.0": "2.107.0",
@@ -9,9 +11,19 @@
     "npm:@supabase/realtime-js@2.107.0": "2.107.0",
     "npm:@supabase/storage-js@2.107.0": "2.107.0",
     "npm:e2e@0.15.2": "0.15.2",
-    "npm:resend@*": "6.12.4"
+    "npm:resend@*": "6.12.4",
+    "npm:zod@4.6.7": "4.6.7"
   },
   "jsr": {
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/internal@1.0.14": {
+      "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
+    },
     "@supabase/supabase-js@2.107.0": {
       "integrity": "e28d6ef6e79200417b4838a0051066c44170a1de7cccc8b00a671947b72ba0e3",
       "dependencies": [
@@ -52,7 +64,7 @@
         "agent-device",
         "e2e",
         "pngjs",
-        "zod"
+        "zod@4.6.1"
       ]
     },
     "@esbuild/aix-ppc64@0.28.2": {
@@ -209,7 +221,7 @@
         "json-schema-typed",
         "pkce-challenge",
         "raw-body",
-        "zod",
+        "zod@4.6.1",
         "zod-to-json-schema"
       ]
     },
@@ -422,7 +434,7 @@
         "picocolors",
         "pngjs",
         "tsx",
-        "zod"
+        "zod@4.6.1"
       ],
       "bin": true
     },
@@ -912,11 +924,14 @@
     "zod-to-json-schema@3.25.2_zod@4.6.1": {
       "integrity": "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==",
       "dependencies": [
-        "zod"
+        "zod@4.6.1"
       ]
     },
     "zod@4.6.1": {
       "integrity": "sha512-341aRWQsve0rvronKNTqZpjmzdbUDlFuzHaI/XLg/Ej82qffDJRRfBTCuv7+9q/rMjB6LSLyEBnW4InJeMtt/Q=="
+    },
+    "zod@4.6.7": {
+      "integrity": "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="
     }
   },
   "redirects": {
