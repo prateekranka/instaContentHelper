@@ -1,5 +1,6 @@
 import {test} from '@e2e-dev/web';
 import {expect} from 'e2e';
+import {randomUUID} from 'node:crypto';
 
 test('public desktop and mobile board opens details and preserves data after refresh failure',async({app,screen,browser})=>{
  await app.open('/');
@@ -26,4 +27,23 @@ test('public desktop and mobile board opens details and preserves data after ref
  await browser.unrouteAll();
  await screen.getByRole('button','Refresh now').click();
  await expect(screen.getByRole('status')).toContainText('Connected');
+});
+
+test('public reads reject unauthenticated editing and authenticated updates are idempotent',async({app})=>{
+ const url=new URL('/api/tasks',app.baseUrl);
+ expect((await fetch(url)).status).toBe(200);
+ const body=JSON.stringify({id:'MIRA-001',note:'Authenticated API verification: public reads, rejected anonymous writes and duplicate-safe update checked.'});
+ const key=randomUUID();
+ const headers={'Content-Type':'application/json','Idempotency-Key':key};
+ expect((await fetch(url,{method:'POST',headers,body})).status).toBe(401);
+ const token=process.env.TRACKER_WRITE_TOKEN;
+ if(!token)throw new Error('Authenticated API check needs TRACKER_WRITE_TOKEN in the test environment.');
+ const authorized={...headers,Authorization:`Bearer ${token}`};
+ const first=await fetch(url,{method:'POST',headers:authorized,body});
+ expect(first.status).toBe(200);const task=await first.json();
+ const replay=await fetch(url,{method:'POST',headers:authorized,body});
+ expect(replay.status).toBe(200);const replayTask=await replay.json();
+ expect(replayTask.updatedAt).toBe(task.updatedAt);expect(replayTask.history.length).toBe(task.history.length);
+ const conflict=await fetch(url,{method:'POST',headers:authorized,body:JSON.stringify({id:'MIRA-001',note:'Different mutation using same key'})});
+ expect(conflict.status).toBe(409);
 });
