@@ -28,11 +28,11 @@ struct MiraVoiceTextField: View {
                     .updatesFrequently)
             }
             if !speech.transcript.isEmpty {
-                MiraField(title: "Review transcript", text: $speech.transcript)
+                MiraField(title: "Review transcript", text: $speech.transcript).disabled(speech.recording)
                 Button("Use reviewed transcript") {
                     text = speech.transcript
                     speech.transcript = ""
-                }
+                }.disabled(speech.recording)
             }
             if let error = speech.error {
                 Text(error).font(.callout)

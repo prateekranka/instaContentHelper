@@ -138,9 +138,11 @@ struct MiraProjectView: View {
             }.buttonStyle(MiraPrimaryStyle()).disabled(project.job?.state == .working)
             Button("Adjust with Ask Mira") { onSheet(.ask(projectID, .ideas, nil)) }
             Button("Add my own idea") { onSheet(.manualIdea(projectID)) }
-            ForEach(Array(project.ideas.enumerated()), id: \.element.id) { index, idea in
+            let displayedIdeas =
+                Array(project.ideas.suffix(3)) + Array(project.ideas.dropLast(min(3, project.ideas.count)))
+            ForEach(Array(displayedIdeas.enumerated()), id: \.element.id) { index, idea in
                 VStack(alignment: .leading, spacing: 12) {
-                    if index == max(0, project.ideas.count - 3) {
+                    if index == 0 {
                         Text("A simple place to start").font(.caption).foregroundStyle(MiraTheme.olive)
                     }
                     Text(idea.title).font(.title2.weight(.semibold))
