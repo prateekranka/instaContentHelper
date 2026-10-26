@@ -1,5 +1,7 @@
 # Mira toolchain record
 
+The owner waived archive and physical-device access for this run. Mira's native source is implemented. Linux checks compile the actual cross-platform workflow/coordinator and validate source syntax. They do not establish a complete native build. No further archive/device request is required.
+
 Worktree: `/workspace/mira-ios-mvp`. Branch: `codex/mira-ios-mvp`. Base: `1580a82b59955289aca4e590f0b18343fe52e7b4`.
 
 Inspection on 2026-10-26 found Debian 13 x86_64, approximately 30 GiB free, Node 24.19.0, no installed Swift/xtool, no Darwin SDK, and no exposed USB bus or connected iPhone. Existing app target remains iOS 26.0. Existing SwiftUI source, Supabase infrastructure and tests are preserved.
@@ -28,7 +30,7 @@ python3 work/omarchy-apple-dev/tools/xcodeproj2xtool.py \
   CreatorContentOS.xcodeproj --target CreatorContentOS --out omarchy-xtool
 ```
 
-`omarchy-xtool` references the existing source using relative symlinks. It does not copy or replace app source. Regenerate it after Xcode project changes.
+`omarchy-xtool` references the existing source using relative symlinks. It does not copy or replace app source. Regenerate it after Xcode project changes with `python3 scripts/mira-generate-adapter.py`. This wrapper stages the pinned converter in ignored work space, preserves existing dependency pins, uses a private runtime plist, and removes an incorrect exclusion of the new Mira group. The original converter refuses to overwrite an existing adapter.
 
 Warnings that require attention before a native build or distribution:
 
@@ -40,7 +42,7 @@ Warnings that require attention before a native build or distribution:
 
 ## Build and device verification
 
-After the owner supplies the matching Xcode archive, complete full-mode installation with the upstream installer. Preserve the host's actual HOME; do not use another HOME as an installation shortcut. Confirm `swift sdk list` contains `darwin`. Keep the Swift toolchain's clang first on PATH. Run:
+For a future full-mode host, complete installation with the upstream installer and a matching Apple SDK. Preserve the host's actual HOME; do not use another HOME as an installation shortcut. Confirm `swift sdk list` contains `darwin`. Keep the Swift toolchain's clang first on PATH. Run:
 
 ```sh
 bash scripts/mira-linux-build.sh
