@@ -1,7 +1,24 @@
 {
-  "name": "mira-progress", "private": true, "type": "module",
-  "engines": { "node": ">=24" },
-  "scripts": { "start": "node src/server.ts", "check": "tsc --noEmit", "test": "node --test src/store.test.ts" },
-  "dependencies": { "fastify": "^5.6.0", "@fastify/static": "^8.3.0", "zod": "^4.1.0" },
-  "devDependencies": { "typescript": "^5.9.0", "@types/node": "^24.0.0" }
+  "name": "mira-progress",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "check": "tsc --noEmit",
+    "test": "node --test src/store.test.ts"
+  },
+  "dependencies": {
+    "@fastify/static": "^8.3.0",
+    "fastify": "^5.6.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@e2e-dev/web": "^0.15.3",
+    "@types/node": "^24.0.0",
+    "e2e": "^0.21.3",
+    "typescript": "^5.9.0"
+  }
 }

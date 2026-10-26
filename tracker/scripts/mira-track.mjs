@@ -6,7 +6,8 @@ const [command,file]=process.argv.slice(2);
 if(command==='update'){
  if(!file)throw Error('Usage: node tracker/scripts/mira-track.mjs update mutation.json');
  const payload=JSON.parse(await readFile(file,'utf8'));const key=randomUUID();
- await writeFile(resolve(queue,key+'.json'),JSON.stringify({key,payload}),{mode:0o600});
+ const orderedName=String(Date.now()).padStart(16,'0')+'-'+key+'.json';
+ await writeFile(resolve(queue,orderedName),JSON.stringify({key,payload}),{mode:0o600});
 } else if(command!=='flush')throw Error('Use update <JSON file> or flush. Failed writes remain in work/tracker-pending.');
 if(!process.env.TRACKER_URL||!process.env.TRACKER_WRITE_TOKEN)throw Error('TRACKER_URL and TRACKER_WRITE_TOKEN are required; pending writes retained');
 for(const name of (await readdir(queue)).filter(x=>x.endsWith('.json')).sort()){
