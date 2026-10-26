@@ -2,7 +2,7 @@
 
 This is a public GitHub snapshot of the local tracker. The standalone HTTPS tracker is not yet deployed.
 
-Snapshot fetched: 2026-10-26T18:20:17.594Z. Last project activity: 2026-10-26T18:20:17.507Z. All recorded timestamps are UTC.
+Snapshot fetched: 2026-10-26T21:12:24.351Z. Last project activity: 2026-10-26T21:12:24.261Z. All recorded timestamps are UTC.
 
 The native Mira journey, cross-platform workflow/persistence and Supabase job source are implemented. Source checks and local tests are separate from native runtime and production deployment. The owner confirmed existing server-side AI credential reuse and waived archive/device access. Full native compilation, native UI/speech/accessibility and live Supabase generation remain unverified.
 
@@ -29,13 +29,13 @@ Multiple Working tasks await required native or production verification. They re
 
 ### MIRA-001 — Tracker deployment and update CLI
 
-Working · Updated 2026-10-26T18:20:17.478Z
+Working · Updated 2026-10-26T21:12:24.245Z
 
 PASS locally: TypeScript; 2 SQLite tests including original timestamp/history import and no overwrite of live records; desktop/mobile/details/stale refresh e2e; public read, rejected anonymous write and authenticated idempotency API e2e. Actual 18-task bootstrap validates. Public HTTPS/redeploy durability remain unverified.
 
-Blocker: No Railway session is saved. Initial approval reached a read-only configuration directory; that directory is now writable. Replacement activation codes expired without a saved login.
+Blocker: Railway login is now saved successfully. The CLI is waiting for the owner to choose one of two workspaces before project creation.
 
-Next action: Complete a fresh Railway activation. Deploy tracker/ only, attach /data volume, set the private write token, then verify HTTPS and restart durability.
+Next action: Select the hosting workspace; then attach durable storage, configure the private write token and deploy the tracker.
 
 - [Pushed commit b9fd52a1faef8883362ce49c5aca86806bafa8fb](https://github.com/prateekranka/instaContentHelper/commit/b9fd52a1faef8883362ce49c5aca86806bafa8fb)
 - [Pushed commit 0c5af417470a4a58023084d91846bbf554e44df7](https://github.com/prateekranka/instaContentHelper/commit/0c5af417470a4a58023084d91846bbf554e44df7)
@@ -145,13 +145,13 @@ Next action: Keep this task Working until its native criteria are actually verif
 
 ### MIRA-009 — AI backend and contracts
 
-Working · Updated 2026-10-26T18:20:17.497Z
+Working · Updated 2026-10-26T21:12:24.254Z
 
 PASS: full Deno regression 398 passed, 0 failed, 1 ignored; 5 focused Mira cases pass after final context guards. GitHub Backend checks passed for ecb2767: https://github.com/prateekranka/instaContentHelper/actions/runs/40376400864. No live provider request or Supabase deployment occurred.
 
-Blocker: New Supabase function is not deployed. Supabase CLI authentication is unavailable; live generation is not verified.
+Blocker: Production deployment is approved. Supabase secure CLI sign-in still needs its one-time verification code.
 
-Next action: Review the concrete API before/after in docs/mira-handoff.md; deploy to the existing authenticated Supabase project, then verify live generation.
+Next action: Complete Supabase sign-in, confirm the existing project, apply only the additive Mira migration/function, then verify live behavior.
 
 - [Pushed commit a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0](https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0)
 - [Pushed commit ecb276718b8265c7c414cf14539998176441641b](https://github.com/prateekranka/instaContentHelper/commit/ecb276718b8265c7c414cf14539998176441641b)
@@ -224,7 +224,7 @@ Next action: Retain the explicit acceptance checklist without claiming it passed
 
 ### MIRA-015 — Final documentation and handoff
 
-Working · Updated 2026-10-26T18:20:17.500Z
+Working · Updated 2026-10-26T21:12:24.261Z
 
 Handoff documents current source, repeatable checks, pins, adaptation decisions, API before/after and explicit unverified native/live checks. Source is pushed; final standalone tracker URL is still pending.
 
@@ -236,13 +236,13 @@ Next action: Publish current handoff and progress snapshot; reconcile again afte
 
 ### MIRA-016 — Live Supabase deployment and generation verification
 
-Planned · Updated 2026-10-26T17:54:58.292Z
+Planned · Updated 2026-10-26T21:12:24.258Z
 
-Source and local contracts pass; no production mutation or live provider request occurred.
+The owner approved production deployment of the reviewed additive endpoint/jobs table. Source and local/CI checks pass; production mutation and live provider calls have not yet occurred.
 
-Blocker: No authenticated Supabase CLI/session is available in this environment.
+Blocker: Supabase CLI authentication is waiting for the one-time browser verification code.
 
-Next action: Use existing Supabase project access securely after concrete API review; do not create or print provider keys.
+Next action: Finish secure CLI login and verify the existing repository project before deploying the approved addition.
 
 - [Pushed commit a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0](https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0)
 

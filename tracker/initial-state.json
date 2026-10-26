@@ -21,7 +21,7 @@
     ],
     "verification": "PASS locally: TypeScript; 2 SQLite tests including original timestamp/history import and no overwrite of live records; desktop/mobile/details/stale refresh e2e; public read, rejected anonymous write and authenticated idempotency API e2e. Actual 18-task bootstrap validates. Public HTTPS/redeploy durability remain unverified.",
     "createdAt": "2026-10-26T16:40:50.474Z",
-    "updatedAt": "2026-10-26T18:20:17.478Z",
+    "updatedAt": "2026-10-26T21:12:24.245Z",
     "startedAt": "2026-10-26T16:40:50.474Z",
     "completedAt": null,
     "history": [
@@ -54,10 +54,15 @@
         "at": "2026-10-26T18:20:17.478Z",
         "note": "First-deployment bootstrap now preserves actual local server timestamps/history. Superseded publication copies were removed; future failed CLI mutations still queue. No hosted URL is claimed.",
         "status": "Working"
+      },
+      {
+        "at": "2026-10-26T21:12:24.245Z",
+        "note": "Railway authentication succeeded. Normal configuration writes are working; workspace selection is now the only hosting setup input pending.",
+        "status": "Working"
       }
     ],
-    "blocker": "No Railway session is saved. Initial approval reached a read-only configuration directory; that directory is now writable. Replacement activation codes expired without a saved login.",
-    "nextAction": "Complete a fresh Railway activation. Deploy tracker/ only, attach /data volume, set the private write token, then verify HTTPS and restart durability."
+    "blocker": "Railway login is now saved successfully. The CLI is waiting for the owner to choose one of two workspaces before project creation.",
+    "nextAction": "Select the hosting workspace; then attach durable storage, configure the private write token and deploy the tracker."
   },
   {
     "id": "MIRA-002",
@@ -361,7 +366,7 @@
     ],
     "verification": "PASS: full Deno regression 398 passed, 0 failed, 1 ignored; 5 focused Mira cases pass after final context guards. GitHub Backend checks passed for ecb2767: https://github.com/prateekranka/instaContentHelper/actions/runs/40376400864. No live provider request or Supabase deployment occurred.",
     "createdAt": "2026-10-26T16:40:50.480Z",
-    "updatedAt": "2026-10-26T18:20:17.497Z",
+    "updatedAt": "2026-10-26T21:12:24.254Z",
     "startedAt": "2026-10-26T17:54:58.282Z",
     "completedAt": null,
     "history": [
@@ -389,10 +394,15 @@
         "at": "2026-10-26T18:20:17.497Z",
         "note": "Concrete API review requested under global AGENTS.md. Deployment remains pending that review and authenticated Supabase access.",
         "status": "Working"
+      },
+      {
+        "at": "2026-10-26T21:12:24.254Z",
+        "note": "Owner explicitly approved the reviewed backend addition. No further API-change approval is needed for this addition.",
+        "status": "Working"
       }
     ],
-    "blocker": "New Supabase function is not deployed. Supabase CLI authentication is unavailable; live generation is not verified.",
-    "nextAction": "Review the concrete API before/after in docs/mira-handoff.md; deploy to the existing authenticated Supabase project, then verify live generation."
+    "blocker": "Production deployment is approved. Supabase secure CLI sign-in still needs its one-time verification code.",
+    "nextAction": "Complete Supabase sign-in, confirm the existing project, apply only the additive Mira migration/function, then verify live behavior."
   },
   {
     "id": "MIRA-010",
@@ -603,7 +613,7 @@
     ],
     "verification": "Handoff documents current source, repeatable checks, pins, adaptation decisions, API before/after and explicit unverified native/live checks. Source is pushed; final standalone tracker URL is still pending.",
     "createdAt": "2026-10-26T16:40:50.484Z",
-    "updatedAt": "2026-10-26T18:20:17.500Z",
+    "updatedAt": "2026-10-26T21:12:24.261Z",
     "startedAt": "2026-10-26T17:54:58.289Z",
     "completedAt": null,
     "history": [
@@ -620,6 +630,11 @@
       {
         "at": "2026-10-26T18:20:17.500Z",
         "note": "Reviewable implementation handoff is public on GitHub. Deployment prerequisites are not represented as passed checks.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T21:12:24.261Z",
+        "note": "Backend review approval recorded. Railway login saved; hosting workspace and secure Supabase login verification are pending.",
         "status": "Working"
       }
     ],
@@ -640,18 +655,23 @@
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0"
     ],
-    "verification": "Source and local contracts pass; no production mutation or live provider request occurred.",
-    "blocker": "No authenticated Supabase CLI/session is available in this environment.",
-    "nextAction": "Use existing Supabase project access securely after concrete API review; do not create or print provider keys.",
+    "verification": "The owner approved production deployment of the reviewed additive endpoint/jobs table. Source and local/CI checks pass; production mutation and live provider calls have not yet occurred.",
+    "blocker": "Supabase CLI authentication is waiting for the one-time browser verification code.",
+    "nextAction": "Finish secure CLI login and verify the existing repository project before deploying the approved addition.",
     "codeTask": true,
     "createdAt": "2026-10-26T17:54:58.292Z",
-    "updatedAt": "2026-10-26T17:54:58.292Z",
+    "updatedAt": "2026-10-26T21:12:24.258Z",
     "startedAt": null,
     "completedAt": null,
     "history": [
       {
         "at": "2026-10-26T17:54:58.292Z",
         "note": "Split live integration from source/contract evidence so deployed generation cannot be inferred from local test success.",
+        "status": "Planned"
+      },
+      {
+        "at": "2026-10-26T21:12:24.258Z",
+        "note": "Backend addition approved by owner; continuing with existing server-side provider credentials.",
         "status": "Planned"
       }
     ]

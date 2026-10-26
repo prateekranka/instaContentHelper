@@ -47,7 +47,7 @@ Jobs persist their client UUID, normalized input and input revision. Repeating t
 
 The app saves the request before enqueue. Reconnection reuses that request UUID. Terminal failure offers a new explicit request; unknown connectivity keeps the saved request recoverable. Revisions become proposals. SQL guarantees were tested locally; production application is still pending.
 
-The Supabase CLI in this environment has no authenticated session. The migration and endpoint have **not** been deployed to the existing Supabase project. The global API-change rule also requires review of this concrete before/after change before production shipping. Source is pushed on the implementation branch for that review. Live generation is not verified.
+The owner explicitly approved deployment of this reviewed endpoint/jobs-table addition on 2026-10-26. That API review is complete. The secure Supabase CLI login is waiting for its one-time browser verification code. The migration and endpoint have **not** yet been deployed to the existing project. Railway login is saved and awaits workspace selection. Live generation is not verified.
 
 ## Repeatable checks
 
