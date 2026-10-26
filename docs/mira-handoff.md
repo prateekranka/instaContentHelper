@@ -76,8 +76,8 @@ Start the tracker with a private `TRACKER_WRITE_TOKEN` and persistent `TRACKER_D
 
 | Check | Result |
 | --- | --- |
-| Linux Swift domain tests | 11 passed, including real saved-project/position reopen, migration, corrupt recovery, future-version protection, stale sequences, script/shot history, stale proposals and ignored unconfirmed briefs |
-| Cross-platform coordinator | Compiled with the domain module on Linux; 11 tests include save-failure gating |
+| Linux Swift domain tests | 12 passed, including real saved-project/position reopen, migration, corrupt recovery, future-version protection, stale sequences, script/shot history, stale proposals and ignored unconfirmed briefs |
+| Cross-platform coordinator | Compiled with the domain module on Linux; 12 tests include save-failure gating |
 | Backend type-check and regression suite | 398 passed, 0 failed, 1 ignored; includes 5 new Mira tests |
 | PostgreSQL migration/job checks | Passed: idempotency, lease exclusion, interrupted recovery, retry bound, cancellation, anonymous table/function denial |
 | Native source syntax | Swift frontend parse passed; this is not native type-checking or linking |
@@ -86,7 +86,7 @@ Start the tracker with a private `TRACKER_WRITE_TOKEN` and persistent `TRACKER_D
 | Full native build, native UI, speech, accessibility | Unverified |
 | Live Supabase generation and generative quality | Unverified; endpoint not deployed |
 
-GitHub Actions also passed both [Backend checks](https://github.com/prateekranka/instaContentHelper/actions/runs/40372697384) and [Mira workflow contracts](https://github.com/prateekranka/instaContentHelper/actions/runs/40372697441) for commit `a159688b4397403efc1f3573290d59c100f6138d`.
+GitHub Actions also passed both [Backend checks](https://github.com/prateekranka/instaContentHelper/actions/runs/40376400864) and [Mira workflow contracts](https://github.com/prateekranka/instaContentHelper/actions/runs/40376400564) for commit `ecb276718b8265c7c414cf14539998176441641b`.
 
 Detailed timestamps, per-task criteria and pushed commit links are in [the progress snapshot](mira-progress.md). Native screenshots do not exist. The committed screenshots show only the tracker.
 
@@ -97,6 +97,8 @@ The project adapter uses the pinned `omarchy-apple-dev` converter. Run `python3 
 Run `bash scripts/mira-linux-build.sh` for a configured full-mode host. The wrapper enforces the existing live bootstrap guard for Release, then calls `xtool dev build`. It never distributes the result. Apple sign-in entitlements still require appropriate provisioning/signing.
 
 The owner said not to require an Xcode archive or physical device for this run. No further request for either is needed. The pinned upstream no-Xcode SwiftUI documentation nevertheless identifies NavigationStack, Binding and Environment limitations. This app uses those APIs; that route cannot currently establish a complete Mira native build. Full-mode SDK/xtool are absent here. This limitation is recorded instead of presenting Linux parsing as a working iPhone app. See [the toolchain record](mira-toolchain.md).
+
+The tracker bootstrap snapshot preserves the local server's actual activity timestamps/history on an empty first-deployment database. It is schema-validated and imported transactionally. A populated production volume is never overwritten from source on restart. Both store tests passed, including import preservation and rejection of invalid timestamps.
 
 ## Content and native acceptance still to verify
 

@@ -16,11 +16,12 @@
       "https://github.com/prateekranka/instaContentHelper/commit/b9fd52a1faef8883362ce49c5aca86806bafa8fb",
       "https://github.com/prateekranka/instaContentHelper/commit/0c5af417470a4a58023084d91846bbf554e44df7",
       "https://github.com/prateekranka/instaContentHelper/commit/2cd125effba55232dcdd8b420980df474d898283",
-      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c"
+      "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
+      "https://github.com/prateekranka/instaContentHelper/commit/a605a681f37d67e261e19321ca24de4eb433ff39"
     ],
-    "verification": "PASS: TypeScript; focused SQLite transaction/idempotency/reopen/evidence-gate unit test; TesterArmy e2e desktop/mobile/details/stale refresh flow and screenshots. PASS: public read, anonymous write rejection, authenticated idempotent update and conflicting-key rejection on local server. Public hosting, remote restart durability and another-device HTTPS are NOT verified.",
+    "verification": "PASS locally: TypeScript; 2 SQLite tests including original timestamp/history import and no overwrite of live records; desktop/mobile/details/stale refresh e2e; public read, rejected anonymous write and authenticated idempotency API e2e. Actual 18-task bootstrap validates. Public HTTPS/redeploy durability remain unverified.",
     "createdAt": "2026-10-26T16:40:50.474Z",
-    "updatedAt": "2026-10-26T17:54:58.267Z",
+    "updatedAt": "2026-10-26T18:20:17.478Z",
     "startedAt": "2026-10-26T16:40:50.474Z",
     "completedAt": null,
     "history": [
@@ -47,6 +48,11 @@
       {
         "at": "2026-10-26T17:54:58.267Z",
         "note": "Tracker source and local verification remain complete; public HTTPS deployment is still pending. No public URL is claimed.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T18:20:17.478Z",
+        "note": "First-deployment bootstrap now preserves actual local server timestamps/history. Superseded publication copies were removed; future failed CLI mutations still queue. No hosted URL is claimed.",
         "status": "Working"
       }
     ],
@@ -152,11 +158,12 @@
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/e37edef8f5e6fa0af92ae6de24203a768e6695a6",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
-      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d",
+      "https://github.com/prateekranka/instaContentHelper/commit/ecb276718b8265c7c414cf14539998176441641b"
     ],
-    "verification": "11 Swift tests pass: actual project and position reopen, atomic/stale writes, migration/future versions, corrupt recovery, unchanged-shot progress, stale proposals, ignored unconfirmed brief and save-failure gating. Core coordinator compiles on Linux.",
+    "verification": "12 Linux Swift tests pass against actual models, persistence and coordinator, including source/idea prerequisites and stale single-shot rejection. Native relaunch is not verified.",
     "createdAt": "2026-10-26T16:40:50.476Z",
-    "updatedAt": "2026-10-26T17:54:58.279Z",
+    "updatedAt": "2026-10-26T18:20:17.485Z",
     "startedAt": "2026-10-26T17:03:03.540Z",
     "completedAt": null,
     "history": [
@@ -173,6 +180,11 @@
       {
         "at": "2026-10-26T17:54:58.279Z",
         "note": "Models, persistence and coordinator implemented and tested; source evidence pushed.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T18:20:17.485Z",
+        "note": "Final context guards reject missing ideas, empty brief sources and stale single-shot requests before enqueue.",
         "status": "Working"
       }
     ],
@@ -193,11 +205,12 @@
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
-      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d",
+      "https://github.com/prateekranka/instaContentHelper/commit/728eb87fa3f9419531cac05bb9e066a8ed0f6c88"
     ],
     "verification": "Quick ideas source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
     "createdAt": "2026-10-26T16:40:50.477Z",
-    "updatedAt": "2026-10-26T17:54:58.307Z",
+    "updatedAt": "2026-10-26T18:20:17.489Z",
     "startedAt": "2026-10-26T17:54:58.307Z",
     "completedAt": null,
     "history": [
@@ -209,6 +222,11 @@
       {
         "at": "2026-10-26T17:54:58.307Z",
         "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T18:20:17.489Z",
+        "note": "New alternatives now appear first; older saved ideas stay available. Source parses; native UI verification remains pending.",
         "status": "Working"
       }
     ],
@@ -338,11 +356,12 @@
     "status": "Working",
     "codeTask": true,
     "commits": [
-      "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0"
+      "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0",
+      "https://github.com/prateekranka/instaContentHelper/commit/ecb276718b8265c7c414cf14539998176441641b"
     ],
-    "verification": "Backend type-check and full regression: 398 passed, 0 failed, 1 ignored. New Mira checks cover malformed outputs, language/duration, source-backed briefs, missing codes/health claims, shot boundaries, auth, ownership, replay and cancellation.",
+    "verification": "PASS: full Deno regression 398 passed, 0 failed, 1 ignored; 5 focused Mira cases pass after final context guards. GitHub Backend checks passed for ecb2767: https://github.com/prateekranka/instaContentHelper/actions/runs/40376400864. No live provider request or Supabase deployment occurred.",
     "createdAt": "2026-10-26T16:40:50.480Z",
-    "updatedAt": "2026-10-26T17:54:58.282Z",
+    "updatedAt": "2026-10-26T18:20:17.497Z",
     "startedAt": "2026-10-26T17:54:58.282Z",
     "completedAt": null,
     "history": [
@@ -364,6 +383,11 @@
       {
         "at": "2026-10-26T17:54:58.282Z",
         "note": "Credential reuse confirmed by owner. Added the new endpoint using existing server-side provider configuration; no secret copied into app source.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T18:20:17.497Z",
+        "note": "Concrete API review requested under global AGENTS.md. Deployment remains pending that review and authenticated Supabase access.",
         "status": "Working"
       }
     ],
@@ -458,11 +482,12 @@
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
-      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d",
+      "https://github.com/prateekranka/instaContentHelper/commit/728eb87fa3f9419531cac05bb9e066a8ed0f6c88"
     ],
     "verification": "Voice/language source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
     "createdAt": "2026-10-26T16:40:50.482Z",
-    "updatedAt": "2026-10-26T17:54:58.322Z",
+    "updatedAt": "2026-10-26T18:20:17.493Z",
     "startedAt": "2026-10-26T17:54:58.322Z",
     "completedAt": null,
     "history": [
@@ -474,6 +499,11 @@
       {
         "at": "2026-10-26T17:54:58.322Z",
         "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T18:20:17.493Z",
+        "note": "Transcript editing/use is disabled during recording; stop, review, then use the text. No real-device speech result is claimed.",
         "status": "Working"
       }
     ],
@@ -568,10 +598,12 @@
     ],
     "status": "Working",
     "codeTask": true,
-    "commits": [],
-    "verification": "",
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/0b821ee909c22ec240865c318afe3a15a1a3c626"
+    ],
+    "verification": "Handoff documents current source, repeatable checks, pins, adaptation decisions, API before/after and explicit unverified native/live checks. Source is pushed; final standalone tracker URL is still pending.",
     "createdAt": "2026-10-26T16:40:50.484Z",
-    "updatedAt": "2026-10-26T17:54:58.289Z",
+    "updatedAt": "2026-10-26T18:20:17.500Z",
     "startedAt": "2026-10-26T17:54:58.289Z",
     "completedAt": null,
     "history": [
@@ -583,6 +615,11 @@
       {
         "at": "2026-10-26T17:54:58.289Z",
         "note": "Implementation handoff drafted with repeatable checks, source boundaries, consent review, toolchain limits and remaining acceptance. Final hosting reconciliation remains outstanding.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-26T18:20:17.500Z",
+        "note": "Reviewable implementation handoff is public on GitHub. Deployment prerequisites are not represented as passed checks.",
         "status": "Working"
       }
     ],
@@ -633,19 +670,25 @@
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/e37edef8f5e6fa0af92ae6de24203a768e6695a6",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
-      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
+      "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d",
+      "https://github.com/prateekranka/instaContentHelper/commit/ecb276718b8265c7c414cf14539998176441641b"
     ],
-    "verification": "PASS: 11 tests in MiraCoreTests, actual implementation compiled. Native UI/device behavior is outside this verification task.",
+    "verification": "PASS: 12 Linux tests and actual coordinator compilation. GitHub Mira workflow contracts also passed for ecb2767: https://github.com/prateekranka/instaContentHelper/actions/runs/40376400564. This does not verify native UI/device behavior.",
     "blocker": null,
     "codeTask": true,
     "createdAt": "2026-10-26T17:54:58.297Z",
-    "updatedAt": "2026-10-26T17:54:58.297Z",
+    "updatedAt": "2026-10-26T18:20:17.504Z",
     "startedAt": "2026-10-26T17:54:58.297Z",
     "completedAt": "2026-10-26T17:54:58.297Z",
     "history": [
       {
         "at": "2026-10-26T17:54:58.297Z",
         "note": "Recorded independently verifiable Linux outcome after tests passed and code commits were pushed.",
+        "status": "Done"
+      },
+      {
+        "at": "2026-10-26T18:20:17.504Z",
+        "note": "Final source and CI proof reconciled after missing/stale-context regression coverage passed.",
         "status": "Done"
       }
     ]
@@ -664,17 +707,22 @@
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0"
     ],
-    "verification": "PASS: scripts/mira-sql-check.py against the digest-pinned PostgreSQL 17 image; assertions passed and task-owned container removed. This is not production Supabase proof.",
+    "verification": "PASS: actual migration/functions in digest-pinned PostgreSQL 17, plus successful GitHub Mira workflow contracts for ecb2767: https://github.com/prateekranka/instaContentHelper/actions/runs/40376400564. Production Supabase remains unverified.",
     "blocker": null,
     "codeTask": true,
     "createdAt": "2026-10-26T17:54:58.300Z",
-    "updatedAt": "2026-10-26T17:54:58.300Z",
+    "updatedAt": "2026-10-26T18:20:17.507Z",
     "startedAt": "2026-10-26T17:54:58.300Z",
     "completedAt": "2026-10-26T17:54:58.300Z",
     "history": [
       {
         "at": "2026-10-26T17:54:58.300Z",
         "note": "Recorded local database evidence after successful SQL checks and pushed migration/test source.",
+        "status": "Done"
+      },
+      {
+        "at": "2026-10-26T18:20:17.507Z",
+        "note": "GitHub SQL contract job passed as well as the local isolated database check.",
         "status": "Done"
       }
     ]
