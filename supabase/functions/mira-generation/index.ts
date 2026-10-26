@@ -86,6 +86,20 @@ export async function handleMira(
     if (body.input.operation === "reviseScript" && !body.input.script) {
       return jsonResponse({ error: "script_required" }, 400);
     }
+    if (body.input.operation === "script" && !body.input.idea) {
+      return jsonResponse({ error: "idea_required" }, 400);
+    }
+    if (
+      body.input.operation === "requirements" &&
+      !body.input.brief?.original.trim()
+    ) return jsonResponse({ error: "brief_source_required" }, 400);
+    if (
+      body.input.operation === "reviseShot" && (
+        body.input.storyboard?.sourceScriptID !== body.input.script?.id ||
+        body.input.storyboard?.requirementsRevision !==
+          (body.input.brief?.revision ?? 0)
+      )
+    ) return jsonResponse({ error: "stale_shot_list" }, 409);
     if (
       body.input.operation === "reviseShot" &&
       (!body.input.targetShotID ||

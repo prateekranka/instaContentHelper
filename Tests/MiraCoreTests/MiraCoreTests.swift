@@ -4,6 +4,37 @@ import Testing
 @testable import MiraCore
 
 struct MiraCoreTests {
+    @MainActor @Test func generationNeedsAnIdeaAndRejectsStaleSingleShotContext() async throws {
+        struct UnusedService: MiraGenerationService {
+            func start(_ job: MiraJob) async throws -> MiraJob { job }
+            func status(_ job: MiraJob) async throws -> MiraJob { job }
+            func cancel(_ job: MiraJob) async throws -> MiraJob { job }
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = MiraStore(repository: MiraFileRepository(directory: folder))
+        await store.load()
+        let id = store.newProject()
+        store.generate(id, operation: .script, service: UnusedService())
+        #expect(store.project(id)?.job == nil)
+        store.generate(id, operation: .requirements, service: UnusedService())
+        #expect(store.project(id)?.job == nil)
+        let script = MiraScript(
+            hook: "Today", spoken: "A familiar routine", caption: "At home", durationSeconds: 30,
+            language: "English")
+        var request = input(.storyboard)
+        request.script = script
+        var board = MiraFixtures.output(for: request).storyboard!
+        board.sourceScriptID = UUID()
+        store.update(id) {
+            $0.scripts = [script]
+            $0.activeScriptID = script.id
+            $0.storyboards = [board]
+            $0.activeStoryboardID = board.id
+        }
+        store.generate(id, operation: .reviseShot, target: board.shots[0].id, service: UnusedService())
+        #expect(store.project(id)?.job == nil)
+        await store.flush()
+    }
     @MainActor @Test func failedImportantSaveReportsFailureBeforeGenerationCanStart() async throws {
         struct FailingRepository: MiraProjectRepository {
             func load() async throws -> MiraDocument { MiraDocument() }

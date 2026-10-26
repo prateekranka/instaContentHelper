@@ -144,6 +144,20 @@ final class MiraStore {
             error = "Choose a script first."
             return
         }
+        if operation == .script && project.idea == nil {
+            error = "Choose an idea before generating a script."
+            return
+        }
+        if operation == .requirements
+            && project.brief.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            error = "Paste the original brand requirements first."
+            return
+        }
+        if operation == .reviseShot && project.storyboardIsStale {
+            error = "Update the full shot list to your current script before changing one shot."
+            return
+        }
         let input = MiraGenerationInput(
             operation: operation, profile: profile, constraints: project.constraints,
             request: request.isEmpty ? project.request : request,
