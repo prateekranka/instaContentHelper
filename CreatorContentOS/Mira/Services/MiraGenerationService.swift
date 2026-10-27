@@ -1,7 +1,53 @@
 import Foundation
+import Observation
+
+@MainActor @Observable
+final class MiraDependencies {
+    let store: MiraStore
+    let profileRepository: any MiraCreatorProfileRepository
+    let makeSpeechInput: @MainActor () -> any MiraSpeechInputService
+    private let makeLiveGeneration: @MainActor (PairedDeviceSession) -> any MiraGenerationService
+
+    init(
+        repository: any MiraProjectRepository & MiraCreatorProfileRepository,
+        makeSpeechInput: @escaping @MainActor () -> any MiraSpeechInputService,
+        makeLiveGeneration: @escaping @MainActor (PairedDeviceSession) -> any MiraGenerationService
+    ) {
+        store = MiraStore(repository: repository)
+        profileRepository = repository
+        self.makeSpeechInput = makeSpeechInput
+        self.makeLiveGeneration = makeLiveGeneration
+    }
+
+    static func live() -> MiraDependencies {
+        let support =
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/share")
+        let repository = MiraFileRepository(
+            directory: support.appendingPathComponent("Mira", isDirectory: true))
+        return MiraDependencies(
+            repository: repository, makeSpeechInput: { MiraSpeechInput() },
+            makeLiveGeneration: { MiraSupabaseGenerationService(session: $0) })
+    }
+
+    func generationService(
+        for project: MiraProject?, appState: AppState, services: AppServices,
+        requiresConsent: Bool = true
+    ) throws -> any MiraGenerationService {
+        if project?.isDemo == true { return MiraFixtureGenerationService() }
+        guard case .live(let session) = appState.runtime.mode else {
+            throw MiraError.invalid(
+                "Connect your account from Profile to use live generation. You can still write manually and open saved work."
+            )
+        }
+        if requiresConsent { try services.requireAIConsent(for: .planIdeas) }
+        return makeLiveGeneration(session)
+    }
+}
 
 struct MiraSupabaseGenerationService: MiraGenerationService {
     let session: PairedDeviceSession
+    var urlSession: URLSession = .shared
     private struct Request: Encodable {
         var action: String
         var id: UUID
@@ -28,7 +74,7 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
                 action: action, id: job.id, creatorID: session.creatorID,
                 inputRevision: action == "start" ? job.inputRevision : nil,
                 input: action == "start" ? job.input : nil, consentVersion: action == "start" ? 1 : nil))
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await urlSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw MiraError.offline }
         guard (200...299).contains(http.statusCode) else {
             switch http.statusCode {
@@ -47,21 +93,5 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
             }
         }
         return try JSONDecoder().decode(Response.self, from: data).job
-    }
-}
-struct MiraFixtureGenerationService: MiraGenerationService {
-    func start(_ job: MiraJob) async throws -> MiraJob {
-        try Task.checkCancellation()
-        var result = job
-        result.output = MiraFixtures.output(for: job.input)
-        result.state = .succeeded
-        try MiraValidation.validate(result.output!, for: job.input.operation, input: job.input)
-        return result
-    }
-    func status(_ job: MiraJob) async throws -> MiraJob { try await start(job) }
-    func cancel(_ job: MiraJob) async throws -> MiraJob {
-        var result = job
-        result.state = .cancelled
-        return result
     }
 }

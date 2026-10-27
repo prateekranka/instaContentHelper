@@ -5,8 +5,32 @@ struct MiraDocument: Codable, Equatable, Sendable {
     var profile = MiraProfile()
     var projects: [MiraProject] = []
     var position = MiraPosition()
+    var navigation: MiraNavigation?
     var demoMode = false
     var sequence = 0
+    var continuationProject: MiraProject? {
+        let unfinished = projects.filter { !$0.archived && $0.stage != .complete }
+        return unfinished.first { $0.id == position.projectID }
+            ?? unfinished.max { $0.updatedAt < $1.updatedAt }
+    }
+    func restoredNavigation() -> MiraNavigation {
+        func valid(_ route: MiraRoute) -> Bool {
+            guard let project = projects.first(where: { $0.id == route.projectID }) else { return false }
+            if case .shooting = route { return project.storyboard != nil }
+            return true
+        }
+        if var navigation {
+            navigation.today = navigation.today.filter(valid)
+            navigation.projects = navigation.projects.filter(valid)
+            return navigation
+        }
+        guard let id = position.projectID, let project = projects.first(where: { $0.id == id }) else {
+            return MiraNavigation()
+        }
+        var path: [MiraRoute] = [.project(id)]
+        if position.screen == "shooting", project.storyboard != nil { path.append(.shooting(id)) }
+        return MiraNavigation(today: path)
+    }
 }
 protocol MiraProjectRepository: Sendable {
     func load() async throws -> MiraDocument
@@ -25,7 +49,10 @@ actor MiraFileRepository: MiraProjectRepository, MiraCreatorProfileRepository {
     func load() throws -> MiraDocument {
         let manager = FileManager.default
         try manager.createDirectory(at: directory, withIntermediateDirectories: true)
-        if !manager.fileExists(atPath: file.path) { return MiraDocument() }
+        if !manager.fileExists(atPath: file.path) {
+            if manager.fileExists(atPath: backup.path) { try restoreBackup() }
+            return MiraDocument()
+        }
         do {
             let doc = try decode(Data(contentsOf: file))
             latestSequence = doc.sequence
@@ -34,17 +61,26 @@ actor MiraFileRepository: MiraProjectRepository, MiraCreatorProfileRepository {
             if let error = error as? MiraError, error == .newerVersion { throw error }
             let quarantined = directory.appendingPathComponent("mira-corrupt-\(UUID().uuidString).json")
             try manager.copyItem(at: file, to: quarantined)
-            if let doc = try? decode(Data(contentsOf: backup)) {
-                try Data(contentsOf: backup).write(to: file, options: .atomic)
-                latestSequence = doc.sequence
-                throw MiraError.storage(
-                    "Recovered your last safe save. Reopen Mira to load it. The damaged document is kept for recovery."
-                )
-            }
+            try restoreBackup()
+        }
+    }
+    private func restoreBackup() throws -> Never {
+        let data: Data
+        let document: MiraDocument
+        do {
+            data = try Data(contentsOf: backup)
+            document = try decode(data)
+        } catch {
+            if let error = error as? MiraError, error == .newerVersion { throw error }
             throw MiraError.storage(
                 "Saved work could not be read. It has been preserved for recovery. Mira will not replace it with an empty document."
             )
         }
+        try data.write(to: file, options: .atomic)
+        latestSequence = document.sequence
+        throw MiraError.storage(
+            "Recovered your last safe save. Try opening saved work again. Any damaged document is kept for recovery."
+        )
     }
     private func decode(_ data: Data) throws -> MiraDocument {
         let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any]

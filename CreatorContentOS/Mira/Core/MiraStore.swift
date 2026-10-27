@@ -18,22 +18,14 @@ final class MiraStore {
     private var saveTask: Task<Void, Never>?
     private var generationTasks: [UUID: Task<Void, Never>] = [:]
     private var editingDrafts: [UUID: UUID] = [:]
-    init(repository: (any MiraProjectRepository)? = nil) {
-        let support =
-            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
-                ".local/share", isDirectory: true)
-        self.repository =
-            repository
-            ?? MiraFileRepository(
-                directory: support.appendingPathComponent("Mira", isDirectory: true))
-    }
+    init(repository: any MiraProjectRepository) { self.repository = repository }
     func load() async {
         guard !loaded else { return }
         do {
             document = try await repository.load()
             loaded = true
             loadFailed = false
+            error = nil
         } catch {
             self.error = error.localizedDescription
             loadFailed = true
@@ -44,7 +36,111 @@ final class MiraStore {
     func update(_ id: UUID, immediate: Bool = true, _ change: (inout MiraProject) -> Void) {
         guard loaded, let index = document.projects.firstIndex(where: { $0.id == id }) else { return }
         change(&document.projects[index])
+        if document.position.projectID == id {
+            document.position.screen = document.projects[index].lastScreen?.rawValue ?? "project"
+            document.position.shotIndex = document.projects[index].shotIndex
+        }
         save(immediate: immediate)
+    }
+    func rememberNavigation(_ navigation: MiraNavigation) {
+        document.navigation = navigation
+        if let route = navigation.activePath.last, let project = project(route.projectID) {
+            let screen: MiraProjectScreen
+            if case .shooting = route { screen = .shooting } else { screen = project.editorScreen }
+            visit(project.id, screen: screen)
+        } else {
+            save()
+        }
+    }
+    func visit(_ id: UUID, screen: MiraProjectScreen) {
+        guard let index = document.projects.firstIndex(where: { $0.id == id }) else { return }
+        document.projects[index].lastScreen = screen
+        document.position = MiraPosition(
+            projectID: id, screen: screen.rawValue, shotIndex: document.projects[index].shotIndex)
+        save()
+    }
+    func moveShot(_ id: UUID, to index: Int) {
+        guard let project = project(id), let board = project.storyboard else { return }
+        update(id) {
+            $0.shotIndex = min(max(0, index), max(0, board.shots.count - 1))
+            $0.lastScreen = .shooting
+        }
+    }
+    func startFilming(_ id: UUID) {
+        guard let project = project(id), project.storyboard != nil, !project.storyboardIsStale else {
+            return
+        }
+        update(id) { $0.startedFilming = true }
+        visit(id, screen: .shooting)
+    }
+    func toggleFilmed(_ id: UUID, shotID: UUID) {
+        guard let project = project(id), !project.storyboardIsStale,
+            project.storyboard?.shots.contains(where: { $0.id == shotID }) == true
+        else { return }
+        update(id) {
+            if $0.filmed.contains(shotID) {
+                $0.filmed.removeAll { $0 == shotID }
+            } else {
+                $0.filmed.append(shotID)
+                $0.needsReview.removeAll { $0 == shotID }
+            }
+            $0.updatedAt = Date()
+        }
+    }
+    func approveScript(_ id: UUID) {
+        guard project(id)?.script != nil else { return }
+        update(id) {
+            $0.approvedScriptID = $0.activeScriptID
+            $0.touch()
+        }
+    }
+    func rename(_ id: UUID, to title: String) {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        update(id) {
+            $0.title = title
+            $0.updatedAt = Date()
+        }
+    }
+    func toggleArchive(_ id: UUID) {
+        update(id) {
+            $0.archived.toggle()
+            $0.updatedAt = Date()
+        }
+    }
+    func chooseIdea(_ id: UUID, ideaID: UUID) {
+        guard let idea = project(id)?.ideas.first(where: { $0.id == ideaID }) else { return }
+        update(id) { $0.select(idea) }
+    }
+    func chooseAnotherIdea(_ id: UUID) {
+        update(id) {
+            $0.selectedIdeaID = nil
+            $0.lastScreen = .ideas
+            $0.touch()
+        }
+    }
+    func writeScriptManually(_ id: UUID) {
+        guard let project = project(id), project.idea != nil, project.script == nil else { return }
+        let language = project.isDemo ? MiraFixtures.mamta.language : document.profile.language
+        update(id) {
+            let script = MiraScript(
+                hook: $0.idea?.hook ?? "", spoken: "", caption: "",
+                durationSeconds: $0.constraints.reelSeconds, language: language.rawValue)
+            $0.scripts.append(script)
+            $0.activeScriptID = script.id
+            $0.lastScreen = .script
+            $0.touch()
+        }
+    }
+    func restoreScript(_ id: UUID, revisionID: UUID) {
+        guard project(id)?.scripts.contains(where: { $0.id == revisionID }) == true else { return }
+        update(id) {
+            $0.checkpoint()
+            $0.activeScriptID = revisionID
+            $0.approvedScriptID = nil
+            $0.lastScreen = .script
+            $0.touch()
+        }
     }
     func save(immediate: Bool = true) {
         guard loaded, !loadFailed else { return }
@@ -97,6 +193,11 @@ final class MiraStore {
         generationTasks[id] = nil
         document.projects.removeAll { $0.id == id }
         if document.position.projectID == id { document.position = MiraPosition() }
+        if var navigation = document.navigation {
+            navigation.today.removeAll { $0.projectID == id }
+            navigation.projects.removeAll { $0.projectID == id }
+            document.navigation = navigation
+        }
         save()
     }
     func remember(_ preference: String) {
@@ -104,7 +205,8 @@ final class MiraStore {
         save()
     }
     func editScript<T: Equatable>(_ id: UUID, field: WritableKeyPath<MiraScript, T>, value: T) {
-        guard var project = project(id), var script = project.script, script[keyPath: field] != value else {
+        guard var project = project(id), var script = project.script, script[keyPath: field] != value
+        else {
             return
         }
         if editingDrafts[id] != script.id || project.approvedScriptID == script.id
@@ -177,7 +279,9 @@ final class MiraStore {
         }
     }
     func reconnect(_ id: UUID, service: any MiraGenerationService) {
-        guard generationTasks[id] == nil, let job = project(id)?.job, job.state == .working else { return }
+        guard generationTasks[id] == nil, let job = project(id)?.job, job.state == .working else {
+            return
+        }
         generationTasks[id] = Task {
             guard await flush() else {
                 generationTasks[id] = nil
@@ -187,7 +291,9 @@ final class MiraStore {
             generationTasks[id] = nil
         }
     }
-    private func perform(_ id: UUID, job: MiraJob, service: any MiraGenerationService, start: Bool) async {
+    private func perform(_ id: UUID, job: MiraJob, service: any MiraGenerationService, start: Bool)
+        async
+    {
         do {
             var result = start ? try await service.start(job) : try await service.status(job)
             for _ in 0..<45 {

@@ -7,7 +7,6 @@ struct MiraProjectView: View {
     var onGenerate: MiraGenerateAction
     var onReconnect: (UUID) -> Void
     var onCancel: (UUID) -> Void
-    @State private var section = "Script"
     var body: some View {
         Group {
             if let project = store.project(projectID) {
@@ -46,16 +45,23 @@ struct MiraProjectView: View {
                             Text(idea.visual)
                         }
                         if project.storyboard != nil {
-                            Picker("Project section", selection: $section) {
-                                Text("Script").tag("Script")
-                                Text("Shots").tag("Shots")
+                            Picker(
+                                "Project section",
+                                selection: Binding(
+                                    get: { project.editorScreen },
+                                    set: { store.visit(projectID, screen: $0) }
+                                )
+                            ) {
+                                Text("Script").tag(MiraProjectScreen.script)
+                                Text("Shots").tag(MiraProjectScreen.shots)
                             }.pickerStyle(.segmented)
                         }
-                        if section == "Shots", project.storyboard != nil {
+                        if project.editorScreen == .shots, project.storyboard != nil {
                             MiraStoryboardView(
                                 store: store, projectID: projectID,
                                 onAsk: { onSheet(.ask(projectID, .reviseStoryboard, nil)) },
                                 onUpdate: {
+                                    store.approveScript(projectID)
                                     onGenerate(
                                         projectID, .storyboard,
                                         "Update to match my current script and confirmed requirements", nil,
@@ -67,10 +73,7 @@ struct MiraProjectView: View {
                                 onAsk: { onSheet(.ask(projectID, .reviseScript, nil)) })
                         }
                         Button("Choose another idea") {
-                            store.update(projectID) {
-                                $0.selectedIdeaID = nil
-                                $0.touch()
-                            }
+                            store.chooseAnotherIdea(projectID)
                         }
                     }
                     Divider()
@@ -86,11 +89,6 @@ struct MiraProjectView: View {
                         Label("Share current plan", systemImage: "square.and.arrow.up")
                     }
                 }.navigationTitle("Your Reel").navigationBarTitleDisplayMode(.inline)
-                    .onAppear {
-                        section = project.storyboard == nil ? "Script" : "Shots"
-                        store.document.position = MiraPosition(projectID: projectID)
-                        store.save()
-                    }
             } else {
                 ContentUnavailableView(
                     "Project unavailable", systemImage: "book.closed",
@@ -150,8 +148,9 @@ struct MiraProjectView: View {
                     Text(idea.visual)
                     Text(idea.fit).foregroundStyle(.secondary)
                     Text("About \(idea.filmingMinutes) minutes to film · \(idea.setup)").font(.callout)
-                    Button("Use this idea") { store.update(projectID) { $0.select(idea) } }.buttonStyle(
+                    Button("Use this idea") { store.chooseIdea(projectID, ideaID: idea.id) }.buttonStyle(
                         MiraPrimaryStyle())
+                    Button("Adjust this idea") { onSheet(.adjustIdea(projectID, idea.id)) }
                 }
                 Divider()
             }
@@ -180,7 +179,9 @@ struct MiraProjectView: View {
     }
     private func shareText(_ p: MiraProject) -> String {
         var text = "\(p.title)\n\(p.stage.rawValue)\n"
-        if let s = p.script { text += "\nHook: \(s.hook)\n\nSpoken: \(s.spoken)\n\nCaption: \(s.caption)\n" }
+        if let s = p.script {
+            text += "\nHook: \(s.hook)\n\nSpoken: \(s.spoken)\n\nCaption: \(s.caption)\n"
+        }
         if let b = p.storyboard {
             for (i, shot) in b.shots.enumerated() {
                 text +=

@@ -166,3 +166,20 @@ enum MiraFixtures {
         }
     }
 }
+
+struct MiraFixtureGenerationService: MiraGenerationService {
+    func start(_ job: MiraJob) async throws -> MiraJob {
+        try Task.checkCancellation()
+        var result = job
+        result.output = MiraFixtures.output(for: job.input)
+        result.state = .succeeded
+        try MiraValidation.validate(result.output!, for: job.input.operation, input: job.input)
+        return result
+    }
+    func status(_ job: MiraJob) async throws -> MiraJob { try await start(job) }
+    func cancel(_ job: MiraJob) async throws -> MiraJob {
+        var result = job
+        result.state = .cancelled
+        return result
+    }
+}

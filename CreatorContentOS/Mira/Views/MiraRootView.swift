@@ -4,24 +4,25 @@ struct MiraRootView: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @Environment(\.scenePhase) private var scenePhase
-    @State private var store = MiraStore()
-    @State private var todayPath: [MiraRoute] = []
-    @State private var projectsPath: [MiraRoute] = []
+    let dependencies: MiraDependencies
+    private var store: MiraStore { dependencies.store }
+    @State private var navigation = MiraNavigation()
     @State private var sheet: MiraSheet?
     @ScaledMetric private var bodySize = 18.0
     var body: some View {
         Group {
             if store.loaded {
-                TabView {
-                    NavigationStack(path: $todayPath) {
+                TabView(selection: $navigation.tab) {
+                    NavigationStack(path: $navigation.today) {
                         today.navigationDestination(for: MiraRoute.self, destination: destination)
-                    }.tabItem { Label("Today", systemImage: "sun.max") }
-                    NavigationStack(path: $projectsPath) {
-                        MiraProjectsView(store: store, onDelete: delete).navigationDestination(
-                            for: MiraRoute.self, destination: destination
-                        )
-                        .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
-                    }.tabItem { Label("Projects", systemImage: "book.closed") }
+                    }.tabItem { Label("Today", systemImage: "sun.max") }.tag(MiraTab.today)
+                    NavigationStack(path: $navigation.projects) {
+                        MiraProjectsView(store: store, onOpen: { open($0, tab: .projects) }, onDelete: delete)
+                            .navigationDestination(
+                                for: MiraRoute.self, destination: destination
+                            )
+                            .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
+                    }.tabItem { Label("Projects", systemImage: "book.closed") }.tag(MiraTab.projects)
                 }
             } else {
                 MiraPage {
@@ -44,6 +45,11 @@ struct MiraRootView: View {
                     MiraAskView(
                         store: store, projectID: id, operation: operation, target: target,
                         onGenerate: generate)
+                case .adjustIdea(let id, let ideaID):
+                    MiraAskView(
+                        store: store, projectID: id, operation: .ideas,
+                        onGenerate: generate,
+                        contextIdea: store.project(id)?.ideas.first { $0.id == ideaID })
                 case .brief(let id): MiraBriefView(store: store, projectID: id, onGenerate: generate)
                 case .manualIdea(let id): MiraManualIdeaView(store: store, projectID: id)
                 }
@@ -61,16 +67,24 @@ struct MiraRootView: View {
         }
         .safeAreaInset(edge: .bottom) {
             if let message = store.saveMessage {
-                Text(message).font(.callout).padding().frame(maxWidth: .infinity).background(MiraTheme.paper)
-                    .accessibilityAddTraits(.updatesFrequently)
+                Text(message).font(.callout).padding().frame(maxWidth: .infinity).background(
+                    MiraTheme.paper
+                )
+                .accessibilityAddTraits(.updatesFrequently)
             }
         }
         .task {
             await store.load()
-            if let id = store.document.position.projectID, store.project(id) != nil {
-                todayPath = [.project(id)]
-                if store.document.position.screen == "shooting" { todayPath.append(.shooting(id)) }
-            }
+            if store.loaded { navigation = store.document.restoredNavigation() }
+        }
+        .onChange(of: navigation) { _, value in store.rememberNavigation(value) }
+        .onChange(of: store.loaded) { _, loaded in
+            if loaded { navigation = store.document.restoredNavigation() }
+        }
+        .onChange(of: store.document.projects.map(\.id)) { _, _ in
+            let ids = Set(store.document.projects.map(\.id))
+            navigation.today.removeAll { !ids.contains($0.projectID) }
+            navigation.projects.removeAll { !ids.contains($0.projectID) }
         }
         .onChange(of: scenePhase) { _, phase in if phase != .active { Task { await store.flush() } } }
     }
@@ -90,34 +104,41 @@ struct MiraRootView: View {
             Text("An idea that feels like you. Words you can say. A plan you can film yourself.")
             Button("What should I post today?") {
                 let id = store.newProject()
-                todayPath.append(.project(id))
+                open(id, tab: .today)
             }.buttonStyle(MiraPrimaryStyle()).accessibilityIdentifier("mira.new-project")
-            if let project = store.document.projects.filter({ !$0.archived && $0.stage != .complete }).sorted(
-                by: { $0.updatedAt > $1.updatedAt }).first
-            {
+            if let project = store.document.continuationProject {
                 Divider()
                 MiraSectionTitle(text: "Pick up where you left off")
                 Text(project.title).font(.headline)
                 Text("\(project.stage.rawValue) · Next: \(project.nextAction)").foregroundStyle(.secondary)
-                NavigationLink("Continue", value: MiraRoute.project(project.id))
+                Button("Continue") { open(project.id, tab: .today) }
             }
             Divider()
             Button {
                 let id = store.newProject()
-                todayPath.append(.project(id))
+                open(id, tab: .today)
                 sheet = .ask(id, .ideas, nil)
             } label: {
                 Label("Ask Mira", systemImage: "text.bubble")
             }
             Button("Try Mamta’s demo notebook") {
                 let id = store.addDemo()
-                todayPath.append(.project(id))
+                open(id, tab: .today)
             }.font(.callout)
             Text("Demo projects use labelled example content. Your personal profile starts empty.").font(
                 .footnote
             ).foregroundStyle(.secondary)
         }.navigationTitle("Today").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
+    }
+    private func open(_ id: UUID, tab: MiraTab) {
+        guard let project = store.project(id) else { return }
+        navigation.tab = tab
+        if tab == .today {
+            navigation.today = project.resumePath
+        } else {
+            navigation.projects = project.resumePath
+        }
     }
     @ViewBuilder private func destination(_ route: MiraRoute) -> some View {
         switch route {
@@ -131,17 +152,13 @@ struct MiraRootView: View {
         }
     }
     private func service(_ id: UUID, requiresConsent: Bool = true) throws -> any MiraGenerationService {
-        if store.project(id)?.isDemo == true { return MiraFixtureGenerationService() }
-        guard case .live(let session) = appState.runtime.mode else {
-            throw MiraError.invalid(
-                "Connect your account from Profile to use live generation. You can still write manually and open saved work."
-            )
-        }
-        if requiresConsent { try services.requireAIConsent(for: .planIdeas) }
-        return MiraSupabaseGenerationService(session: session)
+        try dependencies.generationService(
+            for: store.project(id), appState: appState, services: services,
+            requiresConsent: requiresConsent)
     }
     private func generate(
-        _ id: UUID, _ operation: MiraOperation, _ request: String, _ target: UUID?, _ language: MiraLanguage?
+        _ id: UUID, _ operation: MiraOperation, _ request: String, _ target: UUID?,
+        _ language: MiraLanguage?
     ) {
         do {
             store.generate(
@@ -184,9 +201,12 @@ typealias MiraGenerateAction = (UUID, MiraOperation, String, UUID?, MiraLanguage
 
 struct MiraProjectsView: View {
     var store: MiraStore
+    var onOpen: (UUID) -> Void
     var onDelete: (UUID) -> Void
     @State private var archived = false
     @State private var deletion: UUID?
+    @State private var renaming: UUID?
+    @State private var newName = ""
     var body: some View {
         MiraPage {
             Toggle("Show archived projects", isOn: $archived)
@@ -201,19 +221,22 @@ struct MiraProjectsView: View {
             }
             ForEach(projects) { project in
                 VStack(alignment: .leading, spacing: 12) {
-                    NavigationLink(value: MiraRoute.project(project.id)) {
+                    Button {
+                        onOpen(project.id)
+                    } label: {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(project.title).font(.headline)
                             Text("\(project.stage.rawValue) · \(project.nextAction)").font(.callout)
                         }
                     }
                     if project.isDemo { Text("Demo example").font(.caption) }
+                    Button("Rename") {
+                        newName = project.title
+                        renaming = project.id
+                    }
                     HStack {
                         Button(archived ? "Unarchive" : "Archive") {
-                            store.update(project.id) {
-                                $0.archived.toggle()
-                                $0.updatedAt = Date()
-                            }
+                            store.toggleArchive(project.id)
                         }
                         Spacer()
                         Button("Delete", role: .destructive) { deletion = project.id }
@@ -222,6 +245,22 @@ struct MiraProjectsView: View {
                 Divider()
             }
         }.navigationTitle("Projects")
+            .alert(
+                "Rename project",
+                isPresented: Binding(
+                    get: { renaming != nil }, set: { if !$0 { renaming = nil } }
+                )
+            ) {
+                TextField("Project name", text: $newName)
+                Button("Save name") {
+                    let title = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let id = renaming, !title.isEmpty {
+                        store.rename(id, to: title)
+                    }
+                    renaming = nil
+                }.disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Cancel", role: .cancel) { renaming = nil }
+            }
             .confirmationDialog(
                 "Delete this project and its saved revisions?",
                 isPresented: Binding(get: { deletion != nil }, set: { if !$0 { deletion = nil } }),

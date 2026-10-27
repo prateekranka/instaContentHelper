@@ -6,6 +6,8 @@ Branch: `codex/mira-ios-mvp` in `prateekranka/instaContentHelper`. Base: `1580a8
 
 The default native entry is now Mira. Today and Projects each own a typed navigation stack. Profile is a labelled toolbar action. The warm notebook palette supports light and dark appearance, scaled body text, native controls and text sharing. There are no active calendar, analytics, publishing, payment or video-editor destinations.
 
+The owner's priority pass on plan sections 5, 8 and 9 added saved per-tab paths and selected tab, per-project script/shot selection, meaningful filming resume, per-idea adjustment and a direct Rename action. Generating a new shot list selects its result. The app root constructs and injects the shared repository/store and generation/speech factories; `MiraStore` no longer constructs filesystem dependencies. See [the sections 5, 8 and 9 record](mira-sections-5-8-9.md).
+
 Today creates a project or resumes the last meaningful project and filming position. The quick-idea form exposes correctable filming time, location, style, equipment and separate Reel duration. It retains earlier ideas when requesting alternatives. Creators can add an idea and edit a script manually without AI access.
 
 Projects retain script and storyboard revisions, approval/source dependencies, proposal jobs, undo checkpoints, shot progress and the last screen. Editing a script or confirmed requirement makes its dependent plan stale. New shots retain filmed status only when their content is unchanged; changed shots require review. A focused filming screen provides Previous, Next, Mark filmed and Make this easier. It does not capture or analyse media.
@@ -30,6 +32,8 @@ The legacy Pocket interface remains available only through an explicit DEBUG fix
 ## Persistence and privacy
 
 Mira stores `mira-v2.json` and an atomic previous-save backup in the app's Application Support/Mira directory. The repository serializes writes and rejects stale sequences. It migrates the defined v1 envelope, refuses future versions, quarantines damaged documents and reports backup recovery instead of silently opening an empty library. Important transitions save immediately; typing is briefly debounced. Backgrounding flushes in-memory work.
+
+A missing primary file now recovers an existing backup with an explicit notice. Damaged or newer-version backups cannot become an empty library. Optional navigation/editor/undo fields keep earlier v2 documents readable. Undo restores shot position, filming state and script approval. Shot matching is one-to-one, and requirement mappings are remapped once, so repeated content and swapped generated IDs cannot duplicate filmed credit or redirect mappings.
 
 The profile starts empty. Mamta is available only through the labelled demo action. Demo projects use explicit fixtures and never become a fallback after a live error. Demo brief extraction is deliberately limited and cannot certify brand mappings.
 
@@ -78,8 +82,8 @@ Start the tracker with a private `TRACKER_WRITE_TOKEN` and persistent `TRACKER_D
 
 | Check | Result |
 | --- | --- |
-| Linux Swift domain tests | 12 passed, including real saved-project/position reopen, migration, corrupt recovery, future-version protection, stale sequences, script/shot history, stale proposals and ignored unconfirmed briefs |
-| Cross-platform coordinator | Compiled with the domain module on Linux; 12 tests include save-failure gating |
+| Linux Swift domain tests | 19 passed; includes seven new tab/editor restoration, deleted-route, backup, shot-identity/mapping and undo regressions |
+| Cross-platform coordinator | Compiled with the domain module on Linux; checks include save-failure gating and injected repository use |
 | Backend type-check and regression suite | 398 passed, 0 failed, 1 ignored; includes 5 new Mira tests |
 | PostgreSQL migration/job checks | Passed: idempotency, lease exclusion, interrupted recovery, retry bound, cancellation, anonymous table/function denial |
 | Native source syntax | Swift frontend parse passed; this is not native type-checking or linking |

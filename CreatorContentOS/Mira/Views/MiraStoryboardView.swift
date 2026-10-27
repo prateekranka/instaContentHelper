@@ -23,6 +23,7 @@ struct MiraStoryboardView: View {
                         "This shot list is out of date. Your earlier plan and filming history are preserved."
                     ).font(.headline)
                     Button("Update shot list", action: onUpdate).buttonStyle(MiraPrimaryStyle())
+                        .disabled(project.job?.state == .working)
                 } else {
                     NavigationLink(value: MiraRoute.shooting(projectID)) {
                         Text(project.startedFilming ? "Continue filming" : "Start filming").frame(
@@ -95,7 +96,9 @@ struct MiraShootingView: View {
     var onAsk: (UUID) -> Void
     var body: some View {
         MiraPage {
-            if let project = store.project(projectID), let board = project.storyboard, !board.shots.isEmpty {
+            if let project = store.project(projectID), let board = project.storyboard,
+                !board.shots.isEmpty
+            {
                 let index = min(max(0, project.shotIndex), board.shots.count - 1)
                 let shot = board.shots[index]
                 Text("Shot \(index+1) of \(board.shots.count)").font(.title2)
@@ -118,15 +121,7 @@ struct MiraShootingView: View {
                         ? "Mark not filmed"
                         : (project.needsReview.contains(shot.id) ? "Reviewed and filmed" : "Mark filmed")
                 ) {
-                    store.update(projectID) { p in
-                        if p.filmed.contains(shot.id) {
-                            p.filmed.removeAll { $0 == shot.id }
-                        } else {
-                            p.filmed.append(shot.id)
-                            p.needsReview.removeAll { $0 == shot.id }
-                        }
-                        p.updatedAt = Date()
-                    }
+                    store.toggleFilmed(projectID, shotID: shot.id)
                 }.buttonStyle(MiraPrimaryStyle()).disabled(project.storyboardIsStale)
                 HStack {
                     Button("Previous") { move(max(0, index - 1)) }.disabled(index == 0)
@@ -135,25 +130,22 @@ struct MiraShootingView: View {
                         index == board.shots.count - 1)
                 }.buttonStyle(.bordered)
                 Button("Make this easier") { onAsk(shot.id) }
-                Text("Mira does not record or analyse footage. Filmed is progress you report yourself.").font(
-                    .footnote
-                ).foregroundStyle(.secondary)
-                if project.stage == .complete { Text("Your filming checklist is complete.").font(.headline) }
+                Text("Mira does not record or analyse footage. Filmed is progress you report yourself.")
+                    .font(
+                        .footnote
+                    ).foregroundStyle(.secondary)
+                if project.stage == .complete {
+                    Text("Your filming checklist is complete.").font(.headline)
+                }
             } else {
                 Text("Make a shot list before filming.")
             }
         }.navigationTitle("Filming").navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                store.update(projectID) { $0.startedFilming = true }
-                store.document.position = MiraPosition(
-                    projectID: projectID, screen: "shooting",
-                    shotIndex: store.project(projectID)?.shotIndex ?? 0)
-                store.save()
+                store.startFilming(projectID)
             }
     }
     private func move(_ index: Int) {
-        store.update(projectID) { $0.shotIndex = index }
-        store.document.position = MiraPosition(projectID: projectID, screen: "shooting", shotIndex: index)
-        store.save()
+        store.moveShot(projectID, to: index)
     }
 }

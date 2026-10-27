@@ -45,28 +45,31 @@ struct MiraField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.headline)
-            TextField(title, text: $text, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(2...10)
-                .accessibilityLabel(title)
+            TextField(title, text: $text, axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(
+                2...10
+            )
+            .accessibilityLabel(title)
         }
     }
 }
 struct MiraSectionTitle: View {
     var text: String
-    var body: some View { Text(text).font(.title2.weight(.semibold)).accessibilityAddTraits(.isHeader) }
-}
-enum MiraRoute: Hashable {
-    case project(UUID)
-    case shooting(UUID)
+    var body: some View {
+        Text(text).font(.title2.weight(.semibold)).accessibilityAddTraits(.isHeader)
+    }
 }
 enum MiraSheet: Identifiable {
     case profile
     case ask(UUID, MiraOperation, UUID?)
+    case adjustIdea(UUID, UUID)
     case brief(UUID)
     case manualIdea(UUID)
     var id: String {
         switch self {
         case .profile: "profile"
-        case .ask(let id, let operation, let target): "ask-\(id)-\(operation)-\(String(describing:target))"
+        case .ask(let id, let operation, let target):
+            "ask-\(id)-\(operation)-\(String(describing:target))"
+        case .adjustIdea(let id, let idea): "adjust-\(id)-\(idea)"
         case .brief(let id): "brief-\(id)"
         case .manualIdea(let id): "idea-\(id)"
         }

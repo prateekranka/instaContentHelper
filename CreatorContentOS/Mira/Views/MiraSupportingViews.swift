@@ -6,51 +6,62 @@ struct MiraVoiceTextField: View {
     var title: String
     @Binding var text: String
     var language: MiraLanguage
-    @State private var speech = MiraSpeechInput()
+    @Environment(MiraDependencies.self) private var dependencies
+    @State private var speech: (any MiraSpeechInputService)?
     @State private var locale = "hi-IN"
     @Environment(\.scenePhase) private var scenePhase
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             MiraField(title: title, text: $text)
-            Picker("Speech recognition language", selection: $locale) {
-                Text("Hindi recognition").tag("hi-IN")
-                Text("English recognition").tag("en-IN")
-            }.disabled(speech.recording)
-            Button {
-                if speech.recording { speech.stop() } else { Task { await speech.start(locale: locale) } }
-            } label: {
-                Label(
-                    speech.recording ? "Stop recording · \(speech.elapsed) seconds" : "Use microphone",
-                    systemImage: speech.recording ? "stop.circle.fill" : "mic")
-            }.disabled(speech.requesting)
-            if speech.recording {
-                Text("Recording · stops at 60 seconds").font(.headline).accessibilityAddTraits(
-                    .updatesFrequently)
-            }
-            if !speech.transcript.isEmpty {
-                MiraField(title: "Review transcript", text: $speech.transcript).disabled(speech.recording)
-                Button("Use reviewed transcript") {
-                    text = speech.transcript
-                    speech.transcript = ""
+            if let speech {
+                Picker("Speech recognition language", selection: $locale) {
+                    Text("Hindi recognition").tag("hi-IN")
+                    Text("English recognition").tag("en-IN")
                 }.disabled(speech.recording)
-            }
-            if let error = speech.error {
-                Text(error).font(.callout)
-                Button("Open Settings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
+                Button {
+                    if speech.recording { speech.stop() } else { Task { await speech.start(locale: locale) } }
+                } label: {
+                    Label(
+                        speech.recording ? "Stop recording · \(speech.elapsed) seconds" : "Use microphone",
+                        systemImage: speech.recording ? "stop.circle.fill" : "mic")
+                }.disabled(speech.requesting)
+                if speech.recording {
+                    Text("Recording · stops at 60 seconds").font(.headline).accessibilityAddTraits(
+                        .updatesFrequently)
+                }
+                if !speech.transcript.isEmpty {
+                    MiraField(
+                        title: "Review transcript",
+                        text: Binding(
+                            get: { speech.transcript }, set: { speech.transcript = $0 }
+                        )
+                    ).disabled(speech.recording)
+                    Button("Use reviewed transcript") {
+                        text = speech.transcript
+                        speech.transcript = ""
+                    }.disabled(speech.recording)
+                }
+                if let error = speech.error {
+                    Text(error).font(.callout)
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
                     }
                 }
             }
             Text(
                 "Audio stays in on-device recognition memory. Review the transcript before submitting. Hinglish accuracy can vary; Hindi and English recognition are separate choices."
             ).font(.footnote).foregroundStyle(.secondary)
-        }.onAppear { locale = language == .english ? "en-IN" : "hi-IN" }
-            .onDisappear { speech.stop() }
-            .onChange(of: scenePhase) { _, phase in if phase != .active { speech.stop() } }
-            .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) {
-                _ in speech.stop()
-            }
+        }.onAppear {
+            if speech == nil { speech = dependencies.makeSpeechInput() }
+            locale = language == .english ? "en-IN" : "hi-IN"
+        }
+        .onDisappear { speech?.stop() }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { speech?.stop() } }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) {
+            _ in speech?.stop()
+        }
     }
 }
 struct MiraAskView: View {
@@ -59,6 +70,7 @@ struct MiraAskView: View {
     var operation: MiraOperation
     var target: UUID?
     var onGenerate: MiraGenerateAction
+    var contextIdea: MiraIdea?
     @Environment(\.dismiss) private var dismiss
     @State private var request = ""
     @State private var language: MiraLanguage = .english
@@ -107,6 +119,12 @@ struct MiraAskView: View {
                 )
             }
             Button("Explain this plan") { explanation.toggle() }
+            if store.project(projectID)?.job?.state == .working {
+                Text(
+                    "Mira is working on your earlier request. Reconnect or cancel it from this project first."
+                )
+                .font(.callout)
+            }
             Button(operation == .ideas ? "Get ideas" : "Propose change") {
                 let lower = request.lowercased()
                 if ["publish to", "upload video", "instagram analytics", "send payment"].contains(where: {
@@ -116,14 +134,20 @@ struct MiraAskView: View {
                         "Mira helps with ideas, words and filming plans. Publishing, editing media and analytics are outside this notebook."
                     return
                 }
-                onGenerate(projectID, operation, request, target, operation == .reviseScript ? language : nil)
+                onGenerate(
+                    projectID, operation, request, target, operation == .reviseScript ? language : nil)
                 dismiss()
             }.buttonStyle(MiraPrimaryStyle()).disabled(
-                request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || store.project(projectID)?.job?.state == .working)
         }.navigationTitle("Ask Mira").toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
         }
         .onAppear {
+            if let idea = contextIdea, request.isEmpty {
+                request =
+                    "Adjust this idea: \(idea.title). Hook: \(idea.hook). Viewers see: \(idea.visual). My change: "
+            }
             language =
                 store.project(projectID)?.script.flatMap { MiraLanguage(rawValue: $0.language) }
                 ?? store.document.profile.language
@@ -162,8 +186,9 @@ struct MiraProfileView: View {
             MiraField(title: "Things you would not say", text: field(\.avoid))
             Toggle("I usually film alone", isOn: field(\.solo))
             MiraField(title: "Optional real captions or spoken samples", text: field(\.samples))
-            Text("Mira uses only context you provide. No Instagram account is connected or analysed.").font(
-                .footnote)
+            Text("Mira uses only context you provide. No Instagram account is connected or analysed.")
+                .font(
+                    .footnote)
             Divider()
             MiraSectionTitle(text: "Live generation")
             if case .live = appState.runtime.mode {
@@ -196,7 +221,9 @@ struct MiraProfileView: View {
             set: { value in
                 store.document.profile[keyPath: path] = value
                 for i in store.document.projects.indices
-                where store.document.projects[i].job?.state == .working { store.document.projects[i].touch() }
+                where store.document.projects[i].job?.state == .working {
+                    store.document.projects[i].touch()
+                }
                 store.save(immediate: false)
             })
     }
@@ -332,7 +359,9 @@ struct MiraConsentReviewView: View {
     var body: some View {
         MiraPage {
             MiraSectionTitle(text: "AI data permission")
-            Text(AIConsentCopy.purposeAndDestinations.replacingOccurrences(of: "ContentHelper", with: "Mira"))
+            Text(
+                AIConsentCopy.purposeAndDestinations.replacingOccurrences(of: "ContentHelper", with: "Mira")
+            )
             Text(
                 "Saved local work and manual editing stay available if you decline. On-device microphone audio is not uploaded."
             )
@@ -352,7 +381,8 @@ struct MiraConsentPresenter: ViewModifier {
     func body(content: Content) -> some View {
         content.sheet(
             isPresented: Binding(
-                get: { services.isAIConsentSheetPresented }, set: { services.setAIConsentSheetPresented($0) })
+                get: { services.isAIConsentSheetPresented },
+                set: { services.setAIConsentSheetPresented($0) })
         ) {
             NavigationStack { MiraConsentReviewView() }
         }

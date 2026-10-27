@@ -16,6 +16,13 @@ struct MiraScriptView: View {
                     MiraField(title: "Hook · spoken opening", text: field(\.hook))
                     MiraField(title: "Spoken script", text: field(\.spoken))
                     MiraField(title: "Caption", text: field(\.caption))
+                    Picker("Script language", selection: field(\.language)) {
+                        ForEach(MiraLanguage.allCases, id: \.self) { Text($0.rawValue).tag($0.rawValue) }
+                    }
+                    Text(
+                        "Changing the language label keeps your words. Ask Mira to rewrite them in another language."
+                    )
+                    .font(.footnote)
                     Text("Spoken words stay separate from filming instructions. Runtime is an estimate.")
                         .font(.footnote)
                     Stepper(
@@ -36,10 +43,7 @@ struct MiraScriptView: View {
                     }
                     Button("Change language or ask Mira", action: onAsk)
                     Button(project.storyboard == nil ? "Make shot list" : "Update shot list") {
-                        store.update(projectID) {
-                            $0.approvedScriptID = $0.activeScriptID
-                            $0.touch()
-                        }
+                        store.approveScript(projectID)
                         onGenerate(projectID, .storyboard, "Use my current reviewed script", nil, nil)
                     }.buttonStyle(MiraPrimaryStyle()).disabled(
                         script.spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -52,12 +56,7 @@ struct MiraScriptView: View {
                                 Text(version.spoken)
                                 if version.id != project.activeScriptID {
                                     Button("Restore this revision") {
-                                        store.update(projectID) {
-                                            $0.checkpoint()
-                                            $0.activeScriptID = version.id
-                                            $0.approvedScriptID = nil
-                                            $0.touch()
-                                        }
+                                        store.restoreScript(projectID, revisionID: version.id)
                                     }
                                 }
                             }.padding(.vertical, 12)
@@ -67,15 +66,7 @@ struct MiraScriptView: View {
                     Button("Draft hook, script and caption") { onGenerate(projectID, .script, "", nil, nil) }
                         .buttonStyle(MiraPrimaryStyle()).disabled(project.job?.state == .working)
                     Button("Write it myself") {
-                        store.update(projectID) { project in
-                            let script = MiraScript(
-                                hook: project.idea?.hook ?? "", spoken: "", caption: "",
-                                durationSeconds: project.constraints.reelSeconds,
-                                language: store.document.profile.language.rawValue)
-                            project.scripts.append(script)
-                            project.activeScriptID = script.id
-                            project.touch()
-                        }
+                        store.writeScriptManually(projectID)
                     }
                 }
             }

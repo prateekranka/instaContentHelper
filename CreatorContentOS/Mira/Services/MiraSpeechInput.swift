@@ -6,7 +6,10 @@ import UIKit
 
 @MainActor protocol MiraSpeechInputService: AnyObject {
     var recording: Bool { get }
-    var transcript: String { get }
+    var requesting: Bool { get }
+    var transcript: String { get set }
+    var elapsed: Int { get }
+    var error: String? { get }
     func start(locale: String) async
     func stop()
 }
@@ -22,14 +25,19 @@ final class MiraSpeechInput: MiraSpeechInputService {
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var timer: Task<Void, Never>?
     private var tapInstalled = false
+    private var attempt = UUID()
     func start(locale: String) async {
         guard !recording, !requesting else { return }
+        let attempt = UUID()
+        self.attempt = attempt
         requesting = true
         defer { requesting = false }
         let speech = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
         }
+        guard self.attempt == attempt else { return }
         let microphone = await AVAudioApplication.requestRecordPermission()
+        guard self.attempt == attempt else { return }
         guard UIApplication.shared.applicationState == .active else {
             error =
                 "Recording was interrupted before it started. Tap the microphone when you are ready, or type instead."
@@ -40,7 +48,8 @@ final class MiraSpeechInput: MiraSpeechInputService {
                 "Microphone or speech permission is off. You can type instead, or enable access in Settings."
             return
         }
-        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale)), recognizer.isAvailable,
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale)),
+            recognizer.isAvailable,
             recognizer.supportsOnDeviceRecognition
         else {
             error =
@@ -49,6 +58,7 @@ final class MiraSpeechInput: MiraSpeechInputService {
         }
         do {
             stop()
+            let recordingAttempt = self.attempt
             transcript = ""
             error = nil
             elapsed = 0
@@ -61,7 +71,8 @@ final class MiraSpeechInput: MiraSpeechInputService {
             self.request = request
             let input = engine.inputNode
             let format = input.outputFormat(forBus: 0)
-            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in request.append(buffer)
+            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+                request.append(buffer)
             }
             tapInstalled = true
             recognition = recognizer.recognitionTask(with: request) { [weak self] result, failure in
@@ -69,7 +80,7 @@ final class MiraSpeechInput: MiraSpeechInputService {
                 let finished = result?.isFinal == true
                 let failed = failure != nil
                 Task { @MainActor [weak self] in
-                    guard let self, self.recording else { return }
+                    guard let self, self.recording, self.attempt == recordingAttempt else { return }
                     if let text { self.transcript = text }
                     if finished || failed {
                         self.stop()
@@ -85,7 +96,7 @@ final class MiraSpeechInput: MiraSpeechInputService {
             timer = Task { [weak self] in
                 for second in 1...60 {
                     do { try await Task.sleep(for: .seconds(1)) } catch { return }
-                    guard let self, self.recording else { return }
+                    guard let self, self.recording, self.attempt == recordingAttempt else { return }
                     self.elapsed = second
                 }
                 self?.stop()
@@ -96,6 +107,7 @@ final class MiraSpeechInput: MiraSpeechInputService {
         }
     }
     func stop() {
+        attempt = UUID()
         if recording && transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             error = "No speech was recognised. Try again or type your request."
         }

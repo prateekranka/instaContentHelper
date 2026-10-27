@@ -33,14 +33,19 @@ struct MiraConstraints: Codable, Equatable, Sendable {
     var equipment = "Phone; no tripod assumed"
     mutating func populate(from text: String) {
         let lower = text.lowercased()
-        if let match = lower.range(of: #"\b\d{1,3}\s*(minutes?|mins?|मिनट)"#, options: .regularExpression),
+        if let match = lower.range(
+            of: #"\b\d{1,3}\s*(minutes?|mins?|मिनट)"#, options: .regularExpression),
             let number = Int(lower[match].prefix(while: { $0.isNumber })), (1...180).contains(number)
         {
             filmingMinutes = number
         }
-        if lower.contains("ghar") || lower.contains("home") || lower.contains("घर") { location = "Home" }
+        if lower.contains("ghar") || lower.contains("home") || lower.contains("घर") {
+            location = "Home"
+        }
         if lower.contains("kitchen") || lower.contains("रसोई") { location = "Kitchen at home" }
-        if lower.contains("gym") && !lower.contains("cannot") && !lower.contains("can't") { location = "Gym" }
+        if lower.contains("gym") && !lower.contains("cannot") && !lower.contains("can't") {
+            location = "Gym"
+        }
         if lower.contains("no tripod") || lower.contains("tripod nahi") {
             equipment = "Phone on a stable shelf or table; no tripod"
         }
@@ -118,7 +123,9 @@ enum MiraStage: String, Codable, Sendable {
 enum MiraOperation: String, Codable, Sendable {
     case ideas, script, storyboard, reviseScript, reviseShot, reviseStoryboard, requirements
 }
-enum MiraGenerationState: String, Codable, Sendable { case idle, working, failed, cancelled, succeeded }
+enum MiraGenerationState: String, Codable, Sendable {
+    case idle, working, failed, cancelled, succeeded
+}
 struct MiraGenerationInput: Codable, Equatable, Sendable {
     var operation: MiraOperation
     var profile: MiraProfile
@@ -151,12 +158,34 @@ struct MiraPosition: Codable, Equatable, Sendable {
     var screen = "project"
     var shotIndex = 0
 }
+enum MiraTab: String, Codable, Hashable, Sendable { case today, projects }
+enum MiraProjectScreen: String, Codable, CaseIterable, Sendable {
+    case ideas, script, shots, shooting
+}
+enum MiraRoute: Codable, Hashable, Sendable {
+    case project(UUID)
+    case shooting(UUID)
+    var projectID: UUID {
+        switch self {
+        case .project(let id), .shooting(let id): id
+        }
+    }
+}
+struct MiraNavigation: Codable, Equatable, Sendable {
+    var tab: MiraTab = .today
+    var today: [MiraRoute] = []
+    var projects: [MiraRoute] = []
+    var activePath: [MiraRoute] { tab == .today ? today : projects }
+}
 struct MiraUndo: Codable, Equatable, Sendable {
     var scriptID: UUID?
     var storyboardID: UUID?
     var brief: MiraBrief
     var filmed: [UUID]
     var review: [UUID]
+    var shotIndex: Int?
+    var startedFilming: Bool?
+    var approvedScriptID: UUID?
 }
 struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var id = UUID()
@@ -182,13 +211,27 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var job: MiraJob?
     var undo: [MiraUndo] = []
     var isDemo = false
+    var lastScreen: MiraProjectScreen?
     var script: MiraScript? { scripts.first { $0.id == activeScriptID } }
     var storyboard: MiraStoryboard? { storyboards.first { $0.id == activeStoryboardID } }
     var idea: MiraIdea? { ideas.first { $0.id == selectedIdeaID } }
     var effectiveBriefRevision: Int { brief.confirmed ? brief.revision : 0 }
+    var editorScreen: MiraProjectScreen {
+        guard idea != nil else { return .ideas }
+        if storyboard != nil && (lastScreen == nil || lastScreen == .shots || lastScreen == .shooting) {
+            return .shots
+        }
+        return .script
+    }
+    var resumePath: [MiraRoute] {
+        var path: [MiraRoute] = [.project(id)]
+        if lastScreen == .shooting, storyboard != nil, !storyboardIsStale { path.append(.shooting(id)) }
+        return path
+    }
     var storyboardIsStale: Bool {
         guard let board = storyboard else { return false }
-        return board.sourceScriptID != activeScriptID || board.requirementsRevision != effectiveBriefRevision
+        return board.sourceScriptID != activeScriptID
+            || board.requirementsRevision != effectiveBriefRevision
     }
     var stage: MiraStage {
         guard selectedIdeaID != nil else { return .choosing }
@@ -216,12 +259,15 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         inputRevision += 1
     }
     mutating func receive(_ result: MiraJob) throws -> Bool {
-        guard let pending = job, pending.id == result.id, pending.state != .cancelled else { return false }
+        guard let pending = job, pending.id == result.id, pending.state != .cancelled else {
+            return false
+        }
         guard result.inputRevision == pending.inputRevision, result.input == pending.input else {
             throw MiraError.invalid("Generation result does not match the saved request.")
         }
         if result.state == .succeeded && result.output == nil {
-            throw MiraError.invalid("Generation finished without an artifact. Your saved work is unchanged.")
+            throw MiraError.invalid(
+                "Generation finished without an artifact. Your saved work is unchanged.")
         }
         if let output = result.output {
             try MiraValidation.validate(output, for: pending.input.operation, input: pending.input)
@@ -237,6 +283,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             startedFilming = false
         }
         selectedIdeaID = idea.id
+        lastScreen = .script
         title = idea.title
         touch()
     }
@@ -254,7 +301,8 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         undo.append(
             MiraUndo(
                 scriptID: activeScriptID, storyboardID: activeStoryboardID, brief: brief, filmed: filmed,
-                review: needsReview))
+                review: needsReview, shotIndex: shotIndex, startedFilming: startedFilming,
+                approvedScriptID: approvedScriptID))
         if undo.count > 30 { undo.removeFirst() }
     }
     mutating func undoLastChange() {
@@ -264,7 +312,9 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         brief = old.brief
         filmed = old.filmed
         needsReview = old.review
-        approvedScriptID = nil
+        approvedScriptID = old.approvedScriptID
+        shotIndex = min(old.shotIndex ?? shotIndex, max(0, (storyboard?.shots.count ?? 0) - 1))
+        startedFilming = old.startedFilming ?? startedFilming
         touch()
     }
     mutating func apply(_ output: MiraOutput, operation: MiraOperation) throws {
@@ -292,6 +342,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             scripts.append(script)
             activeScriptID = script.id
             approvedScriptID = nil
+            lastScreen = .script
         }
         if var board = output.storyboard {
             guard let current = script, board.sourceScriptID == current.id,
@@ -303,21 +354,27 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             let old = storyboard
             var preserved: [UUID] = []
             var review: [UUID] = []
+            var matched = Set<UUID>()
+            let oldIDs = Set(old?.shots.map(\.id) ?? [])
+            var replacements: [UUID: UUID] = [:]
             for index in board.shots.indices {
                 let shot = board.shots[index]
-                if let unchanged = old?.shots.first(where: { $0.sameContent(as: shot) }) {
-                    let generatedID = board.shots[index].id
+                if let unchanged = old?.shots.first(where: {
+                    !matched.contains($0.id) && $0.sameContent(as: shot)
+                }) {
+                    matched.insert(unchanged.id)
                     board.shots[index].id = unchanged.id
-                    for m in board.mappings.indices {
-                        board.mappings[m].shotIDs = board.mappings[m].shotIDs.map {
-                            $0 == generatedID ? unchanged.id : $0
-                        }
-                    }
+                    replacements[shot.id] = unchanged.id
                     if filmed.contains(unchanged.id) { preserved.append(unchanged.id) }
                     if needsReview.contains(unchanged.id) { review.append(unchanged.id) }
                 } else if old != nil {
-                    review.append(shot.id)
+                    if oldIDs.contains(shot.id) { board.shots[index].id = UUID() }
+                    replacements[shot.id] = board.shots[index].id
+                    review.append(board.shots[index].id)
                 }
+            }
+            for index in board.mappings.indices {
+                board.mappings[index].shotIDs = board.mappings[index].shotIDs.map { replacements[$0] ?? $0 }
             }
             board.id = UUID()
             storyboards.append(board)
@@ -325,6 +382,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             filmed = preserved
             needsReview = review
             shotIndex = min(shotIndex, max(0, board.shots.count - 1))
+            lastScreen = .shots
         }
         if var brief = output.brief {
             brief.confirmed = false
