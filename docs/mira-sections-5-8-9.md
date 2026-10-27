@@ -4,6 +4,10 @@ The owner selected these plan sections on 2026-10-27. This record describes sour
 implementation and domain verification. Native build, UI, speech and accessibility
 verification remain open under the existing archive/device waiver.
 
+[Pushed implementation](https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f)
+and [passing GitHub Actions](https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363).
+The Swift and PostgreSQL jobs both passed for this exact source commit.
+
 ## Section 5 — navigation and screens
 
 - Today and Projects retain independent typed paths and the selected tab. Today
@@ -84,6 +88,8 @@ The seven new regressions are in [MiraPriorityTests.swift](../Tests/MiraCoreTest
 
 The first sandboxed compiler run hit a local CFSocket error and timed out. The same
 checks passed with local IPC available. This was not an application test failure.
+The seven priority regressions passed again after the final recovery-error correction;
+GitHub Actions then passed the complete core suite for the pushed source commit.
 The Swift frontend parsed all native Mira views/services and the app entry without syntax
 errors. Parsing is not native type-checking, linking or runtime verification.
 

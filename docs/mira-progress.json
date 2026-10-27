@@ -630,7 +630,8 @@
       ],
       "status": "Working",
       "commits": [
-        "https://github.com/prateekranka/instaContentHelper/commit/0b821ee909c22ec240865c318afe3a15a1a3c626"
+        "https://github.com/prateekranka/instaContentHelper/commit/0b821ee909c22ec240865c318afe3a15a1a3c626",
+        "https://github.com/prateekranka/instaContentHelper/commit/b9b136862c17ef52c5db82fd01300b3e79f6125f"
       ],
       "verification": "Handoff documents implemented source, repeatable checks, pins, adaptation decisions, approved API before/after and explicit unverified native/live checks. Public tracker URL is live; hosted API/browser/restart/redeploy acceptance passed. Final documentation reconciliation will follow live backend deployment.",
       "blocker": "Approved Supabase deployment awaits secure CLI verification. Native build/runtime remain unverified under the owner’s archive/device waiver.",
@@ -638,7 +639,7 @@
       "codeTask": true,
       "createdAt": "2026-10-26T16:40:50.484Z",
       "startedAt": "2026-10-26T17:54:58.289Z",
-      "updatedAt": "2026-10-27T03:23:32.810Z",
+      "updatedAt": "2026-10-27T03:24:37.604Z",
       "completedAt": null,
       "history": [
         {
@@ -664,6 +665,11 @@
         {
           "at": "2026-10-27T03:23:32.810Z",
           "note": "Public tracker deployment and browser/API/restart evidence are verified. Handoff and operations now include the public URL and supported Railway configuration. Native/runtime limitations remain explicit; backend addition remains approved and awaits Supabase CLI verification.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-27T03:24:37.604Z",
+          "note": "Pushed the public tracker URL, deployment/restart/browser evidence, screenshots, operations and reconciled progress snapshot. Remote branch visibility confirmed for b9b136862c17ef52c5db82fd01300b3e79f6125f. Backend deployment remains approved and waits only for Supabase sign-in; native limits remain explicit.",
           "status": "Working"
         }
       ]
@@ -718,14 +724,15 @@
         "https://github.com/prateekranka/instaContentHelper/commit/e37edef8f5e6fa0af92ae6de24203a768e6695a6",
         "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
         "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d",
-        "https://github.com/prateekranka/instaContentHelper/commit/ecb276718b8265c7c414cf14539998176441641b"
+        "https://github.com/prateekranka/instaContentHelper/commit/ecb276718b8265c7c414cf14539998176441641b",
+        "https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f"
       ],
-      "verification": "PASS: 12 Linux tests and actual coordinator compilation. GitHub Mira workflow contracts also passed for ecb2767: https://github.com/prateekranka/instaContentHelper/actions/runs/40376400564. This does not verify native UI/device behavior.",
+      "verification": "PASS 19 real Swift domain tests with Swift 6.4.1, including the seven new navigation/backup/shot-ID/mapping/undo regressions. The seven priority tests passed again after the final recovery-error correction. Actual store, typed routes, deterministic generation and file repository compile in the Linux core. Native UI is not established by these results.",
       "blocker": null,
       "codeTask": true,
       "createdAt": "2026-10-26T17:54:58.297Z",
       "startedAt": "2026-10-26T17:54:58.297Z",
-      "updatedAt": "2026-10-26T18:20:17.504Z",
+      "updatedAt": "2026-10-27T09:10:47.555Z",
       "completedAt": "2026-10-26T17:54:58.297Z",
       "history": [
         {
@@ -736,6 +743,16 @@
         {
           "at": "2026-10-26T18:20:17.504Z",
           "note": "Final source and CI proof reconciled after missing/stale-context regression coverage passed.",
+          "status": "Done"
+        },
+        {
+          "at": "2026-10-27T09:08:25.181Z",
+          "note": "Sections 5/8/9 source update adds seven domain regressions. All 19 checks passed; final recovery correction also passed the seven-test priority filter. Source and test commit pushed and remotely visible.",
+          "status": "Done"
+        },
+        {
+          "at": "2026-10-27T09:10:47.555Z",
+          "note": "GitHub Actions passed for exact source commit 27d54bc2d3722be53a14e4e269e799da363f355f: Swift core tests and isolated PostgreSQL jobs are green. Evidence: https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363. Native build/UI/speech verification remains separate and unverified.",
           "status": "Done"
         }
       ]
@@ -773,8 +790,153 @@
           "status": "Done"
         }
       ]
+    },
+    {
+      "id": "MIRA-019",
+      "title": "Plan §5 — navigation and screen completion",
+      "description": "Audit and close source gaps in Today, quick ideas, script, shot list, shooting and Projects.",
+      "milestone": "Owner priority: sections 5, 8, 9",
+      "criteria": [
+        "Typed per-tab navigation and meaningful project resume",
+        "Working idea adjustment, script-to-shots transition and project actions",
+        "Record focused source checks and retain native UI verification limitation"
+      ],
+      "status": "Working",
+      "nextAction": "Retain native acceptance as unverified; use the pushed section-by-section source/evidence record.",
+      "codeTask": true,
+      "commits": [
+        "https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f"
+      ],
+      "verification": "PASS Swift syntax parse for all Mira views/services and app entry. Navigation and persistence core compiled; 19 domain tests passed, with seven priority regressions rerun after the final recovery fix. Native SwiftUI type-check/layout/interaction remain unverified.",
+      "createdAt": "2026-10-27T08:42:24.010Z",
+      "updatedAt": "2026-10-27T09:10:45.435Z",
+      "startedAt": "2026-10-27T08:42:24.010Z",
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-27T08:42:24.010Z",
+          "note": "Owner explicitly selected plan sections 5, 8 and 9. Review existing implementation and close concrete gaps sequentially. Native archive/device requests remain waived.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-27T09:01:03.610Z",
+          "note": "Implemented typed tab restoration, per-project script/shots selection, focused filming resume, individual idea adjustment, project rename and editable script language. Native source syntax parse passed; native UI build/runtime remain unverified under the existing waiver.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-27T09:08:23.094Z",
+          "note": "Pushed sections 5/8/9 implementation; GitHub branch visibility confirmed. Source adds saved tab paths/editor selection, focused resume, per-idea adjustment, rename and script language editing. Full native UI verification remains open.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-27T09:10:45.435Z",
+          "note": "GitHub Actions passed for exact source commit 27d54bc2d3722be53a14e4e269e799da363f355f: Swift core tests and isolated PostgreSQL jobs are green. Evidence: https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363. Native build/UI/speech verification remains separate and unverified.",
+          "status": "Working"
+        }
+      ],
+      "blocker": "Full SwiftUI build/runtime unavailable on this Linux host. Owner waived archive/device access; no repeat request."
+    },
+    {
+      "id": "MIRA-020",
+      "title": "Plan §8 — state and persistence hardening",
+      "description": "Persist meaningful navigation, revisions, progress and recovery without losing earlier work.",
+      "milestone": "Owner priority: sections 5, 8, 9",
+      "criteria": [
+        "Save and restore the selected project section and filming position",
+        "Recover missing/damaged primary documents without silently erasing backups",
+        "Verify revision/progress invariants with focused Linux domain checks"
+      ],
+      "status": "Done",
+      "nextAction": "Keep native persistence interaction checks visible on their separate acceptance cards.",
+      "codeTask": true,
+      "commits": [
+        "https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f"
+      ],
+      "verification": "PASS: 19 Swift domain tests locally; seven priority regressions rerun after the final recovery correction. GitHub Actions passed the complete core suite and PostgreSQL checks on exact source commit 27d54bc2d3722be53a14e4e269e799da363f355f. Verified independent tab/editor reopen, deleted routes, missing/corrupt/future backup safety, unique shot/filmed identities, swapped-ID requirement mappings and undo position/approval. CI: https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363",
+      "createdAt": "2026-10-27T08:42:25.054Z",
+      "updatedAt": "2026-10-27T09:10:46.351Z",
+      "startedAt": "2026-10-27T08:48:08.157Z",
+      "completedAt": "2026-10-27T09:08:23.909Z",
+      "history": [
+        {
+          "at": "2026-10-27T08:42:25.054Z",
+          "note": "Owner explicitly selected plan sections 5, 8 and 9. Review existing implementation and close concrete gaps sequentially. Native archive/device requests remain waived.",
+          "status": "Planned"
+        },
+        {
+          "at": "2026-10-27T08:48:08.157Z",
+          "note": "Started state/persistence hardening: typed saved tab paths and per-project screen; backup recovery; undo/progress invariants. Existing source gaps reproduced by inspection. Focused domain regressions will verify corrections.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-27T09:01:04.647Z",
+          "note": "All 19 Linux domain tests passed, including seven new navigation/backup/shot-identity/mapping/undo regressions. The initial sandbox compiler socket failure was resolved by running the same checks with local IPC available. Source commit and visibility verification are next.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-27T09:08:23.909Z",
+          "note": "State/persistence source pushed and remotely visible. All 19 domain tests passed; final seven priority regressions passed again after clearing the recovery error on successful reopen. Navigation, backup, shot identity/mapping and undo criteria are verified in the real Linux core.",
+          "status": "Done"
+        },
+        {
+          "at": "2026-10-27T09:10:46.351Z",
+          "note": "GitHub Actions passed for exact source commit 27d54bc2d3722be53a14e4e269e799da363f355f: Swift core tests and isolated PostgreSQL jobs are green. Evidence: https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363. Native build/UI/speech verification remains separate and unverified.",
+          "status": "Done"
+        }
+      ],
+      "blocker": null
+    },
+    {
+      "id": "MIRA-021",
+      "title": "Plan §9 — explicit native dependencies",
+      "description": "Move dependency construction to the app root and keep workflow independent of Apple UI frameworks.",
+      "milestone": "Owner priority: sections 5, 8, 9",
+      "criteria": [
+        "Inject the shared project repository/store from the app root",
+        "Inject generation and speech implementation boundaries",
+        "Compile the domain module and record the native build boundary"
+      ],
+      "status": "Working",
+      "nextAction": "Preserve the native verification boundary; no additional archive/device request in this run.",
+      "codeTask": true,
+      "commits": [
+        "https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f"
+      ],
+      "verification": "PASS Linux core/coordinator compilation and 19 domain tests. PASS native source syntax parsing. App dependency wiring and speech lifecycle guards reviewed from source. Full native type-check, resource packaging and runtime remain unverified.",
+      "createdAt": "2026-10-27T08:42:25.651Z",
+      "updatedAt": "2026-10-27T09:10:46.961Z",
+      "startedAt": "2026-10-27T08:48:08.866Z",
+      "completedAt": null,
+      "history": [
+        {
+          "at": "2026-10-27T08:42:25.651Z",
+          "note": "Owner explicitly selected plan sections 5, 8 and 9. Review existing implementation and close concrete gaps sequentially. Native archive/device requests remain waived.",
+          "status": "Planned"
+        },
+        {
+          "at": "2026-10-27T08:48:08.866Z",
+          "note": "Started native dependency wiring: construct the shared repository/store at the app root; inject generation and speech factories; keep deterministic generation and typed routes in the Linux-compatible core.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-27T09:01:05.289Z",
+          "note": "App root now owns one injected repository/store; real generation and speech factories are explicit dependencies. URLSession is injectable; typed routes and deterministic generation compile within the Linux core. Native source syntax parse passed; full native type-check/runtime remain unavailable.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-27T09:08:24.555Z",
+          "note": "Pushed explicit app-root dependency graph, injected repository/store, URLSession and speech/generation factories. Typed routes and deterministic generation now compile in the cross-platform core. Existing resource/source membership retained; no new resources.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-10-27T09:10:46.961Z",
+          "note": "GitHub Actions passed for exact source commit 27d54bc2d3722be53a14e4e269e799da363f355f: Swift core tests and isolated PostgreSQL jobs are green. Evidence: https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363. Native build/UI/speech verification remains separate and unverified.",
+          "status": "Working"
+        }
+      ],
+      "blocker": "Full native build/type-check unavailable with the current omarchy no-Xcode limitations and absent full-mode SDK/xtool. Owner waived archive/device access."
     }
   ],
-  "fetchedAt": "2026-10-27T03:23:33.370Z",
-  "activityAt": "2026-10-27T03:23:32.810Z"
+  "fetchedAt": "2026-10-27T09:10:48.136Z",
+  "activityAt": "2026-10-27T09:10:47.555Z"
 }

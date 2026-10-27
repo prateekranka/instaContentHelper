@@ -2,7 +2,7 @@
 
 Public tracker: https://mira-build-progress-production.up.railway.app
 
-Snapshot fetched: 2026-10-27T03:23:33.370Z. Last project activity: 2026-10-27T03:23:32.810Z. All recorded timestamps are UTC.
+Snapshot fetched: 2026-10-27T09:10:48.136Z. Last project activity: 2026-10-27T09:10:47.555Z. All recorded timestamps are UTC.
 
 The native Mira journey, cross-platform workflow/persistence and Supabase job source are implemented. Source checks and local tests are separate from native runtime and production deployment. The owner confirmed existing server-side AI credential reuse and waived archive/device access. Full native compilation, native UI/speech/accessibility and live Supabase generation remain unverified.
 
@@ -13,7 +13,7 @@ Multiple Working tasks await required native or production verification. They re
 | MIRA-014 — Accessibility and physical device validation **(blocked)** | MIRA-002 — Toolchain and native build proof **(blocked)** | MIRA-001 — Tracker deployment and update CLI |
 | MIRA-016 — Live Supabase deployment and generation verification **(blocked)** | MIRA-003 — Visual tokens and navigation **(blocked)** | MIRA-017 — Linux workflow and persistence verification |
 | — | MIRA-004 — Models and persistence **(blocked)** | MIRA-018 — PostgreSQL durable-job verification |
-| — | MIRA-005 — Quick ideas **(blocked)** | — |
+| — | MIRA-005 — Quick ideas **(blocked)** | MIRA-020 — Plan §8 — state and persistence hardening |
 | — | MIRA-006 — Editable scripts **(blocked)** | — |
 | — | MIRA-007 — Detailed storyboards **(blocked)** | — |
 | — | MIRA-008 — Shooting checklist and resume **(blocked)** | — |
@@ -23,6 +23,8 @@ Multiple Working tasks await required native or production verification. They re
 | — | MIRA-012 — Voice and multilingual behaviour **(blocked)** | — |
 | — | MIRA-013 — Optional pasted brief requirements **(blocked)** | — |
 | — | MIRA-015 — Final documentation and handoff **(blocked)** | — |
+| — | MIRA-019 — Plan §5 — navigation and screen completion **(blocked)** | — |
+| — | MIRA-021 — Plan §9 — explicit native dependencies **(blocked)** | — |
 
 ## Per-task evidence
 
@@ -222,7 +224,7 @@ Next action: Retain the explicit acceptance checklist without claiming it passed
 
 ### MIRA-015 — Final documentation and handoff
 
-Working · Updated 2026-10-27T03:23:32.810Z
+Working · Updated 2026-10-27T03:24:37.604Z
 
 Handoff documents implemented source, repeatable checks, pins, adaptation decisions, approved API before/after and explicit unverified native/live checks. Public tracker URL is live; hosted API/browser/restart/redeploy acceptance passed. Final documentation reconciliation will follow live backend deployment.
 
@@ -231,6 +233,7 @@ Blocker: Approved Supabase deployment awaits secure CLI verification. Native bui
 Next action: Finish the approved Supabase deployment after its one-time sign-in code arrives; then reconcile live-generation results and final handoff.
 
 - [Pushed commit 0b821ee909c22ec240865c318afe3a15a1a3c626](https://github.com/prateekranka/instaContentHelper/commit/0b821ee909c22ec240865c318afe3a15a1a3c626)
+- [Pushed commit b9b136862c17ef52c5db82fd01300b3e79f6125f](https://github.com/prateekranka/instaContentHelper/commit/b9b136862c17ef52c5db82fd01300b3e79f6125f)
 
 ### MIRA-016 — Live Supabase deployment and generation verification
 
@@ -246,14 +249,15 @@ Next action: Finish secure CLI login and verify the existing repository project 
 
 ### MIRA-017 — Linux workflow and persistence verification
 
-Done · Updated 2026-10-26T18:20:17.504Z
+Done · Updated 2026-10-27T09:10:47.555Z
 
-PASS: 12 Linux tests and actual coordinator compilation. GitHub Mira workflow contracts also passed for ecb2767: https://github.com/prateekranka/instaContentHelper/actions/runs/40376400564. This does not verify native UI/device behavior.
+PASS 19 real Swift domain tests with Swift 6.4.1, including the seven new navigation/backup/shot-ID/mapping/undo regressions. The seven priority tests passed again after the final recovery-error correction. Actual store, typed routes, deterministic generation and file repository compile in the Linux core. Native UI is not established by these results.
 
 - [Pushed commit e37edef8f5e6fa0af92ae6de24203a768e6695a6](https://github.com/prateekranka/instaContentHelper/commit/e37edef8f5e6fa0af92ae6de24203a768e6695a6)
 - [Pushed commit fc4e6171c89327290c31a26fd4ee99447a1acf9c](https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c)
 - [Pushed commit a159688b4397403efc1f3573290d59c100f6138d](https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d)
 - [Pushed commit ecb276718b8265c7c414cf14539998176441641b](https://github.com/prateekranka/instaContentHelper/commit/ecb276718b8265c7c414cf14539998176441641b)
+- [Pushed commit 27d54bc2d3722be53a14e4e269e799da363f355f](https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f)
 
 ### MIRA-018 — PostgreSQL durable-job verification
 
@@ -262,6 +266,40 @@ Done · Updated 2026-10-26T18:20:17.507Z
 PASS: actual migration/functions in digest-pinned PostgreSQL 17, plus successful GitHub Mira workflow contracts for ecb2767: https://github.com/prateekranka/instaContentHelper/actions/runs/40376400564. Production Supabase remains unverified.
 
 - [Pushed commit a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0](https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0)
+
+### MIRA-019 — Plan §5 — navigation and screen completion
+
+Working · Updated 2026-10-27T09:10:45.435Z
+
+PASS Swift syntax parse for all Mira views/services and app entry. Navigation and persistence core compiled; 19 domain tests passed, with seven priority regressions rerun after the final recovery fix. Native SwiftUI type-check/layout/interaction remain unverified.
+
+Blocker: Full SwiftUI build/runtime unavailable on this Linux host. Owner waived archive/device access; no repeat request.
+
+Next action: Retain native acceptance as unverified; use the pushed section-by-section source/evidence record.
+
+- [Pushed commit 27d54bc2d3722be53a14e4e269e799da363f355f](https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f)
+
+### MIRA-020 — Plan §8 — state and persistence hardening
+
+Done · Updated 2026-10-27T09:10:46.351Z
+
+PASS: 19 Swift domain tests locally; seven priority regressions rerun after the final recovery correction. GitHub Actions passed the complete core suite and PostgreSQL checks on exact source commit 27d54bc2d3722be53a14e4e269e799da363f355f. Verified independent tab/editor reopen, deleted routes, missing/corrupt/future backup safety, unique shot/filmed identities, swapped-ID requirement mappings and undo position/approval. CI: https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363
+
+Next action: Keep native persistence interaction checks visible on their separate acceptance cards.
+
+- [Pushed commit 27d54bc2d3722be53a14e4e269e799da363f355f](https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f)
+
+### MIRA-021 — Plan §9 — explicit native dependencies
+
+Working · Updated 2026-10-27T09:10:46.961Z
+
+PASS Linux core/coordinator compilation and 19 domain tests. PASS native source syntax parsing. App dependency wiring and speech lifecycle guards reviewed from source. Full native type-check, resource packaging and runtime remain unverified.
+
+Blocker: Full native build/type-check unavailable with the current omarchy no-Xcode limitations and absent full-mode SDK/xtool. Owner waived archive/device access.
+
+Next action: Preserve the native verification boundary; no additional archive/device request in this run.
+
+- [Pushed commit 27d54bc2d3722be53a14e4e269e799da363f355f](https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f)
 
 Full criteria, created/started/completed timestamps and history: [JSON snapshot](mira-progress.json).
 

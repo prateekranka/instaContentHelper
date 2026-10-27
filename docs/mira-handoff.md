@@ -94,6 +94,8 @@ Start the tracker with a private `TRACKER_WRITE_TOKEN` and persistent `TRACKER_D
 
 GitHub Actions also passed both [Backend checks](https://github.com/prateekranka/instaContentHelper/actions/runs/40376400864) and [Mira workflow contracts](https://github.com/prateekranka/instaContentHelper/actions/runs/40376400564) for commit `ecb276718b8265c7c414cf14539998176441641b`.
 
+The later sections 5/8/9 implementation is pushed at [`27d54bc2d3722be53a14e4e269e799da363f355f`](https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f). Its [Mira workflow contracts run](https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363) passed both Swift and PostgreSQL jobs. This still does not establish native SwiftUI compilation or runtime behavior.
+
 Detailed timestamps, per-task criteria and pushed commit links are in [the progress snapshot](mira-progress.md). Native screenshots do not exist. The committed screenshots show only the tracker.
 
 ## omarchy build boundary
