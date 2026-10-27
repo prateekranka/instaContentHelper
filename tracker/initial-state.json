@@ -10,20 +10,23 @@
       "Records survive restart; mobile and desktop layouts",
       "Update CLI retains failed mutations"
     ],
-    "status": "Working",
-    "codeTask": true,
+    "status": "Done",
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/b9fd52a1faef8883362ce49c5aca86806bafa8fb",
       "https://github.com/prateekranka/instaContentHelper/commit/0c5af417470a4a58023084d91846bbf554e44df7",
       "https://github.com/prateekranka/instaContentHelper/commit/2cd125effba55232dcdd8b420980df474d898283",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
-      "https://github.com/prateekranka/instaContentHelper/commit/a605a681f37d67e261e19321ca24de4eb433ff39"
+      "https://github.com/prateekranka/instaContentHelper/commit/a605a681f37d67e261e19321ca24de4eb433ff39",
+      "https://github.com/prateekranka/instaContentHelper/commit/e3e3cd53096d5f6fefc05ec9c9df0884ab93aed2"
     ],
-    "verification": "PASS locally: TypeScript; 2 SQLite tests including original timestamp/history import and no overwrite of live records; desktop/mobile/details/stale refresh e2e; public read, rejected anonymous write and authenticated idempotency API e2e. Actual 18-task bootstrap validates. Public HTTPS/redeploy durability remain unverified.",
+    "verification": "PASS hosted: public HTTPS without login; anonymous editing rejected; authenticated updates with idempotency/conflict protection; desktop and 375px phone layout/details/history/stale refresh recovery via TesterArmy e2e; all 18 tasks and exact timestamps/history survived restart. Final readiness-enabled Railway deployment 4164474b-ffc7-458d-a1e6-775171b93fa3 SUCCESS; health200 and original records preserved after redeploy. TypeScript passed; production dependency audit zero advisories. Failed network mutation retained locally and confirmed on retry.",
+    "blocker": null,
+    "nextAction": "Use the public authenticated CLI for ongoing updates; keep all incomplete native/live integration checks visible.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.474Z",
-    "updatedAt": "2026-10-26T21:12:24.245Z",
     "startedAt": "2026-10-26T16:40:50.474Z",
-    "completedAt": null,
+    "updatedAt": "2026-10-27T03:23:32.158Z",
+    "completedAt": "2026-10-27T03:23:32.158Z",
     "history": [
       {
         "at": "2026-10-26T16:40:50.474Z",
@@ -59,10 +62,28 @@
         "at": "2026-10-26T21:12:24.245Z",
         "note": "Railway authentication succeeded. Normal configuration writes are working; workspace selection is now the only hosting setup input pending.",
         "status": "Working"
+      },
+      {
+        "at": "2026-10-27T03:09:02.046Z",
+        "note": "2026-10-27: Owner selected shewhoknows workspace. Created Railway project, authenticated write secret and persistent /data volume. Correcting assigned-port mismatch and patching static-file dependency before public acceptance.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-27T03:13:58.246Z",
+        "note": "Authenticated API verification: public reads, rejected anonymous writes and duplicate-safe update checked.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-27T03:21:08.002Z",
+        "note": "Public HTTPS and authenticated idempotent API checks passed. TesterArmy e2e verified desktop/375px mobile layouts, details/history and stale refresh recovery on the hosted board. All 18 task records, timestamps and history survived restart. Pushed dependency/IaC update; final readiness-enabled release is building.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-27T03:23:32.158Z",
+        "note": "Final committed release reached SUCCESS with /health readiness enabled. Public health200 and all 18 task IDs, original timestamps/history and subsequent confirmed updates verified after deployment. Public API, responsive browser, stale recovery, failed-write retry and restart persistence acceptance passed.",
+        "status": "Done"
       }
-    ],
-    "blocker": "Railway login is now saved successfully. The CLI is waiting for the owner to choose one of two workspaces before project creation.",
-    "nextAction": "Select the hosting workspace; then attach durable storage, configure the private write token and deploy the tracker."
+    ]
   },
   {
     "id": "MIRA-002",
@@ -75,16 +96,18 @@
       "Install and launch on iPhone, or record exact blocker"
     ],
     "status": "Working",
-    "codeTask": false,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/ade21baba4b3a393fe10ecccd6264c18b92c94b4",
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c"
     ],
     "verification": "Pinned omarchy commit and Swift 6.4.1; generated and corrected the existing-project adapter. Native Swift syntax parses. The real cross-platform coordinator compiles in Linux checks. Full SwiftUI build/install is NOT verified.",
+    "blocker": "The owner waived archive/device access. Upstream no-Xcode mode cannot support the app’s NavigationStack/Binding/Environment APIs. Full-mode SDK/xtool are absent.",
+    "nextAction": "Keep native build evidence separate from domain compilation; do not request archive/device access again in this run.",
+    "codeTask": false,
     "createdAt": "2026-10-26T16:40:50.475Z",
-    "updatedAt": "2026-10-26T17:54:58.275Z",
     "startedAt": "2026-10-26T16:49:11.765Z",
+    "updatedAt": "2026-10-26T17:54:58.275Z",
     "completedAt": null,
     "history": [
       {
@@ -107,9 +130,7 @@
         "note": "Continued implementation through the pinned omarchy adapter as requested; no native runtime proof substituted.",
         "status": "Working"
       }
-    ],
-    "blocker": "The owner waived archive/device access. Upstream no-Xcode mode cannot support the app’s NavigationStack/Binding/Environment APIs. Full-mode SDK/xtool are absent.",
-    "nextAction": "Keep native build evidence separate from domain compilation; do not request archive/device access again in this run."
+    ]
   },
   {
     "id": "MIRA-003",
@@ -122,16 +143,18 @@
       "Light and dark palettes, Dynamic Type"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
       "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
     ],
     "verification": "Visual tokens/navigation source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.476Z",
-    "updatedAt": "2026-10-26T17:54:58.303Z",
     "startedAt": "2026-10-26T17:54:58.303Z",
+    "updatedAt": "2026-10-26T17:54:58.303Z",
     "completedAt": null,
     "history": [
       {
@@ -144,9 +167,7 @@
         "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
         "status": "Working"
       }
-    ],
-    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
-    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+    ]
   },
   {
     "id": "MIRA-004",
@@ -159,7 +180,6 @@
       "History and filmed status survive safe edits"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/e37edef8f5e6fa0af92ae6de24203a768e6695a6",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
@@ -167,9 +187,12 @@
       "https://github.com/prateekranka/instaContentHelper/commit/ecb276718b8265c7c414cf14539998176441641b"
     ],
     "verification": "12 Linux Swift tests pass against actual models, persistence and coordinator, including source/idea prerequisites and stale single-shot rejection. Native relaunch is not verified.",
+    "blocker": "Native relaunch flow is not verified; domain save/reopen is verified separately.",
+    "nextAction": "Retain native relaunch verification as outstanding; independent Linux proof is recorded in MIRA-017.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.476Z",
-    "updatedAt": "2026-10-26T18:20:17.485Z",
     "startedAt": "2026-10-26T17:03:03.540Z",
+    "updatedAt": "2026-10-26T18:20:17.485Z",
     "completedAt": null,
     "history": [
       {
@@ -192,9 +215,7 @@
         "note": "Final context guards reject missing ideas, empty brief sources and stale single-shot requests before enqueue.",
         "status": "Working"
       }
-    ],
-    "nextAction": "Retain native relaunch verification as outstanding; independent Linux proof is recorded in MIRA-017.",
-    "blocker": "Native relaunch flow is not verified; domain save/reopen is verified separately."
+    ]
   },
   {
     "id": "MIRA-005",
@@ -206,7 +227,6 @@
       "Select, adjust and more ideas preserve saved ideas"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
@@ -214,9 +234,12 @@
       "https://github.com/prateekranka/instaContentHelper/commit/728eb87fa3f9419531cac05bb9e066a8ed0f6c88"
     ],
     "verification": "Quick ideas source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.477Z",
-    "updatedAt": "2026-10-26T18:20:17.489Z",
     "startedAt": "2026-10-26T17:54:58.307Z",
+    "updatedAt": "2026-10-26T18:20:17.489Z",
     "completedAt": null,
     "history": [
       {
@@ -234,9 +257,7 @@
         "note": "New alternatives now appear first; older saved ideas stay available. Source parses; native UI verification remains pending.",
         "status": "Working"
       }
-    ],
-    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
-    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+    ]
   },
   {
     "id": "MIRA-006",
@@ -249,16 +270,18 @@
       "Confirm revision before shot list"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
       "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
     ],
     "verification": "Editable scripts source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.478Z",
-    "updatedAt": "2026-10-26T17:54:58.310Z",
     "startedAt": "2026-10-26T17:54:58.310Z",
+    "updatedAt": "2026-10-26T17:54:58.310Z",
     "completedAt": null,
     "history": [
       {
@@ -271,9 +294,7 @@
         "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
         "status": "Working"
       }
-    ],
-    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
-    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+    ]
   },
   {
     "id": "MIRA-007",
@@ -286,16 +307,18 @@
       "Requirements map to passages or shots"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
       "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
     ],
     "verification": "Detailed storyboards source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.478Z",
-    "updatedAt": "2026-10-26T17:54:58.313Z",
     "startedAt": "2026-10-26T17:54:58.313Z",
+    "updatedAt": "2026-10-26T17:54:58.313Z",
     "completedAt": null,
     "history": [
       {
@@ -308,9 +331,7 @@
         "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
         "status": "Working"
       }
-    ],
-    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
-    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+    ]
   },
   {
     "id": "MIRA-008",
@@ -322,16 +343,18 @@
       "Resume at same shot after relaunch"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
       "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
     ],
     "verification": "Shooting/resume source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.479Z",
-    "updatedAt": "2026-10-26T17:54:58.316Z",
     "startedAt": "2026-10-26T17:54:58.316Z",
+    "updatedAt": "2026-10-26T17:54:58.316Z",
     "completedAt": null,
     "history": [
       {
@@ -344,9 +367,7 @@
         "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
         "status": "Working"
       }
-    ],
-    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
-    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+    ]
   },
   {
     "id": "MIRA-009",
@@ -359,15 +380,17 @@
       "Live generation demonstrated; fixtures explicitly selected"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0",
       "https://github.com/prateekranka/instaContentHelper/commit/ecb276718b8265c7c414cf14539998176441641b"
     ],
     "verification": "PASS: full Deno regression 398 passed, 0 failed, 1 ignored; 5 focused Mira cases pass after final context guards. GitHub Backend checks passed for ecb2767: https://github.com/prateekranka/instaContentHelper/actions/runs/40376400864. No live provider request or Supabase deployment occurred.",
+    "blocker": "Production deployment is approved. Supabase secure CLI sign-in still needs its one-time verification code.",
+    "nextAction": "Complete Supabase sign-in, confirm the existing project, apply only the additive Mira migration/function, then verify live behavior.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.480Z",
-    "updatedAt": "2026-10-26T21:12:24.254Z",
     "startedAt": "2026-10-26T17:54:58.282Z",
+    "updatedAt": "2026-10-26T21:12:24.254Z",
     "completedAt": null,
     "history": [
       {
@@ -400,9 +423,7 @@
         "note": "Owner explicitly approved the reviewed backend addition. No further API-change approval is needed for this addition.",
         "status": "Working"
       }
-    ],
-    "blocker": "Production deployment is approved. Supabase secure CLI sign-in still needs its one-time verification code.",
-    "nextAction": "Complete Supabase sign-in, confirm the existing project, apply only the additive Mira migration/function, then verify live behavior."
+    ]
   },
   {
     "id": "MIRA-010",
@@ -414,16 +435,18 @@
       "Input revisions guard late responses"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
       "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
     ],
     "verification": "Actual migration and job functions passed isolated PostgreSQL checks: idempotency, lease exclusion, interrupted recovery, bounded attempts, cancellation and anonymous access restrictions. Input-revision/late-response behavior passed Swift checks.",
+    "blocker": "Production migration, worker recovery and app-to-Supabase reconciliation have not run.",
+    "nextAction": "Complete MIRA-016 live integration. No exactly-once provider-execution claim.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.481Z",
-    "updatedAt": "2026-10-26T17:54:58.285Z",
     "startedAt": "2026-10-26T17:54:58.285Z",
+    "updatedAt": "2026-10-26T17:54:58.285Z",
     "completedAt": null,
     "history": [
       {
@@ -436,9 +459,7 @@
         "note": "Durable SQL jobs and client recovery implemented. Linux/SQL proof is separate from production integration.",
         "status": "Working"
       }
-    ],
-    "blocker": "Production migration, worker recovery and app-to-Supabase reconciliation have not run.",
-    "nextAction": "Complete MIRA-016 live integration. No exactly-once provider-execution claim."
+    ]
   },
   {
     "id": "MIRA-011",
@@ -451,16 +472,18 @@
       "Stale storyboards remain available"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
       "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
     ],
     "verification": "Contextual revisions/undo source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.481Z",
-    "updatedAt": "2026-10-26T17:54:58.319Z",
     "startedAt": "2026-10-26T17:54:58.319Z",
+    "updatedAt": "2026-10-26T17:54:58.319Z",
     "completedAt": null,
     "history": [
       {
@@ -473,9 +496,7 @@
         "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
         "status": "Working"
       }
-    ],
-    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
-    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+    ]
   },
   {
     "id": "MIRA-012",
@@ -488,7 +509,6 @@
       "Hindi/English/Hinglish tested on device"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
@@ -496,9 +516,12 @@
       "https://github.com/prateekranka/instaContentHelper/commit/728eb87fa3f9419531cac05bb9e066a8ed0f6c88"
     ],
     "verification": "Voice/language source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.482Z",
-    "updatedAt": "2026-10-26T18:20:17.493Z",
     "startedAt": "2026-10-26T17:54:58.322Z",
+    "updatedAt": "2026-10-26T18:20:17.493Z",
     "completedAt": null,
     "history": [
       {
@@ -516,9 +539,7 @@
         "note": "Transcript editing/use is disabled during recording; stop, review, then use the text. No real-device speech result is claimed.",
         "status": "Working"
       }
-    ],
-    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
-    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+    ]
   },
   {
     "id": "MIRA-013",
@@ -531,16 +552,18 @@
       "Confirmed context maps to plan"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/67c6f8750371e6847823996adee794360a18d56d",
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
       "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d"
     ],
     "verification": "Pasted requirements source implemented in the existing native target. Swift source syntax parses; related domain/backend checks pass. Native type-checking, UI flow/layout and real speech are NOT verified.",
+    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
+    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.483Z",
-    "updatedAt": "2026-10-26T17:54:58.325Z",
     "startedAt": "2026-10-26T17:54:58.325Z",
+    "updatedAt": "2026-10-26T17:54:58.325Z",
     "completedAt": null,
     "history": [
       {
@@ -553,9 +576,7 @@
         "note": "Sequential source implementation complete. Multiple Working cards represent separately blocked verification, not parallel agents.",
         "status": "Working"
       }
-    ],
-    "blocker": "Required native runtime verification is unavailable; archive/device access was waived for this run.",
-    "nextAction": "Keep this task Working until its native criteria are actually verified. See handoff for supported TesterArmy acceptance checks."
+    ]
   },
   {
     "id": "MIRA-014",
@@ -569,12 +590,14 @@
       "Speech in quiet and ordinary noise"
     ],
     "status": "Planned",
-    "codeTask": false,
     "commits": [],
     "verification": "",
+    "blocker": "Physical-device validation was waived for this run. No native screenshots or speech/accessibility results exist.",
+    "nextAction": "Retain the explicit acceptance checklist without claiming it passed or asking for device access again.",
+    "codeTask": false,
     "createdAt": "2026-10-26T16:40:50.483Z",
-    "updatedAt": "2026-10-26T17:54:58.328Z",
     "startedAt": null,
+    "updatedAt": "2026-10-26T17:54:58.328Z",
     "completedAt": null,
     "history": [
       {
@@ -592,9 +615,7 @@
         "note": "Owner requested continuing with omarchy tooling without an archive or device requirement.",
         "status": "Planned"
       }
-    ],
-    "blocker": "Physical-device validation was waived for this run. No native screenshots or speech/accessibility results exist.",
-    "nextAction": "Retain the explicit acceptance checklist without claiming it passed or asking for device access again."
+    ]
   },
   {
     "id": "MIRA-015",
@@ -607,14 +628,16 @@
       "Device evidence and unverified checks separated"
     ],
     "status": "Working",
-    "codeTask": true,
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/0b821ee909c22ec240865c318afe3a15a1a3c626"
     ],
-    "verification": "Handoff documents current source, repeatable checks, pins, adaptation decisions, API before/after and explicit unverified native/live checks. Source is pushed; final standalone tracker URL is still pending.",
+    "verification": "Handoff documents implemented source, repeatable checks, pins, adaptation decisions, approved API before/after and explicit unverified native/live checks. Public tracker URL is live; hosted API/browser/restart/redeploy acceptance passed. Final documentation reconciliation will follow live backend deployment.",
+    "blocker": "Approved Supabase deployment awaits secure CLI verification. Native build/runtime remain unverified under the owner’s archive/device waiver.",
+    "nextAction": "Finish the approved Supabase deployment after its one-time sign-in code arrives; then reconcile live-generation results and final handoff.",
+    "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.484Z",
-    "updatedAt": "2026-10-26T21:12:24.261Z",
     "startedAt": "2026-10-26T17:54:58.289Z",
+    "updatedAt": "2026-10-27T03:23:32.810Z",
     "completedAt": null,
     "history": [
       {
@@ -636,10 +659,13 @@
         "at": "2026-10-26T21:12:24.261Z",
         "note": "Backend review approval recorded. Railway login saved; hosting workspace and secure Supabase login verification are pending.",
         "status": "Working"
+      },
+      {
+        "at": "2026-10-27T03:23:32.810Z",
+        "note": "Public tracker deployment and browser/API/restart evidence are verified. Handoff and operations now include the public URL and supported Railway configuration. Native/runtime limitations remain explicit; backend addition remains approved and awaits Supabase CLI verification.",
+        "status": "Working"
       }
-    ],
-    "blocker": "Public tracker URL and live/native evidence remain unavailable.",
-    "nextAction": "Publish current handoff and progress snapshot; reconcile again after authenticated deployment."
+    ]
   },
   {
     "id": "MIRA-016",
@@ -660,8 +686,8 @@
     "nextAction": "Finish secure CLI login and verify the existing repository project before deploying the approved addition.",
     "codeTask": true,
     "createdAt": "2026-10-26T17:54:58.292Z",
-    "updatedAt": "2026-10-26T21:12:24.258Z",
     "startedAt": null,
+    "updatedAt": "2026-10-26T21:12:24.258Z",
     "completedAt": null,
     "history": [
       {
@@ -697,8 +723,8 @@
     "blocker": null,
     "codeTask": true,
     "createdAt": "2026-10-26T17:54:58.297Z",
-    "updatedAt": "2026-10-26T18:20:17.504Z",
     "startedAt": "2026-10-26T17:54:58.297Z",
+    "updatedAt": "2026-10-26T18:20:17.504Z",
     "completedAt": "2026-10-26T17:54:58.297Z",
     "history": [
       {
@@ -731,8 +757,8 @@
     "blocker": null,
     "codeTask": true,
     "createdAt": "2026-10-26T17:54:58.300Z",
-    "updatedAt": "2026-10-26T18:20:17.507Z",
     "startedAt": "2026-10-26T17:54:58.300Z",
+    "updatedAt": "2026-10-26T18:20:17.507Z",
     "completedAt": "2026-10-26T17:54:58.300Z",
     "history": [
       {

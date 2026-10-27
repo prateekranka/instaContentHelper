@@ -47,7 +47,9 @@ Jobs persist their client UUID, normalized input and input revision. Repeating t
 
 The app saves the request before enqueue. Reconnection reuses that request UUID. Terminal failure offers a new explicit request; unknown connectivity keeps the saved request recoverable. Revisions become proposals. SQL guarantees were tested locally; production application is still pending.
 
-The owner explicitly approved deployment of this reviewed endpoint/jobs-table addition on 2026-10-26. That API review is complete. The secure Supabase CLI login is waiting for its one-time browser verification code. The migration and endpoint have **not** yet been deployed to the existing project. Railway login is saved and awaits workspace selection. Live generation is not verified.
+The owner explicitly approved deployment of this reviewed endpoint/jobs-table addition on 2026-10-26. That API review is complete. The secure Supabase CLI login is waiting for its one-time browser verification code. The migration and endpoint have **not** yet been deployed to the existing project. Live generation is not verified.
+
+The [public workflow tracker](https://mira-build-progress-production.up.railway.app) is deployed in the owner's selected Railway workspace. It runs separately from Supabase with one replica and a persistent `/data` volume. Public API and desktop/mobile browser checks passed on 2026-10-27. All 18 task records, timestamps and history survived a service restart. [Deployment evidence](mira-evidence/2026-10-27-tracker-deployment.md) records the scope and results.
 
 ## Repeatable checks
 
@@ -82,7 +84,7 @@ Start the tracker with a private `TRACKER_WRITE_TOKEN` and persistent `TRACKER_D
 | PostgreSQL migration/job checks | Passed: idempotency, lease exclusion, interrupted recovery, retry bound, cancellation, anonymous table/function denial |
 | Native source syntax | Swift frontend parse passed; this is not native type-checking or linking |
 | Tracker | TypeScript, store test, desktop/mobile/details/stale refresh and authenticated API e2e passed locally; screenshots inspected |
-| Production tracker | Authentication/deployment pending; no public tracker URL yet |
+| Production tracker | Public HTTPS, rejected anonymous edits, authenticated idempotency, desktop/mobile/details/stale recovery and restart persistence passed on 2026-10-27 |
 | Full native build, native UI, speech, accessibility | Unverified |
 | Live Supabase generation and generative quality | Unverified; endpoint not deployed |
 

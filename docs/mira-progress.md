@@ -1,8 +1,8 @@
 # Mira implementation progress
 
-This is a public GitHub snapshot of the local tracker. The standalone HTTPS tracker is not yet deployed.
+Public tracker: https://mira-build-progress-production.up.railway.app
 
-Snapshot fetched: 2026-10-26T21:12:24.351Z. Last project activity: 2026-10-26T21:12:24.261Z. All recorded timestamps are UTC.
+Snapshot fetched: 2026-10-27T03:23:33.370Z. Last project activity: 2026-10-27T03:23:32.810Z. All recorded timestamps are UTC.
 
 The native Mira journey, cross-platform workflow/persistence and Supabase job source are implemented. Source checks and local tests are separate from native runtime and production deployment. The owner confirmed existing server-side AI credential reuse and waived archive/device access. Full native compilation, native UI/speech/accessibility and live Supabase generation remain unverified.
 
@@ -10,10 +10,9 @@ Multiple Working tasks await required native or production verification. They re
 
 | Planned | Working | Done |
 | --- | --- | --- |
-| MIRA-014 — Accessibility and physical device validation **(blocked)** | MIRA-001 — Tracker deployment and update CLI **(blocked)** | MIRA-017 — Linux workflow and persistence verification |
-| MIRA-016 — Live Supabase deployment and generation verification **(blocked)** | MIRA-002 — Toolchain and native build proof **(blocked)** | MIRA-018 — PostgreSQL durable-job verification |
-| — | MIRA-003 — Visual tokens and navigation **(blocked)** | — |
-| — | MIRA-004 — Models and persistence **(blocked)** | — |
+| MIRA-014 — Accessibility and physical device validation **(blocked)** | MIRA-002 — Toolchain and native build proof **(blocked)** | MIRA-001 — Tracker deployment and update CLI |
+| MIRA-016 — Live Supabase deployment and generation verification **(blocked)** | MIRA-003 — Visual tokens and navigation **(blocked)** | MIRA-017 — Linux workflow and persistence verification |
+| — | MIRA-004 — Models and persistence **(blocked)** | MIRA-018 — PostgreSQL durable-job verification |
 | — | MIRA-005 — Quick ideas **(blocked)** | — |
 | — | MIRA-006 — Editable scripts **(blocked)** | — |
 | — | MIRA-007 — Detailed storyboards **(blocked)** | — |
@@ -29,19 +28,18 @@ Multiple Working tasks await required native or production verification. They re
 
 ### MIRA-001 — Tracker deployment and update CLI
 
-Working · Updated 2026-10-26T21:12:24.245Z
+Done · Updated 2026-10-27T03:23:32.158Z
 
-PASS locally: TypeScript; 2 SQLite tests including original timestamp/history import and no overwrite of live records; desktop/mobile/details/stale refresh e2e; public read, rejected anonymous write and authenticated idempotency API e2e. Actual 18-task bootstrap validates. Public HTTPS/redeploy durability remain unverified.
+PASS hosted: public HTTPS without login; anonymous editing rejected; authenticated updates with idempotency/conflict protection; desktop and 375px phone layout/details/history/stale refresh recovery via TesterArmy e2e; all 18 tasks and exact timestamps/history survived restart. Final readiness-enabled Railway deployment 4164474b-ffc7-458d-a1e6-775171b93fa3 SUCCESS; health200 and original records preserved after redeploy. TypeScript passed; production dependency audit zero advisories. Failed network mutation retained locally and confirmed on retry.
 
-Blocker: Railway login is now saved successfully. The CLI is waiting for the owner to choose one of two workspaces before project creation.
-
-Next action: Select the hosting workspace; then attach durable storage, configure the private write token and deploy the tracker.
+Next action: Use the public authenticated CLI for ongoing updates; keep all incomplete native/live integration checks visible.
 
 - [Pushed commit b9fd52a1faef8883362ce49c5aca86806bafa8fb](https://github.com/prateekranka/instaContentHelper/commit/b9fd52a1faef8883362ce49c5aca86806bafa8fb)
 - [Pushed commit 0c5af417470a4a58023084d91846bbf554e44df7](https://github.com/prateekranka/instaContentHelper/commit/0c5af417470a4a58023084d91846bbf554e44df7)
 - [Pushed commit 2cd125effba55232dcdd8b420980df474d898283](https://github.com/prateekranka/instaContentHelper/commit/2cd125effba55232dcdd8b420980df474d898283)
 - [Pushed commit fc4e6171c89327290c31a26fd4ee99447a1acf9c](https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c)
 - [Pushed commit a605a681f37d67e261e19321ca24de4eb433ff39](https://github.com/prateekranka/instaContentHelper/commit/a605a681f37d67e261e19321ca24de4eb433ff39)
+- [Pushed commit e3e3cd53096d5f6fefc05ec9c9df0884ab93aed2](https://github.com/prateekranka/instaContentHelper/commit/e3e3cd53096d5f6fefc05ec9c9df0884ab93aed2)
 
 ### MIRA-002 — Toolchain and native build proof
 
@@ -224,13 +222,13 @@ Next action: Retain the explicit acceptance checklist without claiming it passed
 
 ### MIRA-015 — Final documentation and handoff
 
-Working · Updated 2026-10-26T21:12:24.261Z
+Working · Updated 2026-10-27T03:23:32.810Z
 
-Handoff documents current source, repeatable checks, pins, adaptation decisions, API before/after and explicit unverified native/live checks. Source is pushed; final standalone tracker URL is still pending.
+Handoff documents implemented source, repeatable checks, pins, adaptation decisions, approved API before/after and explicit unverified native/live checks. Public tracker URL is live; hosted API/browser/restart/redeploy acceptance passed. Final documentation reconciliation will follow live backend deployment.
 
-Blocker: Public tracker URL and live/native evidence remain unavailable.
+Blocker: Approved Supabase deployment awaits secure CLI verification. Native build/runtime remain unverified under the owner’s archive/device waiver.
 
-Next action: Publish current handoff and progress snapshot; reconcile again after authenticated deployment.
+Next action: Finish the approved Supabase deployment after its one-time sign-in code arrives; then reconcile live-generation results and final handoff.
 
 - [Pushed commit 0b821ee909c22ec240865c318afe3a15a1a3c626](https://github.com/prateekranka/instaContentHelper/commit/0b821ee909c22ec240865c318afe3a15a1a3c626)
 
