@@ -89,6 +89,15 @@ Start the tracker with a private `TRACKER_WRITE_TOKEN` and persistent `TRACKER_D
 
 ## Recorded evidence
 
+Current removal/build verification is at
+[`ba9a340ef58a93984f14f88eb96c5fa4ab0e30bd`](https://github.com/prateekranka/instaContentHelper/commit/ba9a340ef58a93984f14f88eb96c5fa4ab0e30bd):
+71 unit source/support files and 67 unit-related Xcode objects were removed. A fresh
+Swift library build, tracker TypeScript check and static project/scheme audit passed.
+The [build/database workflow](https://github.com/prateekranka/instaContentHelper/actions/runs/40481051769)
+and [backend type-check workflow](https://github.com/prateekranka/instaContentHelper/actions/runs/40481051964)
+both passed. These workflows no longer run unit tests. Unit results below describe
+earlier commits only.
+
 | Check | Result |
 | --- | --- |
 | Historical Swift unit suite | Previously 19 passed; removed at the owner's request, along with the legacy native unit suite |

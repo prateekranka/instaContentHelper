@@ -630,15 +630,16 @@
     "status": "Working",
     "commits": [
       "https://github.com/prateekranka/instaContentHelper/commit/0b821ee909c22ec240865c318afe3a15a1a3c626",
-      "https://github.com/prateekranka/instaContentHelper/commit/b9b136862c17ef52c5db82fd01300b3e79f6125f"
+      "https://github.com/prateekranka/instaContentHelper/commit/b9b136862c17ef52c5db82fd01300b3e79f6125f",
+      "https://github.com/prateekranka/instaContentHelper/commit/cefa846fa66edf4c10f198ea34b2dadba586829b"
     ],
     "verification": "Handoff documents implemented source, repeatable checks, pins, adaptation decisions, approved API before/after and explicit unverified native/live checks. Public tracker URL is live; hosted API/browser/restart/redeploy acceptance passed. Final documentation reconciliation will follow live backend deployment.",
     "blocker": "Approved Supabase deployment awaits secure CLI verification. Native build/runtime remain unverified under the owner’s archive/device waiver.",
-    "nextAction": "Finish the approved Supabase deployment after its one-time sign-in code arrives; then reconcile live-generation results and final handoff.",
+    "nextAction": "Continue remaining authorized work when its access prerequisites are available; keep native acceptance distinct from source/domain evidence.",
     "codeTask": true,
     "createdAt": "2026-10-26T16:40:50.484Z",
     "startedAt": "2026-10-26T17:54:58.289Z",
-    "updatedAt": "2026-10-27T03:24:37.604Z",
+    "updatedAt": "2026-10-27T09:13:03.377Z",
     "completedAt": null,
     "history": [
       {
@@ -669,6 +670,11 @@
       {
         "at": "2026-10-27T03:24:37.604Z",
         "note": "Pushed the public tracker URL, deployment/restart/browser evidence, screenshots, operations and reconciled progress snapshot. Remote branch visibility confirmed for b9b136862c17ef52c5db82fd01300b3e79f6125f. Backend deployment remains approved and waits only for Supabase sign-in; native limits remain explicit.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-27T09:13:03.377Z",
+        "note": "Sections 5/8/9 implementation and focused evidence are pushed. The exact source commit passed GitHub Actions (19 Swift tests and PostgreSQL). Public progress snapshot and the section-by-section verification record are reconciled; native build/UI/speech and live Supabase checks remain explicitly unverified.",
         "status": "Working"
       }
     ]
@@ -710,13 +716,13 @@
   },
   {
     "id": "MIRA-017",
-    "title": "Linux workflow and persistence verification",
-    "description": "Compile the real cross-platform Mira workflow/coordinator and verify durable state and revision safety.",
+    "title": "Linux core build verification",
+    "description": "Compile the actual cross-platform Mira core and coordinator. Unit suites were removed by owner instruction; runtime E2E remains separate.",
     "milestone": "Foundation verification",
     "criteria": [
-      "Actual coordinator and models compile with Swift 6.4.1 on Linux",
-      "Project/position/progress survive repository reopen",
-      "Migration, corrupt recovery, stale writes, cancelled/late results and failed saves are covered"
+      "Pinned Swift toolchain compiles the actual core and coordinator",
+      "Build command runs no unit tests",
+      "Document the native runtime verification boundary"
     ],
     "status": "Done",
     "commits": [
@@ -724,14 +730,15 @@
       "https://github.com/prateekranka/instaContentHelper/commit/fc4e6171c89327290c31a26fd4ee99447a1acf9c",
       "https://github.com/prateekranka/instaContentHelper/commit/a159688b4397403efc1f3573290d59c100f6138d",
       "https://github.com/prateekranka/instaContentHelper/commit/ecb276718b8265c7c414cf14539998176441641b",
-      "https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f"
+      "https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f",
+      "https://github.com/prateekranka/instaContentHelper/commit/ba9a340ef58a93984f14f88eb96c5fa4ab0e30bd"
     ],
-    "verification": "PASS 19 real Swift domain tests with Swift 6.4.1, including the seven new navigation/backup/shot-ID/mapping/undo regressions. The seven priority tests passed again after the final recovery-error correction. Actual store, typed routes, deterministic generation and file repository compile in the Linux core. Native UI is not established by these results.",
+    "verification": "PASS fresh Swift 6.4.1 library build using swift build only after deleting the SwiftPM test target and old compiled test artifacts. Previous 19-unit-test results are historical; those suites and runners have been removed. Native UI behavior remains unverified.",
     "blocker": null,
     "codeTask": true,
     "createdAt": "2026-10-26T17:54:58.297Z",
     "startedAt": "2026-10-26T17:54:58.297Z",
-    "updatedAt": "2026-10-27T09:10:47.555Z",
+    "updatedAt": "2026-10-27T09:30:06.033Z",
     "completedAt": "2026-10-26T17:54:58.297Z",
     "history": [
       {
@@ -752,6 +759,11 @@
       {
         "at": "2026-10-27T09:10:47.555Z",
         "note": "GitHub Actions passed for exact source commit 27d54bc2d3722be53a14e4e269e799da363f355f: Swift core tests and isolated PostgreSQL jobs are green. Evidence: https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363. Native build/UI/speech verification remains separate and unverified.",
+        "status": "Done"
+      },
+      {
+        "at": "2026-10-27T09:30:06.033Z",
+        "note": "Owner replaced unit verification with E2E-first policy. This card now records library compilation only. All unit source/targets/runners are removed; no future unit tests are permitted.",
         "status": "Done"
       }
     ]
@@ -849,11 +861,12 @@
     "nextAction": "Keep native persistence interaction checks visible on their separate acceptance cards.",
     "codeTask": true,
     "commits": [
-      "https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f"
+      "https://github.com/prateekranka/instaContentHelper/commit/27d54bc2d3722be53a14e4e269e799da363f355f",
+      "https://github.com/prateekranka/instaContentHelper/commit/ba9a340ef58a93984f14f88eb96c5fa4ab0e30bd"
     ],
     "verification": "PASS: 19 Swift domain tests locally; seven priority regressions rerun after the final recovery correction. GitHub Actions passed the complete core suite and PostgreSQL checks on exact source commit 27d54bc2d3722be53a14e4e269e799da363f355f. Verified independent tab/editor reopen, deleted routes, missing/corrupt/future backup safety, unique shot/filmed identities, swapped-ID requirement mappings and undo position/approval. CI: https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363",
     "createdAt": "2026-10-27T08:42:25.054Z",
-    "updatedAt": "2026-10-27T09:10:46.351Z",
+    "updatedAt": "2026-10-27T09:30:06.778Z",
     "startedAt": "2026-10-27T08:48:08.157Z",
     "completedAt": "2026-10-27T09:08:23.909Z",
     "history": [
@@ -880,6 +893,11 @@
       {
         "at": "2026-10-27T09:10:46.351Z",
         "note": "GitHub Actions passed for exact source commit 27d54bc2d3722be53a14e4e269e799da363f355f: Swift core tests and isolated PostgreSQL jobs are green. Evidence: https://github.com/prateekranka/instaContentHelper/actions/runs/40478325363. Native build/UI/speech verification remains separate and unverified.",
+        "status": "Done"
+      },
+      {
+        "at": "2026-10-27T09:30:06.778Z",
+        "note": "Owner requested deletion of all unit tests. Earlier successful domain results remain historical evidence, but their source/runners are now removed. Production state/persistence code is unchanged; library compilation passes. Future behavior verification must follow the E2E-first policy.",
         "status": "Done"
       }
     ],
@@ -934,5 +952,51 @@
       }
     ],
     "blocker": "Full native build/type-check unavailable with the current omarchy no-Xcode limitations and absent full-mode SDK/xtool. Owner waived archive/device access."
+  },
+  {
+    "id": "MIRA-022",
+    "title": "Remove all unit tests and persist owner policy",
+    "description": "Remove native, backend, tracker and auxiliary unit suites and their targets/runners. Keep the owner instruction in repository guidance and update current verification records.",
+    "milestone": "Owner instruction",
+    "criteria": [
+      "No application unit-test source or unit-test build targets remain",
+      "CI/build scripts no longer run unit tests",
+      "Repository instructions prohibit future unit tests",
+      "Build/type checks and tracker/GitHub evidence reconciled"
+    ],
+    "status": "Done",
+    "nextAction": "Apply the recorded owner testing policy to all future work; keep existing native/live verification limitations explicit.",
+    "codeTask": true,
+    "commits": [
+      "https://github.com/prateekranka/instaContentHelper/commit/ba9a340ef58a93984f14f88eb96c5fa4ab0e30bd"
+    ],
+    "verification": "PASS: 71 unit source/support files removed; no unit-test targets/runners remain. 67 unit-related Xcode objects removed while application and existing UI target/source phases remain valid. Fresh Swift core build, tracker TypeScript, shell/Node syntax and static project/scheme/source checks passed. Both GitHub workflows passed for exact removal commit; they now run build/type checks and existing database integration only. No unit tests were run. Build/database: https://github.com/prateekranka/instaContentHelper/actions/runs/40481051769 ; backend type checks: https://github.com/prateekranka/instaContentHelper/actions/runs/40481051964",
+    "createdAt": "2026-10-27T09:19:28.912Z",
+    "updatedAt": "2026-10-27T09:31:57.601Z",
+    "startedAt": "2026-10-27T09:19:28.912Z",
+    "completedAt": "2026-10-27T09:31:57.601Z",
+    "history": [
+      {
+        "at": "2026-10-27T09:19:28.912Z",
+        "note": "Owner explicitly instructed deletion of all unit tests and no future unit tests for this app. This overrides the earlier plan testing requirement. Starting removal across native app, backend, tracker and build support.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-27T09:27:20.967Z",
+        "note": "Removed 71 unit source/support files across native app, backend, tracker and supporting scripts, plus 67 unit-related Xcode objects, the SwiftPM test target and compiled unit artifacts. Added the owner E2E-first/no-unit-test policy to AGENTS.md and the plan. Existing application/UI targets remain valid.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-27T09:30:04.991Z",
+        "note": "Removal and permanent owner policy pushed; remote branch visibility confirmed. Swift core builds without tests, tracker type checking passes, and project/scheme metadata is valid. Awaiting build/type-check CI completion.",
+        "status": "Working"
+      },
+      {
+        "at": "2026-10-27T09:31:57.601Z",
+        "note": "Removal and permanent E2E-first policy are pushed and GitHub-visible. Owner requirements are saved in AGENTS.md and plan/docs: no unit tests; realistic medium/high complexity E2E with reproducible artifacts; failure modes before isolated work; no tautological/change-detector tests; bug regressions only for real coverage gaps. CI and current source audit confirmed.",
+        "status": "Done"
+      }
+    ],
+    "blocker": null
   }
 ]
