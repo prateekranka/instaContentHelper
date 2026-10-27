@@ -4,7 +4,12 @@ Public board: https://mira-build-progress-production.up.railway.app
 
 Independent Node 24 / TypeScript / Fastify service. SQLite lives on a persistent volume at `/data/tracker.sqlite`; never deploy with an ephemeral database. Public reads expose only safe task summaries. Editing requires `TRACKER_WRITE_TOKEN` (at least 32 random characters). No secret enters frontend assets or Git.
 
-Run `npm ci`, `npm run check`, and `npm test` in this directory. Set `TRACKER_WRITE_TOKEN` privately, then `npm start`. `/health` checks SQLite readability. The board fetches `/api/tasks` every 30 seconds, retains the last successful response on failure, and displays activity time separately from fetch time.
+Run `npm ci` and `npm run check` in this directory. Unit tests and the unit-test
+script have been removed at the owner's request. Follow [the E2E-first testing
+policy](../AGENTS.md). Set `TRACKER_WRITE_TOKEN` privately, then `npm start`.
+`/health` checks SQLite readability. The board fetches `/api/tasks` every 30 seconds,
+retains the last successful response on failure, and displays activity time
+separately from fetch time.
 
 Deploy this directory to a separate Railway service, attach `/data`, set the secret through hosting secret storage, and expose an HTTPS domain. Run one replica. Set `PORT=3000` and target port 3000 on the domain. The pinned Railway SDK and [.railway/railway.ts](.railway/railway.ts) manage Dockerfile selection and `/health` readiness. Review `railway config plan` before applying configuration. Never include local `work/` data in deployment inputs.
 

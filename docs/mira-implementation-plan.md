@@ -23,6 +23,13 @@ The latest user scope and design decisions in this document supersede older prod
 
 ## 1. Implementation instructions
 
+Owner testing update, 2026-10-27: delete all unit tests and never add unit tests for
+this app again. Prefer realistic E2E scenarios of medium or high complexity, with
+reviewable and reproducible artifacts. List failure modes before implementing work
+that needs isolated verification. Avoid tautological/change-detector tests. Add bug
+regressions only where existing behavior checks leave a real gap. This update and
+[repository instructions](../AGENTS.md) supersede earlier testing requirements.
+
 Implement Mira, a native iPhone app that helps creators decide what to post, write it in their own voice, and prepare to film independently. Complete milestones sequentially. Build and check meaningful increments.
 
 Use https://github.com/joshuaswarren/omarchy-apple-dev for the Apple development toolchain. Build the app with native SwiftUI.
@@ -217,7 +224,7 @@ MiraApp/
   Services/{Networking,Persistence,Speech}/
   Resources/
 MiraCore/{Models,Workflow,Validation}/
-Tests/MiraCoreTests/
+tests/                    # E2E scenarios and reproducible artifacts
 server/src/{routes,generation,schemas,jobs}/
 server/tests/
 fixtures/
@@ -278,7 +285,13 @@ Show proposal and Apply before replacement. Provide undo. Explain out-of-scope r
 
 ## 13. Quality and testing
 
-Deterministic state/persistence/contract/error tests; separate generative-content rubric rather than exact-string assertions. Follow repository testing gates for supported UI/flow targets.
+Do not add unit tests. Use E2E as the primary behavior check, with realistic medium
+or high complexity scenarios and reproducible traces/screenshots/recordings, setup,
+commands, expected behavior and observed results. Separate the generative-content
+rubric from exact-string assertions. Follow repository testing gates for supported
+UI/flow targets. For isolated verification, list failure modes before writing code.
+Avoid tests that mirror implementation or only detect code changes. Add a bug-fix
+regression only when existing behavior checks leave a real gap.
 
 Automate workflow transitions; save/reload/migration; corrupt recovery; stale storyboard marking; late responses; retries/cancellation/duplicate submission/interrupted jobs; malformed AI output; missing codes; valid mappings; invalid durations/contradictions; auth and ownership.
 

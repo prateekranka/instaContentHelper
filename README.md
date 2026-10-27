@@ -4,6 +4,10 @@
 
 The [Mira implementation plan](docs/mira-implementation-plan.md) supersedes earlier product directions for the `codex/mira-ios-mvp` branch. The native Mira journey, domain persistence and Supabase job source are implemented. The [public workflow tracker](https://mira-build-progress-production.up.railway.app) and [progress snapshot](docs/mira-progress.md) distinguish passing checks from unverified native runtime and pending Supabase deployment. Read [the implementation handoff](docs/mira-handoff.md) and [Linux toolchain record](docs/mira-toolchain.md). The owner waived archive/device access for this run; full native build evidence is not claimed. Earlier ContentHelper source is preserved behind an explicit DEBUG fixture route.
 
+The owner requires E2E-first verification with realistic scenarios and reproducible
+artifacts. All unit suites and unit-test runners have been removed. Do not add unit
+tests. Read [the repository testing policy](AGENTS.md) before implementation or checks.
+
 ContentHelper is a native iPhone app built with SwiftUI. The Xcode target and scheme are `CreatorContentOS`. The app bundle is `ContentHelper.app`.
 
 ## Latest creator design and Claude handover

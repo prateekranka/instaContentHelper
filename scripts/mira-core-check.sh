@@ -8,6 +8,6 @@ if ! command -v "$swift_tool" >/dev/null; then
 fi
 export XDG_CACHE_HOME="$task_root/work/xdg-cache"
 export CLANG_MODULE_CACHE_PATH="$task_root/work/clang-cache"
-exec "$swift_tool" test --jobs 4 --scratch-path work/core-build \
+exec "$swift_tool" build --jobs 4 --scratch-path work/core-build \
   --cache-path work/swift-cache --config-path work/swift-config \
   --security-path work/swift-security --swift-sdks-path work/swift-sdks --disable-sandbox

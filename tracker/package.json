@@ -7,8 +7,7 @@
   },
   "scripts": {
     "start": "node src/server.ts",
-    "check": "tsc --noEmit",
-    "test": "node --test src/store.test.ts"
+    "check": "tsc --noEmit"
   },
   "dependencies": {
     "@fastify/static": "^10.1.7",

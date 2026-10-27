@@ -1,5 +1,11 @@
 # Mira plan sections 5, 8 and 9
 
+Owner update, 2026-10-27: the unit suites described in this historical implementation
+record were subsequently deleted, together with their targets and runners. Do not
+recreate them. Use [the current testing policy](../AGENTS.md): realistic E2E scenarios,
+reproducible artifacts, failure-mode analysis before isolated work, and regressions
+only for real behavior-coverage gaps. The core command now compiles without tests.
+
 The owner selected these plan sections on 2026-10-27. This record describes source
 implementation and domain verification. Native build, UI, speech and accessibility
 verification remain open under the existing archive/device waiver.
@@ -76,7 +82,7 @@ for SwiftPM resources was introduced. Existing source-file membership is retaine
 ## Verification
 
 `bash scripts/mira-core-check.sh` passed 19 tests across two suites with Swift 6.4.1.
-The seven new regressions are in [MiraPriorityTests.swift](../Tests/MiraCoreTests/MiraPriorityTests.swift):
+The seven historical regressions, now removed, covered:
 
 1. Reopen independent tabs and the selected editor.
 2. Restore legacy navigation and discard deleted-project routes.

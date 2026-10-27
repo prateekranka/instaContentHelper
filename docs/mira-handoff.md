@@ -2,6 +2,12 @@
 
 Branch: `codex/mira-ios-mvp` in `prateekranka/instaContentHelper`. Base: `1580a82`. Worktree: `/workspace/mira-ios-mvp`. Work used one agent. No TestFlight or App Store distribution occurred.
 
+Owner update, 2026-10-27: all unit tests and their targets/runners have been removed.
+Do not write or restore unit tests. Prefer realistic E2E behavior scenarios with
+reproducible artifacts. Record failure modes before isolated implementation work.
+The current policy is in [AGENTS.md](../AGENTS.md). Earlier test counts below are
+historical evidence, not runnable suites in the current checkout.
+
 ## Implemented source
 
 The default native entry is now Mira. Today and Projects each own a typed navigation stack. Profile is a labelled toolbar action. The warm notebook palette supports light and dark appearance, scaled body text, native controls and text sharing. There are no active calendar, analytics, publishing, payment or video-editor destinations.
@@ -65,7 +71,11 @@ deno task ci:backend
 python3 scripts/mira-sql-check.py
 ```
 
-The core script uses Swift on PATH or the locally extracted pinned toolchain. It keeps caches within ignored `work/`. The SQL script uses an isolated, digest-pinned PostgreSQL 17 container, minimal compatible ownership tables and the actual new migration. It removes its task-owned container. It does not touch Supabase or an existing database.
+The core script now runs `swift build` only, using Swift on PATH or the locally
+extracted pinned toolchain. It keeps caches within ignored `work/` and runs no unit
+tests. `deno task ci:backend` now performs type checks only. The SQL script retains
+the existing database integration check against an isolated, digest-pinned PostgreSQL
+17 container. It does not touch Supabase or an existing database.
 
 Tracker checks:
 
@@ -73,7 +83,6 @@ Tracker checks:
 cd tracker
 npm ci
 npm run check
-npm test
 ```
 
 Start the tracker with a private `TRACKER_WRITE_TOKEN` and persistent `TRACKER_DB`, then use its TesterArmy e2e configuration. The API e2e case needs the write token in its environment. Browser tests need no model provider. Do not put the token in command arguments or tracked files. See [tracker operations](../tracker/README.md).
@@ -82,12 +91,12 @@ Start the tracker with a private `TRACKER_WRITE_TOKEN` and persistent `TRACKER_D
 
 | Check | Result |
 | --- | --- |
-| Linux Swift domain tests | 19 passed; includes seven new tab/editor restoration, deleted-route, backup, shot-identity/mapping and undo regressions |
+| Historical Swift unit suite | Previously 19 passed; removed at the owner's request, along with the legacy native unit suite |
 | Cross-platform coordinator | Compiled with the domain module on Linux; checks include save-failure gating and injected repository use |
-| Backend type-check and regression suite | 398 passed, 0 failed, 1 ignored; includes 5 new Mira tests |
+| Historical backend unit suite | Previously 398 passed, 0 failed, 1 ignored; unit source and runner removed; type checking remains |
 | PostgreSQL migration/job checks | Passed: idempotency, lease exclusion, interrupted recovery, retry bound, cancellation, anonymous table/function denial |
 | Native source syntax | Swift frontend parse passed; this is not native type-checking or linking |
-| Tracker | TypeScript, store test, desktop/mobile/details/stale refresh and authenticated API e2e passed locally; screenshots inspected |
+| Tracker | TypeScript and desktop/mobile/details/stale refresh/authenticated API E2E evidence retained; unit store suite removed |
 | Production tracker | Public HTTPS, rejected anonymous edits, authenticated idempotency, desktop/mobile/details/stale recovery and restart persistence passed on 2026-10-27 |
 | Full native build, native UI, speech, accessibility | Unverified |
 | Live Supabase generation and generative quality | Unverified; endpoint not deployed |
@@ -106,7 +115,7 @@ Run `bash scripts/mira-linux-build.sh` for a configured full-mode host. The wrap
 
 The owner said not to require an Xcode archive or physical device for this run. No further request for either is needed. The pinned upstream no-Xcode SwiftUI documentation nevertheless identifies NavigationStack, Binding and Environment limitations. This app uses those APIs; that route cannot currently establish a complete Mira native build. Full-mode SDK/xtool are absent here. This limitation is recorded instead of presenting Linux parsing as a working iPhone app. See [the toolchain record](mira-toolchain.md).
 
-The tracker bootstrap snapshot preserves the local server's actual activity timestamps/history on an empty first-deployment database. It is schema-validated and imported transactionally. A populated production volume is never overwritten from source on restart. Both store tests passed, including import preservation and rejection of invalid timestamps.
+The tracker bootstrap snapshot preserves the local server's actual activity timestamps/history on an empty first-deployment database. It is schema-validated and imported transactionally. A populated production volume is never overwritten from source on restart. Earlier store unit results are historical; that suite has been removed.
 
 ## Content and native acceptance still to verify
 
