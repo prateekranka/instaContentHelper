@@ -957,7 +957,7 @@ enum WeeklyDayState: String, CaseIterable, Codable, Hashable, Sendable {
 extension WeeklyDayState {
     init(generatedDraftStatus status: String) {
         switch status.lowercased() {
-        case "published", "planned", "ready":
+        case "published", "planned", "ready", "shot", "posted", "used_backup", "saved_for_tomorrow", "skipped_intentionally":
             self = .planned
         case "backup":
             self = .backup
@@ -1076,7 +1076,7 @@ struct GeneratedWeekDraft: Identifiable, Hashable, Sendable {
 extension GeneratedWeekDraft {
     var isCompleteWeekDraft: Bool {
         let scheduledDates = Set(dailyCards.map(\.scheduledDate))
-        return dailyCards.count == 7 && scheduledDates.count == 7
+        return dailyCards.count >= 7 && scheduledDates.count == 7
     }
 
     func weeklyPlan(
@@ -2031,6 +2031,7 @@ struct DayRevision: Codable, Hashable, Sendable, Identifiable {
     var content: GeneratedDailyCardDraft
     var filmingProgress: FilmingProgress
     var decision: DailyDecision?
+    var isReviewed = false
 
     init(content: GeneratedDailyCardDraft) {
         self.content = content
@@ -2038,7 +2039,7 @@ struct DayRevision: Codable, Hashable, Sendable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case content, filmingProgress, decision
+        case content, filmingProgress, decision, isReviewed
     }
 
     init(from decoder: Decoder) throws {
@@ -2047,6 +2048,7 @@ struct DayRevision: Codable, Hashable, Sendable, Identifiable {
         filmingProgress = try values.decodeIfPresent(FilmingProgress.self, forKey: .filmingProgress)
             ?? FilmingProgress(revisionID: content.id)
         decision = try values.decodeIfPresent(DailyDecision.self, forKey: .decision)
+        isReviewed = try values.decodeIfPresent(Bool.self, forKey: .isReviewed) ?? false
     }
 
     var dailyCard: DailyCard {
@@ -2064,6 +2066,7 @@ enum DayTransition {
     case generationRejected
     case retain(GeneratedDailyCardDraft, CompletionState?)
     case makeReady
+    case reviewed(UUID)
     case returnToDraft
     case markShots(Set<UUID>)
     case decide(DailyDecision)
@@ -2109,6 +2112,27 @@ struct Piece: Codable, Hashable, Sendable, Identifiable {
         self.position = position
         self.requiresServerBinding = requiresServerBinding
         self.isLifecyclePlaceholder = isLifecyclePlaceholder
+    }
+
+    var canReviewDraft: Bool { lifecycle == .draft && revision != nil }
+
+    var canApproveReviewedDraft: Bool { canReviewDraft && revision?.isReviewed == true }
+
+    var reviewStateLabel: String {
+        switch lifecycle {
+        case .empty: "No draft"
+        case .generating: "Preparing draft"
+        case .draft: revision?.isReviewed == true ? "Reviewed" : "Draft"
+        case .ready: "Approved"
+        case .filming(let progress): progress.isComplete ? "Shot" : "Filming"
+        case .decided(let outcome):
+            switch outcome {
+            case .posted: "Posted"
+            case .backup: "Backup"
+            case .skipped: "Skipped"
+            }
+        case .unavailable: "Not ready"
+        }
     }
 
     mutating func move(to date: String, position: Int) {
@@ -2246,6 +2270,9 @@ struct Piece: Codable, Hashable, Sendable, Identifiable {
             if let saved = retained.revision, !next.previousRevisions.contains(where: { $0.id == saved.id }) {
                 next.previousRevisions.append(saved)
             }
+        case .reviewed(let revisionID):
+            guard lifecycle == .draft, revision?.id == revisionID else { throw DayTransitionError.mismatchedRevision }
+            next.revision?.isReviewed = true
         case .makeReady:
             guard lifecycle == .draft, next.revision != nil else { throw DayTransitionError.illegalMove }
             next.revision?.content.status = "published"
@@ -2350,6 +2377,7 @@ struct Piece: Codable, Hashable, Sendable, Identifiable {
             }
             if matches.count == 1 { current.filmingProgress.shotSceneIDs.insert(matches[0].id) }
         }
+        if current.content != content { current.isReviewed = false }
         current.content = content
         current.filmingProgress.shotSceneIDs.formIntersection(ids)
         current.filmingProgress.isComplete = !ids.isEmpty && current.filmingProgress.shotSceneIDs == ids

@@ -42,6 +42,13 @@ struct AppRuntime {
             for draft in FakeServer.shared.initialDayPackages {
                 try? services.dayStore.receive(draft, completion: CompletionState(supabaseStatus: draft.status), authoritativeDecision: true)
             }
+            if DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.isEnabled("MCO_REVIEWED_PIECES") {
+                for piece in services.dayStore.reviewPieces(on: services.currentTodayDateString) where piece.canReviewDraft {
+                    if let revisionID = piece.revision?.id {
+                        try? services.dayStore.transition(.reviewed(revisionID), pieceID: piece.identity.pieceID)
+                    }
+                }
+            }
         }
 #endif
         return AppRuntime(

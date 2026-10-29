@@ -8,7 +8,7 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
     case updateWeeklySetup(sections: [WeeklySetupSection], plan: WeeklyPlan, context: WorkspaceContext)
     case updateWeeklyBrief(text: String, plan: WeeklyPlan, context: WorkspaceContext)
     case updateCreatorProfile(CreatorProfileUpdate, context: WorkspaceContext)
-    case updateDailyCardReviewState(dailyCardID: UUID, reviewState: String, context: WorkspaceContext)
+    case updateDailyCardReviewState(dailyCardID: UUID, reviewState: String, context: WorkspaceContext, pieceID: UUID? = nil)
 
     private enum CodingKeys: String, CodingKey {
         case action
@@ -139,11 +139,12 @@ enum SupabaseWriteContentRequest: Encodable, Sendable {
                 try container.encode(languagePreferences, forKey: .languagePreferences)
             }
 
-        case .updateDailyCardReviewState(let dailyCardID, let reviewState, let context):
+        case .updateDailyCardReviewState(let dailyCardID, let reviewState, let context, let pieceID):
             try container.encode("update_daily_card_review_state", forKey: .action)
             try container.encode(context.creatorID, forKey: .creatorID)
             try container.encode(dailyCardID, forKey: .dailyCardID)
             try container.encode(reviewState, forKey: .reviewState)
+            try container.encodeIfPresent(pieceID, forKey: .pieceID)
         }
     }
 

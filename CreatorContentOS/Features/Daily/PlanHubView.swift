@@ -15,6 +15,7 @@ struct PlanHubView: View {
     @State private var showCalendarSheet = false
     @State private var isAddingPiece = false
     @State private var packageScrollRequest = 0
+    @State private var showDayReview = DebugLaunchFlags.forceFixtureUI && DebugLaunchConfiguration.isEnabled("MCO_START_DAY_REVIEW")
     @State private var showMoveSheet = false
     @State private var moveError: String?
     @State private var showUnpublishConfirmation = false
@@ -23,6 +24,7 @@ struct PlanHubView: View {
     @State private var hasDispatchedGeneration = false
     @State private var isOtherIdeaOpen = false
     @State private var otherIdeaText = ""
+    @State private var lightEditSessionID = UUID()
     @State private var lightEditCaption = ""
     @State private var lightEditScript = ""
     @State private var lightEditScenes: [ShotScene] = []
@@ -162,6 +164,19 @@ struct PlanHubView: View {
                         .accessibilityIdentifier("plan.piece.cancel")
                 }
                 PlanGenerationInputsSummary(setup: setupSummary, selectedDate: scheduledDateString)
+                if !selectedPieces.isEmpty, !isAddingPiece {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                        Text(services.dayStore.reviewSummary(on: scheduledDateString))
+                            .font(PocketSheetType.rowSubtitle)
+                            .accessibilityIdentifier("plan.day.summary")
+                        Text(services.weekPieceSummary)
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .accessibilityIdentifier("plan.week.summary")
+                        PocketSheetSecondaryAction(title: "Review day") { showDayReview = true }
+                            .accessibilityIdentifier("plan.day.review")
+                    }
+                }
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isGeneratingSelectedDay)
         } bottomBar: {
@@ -186,6 +201,10 @@ struct PlanHubView: View {
                     refreshDayIdeasIfNeeded(scheduledDate: Self.dateString(from: date))
                 }
             )
+        }
+        .sheet(isPresented: $showDayReview) {
+            PlanDayReviewSheet(scheduledDate: DebugLaunchFlags.forceFixtureUI && DebugLaunchConfiguration.isEnabled("MCO_START_DAY_REVIEW")
+                ? services.currentTodayDateString : scheduledDateString)
         }
         .sheet(isPresented: $showMoveSheet) {
             PlanPieceMoveSheet(sourceDate: scheduledDateString, today: planTodayDate) { date in
@@ -254,7 +273,9 @@ struct PlanHubView: View {
 
     private func applyPendingPlanDateSelection() {
         let candidate: String?
-        if !didApplyInitialSelectedDate, let initial = initialSelectedDate?.nilIfBlank {
+        if DebugLaunchFlags.forceFixtureUI && DebugLaunchConfiguration.isEnabled("MCO_START_DAY_REVIEW") {
+            candidate = services.currentTodayDateString
+        } else if !didApplyInitialSelectedDate, let initial = initialSelectedDate?.nilIfBlank {
             didApplyInitialSelectedDate = true
             appState.preparePlan(selecting: initial)
             candidate = initial
@@ -291,6 +312,7 @@ struct PlanHubView: View {
 
     private func resetIdeaLauncherState() {
         hasDispatchedGeneration = false
+        generationStartTime = nil
         isOtherIdeaOpen = false
         otherIdeaText = ""
         pendingGenerationBrief = nil
@@ -362,6 +384,12 @@ struct PlanHubView: View {
         !isAddingPiece && services.dayStore.outbox.contains { $0.isGeneration && $0.pieceID == selectedPieceID }
     }
 
+    private var isRunningSelectedGeneration: Bool {
+        if hasDispatchedGeneration, generationStartTime != nil { return true }
+        guard isGeneratingSelectedDay, let intentID = services.activeGenerationIntentID else { return false }
+        return services.dayStore.outbox.contains { $0.id == intentID && $0.pieceID == selectedPieceID }
+    }
+
     private var otherDayGeneratingLabel: String? {
         let others = services.generatingDayBriefDates.filter { $0 != scheduledDateString }.sorted()
         guard let first = others.first else { return nil }
@@ -373,6 +401,7 @@ struct PlanHubView: View {
             && !shouldShowIdeaLauncher
             && !isGeneratingSelectedDay
             && !services.isMakingDayAvailable
+            && !services.isApprovingPieces
             && displayedCard != nil
             && DayPackageLifecycleStatus.isDraftPackage(displayedCard?.status)
     }
@@ -558,18 +587,22 @@ struct PlanHubView: View {
     private var generationProgressBlock: some View {
         PocketSheetCard {
             HStack(spacing: PocketSheetSpace.s) {
-                ProgressView()
-                    .controlSize(.small)
+                if isRunningSelectedGeneration {
+                    ProgressView()
+                        .controlSize(.small)
+                }
                 VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                    Text("Drafting \(shortLabel(for: scheduledDateString))")
+                    Text(isRunningSelectedGeneration
+                         ? "Drafting \(shortLabel(for: scheduledDateString))"
+                         : "Waiting to draft \(shortLabel(for: scheduledDateString))")
                         .font(PocketSheetType.rowTitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
-                    Text("Preparing your idea…")
+                    Text(isRunningSelectedGeneration ? "Preparing your idea…" : "Your request is saved.")
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 }
                 Spacer()
-                if let startTime = generationStartTime {
+                if isRunningSelectedGeneration, let startTime = generationStartTime {
                     TimelineView(.periodic(from: startTime, by: 1)) { context in
                         Text(Self.elapsedText(context.date.timeIntervalSince(startTime)))
                             .font(PocketSheetType.rowSubtitle)
@@ -599,6 +632,7 @@ struct PlanHubView: View {
 
                 if canLightEditReadyPackage {
                     lightEditBlock
+                        .id(lightEditSessionID)
                         .disabled(services.isUpdatingReadyDayPackage)
                 }
                 unpublishActionBlock
@@ -646,7 +680,7 @@ struct PlanHubView: View {
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
-                    TextEditor(text: $lightEditScript)
+                    TextEditor(text: lightEditBinding($lightEditScript))
                         .focused($focusedLightEditField, equals: .script)
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
@@ -663,7 +697,7 @@ struct PlanHubView: View {
                 Text("Caption")
                     .font(PocketSheetType.sectionLabel)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
-                TextEditor(text: $lightEditCaption)
+                TextEditor(text: lightEditBinding($lightEditCaption))
                     .focused($focusedLightEditField, equals: .caption)
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.ink)
@@ -797,11 +831,17 @@ struct PlanHubView: View {
         let dateString = scheduledDateString
         let pieceID = selectedPieceID
         let adding = isAddingPiece
+        let startTime = Date()
         hasDispatchedGeneration = true
-        generationStartTime = Date()
+        generationStartTime = startTime
         showReplaceIdeaLauncher = false
         Task { @MainActor in
-            defer { generationStartTime = nil }
+            defer {
+                if generationStartTime == startTime {
+                    generationStartTime = nil
+                    hasDispatchedGeneration = false
+                }
+            }
             do {
                 _ = try await services.generateDayCard(
                     scheduledDate: dateString,
@@ -819,7 +859,7 @@ struct PlanHubView: View {
                 otherIdeaText = ""
                 resetLightEdit(displayedCard)
             } catch {
-                if !isGeneratingSelectedDay {
+                if generationStartTime == startTime, !isGeneratingSelectedDay {
                     hasDispatchedGeneration = false
                 }
             }
@@ -871,6 +911,7 @@ struct PlanHubView: View {
         focusedLightEditField = nil
         let dateString = scheduledDateString
         let pieceID = selectedPieceID
+        let sessionID = lightEditSessionID
         let caption = lightEditCaption
         let scenes = ShotScript.editing(lightEditScript, scenes: lightEditScenes)
         let script = scenes.isEmpty ? lightEditScript : ShotScript.text(for: scenes)
@@ -885,7 +926,7 @@ struct PlanHubView: View {
                     ),
                     pieceID: pieceID
                 )
-                guard scheduledDateString == dateString else { return }
+                guard scheduledDateString == dateString, selectedPieceID == pieceID, lightEditSessionID == sessionID else { return }
                 resetLightEdit(displayedCard)
             } catch {
                 // Surfaced via services.lastReadyDayPackageEditError.
@@ -909,7 +950,20 @@ struct PlanHubView: View {
         }
     }
 
+    private func lightEditBinding(_ draft: Binding<String>) -> Binding<String> {
+        let sessionID = lightEditSessionID
+        return Binding(
+            get: { draft.wrappedValue },
+            set: { value in
+                guard lightEditSessionID == sessionID else { return }
+                draft.wrappedValue = value
+            }
+        )
+    }
+
     private func resetLightEdit(_ card: GeneratedDailyCardDraft?) {
+        lightEditSessionID = UUID()
+        focusedLightEditField = nil
         lightEditCaption = card?.caption ?? ""
         lightEditScenes = card?.sceneList ?? []
         lightEditScript = card.map { PackageCopyText.script(for: $0) } ?? ""
@@ -924,11 +978,7 @@ struct PlanHubView: View {
         guard let date = Self.parseLocalDate(dateString) else {
             return dateString
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "EEE d MMM"
-        return formatter.string(from: date)
+        return SupabaseDateFormatting.calendarText(from: date, format: "EEE d MMM")
     }
 
     private static func startOfToday() -> Date {
@@ -936,11 +986,7 @@ struct PlanHubView: View {
     }
 
     private static func dateString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        SupabaseDateFormatting.dateString(from: date)
     }
 
     private static func parseLocalDate(_ dateString: String) -> Date? {
@@ -1186,27 +1232,15 @@ private struct PlanSevenDaySelector: View {
     }
 
     private func weekdayLabel(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_GB")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "EEE"
-        return formatter.string(from: date)
+        SupabaseDateFormatting.calendarText(from: date, format: "EEE", localeIdentifier: "en_GB")
     }
 
     private func monthLabel(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_GB")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "MMM"
-        return formatter.string(from: date)
+        SupabaseDateFormatting.calendarText(from: date, format: "MMM", localeIdentifier: "en_GB")
     }
 
     private static func dateString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        SupabaseDateFormatting.dateString(from: date)
     }
 }
 
@@ -1260,5 +1294,224 @@ private struct PlanPieceMoveSheet: View {
     private var dates: [Date] {
         let start = PlanDayDateFormatting.calendar.startOfDay(for: today)
         return (0..<7).compactMap { PlanDayDateFormatting.calendar.date(byAdding: .day, value: max(0, weekOffset) * 7 + $0, to: start) }
+    }
+}
+
+struct PlanDayReviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AppServices.self) private var services
+    let scheduledDate: String
+    @State private var selectedRevisions: [UUID: UUID] = [:]
+    @State private var reviewingPieceID: UUID?
+    @State private var reviewingRevisionID: UUID?
+    @State private var didApplyFixtureSelection = false
+
+    private var pieces: [Piece] { services.dayStore.reviewPieces(on: scheduledDate) }
+
+    private var eligibleSelection: [UUID: UUID] {
+        selectedRevisions.filter { pieceID, revisionID in
+            guard let piece = pieces.first(where: { $0.identity.pieceID == pieceID }) else { return false }
+            return piece.canApproveReviewedDraft && piece.revision?.id == revisionID
+        }
+    }
+
+    var body: some View {
+        Group {
+            if let pieceID = reviewingPieceID, let revisionID = reviewingRevisionID {
+                PlanPieceReviewContent(pieceID: pieceID, revisionID: revisionID) {
+                    reviewingPieceID = nil
+                    reviewingRevisionID = nil
+                } onReviewed: {
+                    selectedRevisions[pieceID] = revisionID
+                    reviewingPieceID = nil
+                    reviewingRevisionID = nil
+                }
+                .id(revisionID)
+            } else {
+                reviewList
+                    .id(scheduledDate)
+            }
+        }
+        .pocketSheetChromePalette()
+        .interactiveDismissDisabled(services.isApprovingPieces)
+        .onAppear {
+            guard !didApplyFixtureSelection, DebugLaunchFlags.forceFixtureUI,
+                  DebugLaunchConfiguration.isEnabled("MCO_REVIEW_SELECT_ALL") else { return }
+            didApplyFixtureSelection = true
+            selectedRevisions = Dictionary(uniqueKeysWithValues: pieces.compactMap { piece in
+                guard piece.canApproveReviewedDraft, let revisionID = piece.revision?.id else { return nil }
+                return (piece.identity.pieceID, revisionID)
+            })
+        }
+    }
+
+    private var reviewList: some View {
+        PocketSheetScreen(bottomContentPadding: PocketSheetSpace.section) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
+                PocketSheetSecondaryAction(title: "Close") { dismiss() }
+                    .accessibilityIdentifier("review.day.close")
+                Text("Review day")
+                    .font(PocketSheetType.screenTitle)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("review.day.title")
+                Text(PlanDayDateFormatting.formattedDate(for: scheduledDate)?.label ?? scheduledDate)
+                    .font(PocketSheetType.bodyText)
+                    .accessibilityIdentifier("review.day.date")
+                Text(services.dayStore.reviewSummary(on: scheduledDate))
+                    .font(PocketSheetType.rowSubtitle)
+                    .accessibilityIdentifier("review.day.summary")
+                ForEach(pieces) { piece in
+                    pieceRow(piece)
+                }
+            }
+        } bottomBar: {
+            PocketSheetPrimaryAction(
+                title: services.isApprovingPieces ? "Saving…" : "Approve \(eligibleSelection.count) \(eligibleSelection.count == 1 ? "piece" : "pieces")",
+                systemImage: "checkmark.circle"
+            ) {
+                let selection = eligibleSelection
+                Task { await services.approveReviewedPieces(selection) }
+            }
+            .disabled(eligibleSelection.isEmpty || services.isApprovingPieces || services.isMakingDayAvailable || !services.canGenerateContent)
+            .accessibilityIdentifier("review.day.approve")
+        }
+    }
+
+    private func pieceRow(_ piece: Piece) -> some View {
+        let pieceID = piece.identity.pieceID
+        let rowID = "review.piece.\(scheduledDate).\(piece.position)"
+        return PocketSheetCard {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                Text(services.dayStore.projection(pieceID: pieceID)?.package.title ?? "Piece \(piece.position + 1)")
+                    .font(PocketSheetType.rowTitle)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("\(rowID).title")
+                Text(piece.reviewStateLabel)
+                    .font(PocketSheetType.rowSubtitle)
+                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                    .accessibilityIdentifier("\(rowID).state")
+                if piece.canReviewDraft, let revisionID = piece.revision?.id {
+                    if piece.canApproveReviewedDraft {
+                        Toggle("Select for approval", isOn: Binding(
+                            get: { eligibleSelection[pieceID] == revisionID },
+                            set: { selectedRevisions[pieceID] = $0 ? revisionID : nil }
+                        ))
+                        .font(PocketSheetType.bodyText)
+                        .tint(PocketSheetTheme.Color.ink)
+                        .disabled(services.isApprovingPieces)
+                        .accessibilityIdentifier("\(rowID).select")
+                    }
+                    PocketSheetSecondaryAction(title: piece.canApproveReviewedDraft ? "Review again" : "Review") {
+                        reviewingRevisionID = revisionID
+                        reviewingPieceID = pieceID
+                    }
+                    .disabled(services.isApprovingPieces)
+                    .accessibilityIdentifier("\(rowID).open")
+                }
+                if let error = services.pieceApprovalError(for: pieceID) {
+                    Text(error)
+                        .font(PocketSheetType.rowSubtitle)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("\(rowID).error")
+                    if piece.canApproveReviewedDraft, let revisionID = piece.revision?.id {
+                        PocketSheetSecondaryAction(title: "Try again") {
+                            Task { await services.approveReviewedPieces([pieceID: revisionID]) }
+                        }
+                        .disabled(services.isApprovingPieces || services.isMakingDayAvailable)
+                        .accessibilityIdentifier("\(rowID).retry")
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(rowID)
+    }
+}
+
+private struct PlanPieceReviewContent: View {
+    private enum Section: String, CaseIterable { case script = "Script", shots = "Shots", caption = "Caption" }
+    @Environment(AppServices.self) private var services
+    let pieceID: UUID
+    let revisionID: UUID
+    let onBack: () -> Void
+    let onReviewed: () -> Void
+    @State private var section: Section = .script
+    @State private var saveError: String?
+    @State private var isSaving = false
+
+    private var card: GeneratedDailyCardDraft? {
+        guard services.dayStore.piece(for: pieceID)?.revision?.id == revisionID else { return nil }
+        return services.dayStore.projection(pieceID: pieceID, revisionID: revisionID)?.package
+    }
+
+    var body: some View {
+        PocketSheetScreen(bottomContentPadding: PocketSheetSpace.section) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
+                PocketSheetSecondaryAction(title: "Back to review day", action: onBack)
+                    .accessibilityIdentifier("review.content.back")
+                if let card {
+                    Text(card.title)
+                        .font(PocketSheetType.screenTitle)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("review.content.title")
+                    ForEach(Section.allCases, id: \.self) { choice in
+                        PocketSheetSecondaryAction(title: choice.rawValue) { section = choice }
+                            .accessibilityAddTraits(section == choice ? [.isSelected] : [])
+                            .accessibilityIdentifier("review.content.tab.\(choice.rawValue.lowercased())")
+                    }
+                    content(card)
+                } else {
+                    Text("This piece changed. Return to review day and open it again.")
+                        .font(PocketSheetType.bodyText)
+                }
+                if let saveError {
+                    Text(saveError)
+                        .font(PocketSheetType.rowSubtitle)
+                        .accessibilityIdentifier("review.content.error")
+                }
+            }
+        } bottomBar: {
+            PocketSheetPrimaryAction(title: isSaving ? "Saving…" : "Reviewed", systemImage: "checkmark") {
+                isSaving = true
+                Task { @MainActor in
+                    defer { isSaving = false }
+                    do {
+                        try await services.markPieceReviewed(pieceID: pieceID, revisionID: revisionID)
+                        onReviewed()
+                    } catch { saveError = error.localizedDescription }
+                }
+            }
+            .disabled(card == nil || isSaving || services.dayStore.piece(for: pieceID)?.canReviewDraft != true)
+            .accessibilityIdentifier("review.content.done")
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ card: GeneratedDailyCardDraft) -> some View {
+        switch section {
+        case .script:
+            Text(PackageCopyText.script(for: card))
+                .font(PocketSheetType.bodyText)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("review.content.script")
+        case .caption:
+            Text(card.caption)
+                .font(PocketSheetType.bodyText)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("review.content.caption")
+        case .shots:
+            ForEach(card.sceneList) { scene in
+                VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
+                    Text("Shot \(scene.number): \(scene.title)")
+                        .font(PocketSheetType.rowTitle)
+                    Text(scene.duration)
+                        .font(PocketSheetType.rowSubtitle)
+                    if let dialogue = scene.dialogue?.nilIfBlank {
+                        Text(dialogue).font(PocketSheetType.bodyText)
+                    }
+                }
+            }
+        }
     }
 }

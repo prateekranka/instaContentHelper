@@ -186,7 +186,7 @@ actor FakeServer {
             }
             if let defaults { defaults.set(try JSONEncoder().encode(snapshot), forKey: Self.persistenceKey) }
             state = snapshot
-            initialDayPackages = try snapshot.pieces.values.filter { $0.position == 0 && $0.removedAt == nil }.compactMap { day in
+            initialDayPackages = try snapshot.pieces.values.filter { $0.removedAt == nil }.sorted { ($0.scheduledDate, $0.position) < ($1.scheduledDate, $1.position) }.compactMap { day in
                 guard let id = day.currentRevisionID, let row = snapshot.revisions[id] else { return nil }
                 return try FakeJSON.decode(.object(row), as: SupabaseDailyCardRow.self).generatedDailyCardDraft()
             }
@@ -243,7 +243,23 @@ actor FakeServer {
             case "generate-week", "replace-day":
                 response = try generate(payload, replacing: function == "replace-day", delayNanoseconds: delayNanoseconds)
             case "make-day-available", "unpublish-day", "update-ready-day-package", "publish-day":
+#if DEBUG
+                if function == "make-day-available", DebugLaunchConfiguration.isEnabled("MCO_FAIL_SECOND_PIECE_APPROVAL"),
+                   let pieceID = payload.uuid("piece_id"), state.pieces[pieceID]?.position == 1,
+                   state.consumedFailures.insert("approval-failure-\(pieceID)").inserted {
+                    response = Self.failure("make_day_available_failed", status: 500)
+                    break
+                }
+#endif
                 response = try lifecycle(function, payload: payload)
+#if DEBUG
+                if function == "make-day-available", response.statusCode == 200,
+                   DebugLaunchConfiguration.isEnabled("MCO_LOSE_SECOND_APPROVAL_REPLY_ONCE"),
+                   let pieceID = payload.uuid("piece_id"), state.pieces[pieceID]?.position == 1,
+                   state.consumedFailures.insert("approval-reply-\(pieceID)").inserted {
+                    response = Self.failure("make_day_available_failed", status: 500)
+                }
+#endif
             case "move-piece":
                 try completeDueRuns()
                 response = try movePiece(payload)
@@ -1074,6 +1090,24 @@ actor FakeServer {
             snapshot.plan = plan
         }
         snapshot.migrate(days: days, context: context)
+#if DEBUG
+        if DebugLaunchConfiguration.isEnabled("MCO_REVIEW_TWO_DRAFTS"),
+           let first = snapshot.pieces.values.first(where: { $0.scheduledDate == SupabaseDateFormatting.todayDateString() && $0.position == 0 }),
+           let firstRevisionID = first.currentRevisionID, var row = snapshot.revisions[firstRevisionID] {
+            row["status"] = .string("draft")
+            row["review_state"] = .string("open")
+            row["title"] = .string("First review piece")
+            snapshot.revisions[firstRevisionID] = row
+            let pieceID = UUID()
+            let revisionID = UUID()
+            row["id"] = .string(revisionID.uuidString)
+            row["piece_id"] = .string(pieceID.uuidString)
+            row["title"] = .string("Second review piece")
+            snapshot.revisions[revisionID] = row
+            snapshot.pieces[pieceID] = FakeServerPiece(id: pieceID, workspaceID: context.workspaceID, creatorID: context.creatorID,
+                scheduledDate: first.scheduledDate, position: 1, currentRevisionID: revisionID)
+        }
+#endif
         return snapshot
     }
 
@@ -1244,7 +1278,11 @@ struct FixtureWeeklyPlanRepository: WeeklyPlanRepository {
     }
 
     func updateDailyCardReviewState(dailyCardID: UUID, reviewState: String, context: WorkspaceContext) async throws {
-        let _: SupabaseWriteContentResponse = try await server.invoke("write-content", body: SupabaseWriteContentRequest.updateDailyCardReviewState(dailyCardID: dailyCardID, reviewState: reviewState, context: context), context: context)
+        try await updateDailyCardReviewState(dailyCardID: dailyCardID, reviewState: reviewState, pieceID: nil, context: context)
+    }
+
+    func updateDailyCardReviewState(dailyCardID: UUID, reviewState: String, pieceID: UUID?, context: WorkspaceContext) async throws {
+        let _: SupabaseWriteContentResponse = try await server.invoke("write-content", body: SupabaseWriteContentRequest.updateDailyCardReviewState(dailyCardID: dailyCardID, reviewState: reviewState, context: context, pieceID: pieceID), context: context)
     }
 
     func replayPackage(_ intent: ContentIntent, pieceID: UUID?, context: WorkspaceContext) async throws -> OutboxReplayResult {
@@ -1267,7 +1305,7 @@ struct FixtureWeeklyPlanRepository: WeeklyPlanRepository {
             let code = error.localizedDescription
             if code == "daily_card_not_draft" && intent.packageAction == .makeReady || code == "daily_card_already_draft" && intent.packageAction == .returnToDraft {
                 let response: SupabaseCreatorDaysResponse = try await server.invoke("read-content", body: SupabaseReadContentRequest(action: .days, creatorID: context.creatorID, includeAllPieces: pieceID == nil ? nil : true), context: context)
-                if let row = response.days.first(where: { $0.scheduledDate == intent.scheduledDate && $0.currentRevisionID == intent.revisionID }), let card = row.revision {
+                if let row = response.days.first(where: { $0.scheduledDate == intent.scheduledDate && $0.currentRevisionID == intent.revisionID && (pieceID == nil || $0.pieceID == pieceID) }), let card = row.revision {
                     if intent.packageAction == .makeReady, DayPackageLifecycleStatus.requiresOverwriteConfirmation(card.status) {
                         return .available(DayAvailabilityResult(pieceID: card.pieceID, dailyCardID: card.id, scheduledDate: card.scheduledDate, status: card.status, weeklyPlanID: card.weeklyPlanID, weekIsSoftLocked: false))
                     }

@@ -152,6 +152,36 @@ The rollback-only database harness adds append, source compaction, mirrors, hist
 job dates, replay, conflicts, busy generation, removed pieces, scope, and grant checks.
 The owner applies the migration locally and runs that harness. No database execution is claimed here.
 
+## Native day review and approval: several pieces phase 6
+
+Day review reads all active pieces through `days` with `include_all_pieces: true`.
+The client projects every date's pieces in position order through its existing piece/revision card cache.
+Legacy `weekly`, `today`, and `days` without the flag keep their position-0 wire shapes.
+Those compatibility responses do not supply native review totals or select a sibling for approval.
+
+Batch approval is a client operation over independent `make-day-available` requests. It adds no batch RPC.
+Every request carries `creator_id`, `piece_id`, `scheduled_date`, the exact `daily_card_id`, its saved
+`idempotency_key`, and `expected_version`. The existing lifecycle RPC does not enforce that version field;
+its current piece and exact revision checks remain the authority. No new version conflict contract is claimed.
+The client saves each request in the existing outbox before send. A failed piece leaves the other successes intact.
+The failed row exposes its error and can retry the same saved request. A lost reply or relaunch retains that key.
+If the server reports `daily_card_not_draft`, replay reads all pieces and accepts success only when the piece,
+date, and revision all match and that revision is already ready or decided. A replaced revision cannot satisfy it.
+This makes approval retries idempotent for the exact piece and revision, without reapproving a sibling.
+
+The new review acknowledgement is device-local cache metadata on an exact revision. Existing caches decode it
+as false. Content changes invalidate it. Selection and error messages remain presentation state.
+It adds no server review-state field. The legacy native `update_daily_card_review_state` request now includes
+optional `piece_id` alongside its exact `daily_card_id`; the existing server action still scopes its update by
+workspace, creator, and revision ID. Its HTTP handler keeps the prior normalized RPC payload.
+The native week approval action now uses the independent piece outbox path and retains earlier approvals.
+
+`approved_revision_id` is not implemented in this phase. No database migration, server function, database test,
+or backend CI configuration changes are included. The separately scoped implementation and backfill plan is in
+[the several-pieces plan](several-pieces-per-date-plan.md#separate-plan-approved-revision-per-piece).
+The product requirement remains: edits create a new draft while Today and Post keep the approved version.
+The current in-place edit behavior remains a known implementation gap until that change is complete.
+
 ## HTTP: `generate-week`
 
 Existing actions and fields remain accepted. Full-week generation remains retired.

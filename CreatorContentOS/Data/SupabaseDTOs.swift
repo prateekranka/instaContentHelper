@@ -1353,16 +1353,17 @@ enum SupabaseDateFormatting {
     private static func withFormatter<T>(
         format: String,
         timeZone: TimeZone = TimeZone(secondsFromGMT: 0)!,
+        localeIdentifier: String = "en_US_POSIX",
         _ body: (DateFormatter) -> T
     ) -> T {
         formatters.withLock { cache in
-            let key = format + ":" + timeZone.identifier
+            let key = format + ":" + timeZone.identifier + ":" + localeIdentifier
             let formatter: DateFormatter
             if let cached = cache.calendarDays[key] {
                 formatter = cached
             } else {
                 formatter = DateFormatter()
-                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.locale = Locale(identifier: localeIdentifier)
                 formatter.timeZone = timeZone
                 formatter.dateFormat = format
                 cache.calendarDays[key] = formatter
@@ -1537,6 +1538,14 @@ enum SupabaseDateFormatting {
 
     static func dateString(from date: Date) -> String {
         withFormatter(format: "yyyy-MM-dd") { $0.string(from: date) }
+    }
+
+    static func calendarDate(from text: String) -> Date? {
+        withFormatter(format: "yyyy-MM-dd") { $0.date(from: text) }
+    }
+
+    static func calendarText(from date: Date, format: String, localeIdentifier: String = "en_US_POSIX") -> String {
+        withFormatter(format: format, localeIdentifier: localeIdentifier) { $0.string(from: date) }
     }
 }
 

@@ -331,6 +331,12 @@ protocol WeeklyPlanRepository: Sendable {
         reviewState: String,
         context: WorkspaceContext
     ) async throws
+    func updateDailyCardReviewState(
+        dailyCardID: UUID,
+        reviewState: String,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws
 
     /// Promotes one draft day to a ready package (published status) without week soft-lock.
     func makeDayAvailable(
@@ -566,6 +572,16 @@ extension WeeklyPlanRepository {
         reviewState: String,
         context: WorkspaceContext
     ) async throws {
+    }
+
+    func updateDailyCardReviewState(
+        dailyCardID: UUID,
+        reviewState: String,
+        pieceID: UUID?,
+        context: WorkspaceContext
+    ) async throws {
+        guard pieceID == nil else { throw RepositoryError.notConfigured("piece_target_not_configured") }
+        try await updateDailyCardReviewState(dailyCardID: dailyCardID, reviewState: reviewState, context: context)
     }
 
     func makeDayAvailable(

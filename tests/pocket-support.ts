@@ -46,30 +46,41 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   const scrollView = scope === shell ? shell.getByRole('scroll-view').first()
     : await containingScrollView.count() === 1
       ? containingScrollView : scope.getByRole('scroll-view', { visible: true }).first();
-  if (await locator.count() === 0) await scrollView.scrollUntilVisible(locator, { direction });
-  const initialBox = await stableBox(locator);
+  let initialBox = await controlBox(locator);
+  if (!initialBox) {
+    await scrollView.scrollUntilVisible(locator, { direction });
+    initialBox = await locator.boundingBox();
+  }
   const scrollBox = await scrollView.boundingBox();
   const tabs = screen.getByRole('tablist', 'Tab Bar', { exact: true, visible: true });
-  const tabBar = await tabs.count() === 1 ? await tabs.boundingBox()
-    : { x: scrollBox.x, y: scrollBox.y + scrollBox.height, width: scrollBox.width, height: 0 };
+  const tabBar = await controlBox(tabs)
+    ?? { x: scrollBox.x, y: scrollBox.y + scrollBox.height, width: scrollBox.width, height: 0 };
   const visibleTop = Math.max(8, scrollBox.y + 2);
   const targetTop = Math.max(8, scrollBox.y - 0.5);
   const keyboard = screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
-  const keyboardTop = await keyboard.count() === 1 ? (await keyboard.boundingBox()).y : tabBar.y;
+  const keyboardTop = (await controlBox(keyboard))?.y ?? tabBar.y;
   const viewportBottom = Math.min(tabBar.y - 8, keyboardTop - 8, bottom ?? tabBar.y);
   let visibleBottom = Math.min(viewportBottom, scrollBox.y + scrollBox.height - 2);
-  for (const role of ['button', 'link'] as const) {
-    const controls = scope.getByRole(role, { visible: true });
-    const contentControls = await scrollView.getByRole(role, { visible: true }).all();
-    const contentBoxes = await Promise.all(contentControls.map(control => control.boundingBox()));
-    for (const control of await controls.all()) {
-      const box = await control.boundingBox();
-      if (contentBoxes.some(content => content.x === box.x && content.y === box.y
-        && content.width === box.width && content.height === box.height)) continue;
-      if (box.width > 0 && box.height > 0
-        && box.x < scrollBox.x + scrollBox.width && box.x + box.width > scrollBox.x
-        && box.y >= (visibleTop + viewportBottom) / 2 && box.y < viewportBottom) {
-        visibleBottom = Math.min(visibleBottom, box.y - 8);
+  if (scope === shell && await screen.getByTestId('shell.tab.plan', { visible: true }).count() === 1) {
+    for (const id of ['daily.availableOnToday', 'daily.ready.edit.save']) {
+      const dock = shell.getByTestId(id, { visible: true });
+      const box = await controlBox(dock);
+      if (box && box.width > 0 && box.height > 0) visibleBottom = Math.min(visibleBottom, box.y - 8);
+    }
+  } else {
+    for (const role of ['button', 'link'] as const) {
+      const controls = scope.getByRole(role, { visible: true });
+      const contentControls = await scrollView.getByRole(role, { visible: true }).all();
+      const contentBoxes = await Promise.all(contentControls.map(control => control.boundingBox()));
+      for (const control of await controls.all()) {
+        const box = await control.boundingBox();
+        if (contentBoxes.some(content => content.x === box.x && content.y === box.y
+          && content.width === box.width && content.height === box.height)) continue;
+        if (box.width > 0 && box.height > 0
+          && box.x < scrollBox.x + scrollBox.width && box.x + box.width > scrollBox.x
+          && box.y >= (visibleTop + viewportBottom) / 2 && box.y < viewportBottom) {
+          visibleBottom = Math.min(visibleBottom, box.y - 8);
+        }
       }
     }
   }
@@ -82,11 +93,15 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   const x = (swipeLeft + swipeRight) / 2;
   let lastDirection: 'up' | 'down' = direction;
   for (let attempt = 0; attempt < 24; attempt += 1) {
-    if (await locator.count() > 0) {
-      const box = attempt === 0 ? initialBox : await stableBox(locator);
-      const inScrollView = await scrollView.filter({ has: locator }).count() > 0;
-      const targetBottom = inScrollView ? visibleBottom : viewportBottom;
-      if (box.y >= targetTop && box.y + box.height <= targetBottom) return;
+    const candidate = attempt === 0 ? initialBox : await controlBox(locator);
+    if (candidate) {
+      const box = await stableBox(locator, candidate);
+      let targetBottom = visibleBottom;
+      if (box.y + box.height > visibleBottom) {
+        const inScrollView = await scrollView.filter({ has: locator }).count() > 0;
+        targetBottom = inScrollView ? visibleBottom : viewportBottom;
+      }
+      if (box.width > 0 && box.height > 0 && box.y >= targetTop && box.y + box.height <= targetBottom) return;
       lastDirection = box.y < targetTop ? 'up' : 'down';
     }
     expect(visibleBottom).toBeGreaterThan(visibleTop);
@@ -95,24 +110,38 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
     else await screen.swipe({ from: { x, y: swipeFrom }, to: { x, y: swipeTo } });
   }
   await expect(locator).toBeVisible();
-  const box = await locator.boundingBox();
+  const box = await stableBox(locator);
+  expect(box.width).toBeGreaterThan(0);
+  expect(box.height).toBeGreaterThan(0);
   expect(box.y).toBeGreaterThanOrEqual(targetTop);
   const inScrollView = await scrollView.filter({ has: locator }).count() > 0;
   expect(box.y + box.height).toBeLessThanOrEqual(inScrollView ? visibleBottom : viewportBottom);
 }
 
-async function stableBox(locator: Locator) {
-  let box = await locator.boundingBox();
+async function controlBox(locator: Locator) {
+  try {
+    const box = await locator.boundingBox();
+    expect(box).not.toBeNull();
+    return box;
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'LOCATOR_NOT_FOUND') return null;
+    throw error;
+  }
+}
+
+async function stableBox(locator: Locator, initialBox?: Awaited<ReturnType<Locator['boundingBox']>>) {
+  let box = initialBox ?? await locator.boundingBox();
   let stableSamples = 0;
   await expect.poll(async () => {
-    const next = await locator.boundingBox();
-    const stable = next.x === box.x && next.y === box.y
+    const next = await controlBox(locator);
+    const stable = box !== null && next !== null && next.width > 0 && next.height > 0
+      && next.x === box.x && next.y === box.y
       && next.width === box.width && next.height === box.height;
     box = next;
     stableSamples = stable ? stableSamples + 1 : 0;
     return stableSamples >= 3;
   }).toBe(true);
-  return box;
+  return box!;
 }
 
 export async function dismissKeyboard(screen: Screen, id?: string) {
@@ -291,10 +320,15 @@ export async function addPlanPiece(screen: Screen, idea = 0) {
 }
 
 async function planDateAtOffset(screen: Screen, index: number) {
-  await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
-  const firstDay = screen.getByTestId(/^plan\.sevenDaySelector\.day\./).first();
-  await scrollToControl(screen, firstDay);
-  const label = await firstDay.textContent();
+  const days = screen.getByTestId(/^plan\.sevenDaySelector\.day\./);
+  const labels = await days.allTextContents();
+  let label = labels.length === 7 ? labels[0] : null;
+  if (!label) {
+    await scrollToControl(screen, screen.getByTestId('plan.title'), 'up');
+    const firstDay = days.first();
+    await scrollToControl(screen, firstDay);
+    label = await firstDay.textContent();
+  }
   const today = label?.match(/\d{4}-\d{2}-\d{2}$/)?.[0];
   expect(today).toBeTruthy();
   const target = new Date(`${today}T12:00:00Z`);
@@ -316,4 +350,44 @@ export async function selectTodayPiece(screen: Screen, position: number) {
   await piece.tap();
   await scrollToControl(screen, piece, 'up');
   await expect(piece).toBeSelected();
+}
+
+export async function openDayReview(screen: Screen, alreadyOpen = false) {
+  if (!alreadyOpen) {
+    await selectTab(screen, 'Plan');
+    const date = await planDateAtOffset(screen, 0);
+    const day = screen.getByTestId(`plan.sevenDaySelector.day.${date}`);
+    await tapVisibleControl(screen, day);
+    await expect(day).toBeSelected();
+    await tapVisibleControl(screen, screen.getByTestId('plan.package.tab.caption'));
+    await tapVisibleControl(screen, screen.getByTestId('plan.day.review'));
+  }
+  await expect(screen.getByTestId('review.day.title')).toHaveText('Review day');
+  const dateLabel = screen.getByTestId('review.day.date');
+  await scrollToControl(screen, dateLabel, 'up');
+  const date = new Date(`${await dateLabel.textContent()} 12:00:00 GMT`);
+  expect(Number.isNaN(date.valueOf())).toBe(false);
+  return date.toISOString().slice(0, 10);
+}
+
+export async function openReviewSession(device: Device, screen: Screen, flags: Record<string, string> = {}) {
+  const session = await openLoopSession(device, 'ready', {
+    MCO_REVIEW_TWO_DRAFTS: '1', MCO_START_DAY_REVIEW: '1',
+    MCO_REVIEWED_PIECES: '1', MCO_REVIEW_SELECT_ALL: '1', ...flags,
+  });
+  const date = await openDayReview(screen, true);
+  return { session, date };
+}
+
+export async function reviewPieceForApproval(screen: Screen, date: string, position: number) {
+  const row = `review.piece.${date}.${position}`;
+  await tapVisibleControl(screen, screen.getByTestId(`${row}.open`));
+  await tapVisibleControl(screen, screen.getByTestId('review.content.tab.caption'));
+  await scrollToControl(screen, screen.getByTestId('review.content.caption'));
+  await expect(screen.getByTestId('review.content.caption')).toBeVisible();
+  await tapVisibleControl(screen, screen.getByTestId('review.content.done'));
+  await scrollToControl(screen, screen.getByTestId(`${row}.state`), 'up');
+  await expect(screen.getByTestId(`${row}.state`)).toHaveText('Reviewed');
+  await scrollToControl(screen, screen.getByTestId(`${row}.select`));
+  await expect(screen.getByTestId(`${row}.select`)).toBeChecked();
 }

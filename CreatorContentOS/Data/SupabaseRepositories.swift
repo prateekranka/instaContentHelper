@@ -158,17 +158,13 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
         try await currentWeeklyContent(for: context).ideaBank
     }
 
-    func updateDailyCardReviewState(
-        dailyCardID: UUID,
-        reviewState: String,
-        context: WorkspaceContext
-    ) async throws {
+    func updateDailyCardReviewState(dailyCardID: UUID, reviewState: String, context: WorkspaceContext) async throws {
+        try await updateDailyCardReviewState(dailyCardID: dailyCardID, reviewState: reviewState, pieceID: nil, context: context)
+    }
+
+    func updateDailyCardReviewState(dailyCardID: UUID, reviewState: String, pieceID: UUID?, context: WorkspaceContext) async throws {
         try await client.writeContent(
-            .updateDailyCardReviewState(
-                dailyCardID: dailyCardID,
-                reviewState: reviewState,
-                context: context
-            )
+            .updateDailyCardReviewState(dailyCardID: dailyCardID, reviewState: reviewState, context: context, pieceID: pieceID)
         )
     }
 
@@ -232,7 +228,7 @@ struct SupabaseWeeklyPlanRepository: WeeklyPlanRepository {
             if code == "daily_card_not_draft" && intent.packageAction == .makeReady
                 || code == "daily_card_already_draft" && intent.packageAction == .returnToDraft {
                 let response: SupabaseCreatorDaysResponse = try await client.readContent(.days, context: context, includeAllPieces: pieceID == nil ? nil : true)
-                if let row = response.days.first(where: { $0.scheduledDate == intent.scheduledDate && $0.currentRevisionID == intent.revisionID }), let card = row.revision {
+                if let row = response.days.first(where: { $0.scheduledDate == intent.scheduledDate && $0.currentRevisionID == intent.revisionID && (pieceID == nil || $0.pieceID == pieceID) }), let card = row.revision {
                     if intent.packageAction == .makeReady, DayPackageLifecycleStatus.requiresOverwriteConfirmation(card.status) {
                         return .available(DayAvailabilityResult(pieceID: card.pieceID, dailyCardID: card.id, scheduledDate: card.scheduledDate, status: card.status, weeklyPlanID: card.weeklyPlanID, weekIsSoftLocked: false))
                     }

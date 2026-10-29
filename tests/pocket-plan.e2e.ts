@@ -1,7 +1,7 @@
 import { test } from '@e2e-dev/mobile';
 import { expect, type Screen } from 'e2e';
 import type { Device } from '@e2e-dev/mobile';
-import { selectTab, startFromOnboarding, scrollToControl, dismissKeyboard, openLoopSession, openLoopPlanDay, tapVisibleControl, addPlanPiece, selectPlanPiece, relaunchLoopSession, requestLoopReplacement } from './pocket-support';
+import { selectTab, startFromOnboarding, scrollToControl, dismissKeyboard, openLoopSession, openLoopPlanDay, tapVisibleControl, addPlanPiece, selectPlanPiece, relaunchLoopSession, requestLoopReplacement, openDayReview, openReviewSession } from './pocket-support';
 
 test('Plan keeps seven dates separate and supports cancelling or confirming a future overwrite', { timeout: 360_000 }, async ({ app, screen }) => {
   await startFromOnboarding(app, screen);
@@ -158,4 +158,41 @@ test('Plan Choose another idea replaces only piece 1 through relaunch', { timeou
   expect(await copyPieceScript(screen, device)).toBe(script0);
   await selectPlanPiece(screen, 1);
   expect(await copyPieceScript(screen, device)).toBe(replacementScript);
+});
+
+test('Plan day review counts only the reviewed pieces selected for approval', { timeout: 240_000 }, async ({ screen, device }) => {
+  const { date } = await openReviewSession(device, screen, { MCO_REVIEW_SELECT_ALL: '0' });
+  const approve = screen.getByTestId('review.day.approve');
+  await scrollToControl(screen, approve);
+  await expect(approve).toHaveText('Approve 0 pieces');
+  await expect(approve).toBeDisabled();
+  for (const position of [0, 1]) {
+    const select = screen.getByTestId(`review.piece.${date}.${position}.select`);
+    await scrollToControl(screen, select);
+    await select.check();
+  }
+  await scrollToControl(screen, approve);
+  await expect(approve).toHaveText('Approve 2 pieces');
+  const select = screen.getByTestId(`review.piece.${date}.0.select`);
+  await scrollToControl(screen, select, 'up');
+  await select.uncheck();
+  await scrollToControl(screen, approve);
+  await expect(approve).toHaveText('Approve 1 piece');
+  await scrollToControl(screen, select, 'up');
+  await select.check();
+  await scrollToControl(screen, approve);
+  await expect(approve).toHaveText('Approve 2 pieces');
+});
+
+test('Plan day and week summaries count every real piece', { timeout: 240_000 }, async ({ screen, device }) => {
+  await openLoopSession(device, 'ready', { MCO_REVIEW_TWO_DRAFTS: '1' });
+  const date = await openDayReview(screen);
+  await tapVisibleControl(screen, screen.getByTestId('review.day.close'));
+  await scrollToControl(screen, screen.getByTestId('plan.day.summary'));
+  await expect(screen.getByTestId('plan.day.summary')).toHaveText('0 approved · 2 needs review');
+  const sameWeekAsTomorrow = new Date(`${date}T12:00:00Z`).getUTCDay() !== 0;
+  await scrollToControl(screen, screen.getByTestId('plan.week.summary'));
+  await expect(screen.getByTestId('plan.week.summary')).toHaveText(
+    `This week: ${sameWeekAsTomorrow ? 3 : 2} pieces · ${sameWeekAsTomorrow ? 1 : 0} approved · 2 needs review`,
+  );
 });

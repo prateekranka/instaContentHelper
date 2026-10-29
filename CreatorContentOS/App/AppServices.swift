@@ -106,10 +106,16 @@ final class AppServices {
     var weeklyPlan: WeeklyPlan {
         get {
             var plan = weeklyPlanLayout
-            plan.days = plan.days.map { day in
-                guard let date = day.scheduledDate, let package = dayStore.packages[date] else { return day }
-                return package.weeklyDay
+            var dates: Set<String> = []
+            plan.days = plan.days.flatMap { day -> [WeeklyDay] in
+                guard let date = day.scheduledDate else { return [day] }
+                guard dates.insert(date).inserted else { return [] }
+                let packages = dayStore.reviewPackages(on: date)
+                return packages.isEmpty ? [day] : packages.map(\.weeklyDay)
             }
+            let items = dates.sorted().flatMap { dayStore.reviewPieces(on: $0) }
+            let approved = items.filter { $0.lifecycle.exposesReadyPackage }.count
+            plan.readinessLine = "\(items.count) pieces · \(approved) approved · \(items.count - approved) needs review"
             return plan
         }
         set { weeklyPlanLayout = newValue }
@@ -178,6 +184,8 @@ final class AppServices {
     var lastPublishSummary: String?
     var lastPublishError: String?
     var isMakingDayAvailable = false
+    var isApprovingPieces = false
+    var pieceApprovalErrors: [UUID: String] = [:]
     var lastMakeDayAvailableError: String?
     var isUnpublishingDay = false
     var lastUnpublishDayError: String?
@@ -187,6 +195,7 @@ final class AppServices {
     var regeneratingDayDates: Set<String> = []
     var regenerationDayErrors: [String: String] = [:]
     var generatingDayBriefDates: Set<String> = []
+    private(set) var activeGenerationIntentID: String?
     var dayBriefGenerationErrors: [String: String] = [:]
     var pieceGenerationErrors: [UUID: String] = [:]
     var dayBriefGeneratedCards: [String: GeneratedDailyCardDraft] { dayStore.packages }
@@ -202,7 +211,7 @@ final class AppServices {
     var latestGenerationSummary: GeneratedWeekDraft? {
         get {
             guard var summary = generationSummaryMetadata else { return nil }
-            summary.dailyCards = generationSummaryDates.sorted().compactMap { dayStore.packages[$0] }
+            summary.dailyCards = generationSummaryDates.sorted().flatMap { dayStore.reviewPackages(on: $0) }
             return summary
         }
         set { setGenerationSummary(newValue) }
@@ -609,7 +618,7 @@ final class AppServices {
         guard canGenerateContent,
               !isPublishingWeek,
               !weeklyPlan.isSoftLocked,
-              weeklyPlan.days.count == 7,
+              Set(weeklyPlan.days.compactMap(\.scheduledDate)).count == 7,
               weeklyPlan.openDayCount == 0
         else {
             return false
@@ -745,10 +754,8 @@ final class AppServices {
     ) -> GeneratedWeekDraft? {
         guard var draft else { return nil }
 
-        let cardsByDate = draft.dailyCards.reduce(into: [String: GeneratedDailyCardDraft]()) { result, card in
-            result[card.scheduledDate] = card
-        }
-        let projectedCards = SupabaseDateFormatting.weekDates(starting: startDate).compactMap { cardsByDate[$0] }
+        let dates = Set(SupabaseDateFormatting.weekDates(starting: startDate))
+        let projectedCards = draft.dailyCards.filter { dates.contains($0.scheduledDate) }
         guard !projectedCards.isEmpty else { return nil }
 
         draft.dailyCards = projectedCards
@@ -774,17 +781,15 @@ final class AppServices {
         dayFormatter.timeZone = TimeZone(secondsFromGMT: 0)
         dayFormatter.dateFormat = "d"
 
-        let cardsByDate = cards.reduce(into: [String: GeneratedDailyCardDraft]()) { result, card in
-            result[card.scheduledDate] = card
-        }
+        let cardsByDate = Dictionary(grouping: cards, by: \.scheduledDate)
 
-        return SupabaseDateFormatting.weekDates(starting: startDate).map { dateString in
-            if let card = cardsByDate[dateString] {
-                return card.weeklyDay
+        return SupabaseDateFormatting.weekDates(starting: startDate).flatMap { dateString -> [WeeklyDay] in
+            if let cards = cardsByDate[dateString], !cards.isEmpty {
+                return cards.map(\.weeklyDay)
             }
 
             let date = dateParser.date(from: dateString)
-            return WeeklyDay(
+            return [WeeklyDay(
                 weekday: date.map { weekdayFormatter.string(from: $0).uppercased() } ?? "",
                 date: date.map { dayFormatter.string(from: $0) } ?? "",
                 scheduledDate: dateString,
@@ -793,28 +798,17 @@ final class AppServices {
                 source: .open,
                 state: .open,
                 isSoftLocked: false
-            )
+            )]
         }
     }
 
     func generatedDailyCard(for dayID: UUID) -> GeneratedDailyCardDraft? {
-        if let card = dayBriefGeneratedCards.values.first(where: { $0.id == dayID }) {
-            return card
-        }
-        return latestGenerationSummary?.dailyCards.first { $0.id == dayID }
+        guard let piece = dayStore.piece(revisionID: dayID) else { return nil }
+        return dayStore.projection(pieceID: piece.identity.pieceID, revisionID: dayID)?.package
     }
 
     func generatedDailyCard(for day: WeeklyDay) -> GeneratedDailyCardDraft? {
-        if let scheduledDate = day.scheduledDate,
-           let card = dayBriefGeneratedCards[scheduledDate] {
-            return card
-        }
-        if let card = dayBriefGeneratedCards.values.first(where: { $0.id == day.id }) {
-            return card
-        }
-        return latestGenerationSummary?.dailyCards.first {
-            $0.id == day.id || $0.scheduledDate == day.scheduledDate
-        }
+        generatedDailyCard(for: day.id)
     }
 
     func regeneratedDailyCard(
@@ -1076,7 +1070,7 @@ final class AppServices {
             saveTodaySnapshot(source: "generated-day")
             let integratesWithCurrentWeeklyReview = result.weeklyPlanID == weeklyPlan.id
                 && weeklyPlan.days.contains(where: { $0.scheduledDate == scheduledDate })
-            if integratesWithCurrentWeeklyReview, dayStore.day(for: scheduledDate)?.identity.pieceID == intent.pieceID {
+            if integratesWithCurrentWeeklyReview {
                 Task { @MainActor in
                     await reconcileGeneratedDayCardFromCurrentWeeklyContent(
                         scheduledDate: scheduledDate,
@@ -1186,63 +1180,24 @@ final class AppServices {
     @discardableResult
     func updateWeeklyDayStateImmediately(dayID: UUID, state: WeeklyDayState) async -> Bool {
         guard !weeklyPlan.isSoftLocked,
-              let dayIndex = weeklyPlan.days.firstIndex(where: { $0.id == dayID }),
-              !weeklyPlan.days[dayIndex].isSoftLocked
-        else {
-            return false
-        }
-
-        let day = weeklyPlan.days[dayIndex]
-        guard let dailyCardID = resolvedDailyCardID(for: day) else {
-            lastRepositoryError = "Review state could not be saved for this day."
-            return false
-        }
-
-        let previousState = weeklyPlan.days[dayIndex].state
-        weeklyPlan.days[dayIndex].state = state
-        weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
-
-        let previousPackage = day.scheduledDate.flatMap { dayPackage(for: $0) }
-        if var package = previousPackage {
-            package.status = state.generatedDraftStatus
-            do { try dayStore.transition(.edit(package), on: package.scheduledDate) }
-            catch { lastRepositoryError = error.localizedDescription; return false }
-        }
-
-        generationError = nil
-
+              let day = weeklyPlan.days.first(where: { $0.id == dayID }), !day.isSoftLocked,
+              let piece = dayStore.piece(revisionID: dayID), piece.revision?.id == dayID,
+              let previousPackage = dayStore.projection(pieceID: piece.identity.pieceID)?.package else { return false }
+        var package = previousPackage
+        package.status = state.generatedDraftStatus
         do {
             try await repositories.weeklyPlans.updateDailyCardReviewState(
-                dailyCardID: dailyCardID,
-                reviewState: state.generatedDraftStatus,
-                context: context
+                dailyCardID: dayID, reviewState: state.generatedDraftStatus, pieceID: piece.identity.pieceID, context: context
             )
-            saveTodaySnapshot(source: "day-review-state")
+            guard dayStore.piece(for: piece.identity.pieceID)?.revision?.id == dayID else { return false }
+            try dayStore.transition(.edit(package), pieceID: piece.identity.pieceID)
+            try await persistDaySnapshot(source: "day-review-state")
             lastRepositoryError = nil
             return true
         } catch {
-            guard weeklyPlan.days[dayIndex].state == state else {
-                return false
-            }
-            weeklyPlan.days[dayIndex].state = previousState
-            weeklyPlan.readinessLine = weeklyPlan.computedReadinessLine
-            if let previousPackage {
-                try? dayStore.transition(.edit(previousPackage), on: previousPackage.scheduledDate)
-            }
             lastRepositoryError = error.localizedDescription
             return false
         }
-    }
-
-    private func resolvedDailyCardID(for day: WeeklyDay) -> UUID? {
-        if let scheduledDate = day.scheduledDate?.nilIfBlank,
-           let draft = latestGenerationSummary,
-           draft.weeklyPlanID == weeklyPlan.id,
-           let card = draft.dailyCards.first(where: { $0.scheduledDate == scheduledDate }) {
-            return card.id
-        }
-
-        return day.id
     }
 
     func selectIdeaForNextOpenDay(_ idea: WeeklyIdea) {
@@ -1444,38 +1399,86 @@ final class AppServices {
         }
 
         isPublishingWeek = true
+        lastPublishError = nil
         defer { isPublishingWeek = false }
 
-        do {
-            let result = try await publishWeekWithOneTransientRetry(
-                weeklyPlan,
-                ideaBank: weeklyIdeas,
-                generatedDraft: latestGenerationSummary,
-                context: context
-            )
-            weeklyPlan = result.weeklyPlan
-            weekCards = result.weekCards
-            if let draft = latestGenerationSummary, draft.weeklyPlanID == result.weeklyPlan.id {
-                latestGenerationSummary = draft.markedPublished
-                }
-            if let todayCard = result.todayCard {
-                receivePublishedCard(todayCard)
+        var selected: [UUID: UUID] = [:]
+        for piece in weekReviewPieces where piece.canReviewDraft {
+            guard let revisionID = piece.revision?.id else { continue }
+            do {
+                try await markPieceReviewed(pieceID: piece.identity.pieceID, revisionID: revisionID)
+                selected[piece.identity.pieceID] = revisionID
+            } catch {
+                pieceApprovalErrors[piece.identity.pieceID] = error.localizedDescription
+                lastPublishError = error.localizedDescription
             }
-            lastPublishSummary = result.summary
-            lastActionMessage = "Week published. Creator Today is updated."
-            lastRepositoryError = nil
-            lastPublishError = nil
-            await refreshPublishedContentAfterPublishImmediately()
-            saveTodaySnapshot(source: "week-publish")
-            await scheduleTodayNotificationIfNeededImmediately()
-        } catch {
-            lastPublishError = error.localizedDescription
         }
+        let approved = await approveReviewedPieces(selected)
+        if approved.count != selected.count {
+            lastPublishError = "Some pieces could not be approved. Open Review day to try them again."
+        } else if lastPublishError == nil {
+            lastPublishSummary = "Approved \(approved.count) \(approved.count == 1 ? "piece" : "pieces")."
+            lastActionMessage = lastPublishSummary
+        }
+    }
+
+    var weekReviewPieces: [Piece] {
+        SupabaseDateFormatting.weekDates(starting: weeklyPlan.weekStartDate ?? currentTodayDateString)
+            .flatMap { dayStore.reviewPieces(on: $0) }
+    }
+
+    var weekPieceSummary: String {
+        let pieces = weekReviewPieces
+        let approved = pieces.filter { $0.lifecycle.exposesReadyPackage }.count
+        return "This week: \(pieces.count) \(pieces.count == 1 ? "piece" : "pieces") · \(approved) approved · \(pieces.count - approved) needs review"
+    }
+
+    func markPieceReviewed(pieceID: UUID, revisionID: UUID) async throws {
+        try dayStore.transition(.reviewed(revisionID), pieceID: pieceID)
+        try await persistDaySnapshot(source: "piece-reviewed")
+    }
+
+    func pieceApprovalError(for pieceID: UUID) -> String? {
+        if let error = pieceApprovalErrors[pieceID] { return error }
+        if let intent = dayStore.outbox.first(where: { $0.pieceID == pieceID && $0.packageAction == .makeReady }) {
+            return outboxErrors[intent.id].map { DayAvailabilityErrorDisplay.message(for: $0) }
+                ?? "Approval is saved and waiting to retry."
+        }
+        return nil
+    }
+
+    func approveReviewedPieces(_ selectedRevisions: [UUID: UUID]) async -> Set<UUID> {
+        guard canGenerateContent, !isApprovingPieces, !isMakingDayAvailable else { return [] }
+        isApprovingPieces = true
+        defer { isApprovingPieces = false }
+        var requests: [UUID: ContentIntent] = [:]
+        for pieceID in selectedRevisions.keys.sorted(by: { $0.uuidString < $1.uuidString }) {
+            pieceApprovalErrors[pieceID] = nil
+            do {
+                guard let piece = dayStore.piece(for: pieceID), piece.canApproveReviewedDraft,
+                      piece.revision?.id == selectedRevisions[pieceID] else { throw DayTransitionError.mismatchedRevision }
+                let intent = try packageIntent(on: piece.scheduledDate, action: .makeReady, pieceID: pieceID)
+                try await enqueueIntent(intent)
+                requests[pieceID] = intent
+            } catch {
+                pieceApprovalErrors[pieceID] = DayAvailabilityErrorDisplay.message(for: error)
+            }
+        }
+        await replayOutboxImmediately()
+        var approved: Set<UUID> = []
+        for (pieceID, intent) in requests {
+            if case .available = outboxResults[intent.id] {
+                approved.insert(pieceID)
+            } else {
+                pieceApprovalErrors[pieceID] = DayAvailabilityErrorDisplay.message(for: replayError(for: intent))
+            }
+        }
+        return approved
     }
 
     @discardableResult
     func makeDayAvailable(scheduledDate: String, pieceID: UUID? = nil) async throws -> Bool {
-        guard !isMakingDayAvailable else { throw RepositoryError.edgeFunction("make_day_available_already_running") }
+        guard !isMakingDayAvailable, !isApprovingPieces else { throw RepositoryError.edgeFunction("make_day_available_already_running") }
         isMakingDayAvailable = true
         lastMakeDayAvailableError = nil
         defer { isMakingDayAvailable = false }
@@ -1532,42 +1535,20 @@ final class AppServices {
         }
     }
 
-    private func publishWeekWithOneTransientRetry(
-        _ plan: WeeklyPlan,
-        ideaBank: [WeeklyIdea],
-        generatedDraft: GeneratedWeekDraft?,
-        context: WorkspaceContext
-    ) async throws -> WeeklyPublishResult {
-        let effectiveDraft = generatedDraft?.weeklyPlanID == plan.id ? generatedDraft : nil
-        do {
-            return try await repositories.weeklyPlans.publishWeek(
-                plan,
-                ideaBank: ideaBank,
-                generatedDraft: effectiveDraft,
-                context: context
-            )
-        } catch {
-            guard SupabaseGenerationRetryPolicy.isTransientPollingError(error) else {
-                throw error
-            }
-            return try await repositories.weeklyPlans.publishWeek(
-                plan,
-                ideaBank: ideaBank,
-                generatedDraft: effectiveDraft,
-                context: context
-            )
-        }
-    }
-
     func reconcileGeneratedDayCardFromCurrentWeeklyContent(
         scheduledDate: String,
         suppressRepositoryErrorOnFailure: Bool = false
     ) async {
         let version = dayStore.changeVersion
         do {
-            let content = try await repositories.weeklyPlans.currentWeeklyContent(for: context)
-            guard let card = content.generatedDraft?.dailyCards.first(where: { $0.scheduledDate == scheduledDate }) else { return }
-            try dayStore.receive(card, readVersion: version)
+            if let rows = try await repositories.today.creatorDays(for: context) {
+                try dayStore.reconcile(rows.filter { $0.scheduledDate == scheduledDate }, today: currentTodayDateString, readVersion: version, removeMissingToday: false)
+            } else {
+                let content = try await repositories.weeklyPlans.currentWeeklyContent(for: context)
+                for card in content.generatedDraft?.dailyCards.filter({ $0.scheduledDate == scheduledDate }) ?? [] {
+                    try dayStore.receive(card, readVersion: version)
+                }
+            }
             saveTodaySnapshot(source: "generation-reconciled")
         } catch {
             if !suppressRepositoryErrorOnFailure { lastRepositoryError = error.localizedDescription }
@@ -2242,9 +2223,15 @@ final class AppServices {
             attempted.insert(intent.id)
             outboxErrors[intent.id] = nil
             if intent.isGeneration, let pieceID = intent.pieceID { pieceGenerationErrors[pieceID] = nil }
-            if intent.isGeneration { generatingDayBriefDates.insert(intent.scheduledDate) }
+            if intent.isGeneration {
+                generatingDayBriefDates.insert(intent.scheduledDate)
+                activeGenerationIntentID = intent.id
+            }
             defer {
-                if intent.isGeneration { generatingDayBriefDates.remove(intent.scheduledDate) }
+                if intent.isGeneration {
+                    generatingDayBriefDates.remove(intent.scheduledDate)
+                    activeGenerationIntentID = nil
+                }
             }
             do {
                 try await persistDaySnapshot(source: "outbox-before-send")
@@ -2257,6 +2244,7 @@ final class AppServices {
                 try await finishIntentPersisting(intent.id, source: "outbox-done")
                 outboxResults[intent.id] = result
                 if intent.kind == .decide { lastTodayDecisionSyncError = nil }
+                if intent.packageAction == .makeReady, let pieceID = intent.pieceID { pieceApprovalErrors[pieceID] = nil }
                 lastRepositoryError = nil
             } catch {
                 let intent = dayStore.outbox.first { $0.id == intent.id } ?? intent

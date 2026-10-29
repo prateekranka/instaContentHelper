@@ -7,6 +7,7 @@ import {
   openLoopEditor, saveLoopEditor, finishLoopFilming, openLoopPlanDay,
   requestLoopReplacement, approveLoopPackage, openLoopTodayRoot,
   addPlanPiece, selectPlanPiece, movePlanPiece, selectTodayPiece,
+  openDayReview, reviewPieceForApproval, openReviewSession,
 } from './pocket-support';
 
 async function ready(screen: Screen, device: Device, flags: Record<string, string> = {}) {
@@ -798,4 +799,100 @@ test('loop P5: Post edits, copy, and undo stay with the opened piece when Today 
   await tapVisibleControl(screen, screen.getByTestId('today.startFilming'));
   await tapVisibleControl(screen, screen.getByTestId('post.copy.caption'));
   expect(await device.clipboard()).toBe(savedCaption);
+});
+
+for (const position of [0, 1]) {
+  test(`loop P6: reviewing piece ${position} persists its acknowledgement after relaunch`, { timeout: 240_000 }, async ({ screen, device }) => {
+    const { session, date } = await openReviewSession(device, screen, { MCO_REVIEWED_PIECES: '0', MCO_REVIEW_SELECT_ALL: '0' });
+    const approve = screen.getByTestId('review.day.approve');
+    await scrollToControl(screen, approve);
+    await expect(approve).toHaveText('Approve 0 pieces');
+    await expect(approve).toBeDisabled();
+    const row = `review.piece.${date}.${position}`;
+    await scrollToControl(screen, screen.getByTestId(`${row}.state`), 'up');
+    await expect(screen.getByTestId(`${row}.state`)).toHaveText('Draft');
+    await expect(screen.getByTestId(`${row}.select`)).toBeHidden();
+    await reviewPieceForApproval(screen, date, position);
+    await relaunchLoopSession(device, session);
+    await openDayReview(screen, true);
+    await scrollToControl(screen, screen.getByTestId(`${row}.state`));
+    await expect(screen.getByTestId(`${row}.state`)).toHaveText('Reviewed');
+  });
+}
+
+test('loop P6: two reviewed pieces stay approved after relaunch', { timeout: 240_000 }, async ({ screen, device }) => {
+  const { session, date } = await openReviewSession(device, screen);
+  const approve = screen.getByTestId('review.day.approve');
+  await scrollToControl(screen, approve);
+  await expect(approve).toHaveText('Approve 2 pieces');
+  await approve.tap();
+  await scrollToControl(screen, screen.getByTestId('review.day.summary'), 'up');
+  await expect(screen.getByTestId('review.day.summary')).toHaveText('Day approved · 2 pieces');
+  await relaunchLoopSession(device, session);
+  await openDayReview(screen, true);
+  for (const position of [0, 1]) {
+    const state = screen.getByTestId(`review.piece.${date}.${position}.state`);
+    await scrollToControl(screen, state, position === 0 ? 'up' : 'down');
+    await expect(state).toHaveText('Approved');
+  }
+  await scrollToControl(screen, approve);
+  await expect(approve).toHaveText('Approve 0 pieces');
+  await expect(approve).toBeDisabled();
+});
+
+test('loop P6: approving a second piece keeps the earlier approval', { timeout: 240_000 }, async ({ screen, device }) => {
+  const { date } = await openReviewSession(device, screen, { MCO_REVIEW_SELECT_ALL: '0' });
+  const approve = screen.getByTestId('review.day.approve');
+  for (const position of [0, 1]) {
+    const select = screen.getByTestId(`review.piece.${date}.${position}.select`);
+    await scrollToControl(screen, select);
+    await select.check();
+    await scrollToControl(screen, approve);
+    await expect(approve).toHaveText('Approve 1 piece');
+    await approve.tap();
+    if (position === 0) {
+      await scrollToControl(screen, screen.getByTestId('review.day.summary'), 'up');
+      await expect(screen.getByTestId('review.day.summary')).toHaveText('1 approved · 1 needs review');
+    }
+  }
+  for (const position of [0, 1]) {
+    const state = screen.getByTestId(`review.piece.${date}.${position}.state`);
+    await scrollToControl(screen, state, position === 0 ? 'up' : 'down');
+    await expect(state).toHaveText('Approved');
+  }
+});
+
+test('loop P6: a failed approval keeps its successful sibling and retries alone', { timeout: 240_000 }, async ({ screen, device }) => {
+  const { date } = await openReviewSession(device, screen, { MCO_FAIL_SECOND_PIECE_APPROVAL: '1' });
+  await tapVisibleControl(screen, screen.getByTestId('review.day.approve'));
+  const first = screen.getByTestId(`review.piece.${date}.0.state`);
+  await scrollToControl(screen, first, 'up');
+  await expect(first).toHaveText('Approved');
+  const error = screen.getByTestId(`review.piece.${date}.1.error`);
+  await scrollToControl(screen, error);
+  await expect(error).toBeVisible();
+  await tapVisibleControl(screen, screen.getByTestId(`review.piece.${date}.1.retry`));
+  await scrollToControl(screen, screen.getByTestId('review.day.summary'), 'up');
+  await expect(screen.getByTestId('review.day.summary')).toHaveText('Day approved · 2 pieces');
+  await scrollToControl(screen, first);
+  await expect(first).toHaveText('Approved');
+});
+
+test('loop P6: a lost approval reply replays for its exact piece after relaunch', { timeout: 240_000 }, async ({ screen, device }) => {
+  const { session, date } = await openReviewSession(device, screen, { MCO_LOSE_SECOND_APPROVAL_REPLY_ONCE: '1' });
+  await tapVisibleControl(screen, screen.getByTestId('review.day.approve'));
+  const error = screen.getByTestId(`review.piece.${date}.1.error`);
+  await scrollToControl(screen, error);
+  await expect(error).toBeVisible();
+  await relaunchLoopSession(device, session);
+  await openDayReview(screen, true);
+  await scrollToControl(screen, screen.getByTestId('review.day.summary'), 'up');
+  await expect(screen.getByTestId('review.day.summary')).toHaveText('Day approved · 2 pieces');
+  for (const position of [0, 1]) {
+    const state = screen.getByTestId(`review.piece.${date}.${position}.state`);
+    await scrollToControl(screen, state, position === 0 ? 'up' : 'down');
+    await expect(state).toHaveText('Approved');
+  }
+  await scrollToControl(screen, screen.getByTestId(`review.piece.${date}.1.title`));
+  await expect(error).toBeHidden();
 });

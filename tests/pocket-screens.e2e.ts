@@ -3,7 +3,7 @@ import { expect, type App } from 'e2e';
 import type { EngineSnapshot, SemanticNode } from 'e2e/engine';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { selectTab, scrollToControl, tapEditorControl, tapVisibleControl, dismissKeyboard, openLoopSession, openLoopPlanDay, addPlanPiece, approveLoopPackage, openLoopTodayRoot, selectTodayPiece } from './pocket-support';
+import { selectTab, scrollToControl, tapEditorControl, tapVisibleControl, dismissKeyboard, openLoopSession, openLoopPlanDay, addPlanPiece, approveLoopPackage, openLoopTodayRoot, selectTodayPiece, openReviewSession } from './pocket-support';
 
 const bundleId = 'com.prateekranka.creatorcontenthelper';
 const test = mobileTest.extend<{ catalogSnapshot: { read(): Promise<EngineSnapshot> } }>();
@@ -450,3 +450,14 @@ test('screen catalog: Today with two pieces', { timeout: 420_000 }, async ({ app
   await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   await capture(app, device, 'today-two-pieces-filming');
 });
+
+for (const large of [false, true]) {
+  test(`screen catalog: Review day with Approve 2 pieces${large ? ' at largest text' : ''}`, { timeout: 240_000 }, async ({ app, screen, device }) => {
+    await openReviewSession(device, screen, { MCO_DYNAMIC_TYPE_ACCESSIBILITY5: large ? '1' : '0' });
+    const approve = screen.getByTestId('review.day.approve');
+    await scrollToControl(screen, approve);
+    await expect(approve).toHaveText('Approve 2 pieces');
+    await expect(approve).toBeEnabled();
+    await capture(app, device, large ? 'day-review-approve-two-largest-text' : 'day-review-approve-two');
+  });
+}

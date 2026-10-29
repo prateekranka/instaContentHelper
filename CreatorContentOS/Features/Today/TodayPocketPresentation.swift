@@ -489,6 +489,7 @@ struct TodayPostPreparationView: View {
     @State private var draftScript = ""
     @State private var draftScenes: [ShotScene] = []
     @State private var draftCaption = ""
+    @State private var captionSelection: TextSelection?
     @State private var saveError: String?
     @State private var didCopyScript = false
     @State private var didCopyCaption = false
@@ -683,7 +684,7 @@ struct TodayPostPreparationView: View {
                     Text("Caption")
                         .font(PocketSheetType.sectionLabel)
                         .foregroundStyle(PocketSheetTheme.Color.inverseInk)
-                    TextEditor(text: $draftCaption)
+                    TextEditor(text: $draftCaption, selection: $captionSelection)
                         .focused($focusedEditor, equals: .caption)
                         .font(PocketSheetType.bodyText)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
@@ -691,6 +692,11 @@ struct TodayPostPreparationView: View {
                         .frame(height: 120)
                         .id(EditorField.caption)
                         .accessibilityIdentifier("post.caption.editor")
+                        .onChange(of: draftCaption) { _, caption in
+                            if caption.isEmpty {
+                                captionSelection = TextSelection(insertionPoint: caption.startIndex)
+                            }
+                        }
                 }
             }
         }

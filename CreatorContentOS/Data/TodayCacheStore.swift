@@ -57,12 +57,14 @@ struct DayStoreSnapshot: Codable, Hashable, Sendable {
 }
 
 struct DayCardProjection {
+    let package: GeneratedDailyCardDraft
     let card: DailyCard
     let shotSceneCount: Int
     let unshotSceneCount: Int
     let areAllScenesShot: Bool
 
     init(revision: DayRevision) {
+        package = revision.content
         card = revision.dailyCard
         let shotIDs = revision.filmingProgress.shotSceneIDs
         shotSceneCount = card.scenes.count { shotIDs.contains($0.id) }
@@ -98,6 +100,23 @@ final class DayStore {
         pieceIDsByDate.compactMapValues { ids in
             ids.compactMap { pieces[$0] }.first { $0.position == 0 }?.revision?.content
         }
+    }
+
+    func reviewPieces(on date: String) -> [Piece] {
+        orderedPieces(on: date).filter { !$0.isLifecyclePlaceholder }
+    }
+
+    func reviewPackages(on date: String) -> [GeneratedDailyCardDraft] {
+        reviewPieces(on: date).compactMap { projection(pieceID: $0.identity.pieceID)?.package }
+    }
+
+    func reviewSummary(on date: String) -> String {
+        let items = reviewPieces(on: date)
+        let approved = items.filter { $0.lifecycle.exposesReadyPackage }.count
+        if !items.isEmpty, approved == items.count {
+            return "Day approved · \(items.count) \(items.count == 1 ? "piece" : "pieces")"
+        }
+        return "\(approved) approved · \(items.count - approved) needs review"
     }
 
     var readyCards: [DailyCard] {

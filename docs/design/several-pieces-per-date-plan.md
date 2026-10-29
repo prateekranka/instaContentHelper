@@ -182,7 +182,25 @@ Done means the implementation exists locally. PostgreSQL execution and app runti
   TypeScript has the same three `scroll-view` errors as HEAD, with no new errors. The direct npm command
   could not resolve the registry, so both source sets used the same cached TypeScript compiler through npx.
   `git diff --check` passed.
-- **Phase 6 remains open.** Day review and approval keep their existing behavior.
+- **Phase 6: Items 1 to 3 and 5 implemented locally (2026-10-22).** Plan adds Review day after its existing
+  controls. The sheet lists every piece in position order, with identifiers `review.piece.<date>.<position>`.
+  Each row shows its own state. Drafts open Script, Shots, and Caption review. Reviewed saves a local
+  acknowledgement on that exact cached revision and selects it. Content changes clear that acknowledgement.
+- The approval action counts selected, reviewed drafts. Each selected piece saves its own `makeReady` intent
+  before send. Successful approvals remain saved when another fails. The failed row shows the error and Try again.
+  Retry keeps the existing piece/revision target and saved key. Launch replay can finish the same request.
+- The existing one-piece Plan approval dock keeps its position, identifier, labels, and navigation behavior.
+  Day and week summaries count all real pieces, including draft and generating pieces. Empty lifecycle
+  placeholders do not count. Earlier approvals remain when another piece is added or approved.
+- Weekly review rows and generated summaries now expand each date through `DayStore.reviewPackages(on:)`.
+  That accessor uses the existing piece/revision projection cache. The legacy week approval action uses
+  independent piece intents and retains earlier approvals. Full-week completeness counts seven distinct dates,
+  with any number of pieces per date. The Admin week list no longer stops after seven pieces.
+- New e2e cases cover two approvals across relaunch, an earlier retained approval, partial failure and retry,
+  lost-reply replay, selection counts, and the Review day catalog at standard and largest text sizes.
+  They seed two drafts through the existing isolated FakeServer. Existing test bodies are unchanged.
+- **Item 4 is split out below.** No `approved_revision_id` field or migration exists in this phase.
+  Build, app runtime, actual test durations, and largest-text reachability remain owner gates.
 
 ## Phase 2 validation
 
@@ -219,6 +237,60 @@ Done means the implementation exists locally. PostgreSQL execution and app runti
   (R3-L3, R3-L4, R3-C3), `p5re2-screens-164123` (two-piece Today), and `p5re3-loop-203222` (piece move).
 - The piece move test took 220 of its 240 seconds in phase 4. Its limit is now 360 seconds, like the other phase 4 loop test.
 - No server files changed in phase 5.
+
+## Phase 6 validation
+
+- `python3 scripts/check-agent-rules.py` passed all six groups with zero violations.
+- The Debug app built in `DerivedData/Verify` and was installed on the simulator. The installed app matched the build.
+- Plan now shows "Waiting to draft" while another request runs, and starts its progress timer only for the running request.
+- Plan test helpers no longer scan every button or read missing controls. Opening Plan took about 22 seconds before and is now under a few seconds.
+- An unsaved caption edit could come back after a day change. Each edit now has its own session, and late writes from an
+  old session are dropped.
+- Run `p6full-213954` (2026-10-29): 78 of 79 tests passed. R3-C7 "Plan blocks a blank caption save" failed on the bug above.
+- Run `p6full2-015222` (2026-10-30), after the fix: all 12 groups, 47 loop tests, and 10 screen tests passed (79 of 79).
+
+## Separate plan: approved revision per piece
+
+The current model edits a ready revision in place. One pointer and one lifecycle drive Plan, Today, Post,
+package writes, decisions, and replacement recovery. Keeping two active revisions changes all those contracts.
+This is larger than the review list, counts, and independent approvals in items 1 to 3. The product rule stays:
+an edit makes a new draft while the approved revision remains available until the creator approves its replacement.
+
+1. Add a new local migration after `20261021150000_move_content_piece.sql`. Do not modify old migrations.
+   Add nullable `content_pieces.approved_revision_id`, with a scoped foreign key and guards that require the
+   revision to belong to the same piece. Backfill it from `current_revision_id` only for existing
+   `published`, `shot`, `posted`, `used_backup`, `saved_for_tomorrow`, or `skipped_intentionally` revisions. Draft, empty, and retained archived recovery pointers
+   remain null. Check row counts, scoped ownership, and pointers inside the migration transaction.
+2. Keep `current_revision_id` as the editable head. On the first edit of an approved head, clone content into
+   a new draft with a new revision ID in one transaction. Preserve the approved revision, its shot IDs, filming
+   marks, media, decisions, and archive snapshots. Later edits target that draft. A draft edit request saves
+   its requested new revision ID and key before send, so a lost reply cannot create a second draft.
+3. Update `update-ready-day-package`, generation/replacement acceptance, `make-day-available`, unpublish,
+   decision writes, movement, and their SQL functions. Approval atomically promotes the exact reviewed draft
+   to `approved_revision_id`. Repeating its piece/key/revision returns its saved result, including after
+   that revision is later superseded. A changed request identity returns `idempotency_key_conflict`.
+   Return-to-draft must name the revision it withdraws. Failed draft generation must retain the approved pointer.
+4. Today and Post read the approved revision even when it is not the editable head. Decisions and filming writes
+   may target that approved revision. Historical immutability must permit only the active approved revision's
+   allowed progress/decision writes. Replaced archive content stays frozen. Position-0 compatibility reads
+   project its approved version for old Today clients and its draft head for old Plan clients.
+5. Extend day and lifecycle replies with `approved_revision_id` and the approved revision payload, alongside
+   the current draft payload. Document every request, response, conflict, and retry in the server contract.
+   Keep all piece IDs explicit. Update FakeServer with the same pointers, cloning rules, replay results,
+   lifecycle guards, and saved-state migration. No model endpoint or prompt change is needed.
+6. Extend native DTOs and `Piece` with the approved pointer. Store both revisions in the existing owner and
+   use the existing piece/revision cache. Plan reviews the editable head; Today/Post retain their exact
+   approved revision selection. Add explicit draft-write and approval replay results, bind dependent intents
+   to the new draft, and preserve old queue identity during cache migration. Add a new cache schema with a
+   recovery copy and backward defaults. An approved revision's progress must never move into an unrelated draft.
+7. Update the rollback-only `creator-loop-db_test.ts` harness and backend CI. Cover backfill, first-edit clone,
+   repeat edit, independent sibling pointers, approval swap, scoped foreign keys, lost replies, late decisions,
+   unpublish, replacement failure, move, grants, and frozen archive snapshots. Author these SQL checks before
+   the owner applies the new local migration. No local or live database execution is authorized by this plan.
+8. Add the deferred e2e case: edit an approved piece, relaunch, verify Today and Post still use the approved
+   content, approve the new draft, and verify the new approved content after relaunch. Split review, retention,
+   and promotion checks if a flow approaches 60 percent of its timeout. Run all unchanged suites through the
+   owner after their build. Static checks do not replace app or PostgreSQL acceptance.
 
 ## Migrating saved work without loss
 
@@ -260,7 +332,7 @@ Done means the implementation exists locally. PostgreSQL execution and app runti
 | Today data | Both production and fixture `creatorDays` reads already request `include_all_pieces`. Today now selects from the ordered pieces rather than the date's position-0 pointer. |
 | Notifications and reminders | The app has one local Today reminder per workspace and creator, through `TodayNotificationScheduler`. Scheduling now chooses the first unfinished, ready piece with no filming decision, in position order. It does not depend on the selected piece or position 0. Posting, using a backup, skipping, and unpublishing reschedule from the remaining pieces. It cancels when none qualifies. The existing single-piece reminder policy, time, permission flow, and copy remain. There is no separate active reminder reader. |
 | Weekly ready cards | `DayStore.readyCards` and `AppServices.weekCards` now include every ready piece, ordered by date and position, through the existing piece-keyed card cache. |
-| Legacy weekly plan and generated week summary | `weeklyPlan.days`, `DayStore.packages`, and `latestGenerationSummary` retain the position-0 compatibility projection. These APIs represent seven date slots and their existing review/approval actions. Position 0 is the defined compatibility representative for each slot; it is not the date's complete content list. Expanding these review states and approval counts belongs to phase 6, which this task leaves unchanged. Creator Plan's piece list already reads all ordered pieces and writes its selected piece. Today, filming, and Post do not use the legacy weekly projection. |
+| Legacy weekly plan and generated week summary | `weeklyPlan.days`, `DayStore.packages`, and `latestGenerationSummary` retain the position-0 compatibility projection. These APIs represent seven date slots and their existing review/approval actions. Position 0 is the defined compatibility representative for each slot; it is not the date's complete content list. These review states and approval counts stayed unchanged in phase 5. Phase 6 migrates the active review readers through the piece cache, as recorded above. Creator Plan's piece list already reads all ordered pieces and writes its selected piece. Today, filming, and Post do not use the legacy weekly projection. |
 | Legacy repository reads | Date-only `today` and `weekly` repository methods remain compatibility fallbacks when a repository does not implement the all-piece `days` read. Both current production and fixture repositories implement that read. Initializer parameters and publish response fields named `todayCard` remain transport/seed inputs; they are not screen projections. |
 
 Several independent pieces per date remains the product rule. A position-0 compatibility reader must not
