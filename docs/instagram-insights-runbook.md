@@ -42,23 +42,31 @@ Request exactly:
 
 Do **not** request publishing/messaging scopes; we only read insights.
 
-## 3. OAuth redirect URI
+## 3. OAuth redirect URI (via the https bridge)
 
-The iOS app drives OAuth in `ASWebAuthenticationSession` with callback scheme
-`creatorcontenthelper://ig-auth`.
+The iOS app drives OAuth in SwiftUI's `WebAuthenticationSession` with callback
+scheme `creatorcontenthelper://ig-auth`. **Confirmed:** Meta's *Valid OAuth
+Redirect URIs* field **rejects custom schemes** ("Enter a valid HTTPS URL"), so
+we use the included **`ig-oauth-redirect`** edge function as an https bridge:
 
-Meta's **Valid OAuth Redirect URIs** allowlist historically wants an `https://`
-URL, so register **both** of these as the setup allows:
+> Instagram → `https://<project-ref>.functions.supabase.co/ig-oauth-redirect?code=…`
+> → the function forwards to `creatorcontenthelper://ig-auth?code=…` → the app's
+> login sheet captures it.
 
-- Primary (recommended): an `https://` bridge you control (e.g. a tiny hosted page
-  or an edge function) that receives `?code=...` and 302-redirects to
-  `creatorcontenthelper://ig-auth?code=...`. This is the robust path if Meta
-  rejects custom schemes.
-- If the dashboard accepts a custom scheme directly, `creatorcontenthelper://ig-auth`
-  may be used without the bridge.
+So the **one redirect URL** used in all three places must be the bridge URL:
 
-Whatever you register must match the `redirect_uri` sent at authorize time and
-again at code exchange (`INSTAGRAM_REDIRECT_URI`, below).
+```
+https://<YOUR-SUPABASE-PROJECT-REF>.functions.supabase.co/ig-oauth-redirect
+```
+
+Register it in **Instagram → API setup with Unified login → Business login
+settings → Register a new redirect URL**, and use the identical value for:
+- the client's `INSTAGRAM_REDIRECT_URI` (Info.plist / `LocalRuntime.xcconfig`), and
+- the `INSTAGRAM_REDIRECT_URI` Supabase secret (step 5).
+
+(The exact Supabase functions hostname can also appear as
+`https://<ref>.supabase.co/functions/v1/ig-oauth-redirect`; use whichever form
+your project serves — confirm after deploy.)
 
 ## 4. Add pilot test users (Development mode)
 
@@ -75,9 +83,9 @@ Set these for the edge functions (never in the app or in git):
 
 ```sh
 supabase secrets set \
-  INSTAGRAM_APP_ID=your-instagram-app-id \
+  INSTAGRAM_APP_ID=2420286265379388 \
   INSTAGRAM_APP_SECRET=your-instagram-app-secret \
-  INSTAGRAM_REDIRECT_URI=https://your-bridge/ig-auth   # must match the dashboard + authorize call
+  INSTAGRAM_REDIRECT_URI=https://<project-ref>.functions.supabase.co/ig-oauth-redirect
 ```
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are already present for existing
@@ -96,7 +104,28 @@ scripts/deploy-live-supabase.sh
 ```
 
 Verify the two tables exist: `creator_instagram_connections`,
-`creator_account_insight_snapshots`.
+`creator_account_insight_snapshots`. The `ig-oauth-redirect` bridge and the three
+`instagram-*` functions are all in the deploy script's `FUNCTIONS` list.
+
+### Deploy handoff (for the backend owner)
+
+Everything is committed on the fork branch `feat/how-youre-doing-insights`. To go live:
+
+1. **Deploy** — run `scripts/deploy-live-supabase.sh` (pushes migration
+   `20261101120000_instagram_insights.sql` + the four new functions:
+   `instagram-connect`, `instagram-insights`, `instagram-disconnect`,
+   `ig-oauth-redirect`).
+2. **Confirm the bridge URL** — hit
+   `https://<project-ref>.functions.supabase.co/ig-oauth-redirect` in a browser;
+   it should return the "Returning to ContentHelper…" page. Send that exact URL
+   back to the app owner.
+3. **Set secrets** (step 5) using that bridge URL as `INSTAGRAM_REDIRECT_URI`.
+4. The app owner then: registers the **same** bridge URL in Meta (step 3), puts
+   it + `INSTAGRAM_APP_ID` in `LocalRuntime.xcconfig`, and points the app at this
+   Supabase project (`MCO_SUPABASE_URL` / `MCO_SUPABASE_PUBLISHABLE_KEY`).
+
+The one value that must be **identical** in all three places (Meta dashboard,
+`INSTAGRAM_REDIRECT_URI` secret, app config) is the bridge URL.
 
 ## 7. Connect flow (what the app does)
 
