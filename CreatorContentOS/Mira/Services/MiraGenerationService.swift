@@ -22,7 +22,8 @@ final class MiraDependencies {
     static func live() -> MiraDependencies {
         let support =
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/share")
+            ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
         let repository = MiraFileRepository(
             directory: support.appendingPathComponent("Mira", isDirectory: true))
         return MiraDependencies(
