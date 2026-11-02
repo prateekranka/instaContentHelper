@@ -75,6 +75,32 @@ export async function verifyDeviceSession(
   };
 }
 
+/**
+ * Confirms the creator belongs to the verified session's workspace and is active.
+ * Returns an error `Response` to short-circuit, or `null` when authorized.
+ */
+export async function assertCreator(
+  admin: SupabaseAdminClient,
+  session: VerifiedDeviceSession,
+  creatorID: string,
+): Promise<Response | null> {
+  const { data: creator, error } = await admin
+    .from("creators")
+    .select("id")
+    .eq("id", creatorID)
+    .eq("workspace_id", session.workspaceID)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (error) {
+    return jsonResponse({ error: "creator_lookup_failed" }, 500);
+  }
+  if (!creator) {
+    return jsonResponse({ error: "creator_not_found" }, 404);
+  }
+  return null;
+}
+
 export async function sha256Hex(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
