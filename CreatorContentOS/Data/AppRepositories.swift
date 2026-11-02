@@ -26,6 +26,7 @@ struct AppRepositories: Sendable {
     let archive: any ArchiveRepository
     let testerAccess: any TesterAccessRepository
     let runtimeHealth: any RuntimeHealthRepository
+    let instagramInsights: any InstagramInsightsRepository
 
     init(
         context: WorkspaceContext,
@@ -40,7 +41,8 @@ struct AppRepositories: Sendable {
         creatorProfile: any CreatorProfileRepository,
         archive: any ArchiveRepository,
         testerAccess: any TesterAccessRepository = FixtureTesterAccessRepository(),
-        runtimeHealth: any RuntimeHealthRepository = FixtureRuntimeHealthRepository()
+        runtimeHealth: any RuntimeHealthRepository = FixtureRuntimeHealthRepository(),
+        instagramInsights: any InstagramInsightsRepository = FixtureInstagramInsightsRepository()
     ) {
         self.context = context
         self.today = today
@@ -55,6 +57,7 @@ struct AppRepositories: Sendable {
         self.archive = archive
         self.testerAccess = testerAccess
         self.runtimeHealth = runtimeHealth
+        self.instagramInsights = instagramInsights
     }
 
     static var fixture: AppRepositories {

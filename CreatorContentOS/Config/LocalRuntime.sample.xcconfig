@@ -1,3 +1,5 @@
 # xcconfig treats // as a comment, so https:/$()/ expands to https://.
 MCO_SUPABASE_URL = https:/$()/YOUR-PROJECT-REF.supabase.co
 MCO_SUPABASE_PUBLISHABLE_KEY = YOUR-PUBLISHABLE-OR-ANON-KEY
+INSTAGRAM_APP_ID = YOUR-INSTAGRAM-APP-ID
+INSTAGRAM_REDIRECT_URI = https:/$()/YOUR-BRIDGE/ig-auth

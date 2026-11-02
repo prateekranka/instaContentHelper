@@ -28,6 +28,10 @@
 	<string>$(MCO_SUPABASE_PUBLISHABLE_KEY)</string>
 	<key>MCO_SUPABASE_URL</key>
 	<string>$(MCO_SUPABASE_URL)</string>
+	<key>INSTAGRAM_APP_ID</key>
+	<string>$(INSTAGRAM_APP_ID)</string>
+	<key>INSTAGRAM_REDIRECT_URI</key>
+	<string>$(INSTAGRAM_REDIRECT_URI)</string>
 	<key>MCO_DEBUG_PAIRED_WORKSPACE_ID</key>
 	<string>$(MCO_DEBUG_PAIRED_WORKSPACE_ID)</string>
 	<key>MCO_DEBUG_PAIRED_CREATOR_ID</key>
@@ -44,6 +48,17 @@
 	<string>$(MCO_DEBUG_PAIRED_CREATOR_DISPLAY_NAME)</string>
 	<key>MCO_DEBUG_PAIRED_MEMBER_ROLE</key>
 	<string>$(MCO_DEBUG_PAIRED_MEMBER_ROLE)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.prateekranka.creatorcontenthelper.igauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>creatorcontenthelper</string>
+			</array>
+		</dict>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

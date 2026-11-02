@@ -8,10 +8,12 @@ import SwiftUI
 /// is a separate increment; until then live builds show `.notConnected` and fixture
 /// builds honor `MCO_INSIGHTS_SCENARIO`.
 struct HowYouAreDoingView: View {
+    @Environment(AppServices.self) private var services
+    @Environment(\.webAuthenticationSession) private var webAuthSession
     let backLabel: String
     let onBack: () -> Void
 
-    @State private var connectNoticeShown = false
+    @State private var connectError: String?
 
     var body: some View {
         YouDestinationScaffold(
@@ -23,6 +25,7 @@ struct HowYouAreDoingView: View {
             content
         }
         .accessibilityIdentifier("you.screen.insights")
+        .task { await loadIfLive() }
     }
 
     private var subtitle: String {
@@ -71,18 +74,15 @@ struct HowYouAreDoingView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                PocketSheetFeedbackBanner(
-                    message: connectNoticeShown
-                        ? "Instagram connection isn't enabled in this build yet."
-                        : nil,
-                    kind: .pending
-                )
+                PocketSheetFeedbackBanner(message: notConnectedBanner, kind: .pending)
 
-                PocketSheetPrimaryAction(title: "Connect Instagram", systemImage: "link") {
-                    // TODO: present the connect confirmation sheet → ASWebAuthenticationSession
-                    // (Instagram Business Login) → instagram-connect edge function.
-                    connectNoticeShown = true
+                PocketSheetPrimaryAction(
+                    title: services.isConnectingInstagram ? "Connecting…" : "Connect Instagram",
+                    systemImage: "link"
+                ) {
+                    Task { await connect() }
                 }
+                .disabled(services.isConnectingInstagram)
                 .accessibilityIdentifier("you.insights.connect")
 
                 Text("We only read your insights. We never post for you, and your password stays with Instagram.")
@@ -213,7 +213,42 @@ struct HowYouAreDoingView: View {
             return InstagramInsightsFixture.state(for: DebugLaunchFlags.insightsScenario)
         }
 #endif
-        // Until the connection/fetch is wired, a real build starts disconnected.
-        return .notConnected
+        return services.instagramInsights
+    }
+
+    private var notConnectedBanner: String? {
+        connectError ?? services.lastInstagramInsightsError
+    }
+
+    // MARK: Actions
+
+    @MainActor
+    private func loadIfLive() async {
+#if DEBUG
+        if DebugLaunchFlags.forceFixtureUI { return }
+#endif
+        await services.refreshInstagramInsightsImmediately()
+    }
+
+    @MainActor
+    private func connect() async {
+        connectError = nil
+        guard InstagramOAuth.isConfigured, let url = InstagramOAuth.authorizeURL() else {
+            connectError = "Instagram connection isn't configured in this build yet."
+            return
+        }
+        do {
+            let callback = try await webAuthSession.authenticate(
+                using: url,
+                callbackURLScheme: InstagramOAuth.callbackScheme
+            )
+            guard let code = InstagramOAuth.authorizationCode(from: callback) else {
+                connectError = "Couldn't read the Instagram response. Try again."
+                return
+            }
+            await services.connectInstagram(code: code, redirectURI: InstagramOAuth.redirectURI ?? "")
+        } catch {
+            // User dismissed the sheet or cancelled sign-in; leave the CTA in place.
+        }
     }
 }
