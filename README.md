@@ -65,6 +65,14 @@ POCKET_E2E_SCENARIO=plan POCKET_E2E_OUTPUT="$PWD/work/evidence/pocket-plan" npx 
 
 Always set these variables; the recovered configuration retains paths from earlier development sessions. Read [the native QA guide](docs/pocket-native-qa.md) for scenarios and proof limits. Read [the current handoff](docs/project-state-2026-10-18.md) for the latest verification status.
 
+## Mira AI providers
+
+Mira accepts the same app request regardless of which supported backend provider is selected. Provider-specific request and response handling lives in `supabase/functions/mira-generation/adapters.ts`; Mira validates every result against the same contract. Supported adapters are DeepSeek, OpenAI, and Google Gemini. Other provider APIs need a new adapter and a consent and privacy review before they receive creator data.
+
+Select a provider on the server with `MIRA_AI_PROVIDER=deepseek`, `openai`, or `gemini`. When unset, Mira keeps the existing `MCO_AI_PROVIDER_ORDER` behavior and selects the first configured DeepSeek or OpenAI provider. Gemini selection requires `GEMINI_API_KEY` and an explicitly configured model ID in `MIRA_GEMINI_MODEL` or `MIRA_MODEL`. The Gemini-specific setting takes precedence. DeepSeek and OpenAI use their existing server-side keys and model settings; `MIRA_MODEL` can override their configured model. The app contains no provider keys.
+
+Mira uses one selected provider per job; it does not automatically send the same request to a second provider. Configuration alone does not deploy the endpoint. Verify the current disclosure and obtain the appropriate consent before changing a live provider. The existing consent names DeepSeek, OpenAI, and Google Gemini.
+
 ## Backend development
 
 The backend uses Supabase Edge Functions and SQL migrations. Linux can run backend checks and web prototypes. It cannot build the native iPhone app.
