@@ -33,7 +33,9 @@ final class MiraSpeechInput: MiraSpeechInputService {
         requesting = true
         defer { requesting = false }
         let speech = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
+            SFSpeechRecognizer.requestAuthorization { @Sendable status in
+                continuation.resume(returning: status == .authorized)
+            }
         }
         guard self.attempt == attempt else { return }
         let microphone = await AVAudioApplication.requestRecordPermission()
@@ -71,11 +73,11 @@ final class MiraSpeechInput: MiraSpeechInputService {
             self.request = request
             let input = engine.inputNode
             let format = input.outputFormat(forBus: 0)
-            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            input.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable buffer, _ in
                 request.append(buffer)
             }
             tapInstalled = true
-            recognition = recognizer.recognitionTask(with: request) { [weak self] result, failure in
+            recognition = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, failure in
                 let text = result?.bestTranscription.formattedString
                 let finished = result?.isFinal == true
                 let failed = failure != nil
