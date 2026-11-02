@@ -27,6 +27,7 @@ enum DebugLaunchConfiguration {
         "MCO_DYNAMIC_TYPE_ACCESSIBILITY5",
         "MCO_REDUCED_MOTION",
         "MCO_LOOP_SCENARIO",
+        "MCO_INSIGHTS_SCENARIO",
         "MCO_REVIEW_TWO_DRAFTS",
         "MCO_START_DAY_REVIEW",
         "MCO_REVIEWED_PIECES",

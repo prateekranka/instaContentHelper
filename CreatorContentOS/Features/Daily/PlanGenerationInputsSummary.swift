@@ -92,6 +92,7 @@ struct PlanGenerationInputsSummary: View {
         case .references: "references"
         case .account: "account"
         case .archive: "archive"
+        case .insights: "insights"
         }
     }
 }

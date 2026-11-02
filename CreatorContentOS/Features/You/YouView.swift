@@ -30,6 +30,7 @@ struct YouView: View {
                         accountBlock
                         generationInputsBlock
                     }
+                    insightsBlock
                     archiveBlock
 #if DEBUG
                     devBlock
@@ -146,6 +147,23 @@ struct YouView: View {
         .padding(.horizontal, PocketSheetSpace.l)
     }
 
+    private var insightsBlock: some View {
+        PocketSheetBlock(header: "How you're doing") {
+            Button {
+                open(.insights, from: .you)
+            } label: {
+                PocketSheetRow(
+                    title: "Your insights",
+                    subtitle: "Followers, reach and saves",
+                    leadingSymbol: "chart.bar"
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("you.row.insights")
+        }
+        .padding(.horizontal, PocketSheetSpace.l)
+    }
+
     private var archiveBlock: some View {
         PocketSheetBlock(header: "Your posts") {
             YouArchivePreview(onSeeMore: { open(.archive, from: .you) })
@@ -182,6 +200,7 @@ struct YouView: View {
         case .references: "bookmark"
         case .account: "person.crop.circle"
         case .archive: "tray"
+        case .insights: "chart.bar"
         }
     }
 
@@ -244,6 +263,7 @@ struct YouView: View {
         case .references: "references"
         case .account: "account"
         case .archive: "archive"
+        case .insights: "insights"
         }
     }
 
@@ -288,6 +308,8 @@ struct YouRouteView: View {
                 YouAccountView(backLabel: backLabel, onBack: handleBack)
             case .archive:
                 YouArchiveDestinationView(backLabel: backLabel, onBack: handleBack)
+            case .insights:
+                HowYouAreDoingView(backLabel: backLabel, onBack: handleBack)
             }
         }
         .navigationBarHidden(true)
