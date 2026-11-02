@@ -31,7 +31,7 @@ jobs:
       - name: Prove rules reject past mistakes
         run: python3 scripts/prove-agent-rules.py
   deno:
-    name: Deno type checks
+    name: Deno contracts
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -43,3 +43,11 @@ jobs:
           deno-version: v2.x
       - name: Type-check backend without unit tests
         run: deno task ci:backend
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22.23.2'
+      - name: Install locked verification dependencies
+        run: npm ci --ignore-scripts
+      - name: Run Mira endpoint system scenarios
+        run: npx e2e run --config e2e.mira-api.config.ts
