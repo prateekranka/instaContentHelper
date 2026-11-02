@@ -1,13 +1,14 @@
 import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
-import { selectTab, startFromOnboarding } from './pocket-support';
+import { selectTab, startFromOnboarding, scrollToControl } from './pocket-support';
 
 test('partial filming survives relaunch and backup preview preserves the main idea', { timeout: 240_000 }, async ({ app, screen, device }) => {
   await startFromOnboarding(app, screen);
   const title = await screen.getByTestId('today.package.title').textContent();
   await screen.getByTestId('today.startFilming').tap();
   await screen.getByTestId('shoot.complete').tap();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   await device.openApp('com.prateekranka.creatorcontenthelper', {
     relaunch: true,
     launchArguments: ['-MCO_FORCE_FIXTURE_UI', '1', '-MCO_FORCE_APP_MODE', 'creator',
@@ -18,11 +19,12 @@ test('partial filming survives relaunch and backup preview preserves the main id
   await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 2 of');
   await app.screenshot('pocket-resumed-filming');
   await screen.getByTestId('shoot.previous').tap();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   await app.back();
   await screen.getByTestId('today.notEasier').tap();
   await screen.getByRole('button', /10-second story/).tap();
-  await screen.scrollUntilVisible(screen.getByTestId('backup.confirmPosted'));
+  await scrollToControl(screen, screen.getByTestId('backup.confirmPosted'));
   await expect(screen.getByTestId('backup.confirmPosted')).toBeVisible();
   await app.screenshot('pocket-backup-preview');
   const cancel = await screen.getByRole('button', 'Cancel', { exact: true }).boundingBox();
@@ -40,7 +42,7 @@ test('partial filming survives relaunch and backup preview preserves the main id
   await expect(screen.getByTestId('today.startFilming')).toContainText('Continue filming');
   await screen.getByTestId('today.notEasier').tap();
   await screen.getByRole('button', /Caption-only post/).tap();
-  await screen.scrollUntilVisible(screen.getByTestId('backup.confirmPosted'));
+  await scrollToControl(screen, screen.getByTestId('backup.confirmPosted'));
   const confirm = await screen.getByTestId('backup.confirmPosted').boundingBox();
   expect(confirm.height).toBeGreaterThanOrEqual(44);
   expect(confirm.y + confirm.height).toBeLessThanOrEqual(874);

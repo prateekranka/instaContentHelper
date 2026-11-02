@@ -466,3 +466,204 @@ extension IntelligenceHome {
         ]
     )
 }
+
+struct FakeGenerationOutput {
+    func makeResult(scheduledDate: String, dayBrief: String, revisionID: UUID = UUID()) -> DailyGenerationResult {
+        let trimmedBrief = dayBrief.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pillar = inferredContentPillar(from: trimmedBrief)
+        let title = synthesizedTitle(from: trimmedBrief, pillar: pillar)
+        let script = synthesizedScript(from: trimmedBrief, pillar: pillar)
+        let format = fixtureFormat(from: trimmedBrief)
+        let duration = format == "Post" ? nil : requestedDuration(from: trimmedBrief) ?? (format == "Story" ? 10 : 12)
+        let scenes = fixtureScenes(for: pillar, format: format, duration: duration)
+        var dailyCard = GeneratedDailyCardDraft(
+            id: revisionID,
+            scheduledDate: scheduledDate,
+            status: "draft",
+            title: title,
+            whyToday: trimmedBrief.isEmpty
+                ? "Fixture day generation for \(scheduledDate)."
+                : trimmedBrief,
+            growthJob: "Consistency.",
+            contentPillar: pillar,
+            shootability: "easy",
+            estimatedShootMinutes: format == "Reel" ? 12 : 2,
+            energyRequired: "low",
+            languageMode: "English",
+            format: format,
+            primarySurface: format == "Story" ? "instagram_stories" : format == "Post" ? "instagram_feed" : "instagram_reels",
+            durationSeconds: duration,
+            hook: title,
+            saveShareReason: "Save this as a reminder to shoot the day as planned.",
+            sceneList: scenes,
+            script: script,
+            noVoiceoverVersion: format == "Post" ? "Use a photo you already have. No filming needed." : "Use bold captions over the same shots.",
+            onScreenText: sceneOnScreenText(for: pillar),
+            caption: script,
+            cta: "Save this for later.",
+            hashtags: hashtags(for: pillar),
+            coverText: String(title.prefix(40)),
+            postInstructions: "Keep it real, natural, and personal.",
+            brandEventNotes: "",
+            backupStory: "Post one phone clip with the same hook.",
+            backupCaptionOnly: "Same angle, shorter cut.",
+            audioOptionNotes: "",
+            creatorFitScore: 90,
+            riskNotes: [],
+            assumptions: ["Fixture UI generation — no live model call."],
+            sourceNote: "Based on your idea."
+        )
+#if DEBUG
+        if DebugLaunchFlags.longContent {
+            dailyCard = dailyCard.withLongContent
+            dailyCard.scheduledDate = scheduledDate
+            dailyCard.status = "draft"
+        }
+        dailyCard = DebugLaunchFlags.uiFixtureData.applying(to: dailyCard)
+#endif
+        return DailyGenerationResult(
+            generationID: UUID(),
+            weeklyPlanID: WeeklyPlan.raceWeek.id,
+            status: "draft",
+            targetScheduledDate: scheduledDate,
+            dailyCard: dailyCard,
+            warnings: [],
+            assumptions: ["Fixture UI generation — no live model call."],
+            sourceSummary: "Fixture day brief only.",
+            generatedAt: ISO8601DateFormatter().string(from: Date())
+        )
+    }
+
+    private func fixtureFormat(from brief: String) -> String {
+        let lower = brief.lowercased()
+        if lower.contains("photo") || lower.contains("carousel") || lower.contains("caption-only") { return "Post" }
+        if lower.range(of: #"\bstory\b"#, options: .regularExpression) != nil { return "Story" }
+        return "Reel"
+    }
+
+    private func requestedDuration(from brief: String) -> Int? {
+        guard let expression = try? NSRegularExpression(pattern: #"(\d+)\s*(?:[-–]\s*)?(?:seconds?|secs?|s)\b"#, options: .caseInsensitive),
+              let match = expression.firstMatch(in: brief, range: NSRange(brief.startIndex..., in: brief)),
+              let range = Range(match.range(at: 1), in: brief),
+              let seconds = Int(brief[range]), seconds > 0 else { return nil }
+        return seconds
+    }
+
+    private func fixtureScenes(for pillar: String, format: String, duration: Int?) -> [ShotScene] {
+        guard let duration else { return [] }
+        let original = synthesizedScenes(for: pillar)
+        let count = format == "Story" ? 1 : min(original.count, duration)
+        return original.prefix(count).enumerated().map { index, scene in
+            let seconds = duration / count + (index < duration % count ? 1 : 0)
+            return ShotScene(number: index + 1, title: scene.title, duration: "\(seconds) sec", symbol: scene.symbol)
+        }
+    }
+
+    private func inferredContentPillar(from brief: String) -> String {
+        let lower = brief.lowercased()
+        let hasBooks = lower.contains("book")
+        let hasMovies = lower.contains("movie") || lower.contains(" tv") || lower.contains("tv ")
+        if hasBooks && hasMovies { return "books" }
+        if hasMovies { return "movies-tv" }
+        if hasBooks { return "books" }
+        if lower.contains("hyrox") || lower.contains("race week") || lower.contains("fitness") || lower.contains("gym") {
+            return "fitness-wellness"
+        }
+        return "lifestyle"
+    }
+
+    private func synthesizedTitle(from brief: String, pillar: String) -> String {
+        let lower = brief.lowercased()
+        if lower.contains("book") && (lower.contains("movie") || lower.contains(" tv")) {
+            return "What I'm reading and watching right now"
+        }
+        switch pillar {
+        case "books":
+            return "The book on my nightstand — one honest takeaway"
+        case "movies-tv":
+            return "One scene from what I'm watching that stuck with me"
+        case "fitness-wellness":
+            return "One small training win worth sharing today"
+        default:
+            let titleSeed = brief.split(separator: ".").first.map(String.init) ?? brief
+            let title = String(titleSeed.prefix(72))
+            return title.isEmpty ? "Fixture day draft" : title
+        }
+    }
+
+    private func synthesizedScript(from brief: String, pillar: String) -> String {
+        switch pillar {
+        case "books":
+            return """
+            Here is the book I cannot stop thinking about.
+            One line about why it landed for me.
+            What I would tell a friend who asked if it is worth it.
+            """
+        case "movies-tv":
+            return """
+            Here is what I am watching this week.
+            The moment that made me pause the scroll.
+            Why it fits the mood I am in right now.
+            """
+        default:
+            if brief.localizedCaseInsensitiveContains("book") && brief.localizedCaseInsensitiveContains("movie") {
+                return """
+                Two things on my mind this week: a book and a show.
+                One honest line about each.
+                Why they pair well for the kind of content I make.
+                """
+            }
+            return brief.isEmpty
+                ? "Open with the day's angle. Show one real beat. Close with a simple ask."
+                : brief
+        }
+    }
+
+    private func synthesizedScenes(for pillar: String) -> [ShotScene] {
+        switch pillar {
+        case "books":
+            return [
+                ShotScene(number: 1, title: "Book on the table", duration: "3 sec", symbol: "book.closed"),
+                ShotScene(number: 2, title: "Favorite page", duration: "4 sec", symbol: "text.book.closed"),
+                ShotScene(number: 3, title: "Quick rating", duration: "3 sec", symbol: "star"),
+                ShotScene(number: 4, title: "Save for later", duration: "2 sec", symbol: "bookmark")
+            ]
+        case "movies-tv":
+            return [
+                ShotScene(number: 1, title: "Remote and couch", duration: "3 sec", symbol: "tv"),
+                ShotScene(number: 2, title: "Pause on the scene", duration: "4 sec", symbol: "film"),
+                ShotScene(number: 3, title: "Reaction beat", duration: "3 sec", symbol: "face.smiling"),
+                ShotScene(number: 4, title: "Soft ask", duration: "2 sec", symbol: "heart")
+            ]
+        default:
+            return [
+                ShotScene(number: 1, title: "Talking-head hook", duration: "3 sec", symbol: "person.crop.rectangle"),
+                ShotScene(number: 2, title: "Process b-roll", duration: "4 sec", symbol: "film.stack"),
+                ShotScene(number: 3, title: "Proof moment", duration: "3 sec", symbol: "checkmark.circle"),
+                ShotScene(number: 4, title: "Soft CTA", duration: "2 sec", symbol: "heart")
+            ]
+        }
+    }
+
+    private func sceneOnScreenText(for pillar: String) -> [String] {
+        switch pillar {
+        case "books":
+            return ["Currently reading", "Worth it?", "Save this"]
+        case "movies-tv":
+            return ["Watching now", "This scene", "Save this"]
+        default:
+            return ["Today", "Keep it real", "Save this"]
+        }
+    }
+
+    private func hashtags(for pillar: String) -> [String] {
+        switch pillar {
+        case "books":
+            return ["books", "currentlyreading", "fixture"]
+        case "movies-tv":
+            return ["movies", "whattowatch", "fixture"]
+        default:
+            return ["fixture", "dayplan"]
+        }
+    }
+}

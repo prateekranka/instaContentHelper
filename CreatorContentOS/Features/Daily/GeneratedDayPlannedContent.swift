@@ -24,58 +24,14 @@ struct GeneratedReadOnlyField: View {
 }
 
 enum SceneTiming {
-    static func windows(for scenes: [ShotScene]) -> [String] {
-        var cursor = 0
-        return scenes.map { scene in
-            let start = cursor
-            cursor += seconds(from: scene.duration) ?? 0
-            return "\(timecode(start))-\(timecode(cursor))"
-        }
-    }
-
     static func totalSeconds(for scenes: [ShotScene]) -> Int? {
-        let durations = scenes.compactMap { seconds(from: $0.duration) }
-        guard durations.count == scenes.count else { return nil }
-        return durations.reduce(0, +)
-    }
-
-    static func sceneTitle(for scenes: [ShotScene], index: Int) -> String? {
-        guard let scene = scenes[safe: index] else { return nil }
-        return "Scene \(String(format: "%02d", scene.number)): \(scene.title)"
-    }
-
-    private static func seconds(from duration: String) -> Int? {
-        Int(duration.prefix { $0.isNumber })
-    }
-
-    private static func timecode(_ seconds: Int) -> String {
-        "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
+        scenes.reduce(0) { $0 + $1.durationSeconds }
     }
 }
 
 extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
-    }
-}
-
-extension ProductionTimelineItem {
-    var timelineTarget: String? {
-        videoPortion?.nilIfBlank ?? placement?.nilIfBlank ?? shot?.nilIfBlank
-    }
-
-    var timelineBody: String {
-        voiceover?.nilIfBlank
-            ?? onScreenText?.nilIfBlank
-            ?? detail.nilIfBlank
-            ?? title.nilIfBlank
-            ?? "Detail not specified."
-    }
-}
-
-extension String {
-    var containsTimestamp: Bool {
-        range(of: #"(\d{1,2}:\d{2}|\d+\s?-\s?\d+\s?s|\d+\s?s)"#, options: .regularExpression) != nil
     }
 }
 
@@ -227,7 +183,10 @@ struct GeneratedStoryboardBreakdownContent: View {
     }
 
     private var displayedThumbnailError: String? {
-        services.storyboardThumbnailErrors[card.id] ?? thumbnailError
+        guard let error = services.storyboardThumbnailErrors[card.id] ?? thumbnailError else { return nil }
+        if error == "storyboard_thumbnail_generation_not_configured" { return nil }
+        if error == AIConsentCopy.errorCode || error == AIConsentCopy.blockedMessage { return AIConsentCopy.blockedMessage }
+        return "We couldn't prepare the visuals. Try again."
     }
 
     private var storyboardPreparationTaskID: String {
@@ -491,11 +450,11 @@ struct InstagramExecutionSummary: View {
 
     private var durationLabel: String {
         if card.format?.lowercased() == "post" { return "Photo / carousel" }
-        if let durationSeconds = card.durationSeconds, durationSeconds > 0 {
-            return "\(durationSeconds.formatted()) sec edit"
-        }
         if let seconds = SceneTiming.totalSeconds(for: card.sceneList), seconds > 0 {
             return "\(seconds.formatted()) sec edit"
+        }
+        if let durationSeconds = card.durationSeconds, durationSeconds > 0 {
+            return "\(durationSeconds.formatted()) sec edit"
         }
         return "\(card.estimatedShootMinutes) min shoot"
     }
@@ -522,11 +481,10 @@ struct InstagramCaptionPostContent: View {
             GeneratedReadOnlyField(title: "Cover text", value: card.coverText)
             GeneratedReadOnlyField(title: "Post instructions", value: card.postInstructions)
             GeneratedReadOnlyField(title: "Hashtags", value: hashtagSummary)
-            PackageCopyButton(
-                title: "Copy caption",
-                text: PackageCopyText.caption(for: card)
-            )
-            .accessibilityIdentifier("plan.package.copyCaption")
+            if let caption = PackageCopyText.caption(for: card) {
+                PackageCopyButton(title: "Copy caption", text: caption)
+                    .accessibilityIdentifier("plan.package.copyCaption")
+            }
         }
     }
 
@@ -545,6 +503,7 @@ struct GeneratedScriptTimelineBlock: View {
             PocketSheetCard {
                 GeneratedScriptTimelineContent(card: card, showsSectionChrome: true)
             }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("plan.script.timeline")
         }
     }
@@ -615,6 +574,7 @@ struct GeneratedScriptTimelineContent: View {
                 PackageCopyButton(title: "Copy full script", text: copyableScript)
                     .accessibilityIdentifier("plan.package.copyScript")
             }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("plan.script.timeline")
         } else {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {

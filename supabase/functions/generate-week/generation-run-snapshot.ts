@@ -30,6 +30,7 @@ export type DayVisualsStatus =
   | "failed";
 
 export type RegenerateDayDraftResponse = {
+  piece_id?: string;
   generation_id: string;
   weekly_plan_id: string;
   status: "draft";
@@ -174,7 +175,8 @@ export function normalizeSingleDayGenerationSnapshot(
       ? value.validation_error
       : null,
     stage_timings_ms: isRecord(value.stage_timings_ms)
-      ? value.stage_timings_ms as SingleDayGenerationSnapshot["stage_timings_ms"]
+      ? value
+        .stage_timings_ms as SingleDayGenerationSnapshot["stage_timings_ms"]
       : undefined,
   };
 }

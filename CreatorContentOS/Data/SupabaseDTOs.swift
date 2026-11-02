@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 enum SupabaseJSONValue: Codable, Hashable, Sendable {
     case string(String)
@@ -108,23 +109,47 @@ enum SupabaseJSONValue: Codable, Hashable, Sendable {
     }
 }
 
+@propertyWrapper
+struct SupabaseShotScenes: Codable, Hashable, Sendable {
+    var wrappedValue: [SupabaseShotSceneDTO]
+
+    init(wrappedValue: [SupabaseShotSceneDTO]) { self.wrappedValue = wrappedValue }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.singleValueContainer().decode([SupabaseJSONValue].self)
+        wrappedValue = values.compactMap { $0.decoded(SupabaseShotSceneDTO.self) }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+}
+
 struct SupabaseShotSceneDTO: Codable, Hashable, Sendable {
+    var id: UUID? = nil
     var number: Int?
     var title: String?
     var duration: String?
     var symbol: String?
+    var dialogue: String? = nil
 
-    func domainScene(fallbackNumber: Int) -> ShotScene {
-        ShotScene(
-            number: number ?? fallbackNumber,
+    func domainScene(fallbackNumber: Int, revisionID: UUID? = nil) -> ShotScene {
+        let sceneNumber = number ?? fallbackNumber
+        let stableID = revisionID.map { ShotScene.stableID(revisionID: $0, number: sceneNumber) }
+        return ShotScene(
+            id: id ?? stableID ?? UUID(),
+            number: sceneNumber,
             title: title ?? "Shot \(fallbackNumber)",
             duration: duration ?? "3 sec",
-            symbol: symbol ?? "circle"
+            symbol: symbol ?? "circle",
+            dialogue: dialogue
         )
     }
 }
 
 struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var id: UUID
     var workspaceID: UUID
     var creatorID: UUID
@@ -147,7 +172,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     var durationSeconds: Int?
     var hook: String?
     var saveShareReason: String?
-    var sceneList: [SupabaseShotSceneDTO]
+    @SupabaseShotScenes var sceneList: [SupabaseShotSceneDTO]
+    var shotContentOwned: Bool
     var shotTimeline: [ProductionTimelineItem]
     var voiceoverTimeline: [ProductionTimelineItem]
     var onScreenTextTimeline: [ProductionTimelineItem]
@@ -176,6 +202,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     var storyboardThumbnailAssets: [StoryboardThumbnailAsset]
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case id
         case workspaceID = "workspace_id"
         case creatorID = "creator_id"
@@ -199,6 +226,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
         case hook
         case saveShareReason = "save_share_reason"
         case sceneList = "scene_list"
+        case shotContentOwned = "shot_content_owned"
         case shotTimeline = "shot_timeline"
         case voiceoverTimeline = "voiceover_timeline"
         case onScreenTextTimeline = "on_screen_text_timeline"
@@ -229,6 +257,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        pieceID = try container.decodeIfPresent(UUID.self, forKey: .pieceID)
         id = try container.decode(UUID.self, forKey: .id)
         workspaceID = try container.decode(UUID.self, forKey: .workspaceID)
         creatorID = try container.decode(UUID.self, forKey: .creatorID)
@@ -258,7 +287,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             ?? postInstructionObject?["hook"]?.displayText
         saveShareReason = try container.decodeIfPresent(String.self, forKey: .saveShareReason)
             ?? postInstructionObject?["save_share_reason"]?.displayText
-        sceneList = (try? container.decode([SupabaseShotSceneDTO].self, forKey: .sceneList)) ?? []
+        shotContentOwned = try container.decodeIfPresent(Bool.self, forKey: .shotContentOwned) ?? false
+        sceneList = (try? container.decode(SupabaseShotScenes.self, forKey: .sceneList))?.wrappedValue ?? []
         let decodedShotTimeline = (try? container.decode([ProductionTimelineItem].self, forKey: .shotTimeline)) ?? []
         shotTimeline = decodedShotTimeline.isEmpty
             ? postInstructionObject?["shot_timeline"]?.decoded([ProductionTimelineItem].self) ?? []
@@ -306,7 +336,7 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
     }
 
     func domainCard() -> DailyCard {
-        DailyCard(
+        var card = DailyCard(
             id: id,
             title: title,
             context: SupabaseDateFormatting.contextLine(for: scheduledDate),
@@ -322,8 +352,9 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             primarySurface: primarySurface,
             durationSeconds: durationSeconds,
             scenes: sceneList.enumerated().map { index, scene in
-                scene.domainScene(fallbackNumber: index + 1)
+                scene.domainScene(fallbackNumber: index + 1, revisionID: id)
             },
+            shotContentOwned: shotContentOwned,
             shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
             voiceoverTimeline: voiceoverTimeline.isEmpty ? nil : voiceoverTimeline,
             onScreenTextTimeline: onScreenTextTimeline.isEmpty ? nil : onScreenTextTimeline,
@@ -345,10 +376,12 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             assumptions: assumptions?.compactMap(\.displayText),
             storyboardThumbnailAssets: storyboardThumbnailAssets.isEmpty ? nil : storyboardThumbnailAssets
         )
+        card.pieceID = pieceID
+        return card
     }
 
     func generatedDailyCardDraft() -> GeneratedDailyCardDraft {
-        GeneratedDailyCardDraft(
+        var card = GeneratedDailyCardDraft(
             id: id,
             scheduledDate: scheduledDate,
             status: Self.draftReviewStatus(dbStatus: status, reviewState: reviewState),
@@ -366,8 +399,9 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             hook: hook,
             saveShareReason: saveShareReason,
             sceneList: sceneList.enumerated().map { index, scene in
-                scene.domainScene(fallbackNumber: index + 1)
+                scene.domainScene(fallbackNumber: index + 1, revisionID: id)
             },
+            shotContentOwned: shotContentOwned,
             shotTimeline: shotTimeline,
             voiceoverTimeline: voiceoverTimeline,
             onScreenTextTimeline: onScreenTextTimeline,
@@ -392,6 +426,8 @@ struct SupabaseDailyCardRow: Codable, Hashable, Sendable {
             sourceNote: sourceNote ?? "",
             storyboardThumbnailAssets: storyboardThumbnailAssets
         )
+        card.pieceID = pieceID
+        return card
     }
 
     private static func draftReviewStatus(dbStatus: String, reviewState: String?) -> String {
@@ -897,8 +933,16 @@ struct SupabaseCreatorProfileRow: Codable, Hashable, Sendable {
 }
 
 struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     struct DailyCardSummary: Codable, Hashable, Sendable {
         var title: String?
+        var caption: String?
+        var pieceID: UUID? = nil
+
+        enum CodingKeys: String, CodingKey {
+            case title, caption
+            case pieceID = "piece_id"
+        }
     }
 
     var id: UUID
@@ -908,8 +952,13 @@ struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
     var outputLine: String?
     var hasPostThumbnail: Bool
     var dailyCard: DailyCardSummary?
+    var revisionID: UUID? = nil
+    var titleSnapshot: String? = nil
+    var captionSnapshot: String? = nil
+    var decisionAt: String? = nil
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case id
         case dailyCardID = "daily_card_id"
         case archiveDate = "archive_date"
@@ -917,51 +966,28 @@ struct SupabaseArchiveEntryRow: Codable, Hashable, Sendable {
         case outputLine = "output_line"
         case hasPostThumbnail = "has_post_thumbnail"
         case dailyCard = "daily_cards"
+        case revisionID = "revision_id"
+        case titleSnapshot = "title_snapshot"
+        case captionSnapshot = "caption_snapshot"
+        case decisionAt = "decision_at"
     }
 
     func domainEntry() -> ArchiveEntry {
-        ArchiveEntry(
+        var entry = ArchiveEntry(
             id: id,
-            dailyCardID: dailyCardID,
+            dailyCardID: revisionID ?? dailyCardID,
             day: SupabaseDateFormatting.weekdayAbbreviation(for: archiveDate),
             date: SupabaseDateFormatting.shortDate(for: archiveDate),
-            cardTitle: dailyCard?.title ?? "Daily card",
+            cardTitle: titleSnapshot ?? dailyCard?.title ?? "Daily card",
             decision: CompletionState(supabaseStatus: decision) ?? .skippedIntentionally,
             outputLine: outputLine ?? decision.displayTitle,
             hasPostThumbnail: hasPostThumbnail
         )
-    }
-}
-
-struct SupabaseDailyCardDecisionUpdate: Encodable, Sendable {
-    var status: String
-    var decisionAt: String
-    var completedByMemberID: UUID
-
-    enum CodingKeys: String, CodingKey {
-        case status
-        case decisionAt = "decision_at"
-        case completedByMemberID = "completed_by_member_id"
-    }
-}
-
-struct SupabaseArchiveEntryUpsert: Encodable, Sendable {
-    var workspaceID: UUID
-    var creatorID: UUID
-    var dailyCardID: UUID
-    var archiveDate: String
-    var decision: String
-    var outputLine: String
-    var hasPostThumbnail: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case workspaceID = "workspace_id"
-        case creatorID = "creator_id"
-        case dailyCardID = "daily_card_id"
-        case archiveDate = "archive_date"
-        case decision
-        case outputLine = "output_line"
-        case hasPostThumbnail = "has_post_thumbnail"
+        entry.pieceID = pieceID ?? dailyCard?.pieceID
+        entry.captionSnapshot = captionSnapshot ?? dailyCard?.caption
+        entry.scheduledDate = archiveDate
+        entry.decisionAt = decisionAt
+        return entry
     }
 }
 
@@ -1058,6 +1084,8 @@ struct SupabasePublishSceneRequest: Encodable, Sendable {
     var title: String
     var duration: String
     var symbol: String
+    var id: UUID? = nil
+    var dialogue: String? = nil
 }
 
 struct SupabasePublishWeekResponse: Decodable, Hashable, Sendable {
@@ -1075,25 +1103,36 @@ struct SupabasePublishWeekResponse: Decodable, Hashable, Sendable {
 }
 
 struct SupabaseMakeDayAvailableRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
-    var scheduledDate: String
+    var scheduledDate: String? = nil
     var dailyCardID: UUID?
 
+    var idempotencyKey: String? = nil
+    var expectedVersion: String? = nil
+
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
         case scheduledDate = "scheduled_date"
         case dailyCardID = "daily_card_id"
+        case idempotencyKey = "idempotency_key"
+        case expectedVersion = "expected_version"
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(pieceID, forKey: .pieceID)
         try container.encode(creatorID, forKey: .creatorID)
-        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encodeIfPresent(scheduledDate, forKey: .scheduledDate)
         try container.encodeIfPresent(dailyCardID, forKey: .dailyCardID)
+        try container.encodeIfPresent(idempotencyKey, forKey: .idempotencyKey)
+        try container.encodeIfPresent(expectedVersion, forKey: .expectedVersion)
     }
 }
 
 struct SupabaseMakeDayAvailableResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var dailyCardID: UUID
     var scheduledDate: String
     var status: String
@@ -1101,6 +1140,7 @@ struct SupabaseMakeDayAvailableResponse: Decodable, Hashable, Sendable {
     var weekIsSoftLocked: Bool
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case dailyCardID = "daily_card_id"
         case scheduledDate = "scheduled_date"
         case status
@@ -1110,25 +1150,36 @@ struct SupabaseMakeDayAvailableResponse: Decodable, Hashable, Sendable {
 }
 
 struct SupabaseUnpublishDayRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
-    var scheduledDate: String
+    var scheduledDate: String? = nil
     var dailyCardID: UUID?
 
+    var idempotencyKey: String? = nil
+    var expectedVersion: String? = nil
+
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
         case scheduledDate = "scheduled_date"
         case dailyCardID = "daily_card_id"
+        case idempotencyKey = "idempotency_key"
+        case expectedVersion = "expected_version"
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(pieceID, forKey: .pieceID)
         try container.encode(creatorID, forKey: .creatorID)
-        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encodeIfPresent(scheduledDate, forKey: .scheduledDate)
         try container.encodeIfPresent(dailyCardID, forKey: .dailyCardID)
+        try container.encodeIfPresent(idempotencyKey, forKey: .idempotencyKey)
+        try container.encodeIfPresent(expectedVersion, forKey: .expectedVersion)
     }
 }
 
 struct SupabaseUnpublishDayResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var dailyCardID: UUID
     var scheduledDate: String
     var status: String
@@ -1138,6 +1189,7 @@ struct SupabaseUnpublishDayResponse: Decodable, Hashable, Sendable {
     var weeklyPlanID: UUID
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case dailyCardID = "daily_card_id"
         case scheduledDate = "scheduled_date"
         case status
@@ -1149,15 +1201,22 @@ struct SupabaseUnpublishDayResponse: Decodable, Hashable, Sendable {
 }
 
 struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
-    var scheduledDate: String
+    var scheduledDate: String? = nil
     var dailyCardID: UUID?
     var package: ReadyDayPackageUpdate
 
+    var idempotencyKey: String? = nil
+    var expectedVersion: String? = nil
+
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
         case scheduledDate = "scheduled_date"
         case dailyCardID = "daily_card_id"
+        case idempotencyKey = "idempotency_key"
+        case expectedVersion = "expected_version"
         case package
     }
 
@@ -1174,17 +1233,22 @@ struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
     }
 
     private enum SceneCodingKeys: String, CodingKey {
+        case id
         case number
         case title
         case duration
         case symbol
+        case dialogue
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(pieceID, forKey: .pieceID)
         try container.encode(creatorID, forKey: .creatorID)
-        try container.encode(scheduledDate, forKey: .scheduledDate)
+        try container.encodeIfPresent(scheduledDate, forKey: .scheduledDate)
         try container.encodeIfPresent(dailyCardID, forKey: .dailyCardID)
+        try container.encodeIfPresent(idempotencyKey, forKey: .idempotencyKey)
+        try container.encodeIfPresent(expectedVersion, forKey: .expectedVersion)
 
         var packageContainer = container.nestedContainer(keyedBy: PackageCodingKeys.self, forKey: .package)
         try packageContainer.encodeIfPresent(package.title, forKey: .title)
@@ -1199,16 +1263,19 @@ struct SupabaseUpdateReadyDayPackageRequest: Encodable, Sendable {
             var scenesContainer = packageContainer.nestedUnkeyedContainer(forKey: .sceneList)
             for scene in scenes {
                 var sceneContainer = scenesContainer.nestedContainer(keyedBy: SceneCodingKeys.self)
+                try sceneContainer.encode(scene.id, forKey: .id)
                 try sceneContainer.encode(scene.number, forKey: .number)
                 try sceneContainer.encode(scene.title, forKey: .title)
                 try sceneContainer.encode(scene.duration, forKey: .duration)
                 try sceneContainer.encode(scene.symbol, forKey: .symbol)
+                try sceneContainer.encodeIfPresent(scene.dialogue, forKey: .dialogue)
             }
         }
     }
 }
 
 struct SupabaseUpdateReadyDayPackageResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var dailyCardID: UUID
     var scheduledDate: String
     var status: String
@@ -1217,6 +1284,7 @@ struct SupabaseUpdateReadyDayPackageResponse: Decodable, Hashable, Sendable {
     var caption: String?
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case dailyCardID = "daily_card_id"
         case scheduledDate = "scheduled_date"
         case status
@@ -1252,7 +1320,7 @@ struct SupabaseRuntimeHealthResponse: Decodable, Hashable, Sendable {
     func report(fallbackDate: Date = Date()) -> RuntimeHealthReport {
         let checkedAtDate: Date = {
             guard let checkedAt,
-                  let parsed = ISO8601DateFormatter().date(from: checkedAt)
+                  let parsed = SupabaseDateFormatting.timestamp(from: checkedAt)
             else {
                 return fallbackDate
             }
@@ -1269,36 +1337,59 @@ struct SupabaseRuntimeHealthResponse: Decodable, Hashable, Sendable {
 }
 
 enum SupabaseDateFormatting {
+    private static var utcCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    private struct Formatters {
+        var calendarDays: [String: DateFormatter] = [:]
+        let timestamp = ISO8601DateFormatter()
+    }
+
+    private static let formatters = Mutex(Formatters())
+
+    private static func withFormatter<T>(
+        format: String,
+        timeZone: TimeZone = TimeZone(secondsFromGMT: 0)!,
+        localeIdentifier: String = "en_US_POSIX",
+        _ body: (DateFormatter) -> T
+    ) -> T {
+        formatters.withLock { cache in
+            let key = format + ":" + timeZone.identifier + ":" + localeIdentifier
+            let formatter: DateFormatter
+            if let cached = cache.calendarDays[key] {
+                formatter = cached
+            } else {
+                formatter = DateFormatter()
+                formatter.locale = Locale(identifier: localeIdentifier)
+                formatter.timeZone = timeZone
+                formatter.dateFormat = format
+                cache.calendarDays[key] = formatter
+            }
+            return body(formatter)
+        }
+    }
+
     static func contextLine(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return rawDate }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEEE"
-        return formatter.string(from: date)
+        return withFormatter(format: "EEEE") { $0.string(from: date) }
     }
 
     static func weekdayAbbreviation(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return "DAY" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEE"
-        return formatter.string(from: date).uppercased()
+        return withFormatter(format: "EEE") { $0.string(from: date) }.uppercased()
     }
 
     static func dayNumber(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return "--" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "dd"
-        return formatter.string(from: date)
+        return withFormatter(format: "dd") { $0.string(from: date) }
     }
 
     static func shortDate(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return rawDate }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "d MMM"
-        return formatter.string(from: date).uppercased()
+        return withFormatter(format: "d MMM") { $0.string(from: date) }.uppercased()
     }
 
     static func weekRange(starting rawDate: String) -> String {
@@ -1313,17 +1404,13 @@ enum SupabaseDateFormatting {
             return "\(rawStartDate) - \(rawEndDate)"
         }
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "d MMM"
-        return "\(formatter.string(from: start)) - \(formatter.string(from: end))"
+        return withFormatter(format: "d MMM") { "\($0.string(from: start)) - \($0.string(from: end))" }
     }
 
     static func weekEndDate(starting rawDate: String) -> String {
         guard
             let start = parseDate(rawDate),
-            let end = Calendar(identifier: .gregorian).date(byAdding: .day, value: 6, to: start)
+            let end = utcCalendar.date(byAdding: .day, value: 6, to: start)
         else {
             return rawDate
         }
@@ -1335,7 +1422,7 @@ enum SupabaseDateFormatting {
         guard
             let start = parseDate(rawStartDate),
             let requestedEnd = parseDate(rawEndDate),
-            let maxEnd = Calendar(identifier: .gregorian).date(byAdding: .day, value: 6, to: start)
+            let maxEnd = utcCalendar.date(byAdding: .day, value: 6, to: start)
         else {
             return weekEndDate(starting: rawStartDate)
         }
@@ -1357,7 +1444,7 @@ enum SupabaseDateFormatting {
         }
 
         return (-daysBefore...daysAfter).compactMap { offset in
-            Calendar(identifier: .gregorian)
+            utcCalendar
                 .date(byAdding: .day, value: offset, to: date)
                 .map { dateString(from: $0) }
         }
@@ -1369,7 +1456,7 @@ enum SupabaseDateFormatting {
         }
 
         return (0..<dayCount).compactMap { offset in
-            Calendar(identifier: .gregorian)
+            utcCalendar
                 .date(byAdding: .day, value: offset, to: start)
                 .map { dateString(from: $0) }
         }
@@ -1377,11 +1464,7 @@ enum SupabaseDateFormatting {
 
     static func displayDate(for rawDate: String) -> String {
         guard let date = parseDate(rawDate) else { return rawDate }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "d MMM"
-        return formatter.string(from: date)
+        return withFormatter(format: "d MMM") { $0.string(from: date) }
     }
 
     static func weekDates(starting rawDate: String) -> [String] {
@@ -1389,35 +1472,25 @@ enum SupabaseDateFormatting {
             return []
         }
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-
         return (0..<7).compactMap { offset in
-            Calendar(identifier: .gregorian)
+            utcCalendar
                 .date(byAdding: .day, value: offset, to: start)
-                .map { formatter.string(from: $0) }
+                .map { dateString(from: $0) }
         }
     }
 
     static func todayDateString() -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
+        let zone = TimeZone(identifier: TimeZone.current.identifier) ?? TimeZone(secondsFromGMT: 0)!
+        return withFormatter(format: "yyyy-MM-dd", timeZone: zone) { $0.string(from: Date()) }
     }
 
     /// `days` after today, formatted `yyyy-MM-dd` (dev benchmark uses a far-future
     /// date so runs never touch real content).
     static func dateString(daysAfterToday days: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
         guard let date = Calendar.current.date(byAdding: .day, value: days, to: Date()) else {
             return todayDateString()
         }
-        return formatter.string(from: date)
+        return dateString(from: date)
     }
 
     /// Compares normalized yyyy-MM-dd prefixes lexically — valid because ISO-8601 date strings sort correctly.
@@ -1428,7 +1501,16 @@ enum SupabaseDateFormatting {
     }
 
     static func isoTimestampString() -> String {
-        ISO8601DateFormatter().string(from: Date())
+        formatters.withLock { $0.timestamp.string(from: Date()) }
+    }
+
+    static func timestamp(from value: String) -> Date? {
+        formatters.withLock { cache in
+            cache.timestamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let fractional = cache.timestamp.date(from: value)
+            cache.timestamp.formatOptions = [.withInternetDateTime]
+            return fractional ?? cache.timestamp.date(from: value)
+        }
     }
 
     static func effortLabel(shootability: String?, minutes: Int?) -> String {
@@ -1451,19 +1533,19 @@ enum SupabaseDateFormatting {
 
     private static func parseDate(_ rawDate: String) -> Date? {
         let trimmedDate = String(rawDate.prefix(10))
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: trimmedDate)
+        return withFormatter(format: "yyyy-MM-dd") { $0.date(from: trimmedDate) }
     }
 
-    private static func dateString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+    static func dateString(from date: Date) -> String {
+        withFormatter(format: "yyyy-MM-dd") { $0.string(from: date) }
+    }
+
+    static func calendarDate(from text: String) -> Date? {
+        withFormatter(format: "yyyy-MM-dd") { $0.date(from: text) }
+    }
+
+    static func calendarText(from date: Date, format: String, localeIdentifier: String = "en_US_POSIX") -> String {
+        withFormatter(format: format, localeIdentifier: localeIdentifier) { $0.string(from: date) }
     }
 }
 

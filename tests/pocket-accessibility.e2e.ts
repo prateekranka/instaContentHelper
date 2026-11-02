@@ -49,20 +49,22 @@ test(`Pocket remains usable in ${scenario}`, { timeout: 240_000 }, async ({ app,
   }
   await app.screenshot(`pocket-${scenario}-filming`);
   const commandTop = (await screen.getByTestId('shoot.complete').boundingBox()).y;
-  await scrollToControl(screen, screen.getByText('CAPTURE', { exact: true }), 'down', commandTop - 16);
+  await scrollToControl(screen, screen.getByText('What to film', { exact: true }), 'down', commandTop - 16);
   await app.screenshot(`pocket-${scenario}-filming-instructions`);
   await screen.getByTestId('shoot.next').tap();
+  await scrollToControl(screen, screen.getByTestId('shoot.progress'), 'up', commandTop - 16);
   await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 2 of');
   await app.back();
+  await scrollToControl(screen, screen.getByTestId('today.notEasier'));
   await screen.getByTestId('today.notEasier').tap();
   await app.screenshot(`pocket-${scenario}-alternatives`);
-  await screen.scrollUntilVisible(screen.getByRole('button', /Plan tomorrow/));
+  await scrollToControl(screen, screen.getByRole('button', /Plan tomorrow/));
   await screen.getByRole('button', /Plan tomorrow/).tap();
   await expect(screen.getByTestId('plan.title')).toBeVisible();
   await app.screenshot(`pocket-${scenario}-plan`);
   await selectTab(screen, 'You');
   await expect(screen.getByTestId('you.preferences.toggle')).toBeVisible();
-  await screen.getByTestId('you.preferences.toggle').tap();
-  await screen.scrollUntilVisible(screen.getByTestId('you.row.production'));
+  await expect(screen.getByTestId('you.row.voice')).toBeAttached();
+  await scrollToControl(screen, screen.getByTestId('you.row.production'));
   await app.screenshot(`pocket-${scenario}-you`);
 });

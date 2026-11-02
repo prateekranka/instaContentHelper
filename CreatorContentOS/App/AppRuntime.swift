@@ -23,33 +23,31 @@ struct AppRuntime {
         todayCache: any TodayCacheStoring = DebugLaunchConfiguration.fixtureTodayCache,
         notifications: any TodayNotificationScheduling = LocalTodayNotificationScheduler()
     ) -> AppRuntime {
+#if DEBUG
+        DebugLaunchFlags.seedLoopScenario()
+#endif
         let services = AppServices.fixtureBacked(
             todayCache: todayCache,
             notifications: notifications,
-            acceptedGenerationStore: UserDefaultsAcceptedDayGenerationStore(defaults: DebugLaunchConfiguration.fixtureDefaults),
             aiConsentStore: UserDefaultsAIConsentStore(
                 workspaceID: WorkspaceContext.creatorFixture.workspaceID,
                 creatorID: WorkspaceContext.creatorFixture.creatorID,
                 defaults: DebugLaunchConfiguration.fixtureDefaults
             )
         )
+        services.creatorProfileSummary = FakeServer.shared.initialProfile
 #if DEBUG
-        if !DebugLaunchFlags.forceEmptyToday {
-            // Seed the same generated package used by Plan into Today. The
-            // package keeps one ID and one date across the native e2e relaunch.
-            var draft = services.loadTodayFromCache()
-                ? GeneratedDailyCardDraft(fromPublishedCard: services.todayCard)
-                : DebugLaunchFlags.fixtureDailyCardDraft
-            if DebugLaunchFlags.uiFixtureData != .demo {
-                draft = DebugLaunchFlags.uiFixtureData.applying(to: draft)
+        let restored = services.loadTodayFromCache()
+        if !restored {
+            for draft in FakeServer.shared.initialDayPackages {
+                try? services.dayStore.receive(draft, completion: CompletionState(supabaseStatus: draft.status), authoritativeDecision: true)
             }
-            draft.scheduledDate = services.currentTodayDateString
-            draft.status = "ready"
-            services.dayBriefGeneratedCards[services.currentTodayDateString] = draft
-            services.todayCard = draft.dailyCard(completionState: services.todayCard.completionState)
-            services.weekCards = services.weekCards.map { card in
-                guard card.scheduledDate == services.currentTodayDateString else { return card }
-                return services.todayCard
+            if DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.isEnabled("MCO_REVIEWED_PIECES") {
+                for piece in services.dayStore.reviewPieces(on: services.currentTodayDateString) where piece.canReviewDraft {
+                    if let revisionID = piece.revision?.id {
+                        try? services.dayStore.transition(.reviewed(revisionID), pieceID: piece.identity.pieceID)
+                    }
+                }
             }
         }
 #endif
@@ -304,15 +302,126 @@ enum DebugLaunchFlags {
         draft.sceneList = draft.sceneList.enumerated().map { index, scene in
             ShotScene(
                 id: UUID(uuidString: String(format: "1407E44A-1F70-4B96-8EE2-%012d", index + 1))!,
-                number: scene.number, title: scene.title, duration: scene.duration, symbol: scene.symbol
+                number: scene.number, title: scene.title, duration: scene.duration, symbol: scene.symbol,
+                dialogue: scene.dialogue
             )
         }
-        return uiFixtureData.applying(to: longContent ? draft.withLongContent : draft)
+        draft = uiFixtureData.applying(to: longContent ? draft.withLongContent : draft)
+        if forceFixtureUI,
+           DebugLaunchConfiguration.fixtureSession != nil,
+           let scenario = DebugLaunchConfiguration.value(for: "MCO_LOOP_SCENARIO"),
+           ["ready", "line-script", "blank-copy", "stale-pointer", "legacy-cache", "legacy-backup", "old-decision"].contains(scenario) {
+            draft.title = "Loop \(scenario) package"
+            if scenario == "line-script" {
+                draft.sceneList = ShotScript.editing(
+                    draft.sceneList.map { "Creator line \($0.number)." }.joined(separator: "\n"),
+                    scenes: draft.sceneList
+                )
+            }
+            if scenario == "blank-copy" {
+                draft.sceneList = ShotScript.editing(
+                    Array(repeating: "", count: draft.sceneList.count).joined(separator: "\n"),
+                    scenes: draft.sceneList
+                )
+                draft.script = ""
+                draft.caption = ""
+                draft.audioOptionNotes = ""
+                draft.shotTimeline = []
+                draft.voiceoverTimeline = []
+                draft.onScreenTextTimeline = []
+            }
+        }
+        return draft
     }
 
     static var fixtureFirstIdeaDelayNanoseconds: UInt64 {
         slowFirstIdea ? 20_000_000_000 : 450_000_000
     }
+
+    static let loopScenarioCards: [DailyCard]? = {
+        guard forceFixtureUI,
+              DebugLaunchConfiguration.fixtureSession != nil,
+              let scenario = DebugLaunchConfiguration.value(for: "MCO_LOOP_SCENARIO"),
+              ["ready", "line-script", "blank-copy", "stale-pointer", "legacy-cache", "legacy-backup", "old-decision"].contains(scenario)
+        else { return nil }
+        let today = SupabaseDateFormatting.todayDateString()
+        var draft = fixtureDailyCardDraft
+        draft.scheduledDate = today
+        let card = draft.dailyCard(completionState: nil)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: today) else { return nil }
+        let hasPastCard = scenario == "stale-pointer" || scenario == "old-decision"
+        let adjacentDate = formatter.string(from: date.addingTimeInterval(hasPastCard ? -86_400 : 86_400))
+        let adjacent = DailyCard(
+            id: UUID(uuidString: "2407E44A-1F70-4B96-8EE2-AD1E4E0E34C1")!,
+            title: hasPastCard ? "Yesterday's loop package" : "Tomorrow's loop package",
+            context: SupabaseDateFormatting.contextLine(for: adjacentDate),
+            effortLabel: card.effortLabel,
+            whyToday: card.whyToday,
+            scheduledDate: adjacentDate,
+            scenes: card.scenes,
+            shotTimeline: card.shotTimeline,
+            voiceoverTimeline: card.voiceoverTimeline,
+            script: card.script,
+            caption: card.caption,
+            audioOptionNotes: card.audioOptionNotes
+        )
+        return [card, adjacent]
+    }()
+
+    static func seedLoopScenario() {
+        guard let cards = loopScenarioCards,
+              let scenario = DebugLaunchConfiguration.value(for: "MCO_LOOP_SCENARIO") else { return }
+        let defaults = DebugLaunchConfiguration.fixtureDefaults
+        guard !defaults.bool(forKey: "loop-scenario-seeded") else { return }
+        let card = cards[0]
+        let adjacent = cards[1]
+        do {
+            if ["legacy-cache", "legacy-backup", "old-decision"].contains(scenario) {
+                guard let directory = DebugLaunchConfiguration.fixtureCacheDirectory else {
+                    preconditionFailure("Cannot locate loop fixture cache")
+                }
+                let isBackup = scenario == "legacy-backup"
+                let isLegacy = scenario == "legacy-cache" || isBackup
+                var cachedCard = card
+                cachedCard.completionState = isBackup ? .usedBackup : isLegacy ? .shot : nil
+                var pendingCard = isLegacy ? cachedCard : adjacent
+                pendingCard.completionState = isBackup ? .usedBackup : isLegacy ? .shot : .posted
+                let cached = CachedTodaySnapshot(
+                    todayCard: cachedCard,
+                    weekCards: [cachedCard, adjacent],
+                    cachedAt: Date(),
+                    source: "loop-\(scenario)",
+                    shotSceneIDs: isBackup ? Set(card.scenes.prefix(1).map(\.id)) : isLegacy ? Set(card.scenes.map(\.id)) : [],
+                    unsyncedDecision: LegacyTodayDecision(
+                        cardID: pendingCard.id,
+                        decision: isBackup ? .backupStory : isLegacy ? .shot : .posted,
+                        card: pendingCard
+                    )
+                )
+                try FileTodayCacheStore(baseDirectory: directory).saveSnapshot(cached, for: .creatorFixture)
+                if isLegacy {
+                    let context = WorkspaceContext.creatorFixture
+                    let url = directory.appendingPathComponent("today-\(context.workspaceID.uuidString)-\(context.creatorID.uuidString).json")
+                    guard var json = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any],
+                          var pending = json["unsyncedDecision"] as? [String: Any]
+                    else {
+                        preconditionFailure("Cannot encode loop legacy decision")
+                    }
+                    pending.removeValue(forKey: "card")
+                    json["unsyncedDecision"] = pending
+                    try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]).write(to: url, options: .atomic)
+                }
+            }
+            defaults.set(true, forKey: "loop-scenario-seeded")
+        } catch {
+            preconditionFailure("Cannot seed loop fixture: \(error.localizedDescription)")
+        }
+    }
+
 }
 #else
 enum DebugLaunchFlags {

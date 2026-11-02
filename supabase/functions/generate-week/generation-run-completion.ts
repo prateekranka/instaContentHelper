@@ -29,17 +29,7 @@ export async function completeDayGenerationRun(
     },
   );
   if (error) {
-    const fallback = await completeGenerationRunWithoutSnapshot(
-      admin,
-      generationID,
-      undefined,
-      completedAt,
-      "complete_day_generation_run",
-      error,
-    );
-    if ("response" in fallback) {
-      return fallback;
-    }
+    return generationPersistFailure("complete_day_generation_run", error);
   }
   return { ok: true };
 }

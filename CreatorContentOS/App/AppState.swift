@@ -14,6 +14,7 @@ final class AppState {
     var pendingFirstDayHandoff: OnboardingFirstDayHandoff?
     /// Preselects a Plan calendar date (`yyyy-MM-dd`) before opening Plan.
     var planSelectedDate: String?
+    private var planSelectedPieces: [String: UUID] = [:]
     /// Consumed by `YouView` to push a You destination (Plan links or deep links).
     var pendingYouNavigation: YouNavigationIntent?
     /// Active return context while a You destination opened from Plan is visible.
@@ -66,6 +67,17 @@ final class AppState {
     }
 
     /// Restores the last persisted Plan date when no transient selection is pending.
+    func planSelectedPiece(on date: String, context: WorkspaceContext) -> UUID? {
+        let key = "\(context.workspaceID).\(context.creatorID).\(date)"
+        return planSelectedPieces[key] ?? planSelectedDateStore.loadPiece(for: key)
+    }
+
+    func selectPlanPiece(_ pieceID: UUID, on date: String, context: WorkspaceContext) {
+        let key = "\(context.workspaceID).\(context.creatorID).\(date)"
+        planSelectedPieces[key] = pieceID
+        planSelectedDateStore.savePiece(pieceID, for: key)
+    }
+
     func persistedPlanSelectedDate() -> String? {
         planSelectedDate?.nilIfBlank ?? planSelectedDateStore.load()
     }

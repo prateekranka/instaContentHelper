@@ -1,7 +1,7 @@
 import { SupabaseAdminClient } from "../_shared/device-auth.ts";
 
 export const GENERATION_RUN_STATUS_SELECT =
-  "id,workspace_id,creator_id,weekly_setup_id,requested_by_member_id,status,weekly_plan_id,output_snapshot,input_snapshot,error_code,completed_at,model,generation_scope,target_daily_card_id,target_scheduled_date";
+  "id,workspace_id,creator_id,weekly_setup_id,requested_by_member_id,status,weekly_plan_id,output_snapshot,input_snapshot,error_code,completed_at,model,generation_scope,target_daily_card_id,target_scheduled_date,piece_id";
 
 export const GENERATION_RUN_CANCELLATION_SELECT = "status,error_code";
 
@@ -121,7 +121,8 @@ export async function completeFullWeekGenerationRun(
       completed_at: payload.completed_at,
       error_code: null,
     })
-    .eq("id", generationID);
+    .eq("id", generationID)
+    .eq("status", "running");
 
   return { error: error ?? null };
 }
@@ -144,7 +145,8 @@ export async function completePartialGenerationRun(
       error_code: "partial_generation",
       completed_at: payload.completed_at,
     })
-    .eq("id", generationID);
+    .eq("id", generationID)
+    .eq("status", "running");
 
   return { error: error ?? null };
 }
@@ -159,19 +161,25 @@ export async function completeDayGenerationRun(
     completed_at: string;
   },
 ): Promise<{ error: unknown | null }> {
-  const { error } = await admin
-    .from("weekly_generation_runs")
-    .update({
-      status: "completed",
-      output_snapshot: payload.output_snapshot,
-      warnings: payload.warnings,
-      assumptions: payload.assumptions,
-      completed_at: payload.completed_at,
-      error_code: null,
-    })
-    .eq("id", generationID);
+  for (const status of ["running", "completed"]) {
+    const { data, error } = await admin
+      .from("weekly_generation_runs")
+      .update({
+        status: "completed",
+        output_snapshot: payload.output_snapshot,
+        warnings: payload.warnings,
+        assumptions: payload.assumptions,
+        completed_at: payload.completed_at,
+        error_code: null,
+      })
+      .eq("id", generationID)
+      .eq("status", status)
+      .select("id")
+      .maybeSingle();
 
-  return { error: error ?? null };
+    if (error || data) return { error: error ?? null };
+  }
+  return { error: { message: "generation_run_closed" } };
 }
 
 /**
@@ -200,7 +208,8 @@ export async function completeGenerationRunMinimal(
   const { error } = await admin
     .from("weekly_generation_runs")
     .update(update)
-    .eq("id", generationID);
+    .eq("id", generationID)
+    .eq("status", "running");
 
   return { error: error ?? null };
 }
@@ -228,7 +237,8 @@ export async function markGenerationRunFailed(
   await admin
     .from("weekly_generation_runs")
     .update(update)
-    .eq("id", generationID);
+    .eq("id", generationID)
+    .eq("status", "running");
 }
 
 function isRunIDRecord(value: unknown): value is { id: string } {

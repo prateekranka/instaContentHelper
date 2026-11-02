@@ -104,6 +104,16 @@ struct PlanDayIdeasCacheEntry: Equatable, Sendable {
 }
 
 enum PlanDayDateFormatting {
+    static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    static var startOfToday: Date {
+        parseLocalDate(SupabaseDateFormatting.todayDateString()) ?? calendar.startOfDay(for: Date())
+    }
+
     struct FormattedPlanDate: Equatable, Sendable {
         let weekday: String
         let label: String
@@ -112,30 +122,15 @@ enum PlanDayDateFormatting {
 
     static func formattedDate(for scheduledDate: String) -> FormattedPlanDate? {
         guard let date = parseLocalDate(scheduledDate) else { return nil }
-        let weekdayFormatter = DateFormatter()
-        weekdayFormatter.locale = Locale(identifier: "en_GB")
-        weekdayFormatter.dateFormat = "EEEE"
-
-        let labelFormatter = DateFormatter()
-        labelFormatter.locale = Locale(identifier: "en_GB")
-        labelFormatter.dateFormat = "d MMMM yyyy"
-
-        let shortFormatter = DateFormatter()
-        shortFormatter.locale = Locale(identifier: "en_GB")
-        shortFormatter.dateFormat = "EEE d MMM"
-
         return FormattedPlanDate(
-            weekday: weekdayFormatter.string(from: date),
-            label: labelFormatter.string(from: date),
-            shortLabel: shortFormatter.string(from: date)
+            weekday: SupabaseDateFormatting.calendarText(from: date, format: "EEEE", localeIdentifier: "en_GB"),
+            label: SupabaseDateFormatting.calendarText(from: date, format: "d MMMM yyyy", localeIdentifier: "en_GB"),
+            shortLabel: SupabaseDateFormatting.calendarText(from: date, format: "EEE d MMM", localeIdentifier: "en_GB")
         )
     }
 
     static func parseLocalDate(_ dateString: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: dateString)
+        SupabaseDateFormatting.calendarDate(from: dateString)
     }
 }
 

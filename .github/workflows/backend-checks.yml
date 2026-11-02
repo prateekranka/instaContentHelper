@@ -6,6 +6,8 @@ on:
     branches:
       - main
       - codex/day-at-a-time-generation
+      - redesign/creator-loop
+      - codex/mira-ios-mvp
 
 permissions:
   contents: read
@@ -15,6 +17,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  agent-rules:
+    name: Creator loop agent rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository history for the fixed Step 5 baseline
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0
+      - name: Check agent rules
+        run: python3 scripts/check-agent-rules.py
+      - name: Prove rules reject past mistakes
+        run: python3 scripts/prove-agent-rules.py
   deno:
     name: Deno contracts
     runs-on: ubuntu-latest
@@ -26,7 +41,7 @@ jobs:
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: v2.x
-      - name: Type-check backend
+      - name: Type-check backend without unit tests
         run: deno task ci:backend
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020

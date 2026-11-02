@@ -123,7 +123,9 @@ export function extractProfileContentPillars(
     .filter((item): item is string => Boolean(item));
 }
 
-export function profileHasLegacyContentPillars(savedPillars: string[]): boolean {
+export function profileHasLegacyContentPillars(
+  savedPillars: string[],
+): boolean {
   return savedPillars.some((pillar) =>
     CONTENT_PILLARS.includes(pillar as ContentPillar)
   );
@@ -238,7 +240,9 @@ export function resolveDayContentPillarForProfile(
     return pillar;
   }
 
-  const savedMatch = saved.find((item) => item.toLowerCase() === pillar.toLowerCase());
+  const savedMatch = saved.find((item) =>
+    item.toLowerCase() === pillar.toLowerCase()
+  );
   if (savedMatch) {
     return savedMatch;
   }
@@ -419,6 +423,9 @@ export function normalizeGenerateDayRequest(body: unknown): GenerateDayRequest {
 
   return {
     action: "generate_day",
+    ...(body.piece_id !== undefined
+      ? { piece_id: String(body.piece_id).toLowerCase() }
+      : {}),
     creator_id: creatorID,
     scheduled_date: scheduledDate,
     day_brief: dayBrief,
@@ -464,6 +471,9 @@ export function normalizeRegenerateDayRequest(
 
   return {
     action: "regenerate_day",
+    ...(body.piece_id !== undefined
+      ? { piece_id: String(body.piece_id).toLowerCase() }
+      : {}),
     creator_id: creatorID,
     weekly_plan_id: weeklyPlanID,
     scheduled_date: scheduledDate,
@@ -1594,26 +1604,32 @@ export function isRetryableGeneratedJSONError(error: unknown): boolean {
 export function optionalSceneList(
   value: unknown,
 ): GeneratedScene[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
+  if (!Array.isArray(value)) return undefined;
   const scenes: GeneratedScene[] = [];
-  for (const scene of value) {
-    if (!isRecord(scene)) {
-      return undefined;
-    }
-    const number = optionalNonNegativeInteger(scene.number);
-    const title = optionalNonBlankString(scene.title);
-    const duration = optionalNonBlankString(scene.duration);
-    const symbol = optionalNonBlankString(scene.symbol);
-    if (!number || !title || !duration || !symbol) {
-      return undefined;
-    }
-    scenes.push({ number, title, duration, symbol });
+  for (const [index, scene] of value.entries()) {
+    if (
+      !isRecord(scene) || typeof scene.title !== "string" ||
+      typeof scene.duration !== "string" ||
+      ("id" in scene && (typeof scene.id !== "string" || !isUUID(scene.id))) ||
+      ("number" in scene &&
+        (typeof scene.number !== "number" || !Number.isInteger(scene.number) ||
+          scene.number < -9223372036854775808 ||
+          scene.number >= 9223372036854775808)) ||
+      ("symbol" in scene && typeof scene.symbol !== "string") ||
+      ("dialogue" in scene && typeof scene.dialogue !== "string")
+    ) return undefined;
+    scenes.push({
+      number: scene.number === undefined ? index + 1 : scene.number as number,
+      title: scene.title,
+      duration: scene.duration,
+      symbol: scene.symbol === undefined ? "circle" : scene.symbol as string,
+      ...(typeof scene.id === "string" ? { id: scene.id } : {}),
+      ...(typeof scene.dialogue === "string"
+        ? { dialogue: scene.dialogue }
+        : {}),
+    });
   }
-
-  return scenes.length > 0 ? scenes : undefined;
+  return scenes;
 }
 
 export function storedBackupLine(value: unknown): string | undefined {

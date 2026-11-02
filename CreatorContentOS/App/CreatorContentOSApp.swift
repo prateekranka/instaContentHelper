@@ -5,6 +5,7 @@ import BackgroundTasks
 @MainActor
 struct CreatorContentOSApp: App {
     @State private var appState = AppState.makeLaunchState()
+    @State private var miraDependencies = MiraDependencies.live()
 
     init() {
         // Register before the app finishes launching so background benchmark
@@ -12,16 +13,32 @@ struct CreatorContentOSApp: App {
         BenchmarkBackgroundTask.register()
     }
 
+    private func refreshIfTodayIsStale() {
+        guard appState.authenticationPhase == .live else { return }
+        let services = appState.runtime.services
+        Task {
+            if !services.isRefreshingRepository { await services.refreshFromRepositoriesImmediately() }
+            else { await services.replayOutboxImmediately() }
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
-            CreatorContentOSAppView()
+            MiraLaunchView(dependencies: miraDependencies)
                 .environment(appState)
                 .environment(appState.runtime.services)
+                .environment(miraDependencies)
                 .task {
                     await appState.restoreAuthentication()
                 }
                 .task {
                     await appState.observeAuthenticationChanges()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+                    refreshIfTodayIsStale()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    refreshIfTodayIsStale()
                 }
                 .task(id: appState.runtime.mode) {
                     guard appState.authenticationPhase == .live else { return }
@@ -30,10 +47,27 @@ struct CreatorContentOSApp: App {
                         await services.scheduleTodayNotificationIfNeededImmediately()
                     }
                     await services.refreshFromRepositoriesImmediately()
-#if DEBUG
-                    services.applyDebugWeekStartOverrideIfNeeded()
-#endif
                 }
+        }
+    }
+}
+
+private struct MiraLaunchView: View {
+    let dependencies: MiraDependencies
+    var body: some View {
+        Group {
+#if DEBUG
+            if DebugLaunchFlags.forceFixtureUI && DebugLaunchConfiguration.isEnabled(
+                "MCO_LEGACY_POCKET_UI", environment: ProcessInfo.processInfo.environment,
+                arguments: ProcessInfo.processInfo.arguments
+            ) {
+                CreatorContentOSAppView()
+            } else {
+                MiraRootView(dependencies: dependencies)
+            }
+#else
+            MiraRootView(dependencies: dependencies)
+#endif
         }
     }
 }

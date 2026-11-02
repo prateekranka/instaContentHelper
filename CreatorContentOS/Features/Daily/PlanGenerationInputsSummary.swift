@@ -11,8 +11,6 @@ struct PlanGenerationInputsSummary: View {
             Text("Idea settings")
                 .font(PocketSheetType.sectionLabel)
                 .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
-                .tracking(0.44)
-                .textCase(.uppercase)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("plan.inputSummary.title")
 

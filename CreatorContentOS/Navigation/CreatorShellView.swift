@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CreatorShellView: View {
     @Environment(AppState.self) private var appState
-    @State private var selectedTab: CreatorTab = .today
+    @State private var selectedTab: CreatorTab = DebugLaunchFlags.forceFixtureUI && DebugLaunchConfiguration.isEnabled("MCO_START_DAY_REVIEW") ? .plan : .today
 
     var body: some View {
         TabView(selection: $selectedTab) {

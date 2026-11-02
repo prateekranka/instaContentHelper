@@ -780,7 +780,7 @@ Deno.test("upsertDayJobRows uses exact table, conflict target, select, and order
   const op = state.ops[0];
   assertEquals(op.table, "weekly_generation_day_jobs");
   assertEquals(op.operation, "upsert");
-  assertEquals(op.onConflict, "generation_run_id,scheduled_date");
+  assertEquals(op.onConflict, "generation_run_id,day_index");
   assertEquals(op.selectColumns, queuedDayJobSelect());
   assertEquals(op.order?.column, "day_index");
   assertEquals(op.order?.ascending, true);

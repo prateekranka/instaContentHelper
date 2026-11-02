@@ -313,6 +313,7 @@ export async function readGenerationStatus(
     if (dayFailure?.status === "failed" || isDayGenerationRun(run)) {
       return jsonResponse({
         generation_id: generationID,
+        piece_id: run.piece_id,
         status: "failed",
         error: stringValue(run.error_code) ??
           dayFailure?.error_code ??
@@ -385,7 +386,7 @@ export async function readGenerationStatus(
   }
 
   if (isDayGenerationRun(run)) {
-    return await resumeSingleDayGeneration(
+    return await readSingleDayGenerationStatus(
       admin,
       generationID,
       run,
@@ -521,7 +522,7 @@ export async function readQueuedGenerationStatus(
   });
 }
 
-async function resumeSingleDayGeneration(
+async function readSingleDayGenerationStatus(
   admin: SupabaseAdminClient,
   generationID: string,
   run: GenerationRunStatusRecord,
@@ -549,39 +550,38 @@ async function resumeSingleDayGeneration(
     });
   }
 
-  const preparedResult = await host.prepareSingleDayGenerationFromRun(
-    admin,
-    generationID,
-    env,
-    run,
-    session,
-    inputSnapshot,
-    progress,
-  );
-  if ("response" in preparedResult) {
-    return preparedResult.response;
-  }
-
   const isActive = isSingleDayGenerationRunActive(
     progress,
     runningDayStaleMS(),
     Date.now(),
   );
   if (!isActive) {
-    const scheduleResult = await host.scheduleSingleDayGeneration(
+    await host.markGenerationRunFailed(admin, generationID, "generation_stale");
+    const latest = await readGenerationRunStatus(
       admin,
       generationID,
-      preparedResult.prepared,
-      {
-        ...progress,
-        status: "pending",
-        started_at: undefined,
-        heartbeat_at: undefined,
-      },
+      session.workspaceID,
     );
-    if ("response" in scheduleResult) {
-      return scheduleResult.response;
+    if (latest.error || !latest.data) {
+      return jsonResponse({ error: "generation_lookup_failed" }, 500);
     }
+    if (latest.data.status === "completed") {
+      if (!isDayDraftResponseSnapshot(latest.data.output_snapshot)) {
+        return jsonResponse({ error: "generation_lookup_failed" }, 500);
+      }
+      return jsonResponse(latest.data.output_snapshot);
+    }
+    return jsonResponse({
+      generation_id: generationID,
+      weekly_plan_id: latest.data.weekly_plan_id,
+      target_scheduled_date: latest.data.target_scheduled_date,
+      piece_id: latest.data.piece_id,
+      status: latest.data.status,
+      error: latest.data.status === "failed"
+        ? latest.data.error_code
+        : undefined,
+      poll_after_seconds: latest.data.status === "running" ? 2 : null,
+    });
   }
 
   return jsonResponse({
@@ -589,6 +589,7 @@ async function resumeSingleDayGeneration(
     weekly_plan_id: weeklyPlanID,
     status: "running",
     target_scheduled_date: scheduledDate,
+    piece_id: run.piece_id,
     poll_after_seconds: 2,
   });
 }
@@ -885,6 +886,15 @@ async function hydrateDayDraftVisualsFromSavedCard(
     return { ...snapshot };
   }
 
+  snapshot = {
+    ...snapshot,
+    ...(typeof run.piece_id === "string"
+      ? {
+        piece_id: run.piece_id,
+        daily_card: { ...snapshot.daily_card, piece_id: run.piece_id },
+      }
+      : {}),
+  };
   const weeklyPlanID = stringValue(run.weekly_plan_id) ??
     snapshot.weekly_plan_id;
   const creatorID = stringValue(run.creator_id);

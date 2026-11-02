@@ -201,7 +201,9 @@ class FakeQuery {
 
   private matches(row: Record<string, unknown>): boolean {
     for (const [key, value] of Object.entries(this.filters)) {
-      if (row[key] !== value) return false;
+      if ((key === "is_current" ? row[key] ?? true : row[key]) !== value) {
+        return false;
+      }
     }
     for (const [key, values] of Object.entries(this.inFilters)) {
       if (!values.includes(row[key])) return false;
@@ -412,6 +414,7 @@ Deno.test("readDailyCardsForPlan uses dayGenerationCardSelect and ascending date
     rowsByTable: {
       daily_cards: [
         {
+          "content_pieces.position": 0,
           id: "card-2",
           workspace_id: WORKSPACE,
           creator_id: CREATOR,
@@ -419,6 +422,7 @@ Deno.test("readDailyCardsForPlan uses dayGenerationCardSelect and ascending date
           scheduled_date: "2026-06-09",
         },
         {
+          "content_pieces.position": 0,
           id: "card-1",
           workspace_id: WORKSPACE,
           creator_id: CREATOR,
@@ -440,6 +444,7 @@ Deno.test("readDailyCardsForPlan uses dayGenerationCardSelect and ascending date
 
   const expectedSelect = [
     "id",
+    "piece_id",
     "scheduled_date",
     "status",
     "title",
@@ -451,6 +456,7 @@ Deno.test("readDailyCardsForPlan uses dayGenerationCardSelect and ascending date
     "energy_required",
     "language_mode",
     "scene_list",
+    "shot_content_owned",
     "script",
     "no_voiceover_version",
     "on_screen_text",
@@ -472,16 +478,24 @@ Deno.test("readDailyCardsForPlan uses dayGenerationCardSelect and ascending date
 
   const op = state.ops[0];
   assertEquals(op.table, "daily_cards");
-  assertEquals(op.selectColumns, expectedSelect);
+  assertEquals(
+    op.selectColumns,
+    expectedSelect +
+      ",content_pieces!daily_cards_piece_fk!inner(position,removed_at)",
+  );
   assertEquals(op.filterOrder, [
     "workspace_id",
     "creator_id",
     "weekly_plan_id",
+    "is_current",
+    "content_pieces.position",
   ]);
   assertEquals(op.filters, {
     workspace_id: WORKSPACE,
     creator_id: CREATOR,
     weekly_plan_id: PLAN,
+    is_current: true,
+    "content_pieces.position": 0,
   });
   assertEquals(op.order, { column: "scheduled_date", ascending: true });
   assertEquals(op.terminal, undefined);
@@ -782,4 +796,41 @@ Deno.test("readGenerationContextRows treats optional table failures as empty arr
   assertEquals(context.patterns, []);
   assertEquals(context.trends, []);
   assertEquals(context.confirmed_references, []);
+});
+
+Deno.test("two ready pieces on one date select independently while legacy reads use position zero", async () => {
+  const rows = [0, 1].map((position) => ({
+    id: `revision-${position}`,
+    piece_id: `piece-${position}`,
+    workspace_id: WORKSPACE,
+    creator_id: CREATOR,
+    weekly_plan_id: PLAN,
+    scheduled_date: WEEK_START,
+    status: "published",
+    "content_pieces.position": position,
+  }));
+  const state: FakeState = { ops: [], rowsByTable: { daily_cards: rows } };
+  const admin = fakeAdmin(state) as never;
+  assertEquals(
+    (await readDailyCardsForPlan(admin, WORKSPACE, CREATOR, PLAN)).data.map((
+      row,
+    ) => row.id),
+    ["revision-0"],
+  );
+  assertEquals(
+    (await readDailyCardsForPlan(admin, WORKSPACE, CREATOR, PLAN, "piece-1"))
+      .data.map((row) => row.id),
+    ["revision-1"],
+  );
+  assertEquals(
+    (await readDailyCardsForPlan(
+      admin,
+      WORKSPACE,
+      CREATOR,
+      PLAN,
+      undefined,
+      true,
+    )).data.map((row) => row.id),
+    ["revision-0", "revision-1"],
+  );
 });

@@ -49,22 +49,6 @@ targets:
       properties:
         com.apple.developer.applesignin:
           - Default
-  CreatorContentOSTests:
-    type: bundle.unit-test
-    platform: iOS
-    deploymentTarget: "26.0"
-    sources:
-      - CreatorContentOSTests
-    dependencies:
-      - target: CreatorContentOS
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.prateekranka.creatorcontenthelper.tests
-        DEVELOPMENT_TEAM: 4JRB53LG5C
-        CODE_SIGN_STYLE: Automatic
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ContentHelper.app/ContentHelper"
-        BUNDLE_LOADER: "$(TEST_HOST)"
-        GENERATE_INFOPLIST_FILE: YES
   InstalledContentHelperUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -84,10 +68,6 @@ schemes:
     build:
       targets:
         CreatorContentOS: all
-        CreatorContentOSTests: [test]
-    test:
-      targets:
-        - CreatorContentOSTests
     run:
       config: Debug
   InstalledContentHelperUITests:

@@ -6,18 +6,18 @@ enum PocketSheetTheme {
     enum Color {
         static let paper = SwiftUI.Color(hex: 0xFAFAFA)
         static let paperRaised = SwiftUI.Color(hex: 0xFFFFFF)
-        static let ink = SwiftUI.Color(hex: 0x111111)
-        static let inkMuted = SwiftUI.Color(hex: 0x737373)
-        static let inkQuiet = SwiftUI.Color(hex: 0xA3A3A3)
+        static let ink = SwiftUI.Color(hex: 0x000000)
+        static let inkMuted = SwiftUI.Color(hex: 0x666666)
+        static let inkQuiet = inkMuted
         static let hairline = SwiftUI.Color(hex: 0xE5E5E5)
         static let hairlineSoft = SwiftUI.Color(hex: 0xF0F0F0)
         static let fillMuted = SwiftUI.Color(hex: 0xF5F5F5)
         static let inversePaper = SwiftUI.Color(hex: 0xFFFFFF)
-        static let inverseInk = SwiftUI.Color(hex: 0x111111)
+        static let inverseInk = ink
         /// Creator validation attention stays in the monochrome semantic palette.
         static let validationAttention = ink
         /// Monochrome calendar / status dots (ready).
-        static let statusReady = SwiftUI.Color(hex: 0x111111)
+        static let statusReady = ink
         /// Monochrome calendar / status dots (draft).
         static let statusDraft = SwiftUI.Color(hex: 0xA3A3A3)
     }
@@ -103,15 +103,57 @@ extension EnvironmentValues {
 }
 
 enum PocketSheetType {
-    // Use semantic system styles so every shared Creator view responds to Dynamic Type.
-    static let screenTitle = Font.system(.title2, design: .default, weight: .semibold)
-    static let sectionLabel = Font.system(.caption2, design: .default, weight: .bold)
-    static let rowTitle = Font.system(.subheadline, design: .default, weight: .semibold)
-    static let rowSubtitle = Font.system(.footnote, design: .default, weight: .regular)
-    static let chip = Font.system(.caption2, design: .default, weight: .semibold)
-    static let actionPrimary = Font.system(.body, design: .default, weight: .semibold)
-    static let actionSecondary = Font.system(.body, design: .default, weight: .medium)
-    static let status = Font.system(.caption2, design: .default, weight: .semibold)
+    case screenTitle, sectionTitle, sectionLabel, rowTitle, rowSubtitle
+    case bodyText, chip, actionPrimary, actionSecondary, status, navIcon, listIcon
+
+    var size: CGFloat {
+        switch self {
+        case .screenTitle, .sectionTitle: 18
+        case .rowTitle, .bodyText, .chip, .actionPrimary, .actionSecondary: 16
+        case .sectionLabel, .rowSubtitle, .status: 14
+        case .navIcon: 24
+        case .listIcon: 28
+        }
+    }
+
+    var weight: Font.Weight {
+        switch self {
+        case .screenTitle, .sectionTitle, .rowTitle, .actionPrimary, .actionSecondary: .medium
+        default: .regular
+        }
+    }
+
+    var relativeTo: Font.TextStyle {
+        switch self {
+        case .screenTitle, .sectionTitle: .headline
+        case .sectionLabel, .rowSubtitle, .status: .footnote
+        default: .body
+        }
+    }
+}
+
+private struct PocketSheetFontModifier: ViewModifier {
+    let style: PocketSheetType
+    @ScaledMetric private var size: CGFloat
+
+    init(style: PocketSheetType) {
+        self.style = style
+        _size = ScaledMetric(wrappedValue: style.size, relativeTo: style.relativeTo)
+    }
+
+    func body(content: Content) -> some View {
+        content.font(Font.system(size: size, weight: style.weight))
+    }
+}
+
+extension View {
+    func font(_ style: PocketSheetType) -> some View {
+        modifier(PocketSheetFontModifier(style: style))
+    }
+}
+
+enum Spacing {
+    static let section: CGFloat = 28
 }
 
 enum PocketSheetSpace {
@@ -121,6 +163,7 @@ enum PocketSheetSpace {
     static let m: CGFloat = 16
     static let l: CGFloat = 20
     static let xl: CGFloat = 24
+    static let section = Spacing.section
 }
 
 enum PocketSheetShape {
@@ -148,12 +191,12 @@ enum PocketSheetTabBarAppearance {
         itemAppearance.normal.iconColor = UIColor(PocketSheetTheme.Color.inkMuted)
         itemAppearance.normal.titleTextAttributes = tabTitleAttributes(
             color: PocketSheetTheme.Color.inkMuted,
-            weight: .semibold
+            weight: .medium
         )
         itemAppearance.selected.iconColor = UIColor(PocketSheetTheme.Color.ink)
         itemAppearance.selected.titleTextAttributes = tabTitleAttributes(
             color: PocketSheetTheme.Color.ink,
-            weight: .semibold
+            weight: .medium
         )
 
         appearance.stackedLayoutAppearance = itemAppearance
@@ -179,7 +222,7 @@ enum PocketSheetTabBarAppearance {
         [
             .foregroundColor: UIColor(color),
             .font: UIFontMetrics(forTextStyle: .caption2)
-                .scaledFont(for: UIFont.systemFont(ofSize: 11, weight: weight)),
+                .scaledFont(for: UIFont.systemFont(ofSize: 14, weight: weight)),
         ]
     }
 }

@@ -6,30 +6,20 @@ struct YouAccountPrivacyBlock: View {
     var body: some View {
         PocketSheetBlock(header: "Privacy") {
             VStack(spacing: 0) {
-                privacyPolicyRow
-                PocketSheetDivider()
+                if let url = PrivacyPolicyLinks.privacyPolicyURL {
+                    privacyPolicyRow(url: url)
+                    PocketSheetDivider()
+                }
                 aiConsentRows
             }
         }
     }
 
-    private var privacyPolicyRow: some View {
-        HStack(alignment: .center, spacing: PocketSheetSpace.s) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(PrivacyPolicyLinks.rowTitle)
-                    .font(PocketSheetType.rowTitle)
-                    .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
-                Text(PrivacyPolicyLinks.unpublishedSubtitle)
-                    .font(PocketSheetType.rowSubtitle)
-                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-            }
-            Spacer(minLength: PocketSheetSpace.s)
+    private func privacyPolicyRow(url: URL) -> some View {
+        Link(destination: url) {
+            PocketSheetRow(title: PrivacyPolicyLinks.rowTitle, leadingSymbol: "hand.raised")
         }
-        .frame(minHeight: 44, alignment: .center)
-        .padding(.horizontal, PocketSheetSpace.m)
-        .padding(.vertical, PocketSheetSpace.s)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(PrivacyPolicyLinks.rowTitle). \(PrivacyPolicyLinks.unpublishedSubtitle)")
+        .buttonStyle(.plain)
         .accessibilityIdentifier("you.account.privacyPolicy")
     }
 
@@ -45,7 +35,7 @@ struct YouAccountPrivacyBlock: View {
                     kind: services.aiConsentAllowsOutbound ? .ready : .pending
                 )
             }
-            .padding(.horizontal, PocketSheetSpace.m)
+            .padding(.horizontal, PocketSheetSpace.l)
             .padding(.top, PocketSheetSpace.s)
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("you.account.aiConsent.status")
@@ -55,7 +45,7 @@ struct YouAccountPrivacyBlock: View {
                     services.requestAIConsentPrompt()
                 }
                 .accessibilityIdentifier("you.account.aiConsent.allow")
-                .padding(.horizontal, PocketSheetSpace.m)
+                .padding(.horizontal, PocketSheetSpace.l)
                 .padding(.bottom, PocketSheetSpace.s)
             } else {
                 Color.clear.frame(height: PocketSheetSpace.s)

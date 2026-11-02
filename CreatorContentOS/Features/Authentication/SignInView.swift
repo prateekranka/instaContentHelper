@@ -9,7 +9,7 @@ struct SignInView: View {
             PocketSheetTheme.Color.paper.ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: PocketSheetSpace.xl) {
+                VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                     header
                     welcomeCard
                     signInActions
@@ -24,7 +24,7 @@ struct SignInView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-            Text("ContentHelper")
+            Text("Sign in to keep your ideas")
                 .font(PocketSheetType.screenTitle)
                 .foregroundStyle(PocketSheetTheme.Color.ink)
             Text("Sign in with Apple to open your Creator workspace.")
@@ -38,34 +38,30 @@ struct SignInView: View {
             VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
                 HStack(spacing: PocketSheetSpace.xs) {
                     Image(systemName: "checkmark.circle")
-                        .font(.subheadline.weight(.semibold))
+                        .font(PocketSheetType.listIcon)
                     Text("Your next ready idea")
-                        .font(.headline)
+                        .font(PocketSheetType.rowTitle)
                 }
                 .foregroundStyle(PocketSheetTheme.Color.ink)
 
                 Text("Open Today to find one shootable idea, with the hook, format, and effort already clear.")
-                    .font(.body)
+                    .font(PocketSheetType.bodyText)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
 
                 VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                    Text("Sample")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
-                        .textCase(.uppercase)
                     Text("A quiet reset that makes Monday feel lighter")
-                        .font(.headline)
+                        .font(PocketSheetType.rowTitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
                     Text("Short check-in · 10 minutes")
-                        .font(.subheadline)
+                        .font(PocketSheetType.bodyText)
                         .foregroundStyle(PocketSheetTheme.Color.inkMuted)
                 }
                 .padding(.top, PocketSheetSpace.xs)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Your next ready idea. Open Today to find one shootable idea with the hook, format, and effort already clear. Sample: A quiet reset that makes Monday feel lighter. Short check-in, 10 minutes.")
+        .accessibilityLabel("Your next ready idea. Open Today to find one shootable idea with the hook, format, and effort already clear. A quiet reset that makes Monday feel lighter. Short check-in, 10 minutes.")
         .accessibilityIdentifier("sign-in.welcome")
     }
 
@@ -78,7 +74,7 @@ struct SignInView: View {
             }
             .signInWithAppleButtonStyle(.black)
             .frame(maxWidth: .infinity)
-            .frame(height: 54)
+            .frame(minHeight: 44)
             .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
             .disabled(isBusy)
             .opacity(isBusy ? 0.52 : 1)

@@ -29,6 +29,7 @@ enum GenerationResponseMode: String, Encodable, Sendable {
 }
 
 struct SupabaseRegenerateDayRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
     var weeklyPlanID: UUID
     var scheduledDate: String
@@ -38,9 +39,14 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
     var action = "regenerate_day"
     var dayGuidance: String?
     var clientContext: SupabaseGenerationClientContext? = nil
+    var idempotencyKey: String? = nil
+
+    var timeZone: String = TimeZone.current.identifier
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
+        case timeZone = "time_zone"
         case weeklyPlanID = "weekly_plan_id"
         case scheduledDate = "scheduled_date"
         case preserveManualEdits = "preserve_manual_edits"
@@ -49,6 +55,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
         case action
         case dayGuidance = "day_guidance"
         case clientContext = "client_context"
+        case idempotencyKey = "idempotency_key"
     }
 }
 
@@ -57,6 +64,7 @@ struct SupabaseRegenerateDayRequest: Encodable, Sendable {
 /// references, uses the day brief as the only brief, and returns the same
 /// storyboard + caption card payload as regenerate_day.
 struct SupabaseDailyGenerationRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
     var creatorID: UUID
     var scheduledDate: String
     var dayBrief: String
@@ -64,19 +72,26 @@ struct SupabaseDailyGenerationRequest: Encodable, Sendable {
     var mock: Bool?
     var action = "generate_day"
     var clientContext: SupabaseGenerationClientContext? = nil
+    var idempotencyKey: String? = nil
+
+    var timeZone: String = TimeZone.current.identifier
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case creatorID = "creator_id"
+        case timeZone = "time_zone"
         case scheduledDate = "scheduled_date"
         case dayBrief = "day_brief"
         case responseMode = "response_mode"
         case mock
         case action
         case clientContext = "client_context"
+        case idempotencyKey = "idempotency_key"
     }
 }
 
 struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var generationID: UUID
     var weeklyPlanID: UUID
     var status: String
@@ -88,6 +103,7 @@ struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
     var generatedAt: String
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case generationID = "generation_id"
         case weeklyPlanID = "weekly_plan_id"
         case status
@@ -101,6 +117,7 @@ struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
 
     var domainResult: DailyGenerationResult {
         DailyGenerationResult(
+            pieceID: pieceID ?? dailyCard.pieceID,
             generationID: generationID,
             weeklyPlanID: weeklyPlanID,
             status: status,
@@ -114,7 +131,8 @@ struct SupabaseDailyGenerationResponse: Decodable, Hashable, Sendable {
     }
 }
 
-struct DailyGenerationResult: Hashable, Sendable {
+struct DailyGenerationResult: Codable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var generationID: UUID
     var weeklyPlanID: UUID
     var status: String
@@ -134,10 +152,12 @@ struct SupabaseGenerateStoryboardThumbnailRequest: Encodable, Hashable, Sendable
     var rowIndexes: [Int]?
     var force: Bool
     var revisionInstructions: String?
+    var pieceID: UUID? = nil
 
     enum CodingKeys: String, CodingKey {
         case creatorID = "creator_id"
         case dailyCardID = "daily_card_id"
+        case pieceID = "piece_id"
         case rowIndexes = "row_indexes"
         case force
         case revisionInstructions = "revision_instructions"
@@ -198,6 +218,7 @@ struct SupabaseGenerationStatusRequest: Encodable, Sendable {
 }
 
 struct SupabaseGenerationStatusResponse: Decodable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var generationID: UUID
     var status: String
     var weeklyPlanID: UUID?
@@ -207,6 +228,7 @@ struct SupabaseGenerationStatusResponse: Decodable, Hashable, Sendable {
     var error: String?
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case generationID = "generation_id"
         case status
         case weeklyPlanID = "weekly_plan_id"
@@ -257,6 +279,7 @@ private struct SupabaseGenerationStatusProbe: Decodable {
 }
 
 struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     var id: UUID?
     var scheduledDate: String
     var status: String?
@@ -273,7 +296,8 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
     var durationSeconds: Int?
     var hook: String?
     var saveShareReason: String?
-    var sceneList: [SupabaseShotSceneDTO]
+    @SupabaseShotScenes var sceneList: [SupabaseShotSceneDTO]
+    var shotContentOwned: Bool? = nil
     var shotTimeline: [ProductionTimelineItem]?
     var voiceoverTimeline: [ProductionTimelineItem]?
     var onScreenTextTimeline: [ProductionTimelineItem]?
@@ -300,6 +324,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
     var storyboardThumbnailAssets: [StoryboardThumbnailAsset]?
 
     enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
         case id
         case scheduledDate = "scheduled_date"
         case status
@@ -317,6 +342,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
         case hook
         case saveShareReason = "save_share_reason"
         case sceneList = "scene_list"
+        case shotContentOwned = "shot_content_owned"
         case shotTimeline = "shot_timeline"
         case voiceoverTimeline = "voiceover_timeline"
         case onScreenTextTimeline = "on_screen_text_timeline"
@@ -344,7 +370,7 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
     }
 
     var domainCard: GeneratedDailyCardDraft {
-        GeneratedDailyCardDraft(
+        var card = GeneratedDailyCardDraft(
             id: id ?? UUID(),
             scheduledDate: scheduledDate,
             status: status ?? "draft",
@@ -362,8 +388,9 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
             hook: hook,
             saveShareReason: saveShareReason,
             sceneList: sceneList.enumerated().map { index, scene in
-                scene.domainScene(fallbackNumber: index + 1)
+                scene.domainScene(fallbackNumber: index + 1, revisionID: id)
             },
+            shotContentOwned: shotContentOwned ?? false,
             shotTimeline: shotTimeline ?? [],
             voiceoverTimeline: voiceoverTimeline ?? [],
             onScreenTextTimeline: onScreenTextTimeline ?? [],
@@ -388,6 +415,8 @@ struct SupabaseGeneratedDailyCardDTO: Codable, Hashable, Sendable {
             sourceNote: sourceNote,
             storyboardThumbnailAssets: storyboardThumbnailAssets ?? []
         )
+        card.pieceID = pieceID
+        return card
     }
 }
 
@@ -495,7 +524,9 @@ struct SupabaseDraftDailyCardPublishRequest: Encodable, Sendable {
                 number: scene.number,
                 title: scene.title,
                 duration: scene.duration,
-                symbol: scene.symbol
+                symbol: scene.symbol,
+                id: scene.id,
+                dialogue: scene.dialogue
             )
         }
         shotTimeline = card.shotTimeline
@@ -573,5 +604,28 @@ private extension ProductionTimelineItem {
             object["duration_seconds"] = .number(Double(durationSeconds))
         }
         return .object(object)
+    }
+}
+
+struct SupabaseReplaceDayRequest: Encodable, Sendable {
+    var pieceID: UUID? = nil
+    var creatorID: UUID
+    var scheduledDate: String
+    var dailyCardID: UUID? = nil
+    var dayBrief: String
+    var idempotencyKey: String
+    var responseMode: GenerationResponseMode = .async
+
+    var timeZone: String = TimeZone.current.identifier
+
+    enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
+        case creatorID = "creator_id"
+        case timeZone = "time_zone"
+        case scheduledDate = "scheduled_date"
+        case dailyCardID = "daily_card_id"
+        case dayBrief = "day_brief"
+        case idempotencyKey = "idempotency_key"
+        case responseMode = "response_mode"
     }
 }

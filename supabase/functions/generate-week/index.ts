@@ -48,7 +48,6 @@ import type {
   SingleDayGenerationSnapshot,
 } from "./generation-run-snapshot.ts";
 import {
-  clearExistingDraftDailyCardsForFullGeneration,
   findLatestDraftDayPlanContainer,
   generationPersistFailure,
   insertGeneratedIdeas,
@@ -63,6 +62,12 @@ import {
   markGenerationRunFailed,
   patchCompletedDayGenerationSnapshot,
 } from "./generation-run-completion.ts";
+import {
+  type GenerationIntent,
+  generationIntent,
+  generationReplayResponse,
+  readGenerationReplay,
+} from "./generation-idempotency.ts";
 import { createDayGenerationRun } from "./generation-run-start.ts";
 import {
   insertWeekGenerationRun,
@@ -106,7 +111,7 @@ import {
   type SingleDayRunnerPreparedGeneration,
 } from "./generation-single-day-runner.ts";
 
-type GenerateWeekDependencies = {
+export type GenerateWeekDependencies = {
   env?: EnvReader;
   createAdminClient?: (
     supabaseURL: string,
@@ -160,7 +165,12 @@ function logAIGenerationAttempt(log: AIGenerationAttemptLog): void {
 }
 
 type GenerationLifecycleLog = {
-  action: "generate_week" | "generate_day" | "regenerate_day" | "retry_day";
+  action:
+    | "generate_week"
+    | "generate_day"
+    | "regenerate_day"
+    | "replace_day"
+    | "retry_day";
   phase:
     | "request_accepted"
     | "generation_started"
@@ -171,7 +181,13 @@ type GenerationLifecycleLog = {
     | "storyboard_visuals_failed"
     | "day_job_queued"
     | "day_job_retrying";
-  status: "running" | "completed" | "failed" | "queued" | "retrying" | "pending";
+  status:
+    | "running"
+    | "completed"
+    | "failed"
+    | "queued"
+    | "retrying"
+    | "pending";
   generation_id: string | null;
   weekly_plan_id: string | null;
   week_start_date: string | null;
@@ -220,8 +236,7 @@ const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const PROMPT_VERSION = "creator-weekly-generation-v1";
 
-let todayISOProvider: () => string = () =>
-  new Date().toISOString().slice(0, 10);
+let todayISOProvider: ((timeZone?: unknown) => string) | undefined;
 
 export function availableParallelDayJobSlots(
   jobs: Parameters<typeof availableParallelDayJobSlotsFromWorker>[0],
@@ -241,8 +256,26 @@ export function overrideTodayISO(provider: () => string): void {
   todayISOProvider = provider;
 }
 
-function isDateBeforeToday(dateStr: string): boolean {
-  return dateStr < todayISOProvider();
+function isDateBeforeToday(dateStr: string, timeZone?: unknown): boolean {
+  if (todayISOProvider) return dateStr < todayISOProvider(timeZone);
+  let zone = "UTC";
+  if (typeof timeZone === "string" && !/^[+-]/.test(timeZone)) {
+    try {
+      zone = new Intl.DateTimeFormat("en-US", { timeZone }).resolvedOptions()
+        .timeZone;
+    } catch {
+      zone = "UTC";
+    }
+  }
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value;
+  return dateStr < `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 function pastDateNotAllowedResponse(): Response {
@@ -300,24 +333,68 @@ export async function handleGenerateWeekRequest(
     );
   }
 
-  if (isGenerateDayAction(rawBody)) {
-    return await handleGenerateDayRequest(
-      admin,
-      env,
-      rawBody,
-      session,
-      dependencies,
-    );
-  }
-
-  if (isRegenerateDayAction(rawBody)) {
-    return await handleRegenerateDayRequest(
-      admin,
-      env,
-      rawBody,
-      session,
-      dependencies,
-    );
+  if (
+    isRecord(rawBody) &&
+    ["generate_day", "regenerate_day", "replace_day"].includes(
+      String(rawBody.action),
+    )
+  ) {
+    let intent: GenerationIntent;
+    try {
+      intent = generationIntent(rawBody);
+    } catch (error) {
+      return jsonResponse({
+        error: error instanceof GenerateWeekValidationError
+          ? error.code
+          : "invalid_idempotency_key",
+      }, 400);
+    }
+    if (intent.pieceID) {
+      const piece = await admin.from("content_pieces").select(
+        "id,workspace_id,creator_id,scheduled_date,removed_at",
+      ).eq("id", intent.pieceID).maybeSingle();
+      if (piece.error) {
+        return jsonResponse({ error: "piece_lookup_failed" }, 500);
+      }
+      if (
+        piece.data &&
+        (piece.data.workspace_id !== session.workspaceID ||
+          String(piece.data.creator_id).toLowerCase() !==
+            String(rawBody.creator_id).toLowerCase() ||
+          piece.data.scheduled_date !== rawBody.scheduled_date)
+      ) {
+        return jsonResponse({ error: "piece_scope_mismatch" }, 409);
+      }
+      if (piece.data?.removed_at) {
+        return jsonResponse({ error: "piece_removed" }, 409);
+      }
+    }
+    if (rawBody.idempotency_key !== undefined) {
+      const replay = await readGenerationReplay(
+        admin,
+        session.workspaceID,
+        String(rawBody.creator_id),
+        intent,
+      );
+      if (replay) return replay;
+    }
+    return rawBody.action === "regenerate_day"
+      ? await handleRegenerateDayRequest(
+        admin,
+        env,
+        rawBody,
+        session,
+        dependencies,
+        intent,
+      )
+      : await handleGenerateDayRequest(
+        admin,
+        env,
+        rawBody,
+        session,
+        dependencies,
+        intent,
+      );
   }
 
   if (isRetiredBatchLifecycleAction(rawBody)) {
@@ -332,20 +409,13 @@ export async function handleGenerateWeekRequest(
   return jsonResponse({ error: "invalid_generation_payload" }, 400);
 }
 
-function isRegenerateDayAction(body: unknown): body is Record<string, unknown> {
-  return isRecord(body) && body.action === "regenerate_day";
-}
-
-function isGenerateDayAction(body: unknown): body is Record<string, unknown> {
-  return isRecord(body) && body.action === "generate_day";
-}
-
 async function handleRegenerateDayRequest(
   admin: SupabaseAdminClient,
   env: EnvReader,
   rawBody: unknown,
   session: VerifiedDeviceSession,
   dependencies: GenerateWeekDependencies,
+  intent: GenerationIntent,
 ): Promise<Response> {
   const preparedResult = await prepareDayGeneration(
     admin,
@@ -363,6 +433,7 @@ async function handleRegenerateDayRequest(
     session,
     dependencies,
     "regenerate_day",
+    intent,
   );
 }
 
@@ -381,10 +452,14 @@ async function handleGenerateDayRequest(
   rawBody: unknown,
   session: VerifiedDeviceSession,
   dependencies: GenerateWeekDependencies,
+  intent: GenerationIntent,
 ): Promise<Response> {
   let request: GenerateDayRequest;
   try {
-    request = normalizeGenerateDayRequest(rawBody);
+    request = normalizeGenerateDayRequest({
+      ...(rawBody as Record<string, unknown>),
+      action: "generate_day",
+    });
   } catch (error) {
     return jsonResponse({
       error: error instanceof GenerateWeekValidationError
@@ -393,7 +468,12 @@ async function handleGenerateDayRequest(
     }, 400);
   }
 
-  if (isDateBeforeToday(request.scheduled_date)) {
+  if (
+    isDateBeforeToday(
+      request.scheduled_date,
+      (rawBody as Record<string, unknown>).time_zone,
+    )
+  ) {
     return pastDateNotAllowedResponse();
   }
 
@@ -406,11 +486,13 @@ async function handleGenerateDayRequest(
     return creatorResult.response;
   }
 
-  const containerResult = await ensureDayPlanContainer(
-    admin,
-    session,
-    request,
-  );
+  const containerResult = intent.replace
+    ? await findReplacementPlan(admin, session.workspaceID, request, intent)
+    : await ensureDayPlanContainer(
+      admin,
+      session,
+      request,
+    );
   if ("response" in containerResult) {
     return containerResult.response;
   }
@@ -420,10 +502,14 @@ async function handleGenerateDayRequest(
     creator_id: request.creator_id,
     weekly_plan_id: containerResult.weeklyPlanID,
     scheduled_date: request.scheduled_date,
+    piece_id: request.piece_id,
     preserve_manual_edits: false,
     mock: request.mock,
     response_mode: request.response_mode,
     day_guidance: request.day_brief,
+    replace_day: intent.replace ||
+      ("recovering" in containerResult && containerResult.recovering === true),
+    time_zone: (rawBody as Record<string, unknown>).time_zone,
   };
 
   const preparedResult = await prepareDayGeneration(
@@ -452,8 +538,92 @@ async function handleGenerateDayRequest(
     prepared,
     session,
     dependencies,
-    "generate_day",
+    intent.replace ? "replace_day" : "generate_day",
+    intent,
   );
+}
+
+async function findReplacementPlan(
+  admin: SupabaseAdminClient,
+  workspaceID: string,
+  request: GenerateDayRequest,
+  intent: GenerationIntent,
+): Promise<
+  { weeklyPlanID: string; recovering?: boolean } | { response: Response }
+> {
+  const query = admin.from("daily_cards").select(
+    "id,weekly_plan_id,content_pieces!daily_cards_piece_fk!inner(position)",
+  )
+    .eq("workspace_id", workspaceID).eq("creator_id", request.creator_id)
+    .eq("scheduled_date", request.scheduled_date).eq("is_current", true);
+  const { data, error } =
+    await (request.piece_id
+      ? query.eq("piece_id", request.piece_id)
+      : query.eq("content_pieces.position", 0)).maybeSingle();
+  if (error) return generationPersistFailure("replacement_card_lookup", error);
+  if (!data) {
+    const recovery = await findArchivedDayPlan(
+      admin,
+      workspaceID,
+      request,
+      intent.expectedRevisionID,
+    );
+    if (recovery) return recovery;
+  }
+  if (
+    !data ||
+    (intent.expectedRevisionID &&
+      String(data.id).toLowerCase() !== intent.expectedRevisionID.toLowerCase())
+  ) {
+    return { response: jsonResponse({ error: "daily_card_not_found" }, 404) };
+  }
+  intent.expectedRevisionID = String(data.id);
+  return { weeklyPlanID: String(data.weekly_plan_id) };
+}
+
+async function findArchivedDayPlan(
+  admin: SupabaseAdminClient,
+  workspaceID: string,
+  request: GenerateDayRequest,
+  expectedRevisionID?: string,
+): Promise<
+  { weeklyPlanID: string; recovering: true } | { response: Response } | null
+> {
+  const recoveryQuery = admin.from(
+    request.piece_id ? "content_pieces" : "creator_days",
+  ).select(
+    "current_revision_id",
+  )
+    .eq("workspace_id", workspaceID).eq("creator_id", request.creator_id)
+    .eq("scheduled_date", request.scheduled_date);
+  const recovery =
+    await (request.piece_id
+      ? recoveryQuery.eq("id", request.piece_id)
+      : recoveryQuery).maybeSingle();
+  if (recovery.error) {
+    return generationPersistFailure("replacement_day_lookup", recovery.error);
+  }
+  const revisionID = recovery.data?.current_revision_id;
+  if (
+    !revisionID ||
+    (expectedRevisionID &&
+      String(revisionID).toLowerCase() !== expectedRevisionID.toLowerCase())
+  ) return null;
+  const archived = await admin.from("daily_cards").select("id,weekly_plan_id")
+    .eq("id", revisionID).eq("workspace_id", workspaceID).eq(
+      "creator_id",
+      request.creator_id,
+    )
+    .eq("status", "archived").eq("is_current", false).maybeSingle();
+  if (archived.error) {
+    return generationPersistFailure(
+      "replacement_recovery_lookup",
+      archived.error,
+    );
+  }
+  return archived.data
+    ? { weeklyPlanID: String(archived.data.weekly_plan_id), recovering: true }
+    : null;
 }
 
 /**
@@ -465,7 +635,15 @@ async function ensureDayPlanContainer(
   admin: SupabaseAdminClient,
   session: VerifiedDeviceSession,
   request: GenerateDayRequest,
-): Promise<{ weeklyPlanID: string } | { response: Response }> {
+): Promise<
+  { weeklyPlanID: string; recovering?: boolean } | { response: Response }
+> {
+  const recovery = await findArchivedDayPlan(
+    admin,
+    session.workspaceID,
+    request,
+  );
+  if (recovery) return recovery;
   const weekStartDate = weekStartDateForDate(request.scheduled_date);
 
   const existingResult = await findLatestDraftDayPlanContainer(
@@ -482,7 +660,7 @@ async function ensureDayPlanContainer(
   }
 
   const existing = (existingResult.data?.[0] ?? null) as PlanRecord | null;
-  if (existing?.is_soft_locked) {
+  if (existing?.is_soft_locked && !request.piece_id) {
     return {
       response: jsonResponse({ error: "existing_published_week_locked" }, 409),
     };
@@ -518,16 +696,22 @@ async function startPreparedDayGeneration(
   prepared: PreparedDayGeneration,
   session: VerifiedDeviceSession,
   dependencies: GenerateWeekDependencies,
-  action: "generate_day" | "regenerate_day",
+  action: "generate_day" | "regenerate_day" | "replace_day",
+  intent: GenerationIntent,
 ): Promise<Response> {
   const runResult = await createDayGenerationRun(
     admin,
-    prepared,
+    { ...prepared, generationIntent: intent },
     session.memberID,
   );
   if ("response" in runResult) {
     return runResult.response;
   }
+
+  if (runResult.run.replayed) {
+    return await generationReplayResponse(admin, runResult.run, intent);
+  }
+  prepared = { ...prepared, generationID: runResult.run.id };
 
   logGenerationLifecycle({
     action,
@@ -551,6 +735,11 @@ async function startPreparedDayGeneration(
       progress,
     );
     if ("response" in progressResult) {
+      await markGenerationRunFailed(
+        admin,
+        runResult.run.id,
+        "generation_persist_failed",
+      );
       return progressResult.response;
     }
     const scheduleResult = await scheduleSingleDayGeneration(
@@ -561,6 +750,11 @@ async function startPreparedDayGeneration(
       buildSingleDayRunnerHost(dependencies),
     );
     if ("response" in scheduleResult) {
+      await markGenerationRunFailed(
+        admin,
+        runResult.run.id,
+        "generation_persist_failed",
+      );
       return scheduleResult.response;
     }
     return jsonResponse({
@@ -569,6 +763,9 @@ async function startPreparedDayGeneration(
       status: "running",
       target_scheduled_date: prepared.request.scheduled_date,
       poll_after_seconds: 2,
+      idempotency_key: intent.idempotencyKey,
+      piece_id: runResult.run.piece_id,
+      replaced_daily_card_id: runResult.run.replaced_daily_card_id,
     }, 202);
   }
 
@@ -578,7 +775,12 @@ async function startPreparedDayGeneration(
     prepared,
     buildSingleDayRunnerHost(dependencies),
   );
-  return "response" in result ? result.response : jsonResponse(result.payload);
+  return "response" in result ? result.response : jsonResponse({
+    ...result.payload,
+    idempotency_key: intent.idempotencyKey,
+    piece_id: runResult.run.piece_id,
+    replaced_daily_card_id: runResult.run.replaced_daily_card_id,
+  });
 }
 
 async function prepareDayGeneration(
@@ -600,6 +802,15 @@ async function prepareDayGeneration(
     };
   }
 
+  if (
+    isDateBeforeToday(
+      request.scheduled_date,
+      (rawBody as Record<string, unknown>).time_zone,
+    )
+  ) {
+    return { response: pastDateNotAllowedResponse() };
+  }
+
   const creatorResult = await readCreator(
     admin,
     session.workspaceID,
@@ -618,12 +829,16 @@ async function prepareDayGeneration(
     return planResult;
   }
   const plan = planResult.plan;
-  if (plan.status === "published" || plan.is_soft_locked) {
+  const replacing = isRecord(rawBody) && rawBody.replace_day === true;
+  if (
+    !replacing && !request.piece_id &&
+    (plan.status === "published" || plan.is_soft_locked)
+  ) {
     return {
       response: jsonResponse({ error: "existing_published_week_locked" }, 409),
     };
   }
-  if (plan.status !== "draft") {
+  if (!replacing && !request.piece_id && plan.status !== "draft") {
     return {
       response: jsonResponse({ error: "weekly_plan_not_found" }, 409),
     };
@@ -646,7 +861,7 @@ async function prepareDayGeneration(
   const targetCard = cardsResult.cards.find((card) =>
     card.scheduled_date === request.scheduled_date
   );
-  if (targetCard && targetCard.status !== "draft") {
+  if (!replacing && targetCard && targetCard.status !== "draft") {
     return {
       response: jsonResponse({ error: "daily_card_not_found" }, 404),
     };
@@ -686,7 +901,11 @@ async function prepareDayGeneration(
     existing_week_cards: cardsResult.cards,
     day_guidance: request.day_guidance,
   };
-  inputSnapshot = withSynthesizedDayBriefSetup(inputSnapshot, request, targetCard);
+  inputSnapshot = withSynthesizedDayBriefSetup(
+    inputSnapshot,
+    request,
+    targetCard,
+  );
   if (
     request.input_overrides &&
     env.get("MCO_ALLOW_AI_INPUT_OVERRIDES") === "1"
@@ -750,7 +969,9 @@ export function withSynthesizedDayBriefSetup(
   return {
     ...inputSnapshot,
     weekly_setup: {
-      ...(isRecord(inputSnapshot.weekly_setup) ? inputSnapshot.weekly_setup : {}),
+      ...(isRecord(inputSnapshot.weekly_setup)
+        ? inputSnapshot.weekly_setup
+        : {}),
       notes,
     },
     day_guidance: inputSnapshot.day_guidance ?? guidance,
@@ -768,6 +989,8 @@ async function readSavedDailyCards(
     workspaceID,
     creatorID,
     weeklyPlanID,
+    undefined,
+    true,
   );
   if (error) {
     return generationPersistFailure("daily_cards_lookup", error);
@@ -787,6 +1010,7 @@ function storedDailyCardToGenerated(
     : {};
   return {
     id: stringValue(card.id),
+    piece_id: stringValue(card.piece_id),
     scheduled_date: card.scheduled_date,
     format: contentFormatValue(postInstructions.format),
     primary_surface: stringValue(postInstructions.primary_surface) ?? "",
@@ -1279,6 +1503,7 @@ function buildSingleDayRunnerHost(
         scheduledDate: prepared.request.scheduled_date,
         preserveManualEdits: prepared.request.preserve_manual_edits,
         targetCard: prepared.targetCard,
+        generationID: prepared.generationID ?? "",
       }, generatedCard),
     completeDayGenerationRun,
     patchCompletedDayGenerationSnapshot,
@@ -1462,21 +1687,6 @@ async function handleQueuedWeekGeneration(
     return linkResult.response;
   }
 
-  const clearResult = await clearExistingDraftDailyCardsForFullGeneration(
-    admin,
-    prepared.session.workspaceID,
-    prepared.request.creator_id,
-    planResult.weeklyPlanID,
-  );
-  if ("response" in clearResult) {
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      "generation_persist_failed",
-    );
-    return clearResult.response;
-  }
-
   const progress = initialParallelWeekGenerationSnapshot(
     prepared.request.week_start_date,
     planResult.weeklyPlanID,
@@ -1560,21 +1770,6 @@ async function handleParallelWeekGeneration(
       "generation_persist_failed",
     );
     return linkResult.response;
-  }
-
-  const clearResult = await clearExistingDraftDailyCardsForFullGeneration(
-    admin,
-    prepared.session.workspaceID,
-    prepared.request.creator_id,
-    planResult.weeklyPlanID,
-  );
-  if ("response" in clearResult) {
-    await markGenerationRunFailed(
-      admin,
-      generationID,
-      "generation_persist_failed",
-    );
-    return clearResult.response;
   }
 
   const progress = initialParallelWeekGenerationSnapshot(

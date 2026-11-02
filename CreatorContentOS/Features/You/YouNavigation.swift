@@ -16,13 +16,16 @@ struct YouBackHeader: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: PocketSheetSpace.xxs) {
+            HStack(spacing: 0) {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(PocketSheetType.navIcon)
                 Text(backLabel)
                     .font(PocketSheetType.rowTitle)
+                    .padding(.horizontal, PocketSheetSpace.xxs)
             }
             .foregroundStyle(PocketSheetTheme.Color.ink)
+            .padding(.horizontal, PocketSheetSpace.m)
+            .padding(.vertical, PocketSheetSpace.xxs)
             .frame(minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -40,16 +43,17 @@ struct YouDestinationScaffold<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
-                YouBackHeader(backLabel: backLabel, action: onBack)
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                 VStack(alignment: .leading, spacing: PocketSheetSpace.xs) {
                     Text(title)
                         .font(PocketSheetType.screenTitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
-                    Text(subtitle)
-                        .font(PocketSheetType.rowSubtitle)
-                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 content()
             }
@@ -57,7 +61,17 @@ struct YouDestinationScaffold<Content: View>: View {
             .padding(.top, PocketSheetSpace.xs)
             .padding(.bottom, PocketSheetSpace.xl)
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                YouBackHeader(backLabel: backLabel, action: onBack)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, PocketSheetSpace.l)
+            .padding(.vertical, PocketSheetSpace.xs)
+            .background(PocketSheetTheme.Color.paper)
+        }
         .background(PocketSheetTheme.Color.paper.ignoresSafeArea())
+        .accessibilityElement(children: .contain)
     }
 }
 

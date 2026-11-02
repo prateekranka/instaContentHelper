@@ -10,6 +10,7 @@ type MakeDayAvailableRequest = {
   creator_id?: string;
   scheduled_date?: string;
   daily_card_id?: string;
+  piece_id?: string;
 };
 
 type MakeDayAvailableAdminClient = SupabaseAdminClient & {
@@ -81,12 +82,19 @@ export async function handleMakeDayAvailableRequest(
   const creatorID = body.creator_id?.trim();
   const scheduledDate = body.scheduled_date?.trim();
   const dailyCardID = body.daily_card_id?.trim();
+  if (
+    body.piece_id !== undefined &&
+    (typeof body.piece_id !== "string" || !UUID_PATTERN.test(body.piece_id))
+  ) {
+    return jsonResponse({ error: "invalid_piece_id" }, 400);
+  }
+  const pieceID = body.piece_id;
 
   if (!creatorID || !UUID_PATTERN.test(creatorID)) {
     return jsonResponse({ error: "invalid_make_day_available_payload" }, 400);
   }
 
-  if (!scheduledDate && !dailyCardID) {
+  if (!scheduledDate && !dailyCardID && !pieceID) {
     return jsonResponse({ error: "invalid_make_day_available_payload" }, 400);
   }
 
@@ -112,6 +120,7 @@ export async function handleMakeDayAvailableRequest(
     workspace_id: session.workspaceID,
     creator_id: creatorID,
   };
+  if (pieceID) payload.piece_id = pieceID;
   if (scheduledDate) {
     payload.scheduled_date = scheduledDate;
   }
@@ -132,6 +141,7 @@ export async function handleMakeDayAvailableRequest(
 
   return jsonResponse({
     daily_card_id: result.daily_card_id,
+    piece_id: result.piece_id,
     scheduled_date: result.scheduled_date,
     status: result.status ?? "published",
     weekly_plan_id: result.weekly_plan_id,
@@ -165,6 +175,12 @@ async function assertCreator(
 
 function stableError(code: string): string {
   switch (code) {
+    case "invalid_piece_id":
+    case "invalid_piece_target":
+    case "piece_scope_mismatch":
+    case "piece_revision_mismatch":
+    case "piece_not_found":
+    case "piece_removed":
     case "invalid_make_day_available_payload":
     case "daily_card_not_found":
     case "daily_card_not_draft":

@@ -17,76 +17,81 @@ struct YouContentCategoriesView: View {
             backLabel: backLabel,
             onBack: onBack
         ) {
-            PocketSheetBlock(header: "Your interests") {
-                VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
-                    Text("Pick as many as you like. Custom topics are welcome.")
-                        .font(PocketSheetType.rowSubtitle)
-                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, PocketSheetSpace.m)
-                        .padding(.top, PocketSheetSpace.s)
-
-                    HStack(spacing: PocketSheetSpace.xs) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
+                PocketSheetBlock(header: "Starting point") {
+                    VStack(spacing: 0) {
                         ForEach(OnboardingStartingPoint.allCases, id: \.self) { point in
-                            OnboardingStartingPointChip(
-                                point: point,
-                                isSelected: selection.startingPoint == point
-                            ) {
+                            Button {
                                 selection.setStartingPoint(point)
                                 scheduleSave()
+                            } label: {
+                                PocketSheetRow(
+                                    title: point.displayLabel,
+                                    trailingSymbol: selection.startingPoint == point ? "checkmark.circle.fill" : "circle",
+                                    leadingSymbol: point == .justStarting ? "sparkles" : "arrow.up.right"
+                                )
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(point.displayLabel)
+                            .accessibilityAddTraits(selection.startingPoint == point ? .isSelected : [])
                             .accessibilityIdentifier("you.interests.startingPoint.\(point.rawValue)")
-                        }
-                    }
-                    .padding(.horizontal, PocketSheetSpace.m)
-
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 112), spacing: PocketSheetSpace.s)],
-                        spacing: PocketSheetSpace.s
-                    ) {
-                        ForEach(OnboardingInterestCatalog.starter) { interest in
-                            OnboardingInterestChip(
-                                label: interest.label,
-                                isSelected: selection.interestIDs.contains(interest.id)
-                            ) {
-                                selection.toggleInterest(interest.id)
-                                scheduleSave()
+                            if point != OnboardingStartingPoint.allCases.last {
+                                PocketSheetDivider()
                             }
-                            .accessibilityIdentifier("you.interests.chip.\(interest.id)")
                         }
                     }
-                    .padding(.horizontal, PocketSheetSpace.m)
+                }
+                PocketSheetBlock {
+                    VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
+                        Text("Pick as many as you like. Custom topics are welcome.")
+                            .font(PocketSheetType.rowSubtitle)
+                            .foregroundStyle(PocketSheetTheme.Color.inkMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, PocketSheetSpace.l)
+                            .padding(.top, PocketSheetSpace.s)
 
-                    if !selection.customSubjects.isEmpty {
-                        YouFlowLayout(spacing: PocketSheetSpace.xs) {
-                            ForEach(selection.customSubjects, id: \.self) { subject in
-                                OnboardingCustomSubjectTag(subject: subject) {
-                                    selection.removeCustomSubject(subject)
-                                    scheduleSave()
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 112), spacing: PocketSheetSpace.s)],
+                            spacing: PocketSheetSpace.s
+                        ) {
+                            ForEach(OnboardingInterestCatalog.starter) { interest in
+                                interestChip(interest)
+                                    .accessibilityIdentifier("you.interests.chip.\(interest.id)")
+                            }
+                        }
+                        .padding(.horizontal, PocketSheetSpace.l)
+
+                        if !selection.customSubjects.isEmpty {
+                            YouFlowLayout(spacing: PocketSheetSpace.xs) {
+                                ForEach(selection.customSubjects, id: \.self) { subject in
+                                    customSubjectTag(subject) {
+                                        selection.removeCustomSubject(subject)
+                                        scheduleSave()
+                                    }
                                 }
                             }
+                            .padding(.horizontal, PocketSheetSpace.l)
                         }
-                        .padding(.horizontal, PocketSheetSpace.m)
+
+                        TextField("Or tell us in your own words…", text: $customSubjectDraft)
+                            .font(PocketSheetType.bodyText)
+                            .foregroundStyle(PocketSheetTheme.Color.ink)
+                            .padding(PocketSheetSpace.m)
+                            .background(PocketSheetTheme.Color.paper)
+                            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
+                                    .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
+                            }
+                            .padding(.horizontal, PocketSheetSpace.l)
+                            .accessibilityIdentifier("you.interests.customInput")
+                            .submitLabel(.done)
+                            .onSubmit { addCustomSubject() }
+
+                        statusLine
+                            .padding(.horizontal, PocketSheetSpace.l)
+                            .padding(.bottom, PocketSheetSpace.s)
                     }
-
-                    TextField("Or tell us in your own words…", text: $customSubjectDraft)
-                        .font(PocketSheetType.rowTitle)
-                        .foregroundStyle(PocketSheetTheme.Color.ink)
-                        .padding(PocketSheetSpace.m)
-                        .background(PocketSheetTheme.Color.paper)
-                        .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous)
-                                .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
-                        }
-                        .padding(.horizontal, PocketSheetSpace.m)
-                        .accessibilityIdentifier("you.interests.customInput")
-                        .submitLabel(.done)
-                        .onSubmit { addCustomSubject() }
-
-                    statusLine
-                        .padding(.horizontal, PocketSheetSpace.m)
-                        .padding(.bottom, PocketSheetSpace.s)
                 }
             }
         }
@@ -105,6 +110,52 @@ struct YouContentCategoriesView: View {
         .onChange(of: services.creatorProfileSummary.startingPoint) { _, _ in
             reloadIfNeeded()
         }
+    }
+
+    private func interestChip(_ interest: OnboardingInterestOption) -> some View {
+        let selected = selection.interestIDs.contains(interest.id)
+        return Button {
+            selection.toggleInterest(interest.id)
+            scheduleSave()
+        } label: {
+            HStack(spacing: 0) {
+                Text(interest.label)
+                    .padding(.horizontal, PocketSheetSpace.xxs)
+                    .fixedSize(horizontal: false, vertical: true)
+                if selected {
+                    Image(systemName: "checkmark")
+                        .accessibilityHidden(true)
+                }
+            }
+            .font(PocketSheetType.actionSecondary)
+            .foregroundStyle(selected ? PocketSheetTheme.Color.inversePaper : PocketSheetTheme.Color.ink)
+            .padding(.horizontal, PocketSheetSpace.m)
+            .padding(.vertical, PocketSheetSpace.xxs)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(selected ? PocketSheetTheme.Color.inverseInk : PocketSheetTheme.Color.paperRaised, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(interest.label)
+        .accessibilityValue(selected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func customSubjectTag(_ subject: String, onRemove: @escaping () -> Void) -> some View {
+        HStack(spacing: 0) {
+            Text(subject)
+                .font(PocketSheetType.bodyText)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(PocketSheetType.navIcon)
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(subject)")
+        }
+        .foregroundStyle(PocketSheetTheme.Color.ink)
+        .padding(.leading, PocketSheetSpace.m)
+        .background(PocketSheetTheme.Color.paperRaised, in: Capsule())
     }
 
     @ViewBuilder

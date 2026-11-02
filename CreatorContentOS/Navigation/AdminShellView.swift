@@ -434,12 +434,12 @@ struct AIRunwayView: View {
             AdminMetricTile(
                 title: "Week",
                 value: services.weeklyPlan.isSoftLocked ? "Locked" : "Draft",
-                detail: services.weeklyPlan.computedReadinessLine,
+                detail: services.weekPieceSummary,
                 systemImage: services.weeklyPlan.isSoftLocked ? "lock.fill" : "calendar.badge.clock"
             )
             AdminMetricTile(
                 title: "Draft cards",
-                value: "\(services.latestGenerationSummary?.dailyCards.count ?? services.weeklyPlan.days.count)",
+                value: "\(services.latestGenerationSummary?.dailyCards.count ?? services.weekReviewPieces.count)",
                 detail: generationStateLine,
                 systemImage: "rectangle.stack"
             )
@@ -477,7 +477,7 @@ struct AIRunwayView: View {
                         AdminProofRow(
                             icon: "calendar",
                             title: "Cards",
-                            value: "\(draft.dailyCards.count) planned days"
+                            value: "\(draft.dailyCards.count) pieces"
                         )
                         AdminProofRow(
                             icon: "lightbulb",
@@ -666,9 +666,9 @@ struct LiveQAView: View {
             WeeklySectionTitle(title: "Published Week Path", subtitle: services.weeklyPlan.weekRange)
             JournalBlock {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(services.weeklyPlan.days.prefix(7).enumerated()), id: \.element.id) { index, day in
+                    ForEach(Array(services.weeklyPlan.days.enumerated()), id: \.element.id) { index, day in
                         AdminDayProofRow(day: day)
-                        if index < min(services.weeklyPlan.days.count, 7) - 1 {
+                        if index < services.weeklyPlan.days.count - 1 {
                             Hairline()
                         }
                     }

@@ -84,6 +84,14 @@ class FakeQuery {
     private readonly state: FakeState,
   ) {}
 
+  select() {
+    return this;
+  }
+
+  maybeSingle() {
+    return this;
+  }
+
   update(values: Record<string, unknown>): FakeQuery {
     this.values = values;
     return this;
@@ -166,8 +174,8 @@ Deno.test("successful full-week completion performs one exact update", async () 
     completed_at: COMPLETED_AT,
     error_code: null,
   });
-  assertEquals(state.ops[0].filterOrder, ["id"]);
-  assertEquals(state.ops[0].filters, { id: RUN_ID });
+  assertEquals(state.ops[0].filterOrder, ["id", "status"]);
+  assertEquals(state.ops[0].filters, { id: RUN_ID, status: "running" });
 });
 
 Deno.test("successful day completion performs one exact update", async () => {
@@ -193,8 +201,8 @@ Deno.test("successful day completion performs one exact update", async () => {
     completed_at: COMPLETED_AT,
     error_code: null,
   });
-  assertEquals(state.ops[0].filterOrder, ["id"]);
-  assertEquals(state.ops[0].filters, { id: RUN_ID });
+  assertEquals(state.ops[0].filterOrder, ["id", "status"]);
+  assertEquals(state.ops[0].filters, { id: RUN_ID, status: "running" });
 });
 
 Deno.test("snapshot failure falls back to exact minimal completion update", async () => {
@@ -224,8 +232,8 @@ Deno.test("snapshot failure falls back to exact minimal completion update", asyn
       error_code: null,
       weekly_plan_id: PLAN,
     });
-    assertEquals(state.ops[1].filterOrder, ["id"]);
-    assertEquals(state.ops[1].filters, { id: RUN_ID });
+    assertEquals(state.ops[1].filterOrder, ["id", "status"]);
+    assertEquals(state.ops[1].filters, { id: RUN_ID, status: "running" });
     assertEquals(warnings, [
       "generate-week completion snapshot write failed; retrying minimal completion",
     ]);
@@ -234,7 +242,7 @@ Deno.test("snapshot failure falls back to exact minimal completion update", asyn
   }
 });
 
-Deno.test("minimal fallback includes weekly_plan_id for week and omits it for day", async () => {
+Deno.test("week retains legacy fallback while day requires a replayable result", async () => {
   const weekState: FakeState = {
     ops: [],
     runs: [{ id: RUN_ID, status: "running" }],
@@ -266,16 +274,10 @@ Deno.test("minimal fallback includes weekly_plan_id for week and omits it for da
     DAY_PAYLOAD,
     COMPLETED_AT,
   );
-  assertEquals(dayResult, { ok: true });
-  assertEquals(dayState.ops[1].values, {
-    status: "completed",
-    completed_at: COMPLETED_AT,
-    error_code: null,
-  });
-  assert(
-    !("weekly_plan_id" in
-      (dayState.ops[1].values as Record<string, unknown>)),
-  );
+  assert("response" in dayResult);
+  assertEquals(dayResult.response.status, 500);
+  assertEquals(dayState.ops.length, 1);
+  assertEquals(dayState.runs[0].status, "running");
 });
 
 Deno.test("fallback failure returns generationPersistFailure with the original step", async () => {
@@ -319,7 +321,7 @@ Deno.test("fallback failure returns generationPersistFailure with the original s
   assertEquals(dayBody, {
     error: "generation_persist_failed",
     step: "complete_day_generation_run",
-    detail: "minimal_write_failed",
+    detail: "snapshot_write_failed",
   });
 });
 
@@ -353,8 +355,8 @@ Deno.test("markGenerationRunFailed preserves exact failed payload/filter semanti
     typeof (state.ops[0].values as Record<string, unknown>).completed_at,
     "string",
   );
-  assertEquals(state.ops[0].filterOrder, ["id"]);
-  assertEquals(state.ops[0].filters, { id: RUN_ID });
+  assertEquals(state.ops[0].filterOrder, ["id", "status"]);
+  assertEquals(state.ops[0].filters, { id: RUN_ID, status: "running" });
 });
 
 Deno.test("warning/fallback call order and no unnecessary fallback on success", async () => {
@@ -404,24 +406,19 @@ Deno.test("warning/fallback call order and no unnecessary fallback on success", 
     fallbackWarnings.push(String(args[0]));
   };
   try {
-    await completeDayGenerationRun(
+    const failed = await completeDayGenerationRun(
       fakeAdmin(fallbackState) as never,
       RUN_ID,
       DAY_PAYLOAD,
       COMPLETED_AT,
     );
-    assertEquals(fallbackState.ops.length, 2);
+    assert("response" in failed);
+    assertEquals(fallbackState.ops.length, 1);
     assertEquals(
       (fallbackState.ops[0].values as Record<string, unknown>).output_snapshot,
       DAY_PAYLOAD,
     );
-    assert(
-      !("output_snapshot" in
-        (fallbackState.ops[1].values as Record<string, unknown>)),
-    );
-    assertEquals(fallbackWarnings, [
-      "generate-week completion snapshot write failed; retrying minimal completion",
-    ]);
+    assertEquals(fallbackWarnings, []);
   } finally {
     console.warn = originalWarn;
   }

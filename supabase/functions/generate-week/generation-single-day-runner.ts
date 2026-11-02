@@ -24,6 +24,7 @@ import { runningDayStaleMS } from "./generation-parallel-week-worker.ts";
 import { generatedDailyCardValues } from "./generation-persistence.ts";
 
 export type SingleDayRunnerPreparedGeneration = {
+  generationID?: string;
   request: RegenerateDayRequest;
   session: VerifiedDeviceSession;
   plan: {
@@ -304,7 +305,15 @@ export async function scheduleSingleDayGeneration(
     return updateResult;
   }
   host.scheduleBackgroundTask(
-    runDayGenerationPipeline(admin, generationID, prepared, host),
+    runDayGenerationPipeline(admin, generationID, prepared, host).catch(
+      async (error) => {
+        await host.markGenerationRunFailed(
+          admin,
+          generationID,
+          host.stableGenerationError(error),
+        );
+      },
+    ),
   );
   return { ok: true };
 }
@@ -490,6 +499,7 @@ export async function runDayGenerationPipeline(
     status: "draft",
     target_scheduled_date: prepared.request.scheduled_date,
     daily_card: persistResult.dailyCard,
+    piece_id: persistResult.dailyCard.piece_id,
     warnings: generated.warnings,
     assumptions: generated.assumptions,
     source_summary: generated.source_summary,
@@ -623,9 +633,7 @@ function scheduleAsyncDayStoryboardVisuals(args: {
       );
       const assets = dailyCardWithStoryboard.storyboard_thumbnail_assets;
       const hasGeneratedAsset = Array.isArray(assets) &&
-        assets.some((asset) =>
-          isRecord(asset) && asset.status === "generated"
-        );
+        assets.some((asset) => isRecord(asset) && asset.status === "generated");
       visualsStatus = hasGeneratedAsset ? "ready" : "skipped";
     } catch (error) {
       console.error(JSON.stringify({

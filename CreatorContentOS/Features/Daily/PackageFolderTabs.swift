@@ -125,6 +125,7 @@ struct PackageFolderTabs<Content: View>: View {
                 )
                 .stroke(PocketSheetTheme.Color.hairline, lineWidth: 1)
             }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("plan.package.panel.\(selection.rawValue)")
     }
 }

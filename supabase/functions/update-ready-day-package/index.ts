@@ -10,6 +10,7 @@ type UpdateReadyDayPackageRequest = {
   creator_id?: string;
   scheduled_date?: string;
   daily_card_id?: string;
+  piece_id?: string;
   package?: Record<string, unknown>;
 };
 
@@ -32,6 +33,8 @@ type HandlerDependencies = {
 };
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const SHOT_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -81,26 +84,104 @@ export async function handleUpdateReadyDayPackageRequest(
   const creatorID = body.creator_id?.trim();
   const scheduledDate = body.scheduled_date?.trim();
   const dailyCardID = body.daily_card_id?.trim();
+  if (
+    body.piece_id !== undefined &&
+    (typeof body.piece_id !== "string" || !UUID_PATTERN.test(body.piece_id))
+  ) {
+    return jsonResponse({ error: "invalid_piece_id" }, 400);
+  }
+  const pieceID = body.piece_id;
   const packagePatch = body.package ?? {};
 
   if (!creatorID || !UUID_PATTERN.test(creatorID)) {
-    return jsonResponse({ error: "invalid_update_ready_day_package_payload" }, 400);
+    return jsonResponse(
+      { error: "invalid_update_ready_day_package_payload" },
+      400,
+    );
   }
 
-  if (!scheduledDate && !dailyCardID) {
-    return jsonResponse({ error: "invalid_update_ready_day_package_payload" }, 400);
+  if (!scheduledDate && !dailyCardID && !pieceID) {
+    return jsonResponse(
+      { error: "invalid_update_ready_day_package_payload" },
+      400,
+    );
   }
 
   if (scheduledDate && !DATE_PATTERN.test(scheduledDate)) {
-    return jsonResponse({ error: "invalid_update_ready_day_package_payload" }, 400);
+    return jsonResponse(
+      { error: "invalid_update_ready_day_package_payload" },
+      400,
+    );
   }
 
   if (dailyCardID && !UUID_PATTERN.test(dailyCardID)) {
-    return jsonResponse({ error: "invalid_update_ready_day_package_payload" }, 400);
+    return jsonResponse(
+      { error: "invalid_update_ready_day_package_payload" },
+      400,
+    );
   }
 
-  if (typeof packagePatch !== "object" || packagePatch === null || Array.isArray(packagePatch)) {
-    return jsonResponse({ error: "invalid_update_ready_day_package_payload" }, 400);
+  if (
+    typeof packagePatch !== "object" || packagePatch === null ||
+    Array.isArray(packagePatch)
+  ) {
+    return jsonResponse(
+      { error: "invalid_update_ready_day_package_payload" },
+      400,
+    );
+  }
+
+  for (
+    const field of [
+      "title",
+      "why_today",
+      "caption",
+      "script",
+      "backup_story",
+      "backup_caption_only",
+      "shootability",
+    ]
+  ) {
+    if (!(field in packagePatch)) continue;
+    if (typeof packagePatch[field] !== "string") {
+      return jsonResponse({ error: "invalid_package_text", field }, 400);
+    }
+    if (!(packagePatch[field] as string).trim()) {
+      return jsonResponse({ error: "blank_package_text", field }, 400);
+    }
+  }
+
+  if ("scene_list" in packagePatch) {
+    const scenes = packagePatch.scene_list;
+    if (!Array.isArray(scenes)) {
+      return jsonResponse({
+        error: "invalid_package_scene_list",
+        field: "scene_list",
+      }, 400);
+    }
+    const shotIDs = new Set<string>();
+    for (const [shotIndex, shot] of scenes.entries()) {
+      if (
+        typeof shot !== "object" || shot === null || Array.isArray(shot) ||
+        typeof shot.id !== "string" || !SHOT_UUID_PATTERN.test(shot.id) ||
+        typeof shot.title !== "string" ||
+        typeof shot.duration !== "string" ||
+        ("dialogue" in shot && typeof shot.dialogue !== "string") ||
+        ("symbol" in shot && typeof shot.symbol !== "string") ||
+        ("number" in shot &&
+          (!Number.isInteger(shot.number) ||
+            shot.number < -9223372036854775808 ||
+            shot.number >= 9223372036854775808)) ||
+        shotIDs.has(shot.id.toLowerCase())
+      ) {
+        return jsonResponse({
+          error: "invalid_package_scene_list",
+          field: "scene_list",
+          shot_index: shotIndex,
+        }, 400);
+      }
+      shotIDs.add(shot.id.toLowerCase());
+    }
   }
 
   const { session } = authResult;
@@ -118,6 +199,7 @@ export async function handleUpdateReadyDayPackageRequest(
     creator_id: creatorID,
     package: packagePatch,
   };
+  if (pieceID) payload.piece_id = pieceID;
   if (scheduledDate) {
     payload.scheduled_date = scheduledDate;
   }
@@ -125,7 +207,9 @@ export async function handleUpdateReadyDayPackageRequest(
     payload.daily_card_id = dailyCardID;
   }
 
-  const { data, error } = await admin.rpc("update_ready_day_package", { payload });
+  const { data, error } = await admin.rpc("update_ready_day_package", {
+    payload,
+  });
   if (error) {
     return jsonResponse({ error: "update_ready_day_package_failed" }, 500);
   }
@@ -133,11 +217,16 @@ export async function handleUpdateReadyDayPackageRequest(
   const result = (data ?? {}) as Record<string, unknown>;
   if (typeof result.error === "string" && result.error.length > 0) {
     const status = typeof result.status === "number" ? result.status : 500;
-    return jsonResponse({ error: stableError(result.error) }, status);
+    return jsonResponse({
+      error: stableError(result.error),
+      field: result.field,
+      shot_index: result.shot_index,
+    }, status);
   }
 
   return jsonResponse({
     daily_card_id: result.daily_card_id,
+    piece_id: result.piece_id,
     scheduled_date: result.scheduled_date,
     status: result.status,
     weekly_plan_id: result.weekly_plan_id,
@@ -172,6 +261,15 @@ async function assertCreator(
 
 function stableError(code: string): string {
   switch (code) {
+    case "invalid_piece_id":
+    case "invalid_piece_target":
+    case "piece_scope_mismatch":
+    case "piece_revision_mismatch":
+    case "piece_not_found":
+    case "piece_removed":
+    case "blank_package_text":
+    case "invalid_package_text":
+    case "invalid_package_scene_list":
     case "invalid_update_ready_day_package_payload":
     case "daily_card_not_found":
     case "daily_card_not_ready":

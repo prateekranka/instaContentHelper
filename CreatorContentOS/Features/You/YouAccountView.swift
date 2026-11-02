@@ -7,17 +7,13 @@ struct YouAccountView: View {
     var body: some View {
         YouDestinationScaffold(
             title: "Account",
-            subtitle: "Signed-in identity, runtime health, and sign-out.",
+            subtitle: "",
             backLabel: backLabel,
             onBack: onBack
         ) {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                 YouAccountIdentityBlock()
-                YouAccountRuntimeStatusBlock()
                 YouAccountPrivacyBlock()
-#if DEBUG
-                YouAccountDebugOnboardingResetBlock()
-#endif
                 YouAccountSignOutButton()
             }
         }
@@ -29,36 +25,14 @@ struct YouAccountIdentityBlock: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        PocketSheetBlock(header: "Identity") {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-                HStack {
-                    Text(liveSession == nil ? "Account" : "Signed in with Apple")
-                        .font(PocketSheetType.sectionLabel)
-                        .foregroundStyle(PocketSheetTheme.Color.inkQuiet)
-                    Spacer()
-                    PocketSheetChip(
-                        text: liveSession?.memberRole.capitalized ?? "Sample",
-                        isEmphasized: liveSession != nil
-                    )
-                }
-                .padding(.horizontal, PocketSheetSpace.m)
-                .padding(.top, PocketSheetSpace.s)
-
-                if let liveSession {
-                    Text(appleIdentityLabel(for: liveSession))
-                        .font(PocketSheetType.rowTitle)
-                        .foregroundStyle(PocketSheetTheme.Color.ink)
-                        .padding(.horizontal, PocketSheetSpace.m)
-                        .padding(.bottom, PocketSheetSpace.s)
-                        .accessibilityIdentifier("you.account.identity")
-                } else {
-                    Text("Using sample data")
-                        .font(PocketSheetType.rowTitle)
-                        .foregroundStyle(PocketSheetTheme.Color.ink)
-                        .padding(.horizontal, PocketSheetSpace.m)
-                        .padding(.bottom, PocketSheetSpace.s)
-                }
-            }
+        PocketSheetBlock {
+            Text(liveSession.map { "Signed in as \(appleIdentityLabel(for: $0))" } ?? "Using sample data")
+                .font(PocketSheetType.rowTitle)
+                .foregroundStyle(PocketSheetTheme.Color.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, PocketSheetSpace.l)
+                .padding(.vertical, PocketSheetSpace.s)
+                .accessibilityIdentifier("you.account.identity")
         }
     }
 
@@ -81,6 +55,7 @@ struct YouAccountIdentityBlock: View {
     }
 }
 
+#if DEBUG
 struct YouAccountRuntimeStatusBlock: View {
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
@@ -108,14 +83,14 @@ struct YouAccountRuntimeStatusBlock: View {
                     Spacer(minLength: PocketSheetSpace.s)
                     refreshButton
                 }
-                .padding(.horizontal, PocketSheetSpace.m)
+                .padding(.horizontal, PocketSheetSpace.l)
                 .padding(.vertical, PocketSheetSpace.s)
 
                 if let message = refreshFeedbackMessage {
                     Text(message)
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(refreshFeedbackColor)
-                        .padding(.horizontal, PocketSheetSpace.m)
+                        .padding(.horizontal, PocketSheetSpace.l)
                         .padding(.bottom, PocketSheetSpace.s)
                 }
             }
@@ -130,7 +105,7 @@ struct YouAccountRuntimeStatusBlock: View {
             Spacer(minLength: PocketSheetSpace.s)
             PocketSheetStatus(text: value, kind: kind)
         }
-        .padding(.horizontal, PocketSheetSpace.m)
+        .padding(.horizontal, PocketSheetSpace.l)
         .padding(.vertical, PocketSheetSpace.s)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title) \(value)")
@@ -168,7 +143,7 @@ struct YouAccountRuntimeStatusBlock: View {
                     ProgressView().controlSize(.small)
                 } else {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(PocketSheetType.navIcon)
                 }
             }
             .frame(width: 44, height: 44)
@@ -222,7 +197,6 @@ struct YouAccountRuntimeStatusBlock: View {
     }
 }
 
-#if DEBUG
 struct YouAccountDebugOnboardingResetBlock: View {
     @State private var didReset = false
 
@@ -232,7 +206,7 @@ struct YouAccountDebugOnboardingResetBlock: View {
                 Text("Clears onboarding progress and completion flags for QA reruns.")
                     .font(PocketSheetType.rowSubtitle)
                     .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                    .padding(.horizontal, PocketSheetSpace.m)
+                    .padding(.horizontal, PocketSheetSpace.l)
                     .padding(.top, PocketSheetSpace.s)
 
                 PocketSheetSecondaryAction(title: didReset ? "Onboarding reset" : "Reset onboarding") {
@@ -240,7 +214,7 @@ struct YouAccountDebugOnboardingResetBlock: View {
                     didReset = true
                 }
                 .accessibilityIdentifier("you.account.debug.resetOnboarding")
-                .padding(.horizontal, PocketSheetSpace.m)
+                .padding(.horizontal, PocketSheetSpace.l)
                 .padding(.bottom, PocketSheetSpace.s)
             }
         }

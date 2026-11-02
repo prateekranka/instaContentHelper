@@ -43,19 +43,19 @@ struct YouCreatorVoiceView: View {
             backLabel: backLabel,
             onBack: onBack
         ) {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.l) {
+            VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
                 if let error = services.creatorProfileEditError {
                     Text(error)
                         .font(PocketSheetType.rowSubtitle)
                         .foregroundStyle(PocketSheetTheme.Color.ink)
                 }
 
-                PocketSheetBlock(header: "Saved voice") {
+                PocketSheetBlock {
                     VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
                         if voicePrefilled {
                             HStack(spacing: PocketSheetSpace.xs) {
                                 Image(systemName: "sparkles")
-                                    .font(.system(size: 12))
+                                    .font(PocketSheetType.rowSubtitle)
                                 Text("Prefilled from your references and categories — your ideas still start from your references alone until you save your own voice.")
                                     .font(PocketSheetType.rowSubtitle)
                             }
@@ -101,9 +101,13 @@ struct YouCreatorVoiceView: View {
                             identifier: "you.voice.noGo"
                         )
                     }
-                    .padding(PocketSheetSpace.m)
+                    .padding(.horizontal, PocketSheetSpace.l)
+                    .padding(.vertical, PocketSheetSpace.s)
                 }
-
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            PocketSheetCommandBar {
                 PocketSheetPrimaryAction(
                     title: services.isSavingCreatorProfile ? "Saving" : "Save voice",
                     systemImage: services.isSavingCreatorProfile ? "hourglass" : "checkmark"
@@ -114,6 +118,9 @@ struct YouCreatorVoiceView: View {
                 .opacity(canSave ? 1 : 0.52)
                 .accessibilityIdentifier("you.voice.save")
             }
+            .padding(.horizontal, PocketSheetSpace.l)
+            .padding(.vertical, PocketSheetSpace.s)
+            .background(PocketSheetTheme.Color.paper)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("you.screen.voice")
@@ -121,6 +128,7 @@ struct YouCreatorVoiceView: View {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { focusedField = nil }
+                    .font(PocketSheetType.actionSecondary)
                     .accessibilityIdentifier("you.voice.keyboardDone")
             }
         }
@@ -195,7 +203,7 @@ struct YouCreatorVoiceView: View {
                 .foregroundStyle(PocketSheetTheme.Color.inkMuted)
             TextField("", text: text, axis: .vertical)
                 .focused($focusedField, equals: identifier)
-                .font(PocketSheetType.rowTitle)
+                .font(PocketSheetType.bodyText)
                 .foregroundStyle(PocketSheetTheme.Color.ink)
                 .lineLimit(4...12)
                 .padding(PocketSheetSpace.s)

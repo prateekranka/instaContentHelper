@@ -3,6 +3,7 @@ import Foundation
 struct SupabaseReadContentRequest: Encodable, Sendable {
     enum Action: String, Encodable, Sendable {
         case today
+        case days
         case weekly
         case archive
         case creatorProfile = "creator_profile"
@@ -12,11 +13,13 @@ struct SupabaseReadContentRequest: Encodable, Sendable {
     var action: Action
     var creatorID: UUID
     var todayDate: String?
+    var includeAllPieces: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case action
         case creatorID = "creator_id"
         case todayDate = "today_date"
+        case includeAllPieces = "include_all_pieces"
     }
 }
 
@@ -111,5 +114,43 @@ struct SupabaseIntelligenceReadResponse: Decodable, Hashable, Sendable {
         case trends
         case audioOptions = "audio_options"
         case ideas
+    }
+}
+
+
+struct SupabaseCreatorDaysResponse: Decodable, Sendable {
+    var days: [SupabaseCreatorDayRow]
+}
+
+struct SupabaseCreatorDayRow: Decodable, Sendable {
+    struct Generation: Decodable, Sendable {
+        var pieceID: UUID? = nil
+        var generationID: UUID
+        var status: String
+        var idempotencyKey: String?
+
+        enum CodingKeys: String, CodingKey {
+            case pieceID = "piece_id"
+            case generationID = "generation_id"
+            case status
+            case idempotencyKey = "idempotency_key"
+        }
+    }
+
+    var pieceID: UUID? = nil
+    var position: Int? = nil
+    var scheduledDate: String
+    var currentRevisionID: UUID?
+    var revision: SupabaseDailyCardRow?
+    var generation: Generation?
+    var updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case pieceID = "piece_id"
+        case position
+        case scheduledDate = "scheduled_date"
+        case currentRevisionID = "current_revision_id"
+        case revision, generation
+        case updatedAt = "updated_at"
     }
 }

@@ -2,6 +2,7 @@ import Foundation
 
 struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
+    var pieceID: UUID? = nil
     var title: String
     var context: String
     var effortLabel: String
@@ -14,11 +15,19 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     var primarySurface: String?
     var durationSeconds: Int?
     var scenes: [ShotScene]
+    var shotContentOwned: Bool
     var shotTimeline: [ProductionTimelineItem]?
     var voiceoverTimeline: [ProductionTimelineItem]?
     var onScreenTextTimeline: [ProductionTimelineItem]?
     var completionState: CompletionState?
-    var script: String?
+    private var legacyScript: String?
+    var script: String? {
+        get {
+            !scenes.isEmpty && scenes.allSatisfy { $0.dialogue != nil }
+                ? ShotScript.text(for: scenes) : legacyScript
+        }
+        set { legacyScript = newValue }
+    }
     var noVoiceoverVersion: String?
     var onScreenText: [String]?
     var caption: String?
@@ -36,6 +45,120 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
     /// Storyboard frame thumbnails keyed by scene/script row. Optional for older Today cache payloads.
     var storyboardThumbnailAssets: [StoryboardThumbnailAsset]?
 
+    enum CodingKeys: String, CodingKey {
+        case id
+        case pieceID
+        case title
+        case context
+        case effortLabel
+        case whyToday
+        case hook
+        case sourceNote
+        case scheduledDate
+        case format
+        case primarySurface
+        case durationSeconds
+        case scenes
+        case shotContentOwned
+        case shotTimeline
+        case voiceoverTimeline
+        case onScreenTextTimeline
+        case completionState
+        case script
+        case noVoiceoverVersion
+        case onScreenText
+        case caption
+        case cta
+        case hashtags
+        case coverText
+        case postInstructions
+        case brandEventNotes
+        case backupStory
+        case backupCaptionOnly
+        case audioOptionNotes
+        case creatorFitScore
+        case riskNotes
+        case assumptions
+        case storyboardThumbnailAssets
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encodeIfPresent(pieceID, forKey: .pieceID)
+        try values.encode(title, forKey: .title)
+        try values.encode(context, forKey: .context)
+        try values.encode(effortLabel, forKey: .effortLabel)
+        try values.encode(whyToday, forKey: .whyToday)
+        try values.encodeIfPresent(hook, forKey: .hook)
+        try values.encodeIfPresent(sourceNote, forKey: .sourceNote)
+        try values.encodeIfPresent(scheduledDate, forKey: .scheduledDate)
+        try values.encodeIfPresent(format, forKey: .format)
+        try values.encodeIfPresent(primarySurface, forKey: .primarySurface)
+        try values.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try values.encode(scenes, forKey: .scenes)
+        try values.encode(shotContentOwned, forKey: .shotContentOwned)
+        try values.encodeIfPresent(shotTimeline, forKey: .shotTimeline)
+        try values.encodeIfPresent(voiceoverTimeline, forKey: .voiceoverTimeline)
+        try values.encodeIfPresent(onScreenTextTimeline, forKey: .onScreenTextTimeline)
+        try values.encodeIfPresent(completionState, forKey: .completionState)
+        try values.encodeIfPresent(script, forKey: .script)
+        try values.encodeIfPresent(noVoiceoverVersion, forKey: .noVoiceoverVersion)
+        try values.encodeIfPresent(onScreenText, forKey: .onScreenText)
+        try values.encodeIfPresent(caption, forKey: .caption)
+        try values.encodeIfPresent(cta, forKey: .cta)
+        try values.encodeIfPresent(hashtags, forKey: .hashtags)
+        try values.encodeIfPresent(coverText, forKey: .coverText)
+        try values.encodeIfPresent(postInstructions, forKey: .postInstructions)
+        try values.encodeIfPresent(brandEventNotes, forKey: .brandEventNotes)
+        try values.encodeIfPresent(backupStory, forKey: .backupStory)
+        try values.encodeIfPresent(backupCaptionOnly, forKey: .backupCaptionOnly)
+        try values.encodeIfPresent(audioOptionNotes, forKey: .audioOptionNotes)
+        try values.encodeIfPresent(creatorFitScore, forKey: .creatorFitScore)
+        try values.encodeIfPresent(riskNotes, forKey: .riskNotes)
+        try values.encodeIfPresent(assumptions, forKey: .assumptions)
+        try values.encodeIfPresent(storyboardThumbnailAssets, forKey: .storyboardThumbnailAssets)
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        pieceID = try values.decodeIfPresent(UUID.self, forKey: .pieceID)
+        title = try values.decodeIfPresent(String.self, forKey: .title) ?? ""
+        context = try values.decodeIfPresent(String.self, forKey: .context) ?? ""
+        effortLabel = try values.decodeIfPresent(String.self, forKey: .effortLabel) ?? ""
+        whyToday = try values.decodeIfPresent(String.self, forKey: .whyToday) ?? ""
+        hook = try values.decodeIfPresent(String.self, forKey: .hook)
+        sourceNote = try values.decodeIfPresent(String.self, forKey: .sourceNote)
+        scheduledDate = try values.decodeIfPresent(String.self, forKey: .scheduledDate)
+        format = try values.decodeIfPresent(String.self, forKey: .format)
+        primarySurface = try values.decodeIfPresent(String.self, forKey: .primarySurface)
+        durationSeconds = try values.decodeIfPresent(Int.self, forKey: .durationSeconds)
+        scenes = try values.decodeIfPresent([ShotScene].self, forKey: .scenes) ?? []
+        shotContentOwned = try values.decodeIfPresent(Bool.self, forKey: .shotContentOwned) ?? false
+        shotTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .shotTimeline)
+        voiceoverTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .voiceoverTimeline)
+        onScreenTextTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .onScreenTextTimeline)
+        completionState = try values.decodeIfPresent(CompletionState.self, forKey: .completionState)
+        legacyScript = try values.decodeIfPresent(String.self, forKey: .script)
+        noVoiceoverVersion = try values.decodeIfPresent(String.self, forKey: .noVoiceoverVersion)
+        onScreenText = try values.decodeIfPresent([String].self, forKey: .onScreenText)
+        caption = try values.decodeIfPresent(String.self, forKey: .caption)
+        cta = try values.decodeIfPresent(String.self, forKey: .cta)
+        hashtags = try values.decodeIfPresent([String].self, forKey: .hashtags)
+        coverText = try values.decodeIfPresent(String.self, forKey: .coverText)
+        postInstructions = try values.decodeIfPresent(String.self, forKey: .postInstructions)
+        brandEventNotes = try values.decodeIfPresent(String.self, forKey: .brandEventNotes)
+        backupStory = try values.decodeIfPresent(String.self, forKey: .backupStory)
+        backupCaptionOnly = try values.decodeIfPresent(String.self, forKey: .backupCaptionOnly)
+        audioOptionNotes = try values.decodeIfPresent(String.self, forKey: .audioOptionNotes)
+        creatorFitScore = try values.decodeIfPresent(Double.self, forKey: .creatorFitScore)
+        riskNotes = try values.decodeIfPresent([String].self, forKey: .riskNotes)
+        assumptions = try values.decodeIfPresent([String].self, forKey: .assumptions)
+        storyboardThumbnailAssets = try values.decodeIfPresent([StoryboardThumbnailAsset].self, forKey: .storyboardThumbnailAssets)
+        normalizeShotContent()
+    }
+
     init(
         id: UUID = UUID(),
         title: String,
@@ -49,6 +172,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         primarySurface: String? = nil,
         durationSeconds: Int? = nil,
         scenes: [ShotScene],
+        shotContentOwned: Bool = false,
         shotTimeline: [ProductionTimelineItem]? = nil,
         voiceoverTimeline: [ProductionTimelineItem]? = nil,
         onScreenTextTimeline: [ProductionTimelineItem]? = nil,
@@ -82,11 +206,12 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.primarySurface = primarySurface
         self.durationSeconds = durationSeconds
         self.scenes = scenes
+        self.shotContentOwned = shotContentOwned
         self.shotTimeline = shotTimeline
         self.voiceoverTimeline = voiceoverTimeline
         self.onScreenTextTimeline = onScreenTextTimeline
         self.completionState = completionState
-        self.script = script
+        self.legacyScript = script
         self.noVoiceoverVersion = noVoiceoverVersion
         self.onScreenText = onScreenText
         self.caption = caption
@@ -102,6 +227,7 @@ struct DailyCard: Identifiable, Codable, Hashable, Sendable {
         self.riskNotes = riskNotes
         self.assumptions = assumptions
         self.storyboardThumbnailAssets = storyboardThumbnailAssets
+        normalizeShotContent()
     }
 }
 
@@ -127,19 +253,133 @@ struct ShotScene: Identifiable, Codable, Hashable, Sendable {
     var title: String
     var duration: String
     let symbol: String
+    var dialogue: String?
+
+    var durationSeconds: Int {
+        max(Int(duration.trimmingCharacters(in: .whitespacesAndNewlines).prefix { $0.isNumber }) ?? 0, 0)
+    }
+
+    static func stableID(revisionID: UUID, number: Int) -> UUID {
+        UUID(uuidString: String(revisionID.uuidString.prefix(24)) + String(format: "%012x", number))!
+    }
 
     init(
         id: UUID = UUID(),
         number: Int,
         title: String,
         duration: String,
-        symbol: String
+        symbol: String,
+        dialogue: String? = nil
     ) {
         self.id = id
         self.number = number
         self.title = title
         self.duration = duration
         self.symbol = symbol
+        self.dialogue = dialogue
+    }
+}
+
+enum ShotScript {
+    static let editorGuidance = "Each line edits the same numbered shot. A blank line clears its dialogue. Shorter text keeps later shots. Extra lines join the last shot."
+
+    static func text(for scenes: [ShotScene]) -> String {
+        scenes.map { scene in
+            (scene.dialogue ?? "").components(separatedBy: .newlines).joined(separator: " ")
+        }.joined(separator: "\n")
+    }
+
+    static func editing(_ text: String, scenes: [ShotScene]) -> [ShotScene] {
+        guard !scenes.isEmpty else { return scenes }
+        let lines = text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+        var updated = scenes
+        for index in updated.indices where index < lines.count {
+            updated[index].dialogue = index == updated.count - 1
+                ? lines[index...].joined(separator: " ")
+                : lines[index]
+        }
+        return updated
+    }
+
+    static func migrate(
+        scenes: [ShotScene],
+        revisionID: UUID,
+        script: String,
+        shots: [ProductionTimelineItem],
+        voiceover: [ProductionTimelineItem],
+        overlays: [ProductionTimelineItem]
+    ) -> [ShotScene] {
+        if !scenes.isEmpty, scenes.allSatisfy({ $0.dialogue != nil }) { return scenes }
+        let count = max(scenes.count, shots.count, voiceover.count, overlays.count)
+        guard count > 0 else { return scenes }
+        var migrated = scenes
+        while migrated.count < count {
+            let index = migrated.count
+            let item = shots.indices.contains(index) ? shots[index]
+                : voiceover.indices.contains(index) ? voiceover[index] : overlays[index]
+            migrated.append(ShotScene(
+                id: ShotScene.stableID(revisionID: revisionID, number: index + 1),
+                number: index + 1,
+                title: item.shot?.nilIfBlank ?? item.title.nilIfBlank ?? "Shot \(index + 1)",
+                duration: "\(item.durationSeconds ?? legacyDuration(item.timestamp)) sec",
+                symbol: "camera"
+            ))
+        }
+        for index in migrated.indices where migrated[index].dialogue == nil {
+            migrated[index].dialogue = voiceover.indices.contains(index)
+                ? voiceover[index].voiceover?.nilIfBlank ?? voiceover[index].detail.nilIfBlank ?? voiceover[index].title.nilIfBlank ?? ""
+                : ""
+        }
+        let timedText = text(for: migrated)
+        let words: (String) -> [Substring] = { $0.split(whereSeparator: \.isWhitespace) }
+        if script.nilIfBlank != nil, words(script) != words(timedText) {
+            let edited = editing(script, scenes: migrated)
+            for index in migrated.indices where !scenes.indices.contains(index) || scenes[index].dialogue == nil {
+                migrated[index].dialogue = edited[index].dialogue
+            }
+        }
+        return migrated
+    }
+
+    static func timecodes(for scenes: [ShotScene]) -> [String] {
+        var cursor = 0
+        return scenes.map { scene in
+            let start = cursor
+            cursor += scene.durationSeconds
+            return "\(start)-\(cursor) sec"
+        }
+    }
+
+    private static func legacyDuration(_ timestamp: String) -> Int {
+        let bounds = timestamp.replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+            .components(separatedBy: "-")
+        guard bounds.count == 2 else { return 0 }
+        let seconds: (String) -> Int = { value in
+            let parts = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                .prefix { $0.isNumber || $0 == ":" }.split(separator: ":")
+            return parts.reduce(0) { $0 * 60 + (Int($1) ?? 0) }
+        }
+        return max(seconds(bounds[1]) - seconds(bounds[0]), 0)
+    }
+}
+
+extension DailyCard {
+    mutating func normalizeShotContent() {
+        if !shotContentOwned {
+            scenes = ShotScript.migrate(
+                scenes: scenes, revisionID: id, script: script ?? "", shots: shotTimeline ?? [],
+                voiceover: voiceoverTimeline ?? [], overlays: onScreenTextTimeline ?? []
+            )
+            shotContentOwned = true
+        }
+        for index in scenes.indices where scenes[index].dialogue == nil { scenes[index].dialogue = "" }
+        if !scenes.isEmpty {
+            script = ShotScript.text(for: scenes)
+            durationSeconds = scenes.reduce(0) { $0 + $1.durationSeconds }
+        }
     }
 }
 
@@ -455,6 +695,7 @@ struct DailyDecision: Codable, Hashable, Sendable {
 }
 
 struct ArchiveEntry: Identifiable, Codable, Hashable, Sendable {
+    var pieceID: UUID? = nil
     let id: UUID
     let dailyCardID: UUID?
     let day: String
@@ -463,6 +704,9 @@ struct ArchiveEntry: Identifiable, Codable, Hashable, Sendable {
     var decision: CompletionState
     let outputLine: String
     let hasPostThumbnail: Bool
+    var captionSnapshot: String? = nil
+    var scheduledDate: String? = nil
+    var decisionAt: String? = nil
 
     init(
         id: UUID = UUID(),
@@ -713,7 +957,7 @@ enum WeeklyDayState: String, CaseIterable, Codable, Hashable, Sendable {
 extension WeeklyDayState {
     init(generatedDraftStatus status: String) {
         switch status.lowercased() {
-        case "published", "planned", "ready":
+        case "published", "planned", "ready", "shot", "posted", "used_backup", "saved_for_tomorrow", "skipped_intentionally":
             self = .planned
         case "backup":
             self = .backup
@@ -832,7 +1076,7 @@ struct GeneratedWeekDraft: Identifiable, Hashable, Sendable {
 extension GeneratedWeekDraft {
     var isCompleteWeekDraft: Bool {
         let scheduledDates = Set(dailyCards.map(\.scheduledDate))
-        return dailyCards.count == 7 && scheduledDates.count == 7
+        return dailyCards.count >= 7 && scheduledDates.count == 7
     }
 
     func weeklyPlan(
@@ -872,8 +1116,9 @@ extension GeneratedWeekDraft {
     }
 }
 
-struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
+struct GeneratedDailyCardDraft: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
+    var pieceID: UUID? = nil
     var scheduledDate: String
     var status: String
     var title: String
@@ -890,11 +1135,19 @@ struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
     var hook: String?
     var saveShareReason: String?
     var sceneList: [ShotScene]
+    var shotContentOwned: Bool
     var shotTimeline: [ProductionTimelineItem]
     var voiceoverTimeline: [ProductionTimelineItem]
     var onScreenTextTimeline: [ProductionTimelineItem]
     var silentVersionTimeline: [ProductionTimelineItem]
-    var script: String
+    private var legacyScript: String
+    var script: String {
+        get {
+            !sceneList.isEmpty && sceneList.allSatisfy { $0.dialogue != nil }
+                ? ShotScript.text(for: sceneList) : legacyScript
+        }
+        set { legacyScript = newValue }
+    }
     var noVoiceoverVersion: String
     var onScreenText: [String]
     var caption: String
@@ -914,6 +1167,144 @@ struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
     var sourceNote: String
     var storyboardThumbnailAssets: [StoryboardThumbnailAsset]
 
+    enum CodingKeys: String, CodingKey {
+        case id
+        case pieceID
+        case scheduledDate
+        case status
+        case title
+        case whyToday
+        case growthJob
+        case contentPillar
+        case shootability
+        case estimatedShootMinutes
+        case energyRequired
+        case languageMode
+        case format
+        case primarySurface
+        case durationSeconds
+        case hook
+        case saveShareReason
+        case sceneList
+        case shotContentOwned
+        case shotTimeline
+        case voiceoverTimeline
+        case onScreenTextTimeline
+        case silentVersionTimeline
+        case script
+        case noVoiceoverVersion
+        case onScreenText
+        case caption
+        case cta
+        case hashtags
+        case coverText
+        case postInstructions
+        case brandEventNotes
+        case backupStory
+        case backupCaptionOnly
+        case backupStoryDetail
+        case captionBackupDetail
+        case audioOptionNotes
+        case creatorFitScore
+        case riskNotes
+        case assumptions
+        case sourceNote
+        case storyboardThumbnailAssets
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encodeIfPresent(pieceID, forKey: .pieceID)
+        try values.encode(scheduledDate, forKey: .scheduledDate)
+        try values.encode(status, forKey: .status)
+        try values.encode(title, forKey: .title)
+        try values.encode(whyToday, forKey: .whyToday)
+        try values.encode(growthJob, forKey: .growthJob)
+        try values.encode(contentPillar, forKey: .contentPillar)
+        try values.encode(shootability, forKey: .shootability)
+        try values.encode(estimatedShootMinutes, forKey: .estimatedShootMinutes)
+        try values.encode(energyRequired, forKey: .energyRequired)
+        try values.encode(languageMode, forKey: .languageMode)
+        try values.encodeIfPresent(format, forKey: .format)
+        try values.encodeIfPresent(primarySurface, forKey: .primarySurface)
+        try values.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try values.encodeIfPresent(hook, forKey: .hook)
+        try values.encodeIfPresent(saveShareReason, forKey: .saveShareReason)
+        try values.encode(sceneList, forKey: .sceneList)
+        try values.encode(shotContentOwned, forKey: .shotContentOwned)
+        try values.encode(shotTimeline, forKey: .shotTimeline)
+        try values.encode(voiceoverTimeline, forKey: .voiceoverTimeline)
+        try values.encode(onScreenTextTimeline, forKey: .onScreenTextTimeline)
+        try values.encode(silentVersionTimeline, forKey: .silentVersionTimeline)
+        try values.encode(script, forKey: .script)
+        try values.encode(noVoiceoverVersion, forKey: .noVoiceoverVersion)
+        try values.encode(onScreenText, forKey: .onScreenText)
+        try values.encode(caption, forKey: .caption)
+        try values.encode(cta, forKey: .cta)
+        try values.encode(hashtags, forKey: .hashtags)
+        try values.encode(coverText, forKey: .coverText)
+        try values.encode(postInstructions, forKey: .postInstructions)
+        try values.encode(brandEventNotes, forKey: .brandEventNotes)
+        try values.encode(backupStory, forKey: .backupStory)
+        try values.encode(backupCaptionOnly, forKey: .backupCaptionOnly)
+        try values.encode(backupStoryDetail, forKey: .backupStoryDetail)
+        try values.encodeIfPresent(captionBackupDetail, forKey: .captionBackupDetail)
+        try values.encode(audioOptionNotes, forKey: .audioOptionNotes)
+        try values.encode(creatorFitScore, forKey: .creatorFitScore)
+        try values.encode(riskNotes, forKey: .riskNotes)
+        try values.encode(assumptions, forKey: .assumptions)
+        try values.encode(sourceNote, forKey: .sourceNote)
+        try values.encode(storyboardThumbnailAssets, forKey: .storyboardThumbnailAssets)
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        pieceID = try values.decodeIfPresent(UUID.self, forKey: .pieceID)
+        scheduledDate = try values.decode(String.self, forKey: .scheduledDate)
+        status = try values.decodeIfPresent(String.self, forKey: .status) ?? ""
+        title = try values.decodeIfPresent(String.self, forKey: .title) ?? ""
+        whyToday = try values.decodeIfPresent(String.self, forKey: .whyToday) ?? ""
+        growthJob = try values.decodeIfPresent(String.self, forKey: .growthJob) ?? ""
+        contentPillar = try values.decodeIfPresent(String.self, forKey: .contentPillar) ?? ""
+        shootability = try values.decodeIfPresent(String.self, forKey: .shootability) ?? ""
+        estimatedShootMinutes = try values.decodeIfPresent(Int.self, forKey: .estimatedShootMinutes) ?? 0
+        energyRequired = try values.decodeIfPresent(String.self, forKey: .energyRequired) ?? ""
+        languageMode = try values.decodeIfPresent(String.self, forKey: .languageMode) ?? ""
+        format = try values.decodeIfPresent(String.self, forKey: .format)
+        primarySurface = try values.decodeIfPresent(String.self, forKey: .primarySurface)
+        durationSeconds = try values.decodeIfPresent(Int.self, forKey: .durationSeconds)
+        hook = try values.decodeIfPresent(String.self, forKey: .hook)
+        saveShareReason = try values.decodeIfPresent(String.self, forKey: .saveShareReason)
+        sceneList = try values.decodeIfPresent([ShotScene].self, forKey: .sceneList) ?? []
+        shotContentOwned = try values.decodeIfPresent(Bool.self, forKey: .shotContentOwned) ?? false
+        shotTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .shotTimeline) ?? []
+        voiceoverTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .voiceoverTimeline) ?? []
+        onScreenTextTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .onScreenTextTimeline) ?? []
+        silentVersionTimeline = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .silentVersionTimeline) ?? []
+        legacyScript = try values.decodeIfPresent(String.self, forKey: .script) ?? ""
+        noVoiceoverVersion = try values.decodeIfPresent(String.self, forKey: .noVoiceoverVersion) ?? ""
+        onScreenText = try values.decodeIfPresent([String].self, forKey: .onScreenText) ?? []
+        caption = try values.decodeIfPresent(String.self, forKey: .caption) ?? ""
+        cta = try values.decodeIfPresent(String.self, forKey: .cta) ?? ""
+        hashtags = try values.decodeIfPresent([String].self, forKey: .hashtags) ?? []
+        coverText = try values.decodeIfPresent(String.self, forKey: .coverText) ?? ""
+        postInstructions = try values.decodeIfPresent(String.self, forKey: .postInstructions) ?? ""
+        brandEventNotes = try values.decodeIfPresent(String.self, forKey: .brandEventNotes) ?? ""
+        backupStory = try values.decodeIfPresent(String.self, forKey: .backupStory) ?? ""
+        backupCaptionOnly = try values.decodeIfPresent(String.self, forKey: .backupCaptionOnly) ?? ""
+        backupStoryDetail = try values.decodeIfPresent([ProductionTimelineItem].self, forKey: .backupStoryDetail) ?? []
+        captionBackupDetail = try values.decodeIfPresent(String.self, forKey: .captionBackupDetail)
+        audioOptionNotes = try values.decodeIfPresent(String.self, forKey: .audioOptionNotes) ?? ""
+        creatorFitScore = try values.decodeIfPresent(Double.self, forKey: .creatorFitScore) ?? 0
+        riskNotes = try values.decodeIfPresent([String].self, forKey: .riskNotes) ?? []
+        assumptions = try values.decodeIfPresent([String].self, forKey: .assumptions) ?? []
+        sourceNote = try values.decodeIfPresent(String.self, forKey: .sourceNote) ?? ""
+        storyboardThumbnailAssets = try values.decodeIfPresent([StoryboardThumbnailAsset].self, forKey: .storyboardThumbnailAssets) ?? []
+        normalizeShotContent()
+    }
+
     init(
         id: UUID,
         scheduledDate: String,
@@ -932,6 +1323,7 @@ struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
         hook: String? = nil,
         saveShareReason: String? = nil,
         sceneList: [ShotScene],
+        shotContentOwned: Bool = false,
         shotTimeline: [ProductionTimelineItem] = [],
         voiceoverTimeline: [ProductionTimelineItem] = [],
         onScreenTextTimeline: [ProductionTimelineItem] = [],
@@ -973,11 +1365,12 @@ struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
         self.hook = hook
         self.saveShareReason = saveShareReason
         self.sceneList = sceneList
+        self.shotContentOwned = shotContentOwned
         self.shotTimeline = shotTimeline
         self.voiceoverTimeline = voiceoverTimeline
         self.onScreenTextTimeline = onScreenTextTimeline
         self.silentVersionTimeline = silentVersionTimeline
-        self.script = script
+        self.legacyScript = script
         self.noVoiceoverVersion = noVoiceoverVersion
         self.onScreenText = onScreenText
         self.caption = caption
@@ -996,10 +1389,26 @@ struct GeneratedDailyCardDraft: Identifiable, Hashable, Sendable {
         self.assumptions = assumptions
         self.sourceNote = sourceNote
         self.storyboardThumbnailAssets = storyboardThumbnailAssets
+        normalizeShotContent()
     }
 }
 
 extension GeneratedDailyCardDraft {
+    mutating func normalizeShotContent() {
+        if !shotContentOwned {
+            sceneList = ShotScript.migrate(
+                scenes: sceneList, revisionID: id, script: script, shots: shotTimeline,
+                voiceover: voiceoverTimeline, overlays: onScreenTextTimeline
+            )
+            shotContentOwned = true
+        }
+        for index in sceneList.indices where sceneList[index].dialogue == nil { sceneList[index].dialogue = "" }
+        if !sceneList.isEmpty {
+            script = ShotScript.text(for: sceneList)
+            durationSeconds = sceneList.reduce(0) { $0 + $1.durationSeconds }
+        }
+    }
+
     var weeklyDay: WeeklyDay {
         WeeklyDay(
             id: id,
@@ -1015,7 +1424,7 @@ extension GeneratedDailyCardDraft {
     }
 
     func dailyCard(completionState: CompletionState?) -> DailyCard {
-        DailyCard(
+        var card = DailyCard(
             id: id,
             title: title,
             context: SupabaseDateFormatting.contextLine(for: scheduledDate),
@@ -1031,6 +1440,7 @@ extension GeneratedDailyCardDraft {
             primarySurface: primarySurface,
             durationSeconds: durationSeconds,
             scenes: sceneList,
+            shotContentOwned: shotContentOwned,
             shotTimeline: shotTimeline.isEmpty ? nil : shotTimeline,
             voiceoverTimeline: voiceoverTimeline.isEmpty ? nil : voiceoverTimeline,
             onScreenTextTimeline: onScreenTextTimeline.isEmpty ? nil : onScreenTextTimeline,
@@ -1052,6 +1462,8 @@ extension GeneratedDailyCardDraft {
             assumptions: assumptions,
             storyboardThumbnailAssets: storyboardThumbnailAssets
         )
+        card.pieceID = pieceID
+        return card
     }
 
     /// Builds a Plan-style draft model from a published Today card for inline package rendering.
@@ -1073,6 +1485,7 @@ extension GeneratedDailyCardDraft {
             durationSeconds: card.durationSeconds,
             hook: card.hook,
             sceneList: card.scenes,
+            shotContentOwned: card.shotContentOwned,
             shotTimeline: card.shotTimeline ?? [],
             voiceoverTimeline: card.voiceoverTimeline ?? [],
             onScreenTextTimeline: card.onScreenTextTimeline ?? [],
@@ -1094,6 +1507,7 @@ extension GeneratedDailyCardDraft {
             sourceNote: card.sourceNote ?? "",
             storyboardThumbnailAssets: card.storyboardThumbnailAssets ?? []
         )
+        pieceID = card.pieceID
     }
 }
 
@@ -1552,4 +1966,454 @@ struct ReferenceReviewResult: Hashable, Sendable {
     var action: ReferenceReviewAction
     var resultStatus: String
     var toast: String
+}
+
+
+struct PieceIdentity: Codable, Hashable, Sendable {
+    let workspaceID: UUID
+    let creatorID: UUID
+    let pieceID: UUID
+}
+
+struct DayGenerationRun: Codable, Hashable, Sendable {
+    var requestID: UUID
+    var generationID: UUID?
+}
+
+struct FilmingProgress: Codable, Hashable, Sendable {
+    let revisionID: UUID
+    var shotSceneIDs: Set<UUID>
+    var isComplete: Bool
+
+    init(revisionID: UUID, shotSceneIDs: Set<UUID> = [], isComplete: Bool = false) {
+        self.revisionID = revisionID
+        self.shotSceneIDs = shotSceneIDs
+        self.isComplete = isComplete
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case revisionID, shotSceneIDs, isComplete
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        revisionID = try values.decode(UUID.self, forKey: .revisionID)
+        shotSceneIDs = try values.decodeIfPresent(Set<UUID>.self, forKey: .shotSceneIDs) ?? []
+        isComplete = try values.decodeIfPresent(Bool.self, forKey: .isComplete) ?? false
+    }
+}
+
+enum DayOutcome: String, Codable, Hashable, Sendable {
+    case posted
+    case backup
+    case skipped
+}
+
+enum DayLifecycle: Codable, Hashable, Sendable {
+    case empty
+    case generating(DayGenerationRun)
+    case draft
+    case ready
+    case filming(FilmingProgress)
+    case decided(DayOutcome)
+    case unavailable
+
+    var exposesReadyPackage: Bool {
+        switch self {
+        case .ready, .filming, .decided: true
+        default: false
+        }
+    }
+}
+
+struct DayRevision: Codable, Hashable, Sendable, Identifiable {
+    var id: UUID { content.id }
+    var content: GeneratedDailyCardDraft
+    var filmingProgress: FilmingProgress
+    var decision: DailyDecision?
+    var isReviewed = false
+
+    init(content: GeneratedDailyCardDraft) {
+        self.content = content
+        filmingProgress = FilmingProgress(revisionID: content.id)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case content, filmingProgress, decision, isReviewed
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        content = try values.decode(GeneratedDailyCardDraft.self, forKey: .content)
+        filmingProgress = try values.decodeIfPresent(FilmingProgress.self, forKey: .filmingProgress)
+            ?? FilmingProgress(revisionID: content.id)
+        decision = try values.decodeIfPresent(DailyDecision.self, forKey: .decision)
+        isReviewed = try values.decodeIfPresent(Bool.self, forKey: .isReviewed) ?? false
+    }
+
+    var dailyCard: DailyCard {
+        let completion = decision?.completionState
+            ?? (filmingProgress.isComplete ? CompletionState.shot : nil)
+        return content.dailyCard(completionState: completion)
+    }
+}
+
+enum DayTransition {
+    case reconcile(GeneratedDailyCardDraft, CompletionState?, String?)
+    case generate(DayGenerationRun, replacing: Bool)
+    case generated(GeneratedDailyCardDraft)
+    case generationFailed(priorRevisionID: UUID?)
+    case generationRejected
+    case retain(GeneratedDailyCardDraft, CompletionState?)
+    case makeReady
+    case reviewed(UUID)
+    case returnToDraft
+    case markShots(Set<UUID>)
+    case decide(DailyDecision)
+    case edit(GeneratedDailyCardDraft)
+    case missingReady
+    case removed
+    case unavailable
+}
+
+enum DayTransitionError: LocalizedError {
+    case illegalMove
+    case mismatchedRevision
+    case staleAnswer
+    case incompletePackage
+
+    var errorDescription: String? {
+        switch self {
+        case .illegalMove: "This action is not available for the day's current state."
+        case .mismatchedRevision: "This package changed. Reload the day and try again."
+        case .staleAnswer: "A newer version of this day is already saved."
+        case .incompletePackage: "This package is incomplete. Reload the day and try again."
+        }
+    }
+}
+
+struct Piece: Codable, Hashable, Sendable, Identifiable {
+    var id: PieceIdentity { identity }
+    private(set) var identity: PieceIdentity
+    private(set) var revision: DayRevision?
+    private(set) var lifecycle: DayLifecycle = .unavailable
+    private(set) var previousRevisions: [DayRevision] = []
+    private(set) var lastKnownLifecycle: DayLifecycle?
+    private(set) var serverUpdatedAt: String?
+
+    var scheduledDate: String
+    private(set) var position: Int
+    private(set) var requiresServerBinding: Bool
+    private(set) var isLifecyclePlaceholder: Bool
+
+    init(identity: PieceIdentity, scheduledDate: String, position: Int = 0, requiresServerBinding: Bool = false, isLifecyclePlaceholder: Bool = false) {
+        self.identity = identity
+        self.scheduledDate = scheduledDate
+        self.position = position
+        self.requiresServerBinding = requiresServerBinding
+        self.isLifecyclePlaceholder = isLifecyclePlaceholder
+    }
+
+    var canReviewDraft: Bool { lifecycle == .draft && revision != nil }
+
+    var canApproveReviewedDraft: Bool { canReviewDraft && revision?.isReviewed == true }
+
+    var reviewStateLabel: String {
+        switch lifecycle {
+        case .empty: "No draft"
+        case .generating: "Preparing draft"
+        case .draft: revision?.isReviewed == true ? "Reviewed" : "Draft"
+        case .ready: "Approved"
+        case .filming(let progress): progress.isComplete ? "Shot" : "Filming"
+        case .decided(let outcome):
+            switch outcome {
+            case .posted: "Posted"
+            case .backup: "Backup"
+            case .skipped: "Skipped"
+            }
+        case .unavailable: "Not ready"
+        }
+    }
+
+    mutating func move(to date: String, position: Int) {
+        scheduledDate = date
+        self.position = position
+        revision?.content.scheduledDate = date
+        for index in previousRevisions.indices { previousRevisions[index].content.scheduledDate = date }
+    }
+
+    mutating func requireServerBinding() {
+        requiresServerBinding = true
+    }
+
+    mutating func mergeSavedWork(from saved: Piece) {
+        if revision == nil || revision?.id == saved.revision?.id {
+            revision = saved.revision ?? revision
+            lifecycle = saved.lifecycle
+            lastKnownLifecycle = saved.lastKnownLifecycle
+            serverUpdatedAt = saved.serverUpdatedAt ?? serverUpdatedAt
+        }
+        for item in [saved.revision].compactMap({ $0 }) + saved.previousRevisions where item.id != revision?.id {
+            if let index = previousRevisions.firstIndex(where: { $0.id == item.id }) {
+                previousRevisions[index] = item
+            } else {
+                previousRevisions.append(item)
+            }
+        }
+    }
+
+    mutating func bind(to pieceID: UUID, position: Int) {
+        identity = PieceIdentity(workspaceID: identity.workspaceID, creatorID: identity.creatorID, pieceID: pieceID)
+        self.position = position
+        requiresServerBinding = false
+        isLifecyclePlaceholder = false
+        revision?.content.pieceID = pieceID
+        for index in previousRevisions.indices { previousRevisions[index].content.pieceID = pieceID }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case identity, scheduledDate, position, requiresServerBinding, isLifecyclePlaceholder, revision, lifecycle, previousRevisions, lastKnownLifecycle, serverUpdatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let savedIdentity = try values.nestedContainer(keyedBy: IdentityCodingKeys.self, forKey: .identity)
+        let savedPieceID = try savedIdentity.decodeIfPresent(UUID.self, forKey: .pieceID)
+        identity = PieceIdentity(
+            workspaceID: try savedIdentity.decode(UUID.self, forKey: .workspaceID),
+            creatorID: try savedIdentity.decode(UUID.self, forKey: .creatorID),
+            pieceID: savedPieceID ?? UUID()
+        )
+        scheduledDate = try values.decodeIfPresent(String.self, forKey: .scheduledDate)
+            ?? savedIdentity.decode(String.self, forKey: .scheduledDate)
+        position = try values.decodeIfPresent(Int.self, forKey: .position) ?? 0
+        requiresServerBinding = try values.decodeIfPresent(Bool.self, forKey: .requiresServerBinding) ?? (savedPieceID == nil)
+        revision = try values.decodeIfPresent(DayRevision.self, forKey: .revision)
+        lifecycle = try values.decodeIfPresent(DayLifecycle.self, forKey: .lifecycle) ?? .unavailable
+        previousRevisions = try values.decodeIfPresent([DayRevision].self, forKey: .previousRevisions) ?? []
+        lastKnownLifecycle = try values.decodeIfPresent(DayLifecycle.self, forKey: .lastKnownLifecycle)
+        serverUpdatedAt = try values.decodeIfPresent(String.self, forKey: .serverUpdatedAt)
+        isLifecyclePlaceholder = try values.decodeIfPresent(Bool.self, forKey: .isLifecyclePlaceholder)
+            ?? (revision == nil && previousRevisions.isEmpty && serverUpdatedAt == nil && (lifecycle == .empty || lifecycle == .unavailable))
+        if let revision, revision.content.scheduledDate != scheduledDate || revision.filmingProgress.revisionID != revision.id {
+            throw DecodingError.dataCorruptedError(forKey: .revision, in: values, debugDescription: "Mismatched Piece revision")
+        }
+        if revision == nil, lifecycle.exposesReadyPackage || lifecycle == .draft {
+            lastKnownLifecycle = lifecycle
+            lifecycle = .unavailable
+        }
+        if let content = revision?.content, content.title.nilIfBlank == nil
+            || content.sceneList.isEmpty && content.script.nilIfBlank == nil && content.caption.nilIfBlank == nil {
+            lastKnownLifecycle = lifecycle
+            lifecycle = .unavailable
+        }
+        if case .filming(let progress) = lifecycle, progress != revision?.filmingProgress {
+            throw DecodingError.dataCorruptedError(forKey: .lifecycle, in: values, debugDescription: "Mismatched filming progress")
+        }
+    }
+
+    private enum IdentityCodingKeys: String, CodingKey {
+        case workspaceID, creatorID, pieceID, scheduledDate
+    }
+
+    mutating func transition(_ move: DayTransition) throws {
+        var next = self
+        switch move {
+        case .reconcile(let content, let completion, let updatedAt):
+            guard content.scheduledDate == scheduledDate else {
+                throw DayTransitionError.mismatchedRevision
+            }
+            if let updatedAt, let previous = serverUpdatedAt,
+               let incoming = Self.timestamp(updatedAt),
+               let current = Self.timestamp(previous), incoming < current {
+                throw DayTransitionError.staleAnswer
+            }
+            try next.install(content)
+            next.serverUpdatedAt = updatedAt ?? serverUpdatedAt
+            next.revision?.decision = nil
+            next.applyCompletion(completion)
+            next.lifecycle = next.resolvedLifecycle()
+        case .generate(let run, let replacing):
+            switch lifecycle {
+            case .empty, .unavailable: break
+            case .draft, .ready, .filming, .decided:
+                guard replacing else { throw DayTransitionError.illegalMove }
+            case .generating(let existing):
+                guard existing.generationID == nil && run.generationID != nil || existing.requestID == run.requestID || existing.generationID == run.generationID && run.generationID != nil else {
+                    throw DayTransitionError.illegalMove
+                }
+            }
+            next.lastKnownLifecycle = lifecycle
+            next.lifecycle = .generating(run)
+            next.isLifecyclePlaceholder = false
+        case .generated(let content):
+            guard case .generating = lifecycle else { throw DayTransitionError.illegalMove }
+            try next.install(content)
+            next.lifecycle = .draft
+        case .generationRejected:
+            guard case .generating = lifecycle else { throw DayTransitionError.illegalMove }
+            next.lifecycle = next.resolvedLifecycle()
+        case .generationFailed(let priorRevisionID):
+            guard case .generating = lifecycle else { throw DayTransitionError.illegalMove }
+            if next.revision?.id == priorRevisionID, priorRevisionID != nil {
+                next.revision?.content.status = "archived"
+                next.lifecycle = .unavailable
+            } else {
+                next.lifecycle = next.resolvedLifecycle()
+            }
+        case .retain(let content, let completion):
+            guard content.scheduledDate == scheduledDate, revision?.id != content.id else {
+                throw DayTransitionError.mismatchedRevision
+            }
+            var retained = Piece(identity: identity, scheduledDate: scheduledDate, position: position, requiresServerBinding: requiresServerBinding)
+            try retained.transition(.reconcile(content, completion, nil))
+            if let saved = retained.revision, !next.previousRevisions.contains(where: { $0.id == saved.id }) {
+                next.previousRevisions.append(saved)
+            }
+        case .reviewed(let revisionID):
+            guard lifecycle == .draft, revision?.id == revisionID else { throw DayTransitionError.mismatchedRevision }
+            next.revision?.isReviewed = true
+        case .makeReady:
+            guard lifecycle == .draft, next.revision != nil else { throw DayTransitionError.illegalMove }
+            next.revision?.content.status = "published"
+            next.revision?.decision = nil
+            next.lifecycle = next.resolvedLifecycle()
+        case .returnToDraft:
+            guard lifecycle.exposesReadyPackage else { throw DayTransitionError.illegalMove }
+            next.revision?.content.status = "draft"
+            next.revision?.decision = nil
+            next.lifecycle = .draft
+        case .markShots(let ids):
+            guard lifecycle == .ready || { if case .filming = lifecycle { return true }; return false }(), var revision,
+                  revision.decision?.completionState != .posted,
+                  ids.isSubset(of: Set(revision.content.sceneList.map(\.id))),
+                  ids.isSuperset(of: revision.filmingProgress.shotSceneIDs) else {
+                throw DayTransitionError.illegalMove
+            }
+            revision.filmingProgress.shotSceneIDs = ids
+            revision.filmingProgress.isComplete = !revision.content.sceneList.isEmpty
+                && ids.count == revision.content.sceneList.count
+            next.revision = revision
+            next.lifecycle = next.resolvedLifecycle()
+        case .decide(let decision):
+            guard lifecycle.exposesReadyPackage, let revision else { throw DayTransitionError.illegalMove }
+            if case .decided(let outcome) = lifecycle {
+                let isUndo = outcome == .posted && decision.completionState == .shot
+                guard isUndo || revision.decision?.completionState == decision.completionState else {
+                    throw DayTransitionError.illegalMove
+                }
+            }
+            switch decision.completionState {
+            case .posted:
+                guard revision.filmingProgress.isComplete || revision.dailyCard.isNonFilmingPost else {
+                    throw DayTransitionError.illegalMove
+                }
+            case .shot:
+                guard revision.filmingProgress.isComplete || revision.dailyCard.isNonFilmingPost else {
+                    throw DayTransitionError.illegalMove
+                }
+                if case .decided(let outcome) = lifecycle, outcome != .posted {
+                    throw DayTransitionError.illegalMove
+                }
+            case .usedBackup, .skippedIntentionally, .savedForTomorrow:
+                guard revision.decision?.completionState != .posted,
+                      !revision.filmingProgress.isComplete else { throw DayTransitionError.illegalMove }
+            }
+            next.revision?.decision = decision
+            next.lifecycle = next.resolvedLifecycle()
+        case .edit(let content):
+            guard revision?.id == content.id, lifecycle == .draft || lifecycle.exposesReadyPackage else {
+                throw DayTransitionError.mismatchedRevision
+            }
+            try next.install(content)
+            let updatedLifecycle = next.resolvedLifecycle()
+            switch (lifecycle, updatedLifecycle) {
+            case (.draft, .draft), (.ready, .ready), (.filming, .filming): break
+            case (.decided(let previous), .decided(let updated)) where previous == updated: break
+            default: throw DayTransitionError.illegalMove
+            }
+            next.lifecycle = updatedLifecycle
+        case .missingReady:
+            if case .generating = lifecycle { return }
+            if next.revision != nil {
+                next.revision?.content.status = "draft"
+                next.revision?.decision = nil
+                next.lifecycle = .draft
+            } else {
+                next.lifecycle = .empty
+            }
+        case .removed:
+            if let revision { next.previousRevisions.append(revision) }
+            next.revision = nil
+            next.lifecycle = .empty
+        case .unavailable:
+            if lifecycle != .unavailable { next.lastKnownLifecycle = lifecycle }
+            next.lifecycle = .unavailable
+        }
+        self = next
+    }
+
+    private mutating func install(_ content: GeneratedDailyCardDraft) throws {
+        var content = content
+        content.normalizeShotContent()
+        guard content.pieceID == nil || content.pieceID == identity.pieceID else { throw DayTransitionError.mismatchedRevision }
+        content.pieceID = requiresServerBinding ? nil : identity.pieceID
+        guard content.scheduledDate == scheduledDate else { throw DayTransitionError.mismatchedRevision }
+        guard content.title.nilIfBlank != nil,
+              !["Checking today's plan", "No ready package"].contains(content.title),
+              !content.sceneList.isEmpty || content.script.nilIfBlank != nil || content.caption.nilIfBlank != nil else {
+            throw DayTransitionError.incompletePackage
+        }
+        if revision?.id != content.id {
+            if let revision { previousRevisions.append(revision) }
+            revision = previousRevisions.last { $0.id == content.id } ?? DayRevision(content: content)
+            previousRevisions.removeAll { $0.id == content.id }
+        }
+        guard var current = revision else { throw DayTransitionError.mismatchedRevision }
+        let ids = Set(content.sceneList.map(\.id))
+        for scene in current.content.sceneList where current.filmingProgress.shotSceneIDs.contains(scene.id) && !ids.contains(scene.id) {
+            let matches = content.sceneList.filter {
+                $0.number == scene.number && $0.id == ShotScene.stableID(revisionID: content.id, number: scene.number)
+            }
+            if matches.count == 1 { current.filmingProgress.shotSceneIDs.insert(matches[0].id) }
+        }
+        if current.content != content { current.isReviewed = false }
+        current.content = content
+        current.filmingProgress.shotSceneIDs.formIntersection(ids)
+        current.filmingProgress.isComplete = !ids.isEmpty && current.filmingProgress.shotSceneIDs == ids
+        if current.decision?.completionState == .shot, !current.filmingProgress.isComplete {
+            current.decision = nil
+        }
+        revision = current
+        isLifecyclePlaceholder = false
+    }
+
+    private mutating func applyCompletion(_ completion: CompletionState?) {
+        guard let completion else { return }
+        revision?.decision = DailyDecision(completionState: completion)
+        if completion == .shot || completion == .posted, let revision {
+            self.revision?.filmingProgress.shotSceneIDs = Set(revision.content.sceneList.map(\.id))
+            self.revision?.filmingProgress.isComplete = !revision.content.sceneList.isEmpty
+        }
+    }
+
+    private static func timestamp(_ value: String) -> Date? {
+        SupabaseDateFormatting.timestamp(from: value)
+    }
+
+    private func resolvedLifecycle() -> DayLifecycle {
+        guard let revision else { return .empty }
+        if revision.content.status.lowercased() == "archived" { return .unavailable }
+        if ["draft", "open", "ready", "backup"].contains(revision.content.status.lowercased()) {
+            return .draft
+        }
+        switch revision.decision?.completionState {
+        case .posted: return .decided(.posted)
+        case .usedBackup: return .decided(.backup)
+        case .skippedIntentionally, .savedForTomorrow: return .decided(.skipped)
+        default:
+            return revision.filmingProgress.shotSceneIDs.isEmpty
+                ? .ready : .filming(revision.filmingProgress)
+        }
+    }
 }

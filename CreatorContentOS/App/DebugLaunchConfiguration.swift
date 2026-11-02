@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// DEBUG-only launch controls for native e2e runs.
 ///
@@ -19,11 +20,19 @@ enum DebugLaunchConfiguration {
         "MCO_FAIL_FIRST_IDEA",
         "MCO_FAIL_FIRST_IDEA_ONCE",
         "MCO_FAIL_TODAY_DECISION_SYNC_ONCE",
+        "MCO_FAIL_TODAY_DECISION_SYNC",
         "MCO_LONG_CONTENT",
         "MCO_BREAK_UI_DATA",
         "MCO_BREAK_UI_320",
         "MCO_DYNAMIC_TYPE_ACCESSIBILITY5",
         "MCO_REDUCED_MOTION",
+        "MCO_LOOP_SCENARIO",
+        "MCO_REVIEW_TWO_DRAFTS",
+        "MCO_START_DAY_REVIEW",
+        "MCO_REVIEWED_PIECES",
+        "MCO_REVIEW_SELECT_ALL",
+        "MCO_FAIL_SECOND_PIECE_APPROVAL",
+        "MCO_LOSE_SECOND_APPROVAL_REPLY_ONCE",
         "MCO_QA_SESSION"
     ]
 
@@ -66,7 +75,10 @@ enum DebugLaunchConfiguration {
 
     static var fixtureDefaults: UserDefaults {
         let name = "com.contenthelper.fixture.\(fixtureSession ?? "default")"
-        return UserDefaults(suiteName: name) ?? .standard
+        guard let defaults = UserDefaults(suiteName: name) else {
+            preconditionFailure("Cannot open fixture session defaults")
+        }
+        return defaults
     }
 
     static var onboardingDefaults: UserDefaults {
@@ -116,6 +128,8 @@ private extension String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
         let scalarString = unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
         let trimmed = String(scalarString.prefix(80))
-        return trimmed.isEmpty ? "default" : trimmed
+        if trimmed == self, !trimmed.isEmpty { return trimmed }
+        let digest = SHA256.hash(data: Data(utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+        return "\(trimmed.isEmpty ? "default" : trimmed)-\(digest)"
     }
 }

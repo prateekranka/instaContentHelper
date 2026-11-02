@@ -1,6 +1,7 @@
 import { CONTENT_CREATOR_ROLES } from "../_shared/device-auth.ts";
 
 export type ReadAction =
+  | "days"
   | "today"
   | "weekly"
   | "archive"
@@ -8,7 +9,8 @@ export type ReadAction =
   | "intelligence";
 
 export function isReadAction(value: string | undefined): value is ReadAction {
-  return value === "today" ||
+  return value === "days" ||
+    value === "today" ||
     value === "weekly" ||
     value === "archive" ||
     value === "creator_profile" ||
@@ -16,10 +18,13 @@ export function isReadAction(value: string | undefined): value is ReadAction {
 }
 
 export function canReadAction(role: string, action: ReadAction): boolean {
-  if (CONTENT_CREATOR_ROLES.includes(role as typeof CONTENT_CREATOR_ROLES[number])) {
+  if (
+    CONTENT_CREATOR_ROLES.includes(role as typeof CONTENT_CREATOR_ROLES[number])
+  ) {
     return true;
   }
 
   return role === "scout" &&
-    (action === "today" || action === "archive" || action === "creator_profile");
+    (action === "today" || action === "archive" ||
+      action === "creator_profile");
 }

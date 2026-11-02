@@ -3,23 +3,7 @@ import { expect, type App } from 'e2e';
 import type { EngineSnapshot, SemanticNode } from 'e2e/engine';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { selectTab, scrollToControl, tapEditorControl, tapVisibleControl } from './pocket-support';
-
-async function scrollBackupConfirmationIntoView(screen: Screen) {
-  const scroller = screen.getByRole('scroll-view').nth(0);
-  const bounds = await scroller.boundingBox();
-  if (!bounds) throw new Error('Backup sheet scroll view has no visible bounds');
-
-  const confirmation = screen.getByTestId('backup.confirmPosted');
-  const x = bounds.x + bounds.width / 2;
-  for (let attempt = 0; attempt < 4 && await confirmation.count() === 0; attempt += 1) {
-    await screen.swipe({
-      from: { x, y: bounds.y + bounds.height * 0.84 },
-      to: { x, y: bounds.y + bounds.height * 0.38 },
-    });
-  }
-  await expect(confirmation).toBeVisible();
-}
+import { selectTab, scrollToControl, tapEditorControl, tapVisibleControl, dismissKeyboard, openLoopSession, openLoopPlanDay, addPlanPiece, approveLoopPackage, openLoopTodayRoot, selectTodayPiece, openReviewSession } from './pocket-support';
 
 const bundleId = 'com.prateekranka.creatorcontenthelper';
 const test = mobileTest.extend<{ catalogSnapshot: { read(): Promise<EngineSnapshot> } }>();
@@ -110,7 +94,8 @@ test('catalog onboarding, Today states, filming, post text, and backup sheets', 
   await expect(screen.getByTestId('shoot.progress')).toContainText('Shot 1 of');
   await capture(app, device, '06-filming-first-shot');
   await screen.getByTestId('shoot.complete').tap();
-  await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+  await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   await capture(app, device, '07-filming-shot-complete');
   await app.back();
   await expect(screen.getByTestId('today.startFilming')).toContainText('Continue filming');
@@ -122,7 +107,7 @@ test('catalog onboarding, Today states, filming, post text, and backup sheets', 
   expect(count).toBeGreaterThan(1);
   for (let shot = 1; shot <= count; shot++) {
     await capture(app, device, `filming-shot-${shot}-of-${count}`);
-    if (await screen.getByTestId('shoot.complete').isEnabled()) await screen.getByTestId('shoot.complete').tap();
+    if ((await screen.getByTestId('shoot.complete').textContent()) !== 'Next shot') await screen.getByTestId('shoot.complete').tap();
     if (shot < count) await screen.getByTestId('shoot.next').tap();
   }
   await expect(screen.getByTestId('post.markPosted')).toBeVisible();
@@ -133,7 +118,7 @@ test('catalog onboarding, Today states, filming, post text, and backup sheets', 
   await screen.getByTestId('post.script.editor').tap();
   await expect(screen.getByTestId('post.keyboardDone')).toBeVisible();
   await capture(app, device, '11-post-edit-keyboard');
-  await screen.getByTestId('post.keyboardDone').tap();
+  await dismissKeyboard(screen, 'post.keyboardDone');
   try {
     await tapEditorControl(screen, 'post.cancel');
   } catch (error) {
@@ -148,17 +133,20 @@ test('catalog onboarding, Today states, filming, post text, and backup sheets', 
   await app.back();
   await expect(screen.getByTestId('today.startFilming')).toContainText('View posted content');
   await capture(app, device, '13-today-posted');
+  await expect(screen.getByTestId('today.notEasier')).toBeHidden();
+  await launch(device, 'backups');
+  await expect(screen.getByTestId('today.startFilming')).toBeVisible();
   await screen.getByTestId('today.notEasier').tap();
   await expect(screen.getByText('Other ideas', { exact: true })).toBeVisible();
   await capture(app, device, '14-other-ideas');
   await screen.getByRole('button', /10-second story/).tap();
-  await screen.scrollUntilVisible(screen.getByTestId('backup.confirmPosted'));
+  await scrollToControl(screen, screen.getByTestId('backup.confirmPosted'));
   await expect(screen.getByTestId('backup.confirmPosted')).toBeVisible();
   await capture(app, device, '15-story-backup');
   const cancel = await screen.getByRole('button', 'Cancel', { exact: true }).boundingBox();
   await screen.tapAt({ x: cancel.x + cancel.width / 2, y: cancel.y + cancel.height / 2 });
   await screen.getByRole('button', /Caption-only post/).tap();
-  await scrollBackupConfirmationIntoView(screen);
+  await scrollToControl(screen, screen.getByTestId('backup.confirmPosted'));
   await expect(screen.getByTestId('backup.confirmPosted')).toBeVisible();
   await capture(app, device, '16-caption-backup');
 });
@@ -167,9 +155,8 @@ test('catalog You and each creator preference screen', async ({ app, screen, dev
   await launch(device, 'preferences');
   await selectTab(screen, 'You');
   await expect(screen.getByTestId('you.preferences.toggle')).toBeVisible();
-  await capture(app, device, '20-you-collapsed');
-  await screen.getByTestId('you.preferences.toggle').tap();
-  await capture(app, device, '21-you-expanded');
+  await capture(app, device, '20-you-grouped-settings');
+  await expect(screen.getByTestId('you.row.voice')).toBeAttached();
   for (const [row, destination, name] of [
     ['account', 'account', '22-account'],
     ['interests', 'interests', '23-interests'],
@@ -249,10 +236,10 @@ test('from onboarding, create and restore four Story, Reel, and photo packages t
     await capture(app, device, '41-plan-voice-required');
     await voiceGate.tap();
     await screen.getByTestId('you.voice.positioning').pressSequentially('Small, useful moments from my everyday life.');
-    await screen.getByTestId('you.voice.keyboardDone').tap();
+    await dismissKeyboard(screen, 'you.voice.keyboardDone');
     await scrollToControl(screen, screen.getByTestId('you.voice.rules'));
     await screen.getByTestId('you.voice.rules').pressSequentially('Use direct sentences and a calm voice.');
-    await screen.getByTestId('you.voice.keyboardDone').tap();
+    await dismissKeyboard(screen, 'you.voice.keyboardDone');
     await scrollToControl(screen, screen.getByTestId('you.voice.save'));
     await screen.getByTestId('you.voice.save').tap();
     await expect(screen.getByTestId('you.voice.save')).toBeDisabled();
@@ -363,7 +350,7 @@ test('break-ui worst content, large text, and reduced motion remain usable', asy
     await capture(app, device, `50-${suffix}-today`);
     const commandTop = suffix.includes('large') ? undefined
       : (await screen.getByTestId('today.startFilming').boundingBox()).y - 16;
-    await scrollToControl(screen, screen.getByText('SHOT 01', { exact: true }), 'down', commandTop);
+    await scrollToControl(screen, screen.getByTestId('today.shot.1').getByText('What to film', { exact: true }), 'down', commandTop);
     await capture(app, device, `51-${suffix}-shot-list`);
     if (suffix === 'large' || suffix === 'narrow-large') {
       await scrollToControl(screen, screen.getByTestId('today.startFilming'), 'up');
@@ -382,7 +369,8 @@ test('break-ui worst content, large text, and reduced motion remain usable', asy
     }
     await capture(app, device, `52-${suffix}-filming`);
     await screen.getByTestId('shoot.complete').tap();
-    await expect(screen.getByTestId('shoot.complete')).toBeDisabled();
+    await expect(screen.getByTestId('shoot.complete')).toContainText('Next shot');
+    await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
   }
 });
 
@@ -441,3 +429,35 @@ test('break-ui uses the widest foldable window and preserves light appearance', 
     if (isFoldable) await device.fold('closed');
   }
 });
+
+test('screen catalog: Today with two pieces', { timeout: 420_000 }, async ({ app, screen, device }) => {
+  await openLoopSession(device, 'ready');
+  await openLoopPlanDay(screen, 0);
+  await addPlanPiece(screen, 1);
+  await scrollToControl(screen, screen.getByTestId('daily.availableOnToday'));
+  await expect(screen.getByTestId('daily.availableOnToday')).toBeVisible({ timeout: 45_000 });
+  await approveLoopPackage(screen);
+  await openLoopTodayRoot(screen);
+  await scrollToControl(screen, screen.getByTestId('today.piece.0'), 'up');
+  await expect(screen.getByTestId('today.piece.0')).toBeSelected();
+  await scrollToControl(screen, screen.getByTestId('today.piece.1'));
+  await expect(screen.getByTestId('today.piece.1')).toBeVisible();
+  await capture(app, device, 'today-two-pieces');
+  await selectTodayPiece(screen, 1);
+  await capture(app, device, 'today-two-pieces-second-selected');
+  await tapVisibleControl(screen, screen.getByTestId('today.startFilming'));
+  await scrollToControl(screen, screen.getByTestId('shoot.complete'));
+  await expect(screen.getByTestId('shoot.complete')).toBeEnabled();
+  await capture(app, device, 'today-two-pieces-filming');
+});
+
+for (const large of [false, true]) {
+  test(`screen catalog: Review day with Approve 2 pieces${large ? ' at largest text' : ''}`, { timeout: 240_000 }, async ({ app, screen, device }) => {
+    await openReviewSession(device, screen, { MCO_DYNAMIC_TYPE_ACCESSIBILITY5: large ? '1' : '0' });
+    const approve = screen.getByTestId('review.day.approve');
+    await scrollToControl(screen, approve);
+    await expect(approve).toHaveText('Approve 2 pieces');
+    await expect(approve).toBeEnabled();
+    await capture(app, device, large ? 'day-review-approve-two-largest-text' : 'day-review-approve-two');
+  });
+}
