@@ -9,6 +9,7 @@ const fixtureSession = process.env.POCKET_E2E_SESSION ?? `pocket-${scenario}-${D
 process.env.POCKET_E2E_SESSION = fixtureSession;
 const flags: Record<string, string> = {
   MCO_FORCE_FIXTURE_UI: '1',
+  MCO_LEGACY_POCKET_UI: '1',
   MCO_FORCE_APP_MODE: 'creator',
   MCO_QA_SESSION: fixtureSession,
 };

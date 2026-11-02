@@ -1,6 +1,22 @@
 # ContentHelper
 
-ContentHelper is a native iPhone app built with SwiftUI. The Xcode target and scheme are `CreatorContentOS`. The app bundle is `ContentHelper.app`.
+## Product direction
+
+Mira is an AI-assisted creative partner for creators. The goal is to help a creator develop an idea, write it, plan and film it, and prepare it for sharing on Instagram or another social platform.
+
+The native Mira app provides a project notebook, ideas, scripts, shot plans, filming progress, and contextual assistance. Its generation source and database migration are included in this repository but have not been verified as deployed. It does not publish to social platforms. See [the Mira handoff](docs/mira-handoff.md) for the original implementation details and verification limits.
+
+The Creator Loop work contains the separate Today, Plan, Shoot Folio, review, and per-piece planning implementation. It remains in the source, and a DEBUG fixture flag can open the older Pocket flow. The two flows currently use separate models and persistence; merging their source does not make them one continuous user journey. Design proposals in this repository are not proof of native behavior.
+
+## Collaborating
+
+- Treat `main` as the shared product baseline. Start a short-lived branch from the latest `main` for each task, for example `prateek/idea-prompts` or `nikhil/creator-insights`.
+- Open a pull request with a clear description, test evidence, and known limitations. Request review from the other collaborator. GitHub does not let an author approve their own pull request.
+- Keep branches small and merge them after approval and the required checks. Delete a task branch only after its changes are safely merged or preserved.
+- Write down handoffs and blockers in the pull request so work can continue across time zones. Never commit credentials, private user media, or local runtime settings.
+- Use TesterArmy e2e for supported app behavior and preserve existing test files. The legacy unit-test source remains for history; the Mira Xcode scheme does not enable its old unit-test target. Follow [the repository testing policy](AGENTS.md).
+
+ContentHelper is a native iPhone app built with SwiftUI. Its Xcode target and scheme are `CreatorContentOS`, and its app bundle is `ContentHelper.app`.
 
 ## Latest creator design and Claude handover
 
@@ -10,7 +26,7 @@ The [design index](docs/design/creator-ios-v1-2026-10-18/README.md) includes all
 
 ## Existing native implementation
 
-The creator workflow is Today → Plan → Shoot Folio. Today shows the daily idea. Plan prepares ideas for selected dates. Shoot Folio contains the filming steps and post text. “Mark as posted” records local completion; it does not publish to Instagram.
+The earlier Creator Loop workflow is Today → Plan → Shoot Folio. Today shows the daily idea. Plan prepares ideas for selected dates. Shoot Folio contains filming steps and post text. “Mark as posted” records completion; it does not publish to Instagram. This flow is available through a DEBUG fixture route, not the default Mira navigation.
 
 Read [the current project state and collaborator handoff](docs/project-state-2026-10-18.md) before starting work. The latest source includes the Pocket interface, adaptive onboarding, AI consent, editable post text, and package restoration work.
 
@@ -59,7 +75,7 @@ Run the existing backend checks with Deno:
 deno task ci:backend
 ```
 
-The tests permit only the local listener used by the Edge Function harness. They do not call provider endpoints.
+This task performs backend type checks; it does not run the existing test files or call live provider endpoints.
 
 For a local Supabase stack, start Docker through Colima on macOS:
 

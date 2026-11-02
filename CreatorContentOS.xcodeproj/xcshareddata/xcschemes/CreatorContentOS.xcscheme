@@ -21,20 +21,6 @@
                ReferencedContainer = "container:CreatorContentOS.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "NO"
-            buildForProfiling = "NO"
-            buildForArchiving = "NO"
-            buildForAnalyzing = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "7B22FA8DD6DC4100D28A6D6E"
-               BuildableName = "CreatorContentOSTests.xctest"
-               BlueprintName = "CreatorContentOSTests"
-               ReferencedContainer = "container:CreatorContentOS.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -53,17 +39,6 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "7B22FA8DD6DC4100D28A6D6E"
-               BuildableName = "CreatorContentOSTests.xctest"
-               BlueprintName = "CreatorContentOSTests"
-               ReferencedContainer = "container:CreatorContentOS.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

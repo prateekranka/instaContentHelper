@@ -1,0 +1,24 @@
+{
+  "name": "mira-progress",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.7",
+    "fastify": "^5.6.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@e2e-dev/web": "^0.15.3",
+    "@types/node": "^24.0.0",
+    "e2e": "^0.21.3",
+    "railway": "3.16.0",
+    "typescript": "^5.9.0"
+  }
+}

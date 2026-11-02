@@ -5,6 +5,7 @@ import BackgroundTasks
 @MainActor
 struct CreatorContentOSApp: App {
     @State private var appState = AppState.makeLaunchState()
+    @State private var miraDependencies = MiraDependencies.live()
 
     init() {
         // Register before the app finishes launching so background benchmark
@@ -23,9 +24,10 @@ struct CreatorContentOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            CreatorContentOSAppView()
+            MiraLaunchView(dependencies: miraDependencies)
                 .environment(appState)
                 .environment(appState.runtime.services)
+                .environment(miraDependencies)
                 .task {
                     await appState.restoreAuthentication()
                 }
@@ -45,10 +47,27 @@ struct CreatorContentOSApp: App {
                         await services.scheduleTodayNotificationIfNeededImmediately()
                     }
                     await services.refreshFromRepositoriesImmediately()
-#if DEBUG
-                    services.applyDebugWeekStartOverrideIfNeeded()
-#endif
                 }
+        }
+    }
+}
+
+private struct MiraLaunchView: View {
+    let dependencies: MiraDependencies
+    var body: some View {
+        Group {
+#if DEBUG
+            if DebugLaunchFlags.forceFixtureUI && DebugLaunchConfiguration.isEnabled(
+                "MCO_LEGACY_POCKET_UI", environment: ProcessInfo.processInfo.environment,
+                arguments: ProcessInfo.processInfo.arguments
+            ) {
+                CreatorContentOSAppView()
+            } else {
+                MiraRootView(dependencies: dependencies)
+            }
+#else
+            MiraRootView(dependencies: dependencies)
+#endif
         }
     }
 }

@@ -7,6 +7,7 @@ on:
       - main
       - codex/day-at-a-time-generation
       - redesign/creator-loop
+      - codex/mira-ios-mvp
 
 permissions:
   contents: read
@@ -30,7 +31,7 @@ jobs:
       - name: Prove rules reject past mistakes
         run: python3 scripts/prove-agent-rules.py
   deno:
-    name: Deno contracts
+    name: Deno type checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -40,5 +41,5 @@ jobs:
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: v2.x
-      - name: Type-check and test backend
+      - name: Type-check backend without unit tests
         run: deno task ci:backend
