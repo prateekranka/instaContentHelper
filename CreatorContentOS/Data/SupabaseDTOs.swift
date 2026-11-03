@@ -1547,6 +1547,11 @@ enum SupabaseDateFormatting {
     static func calendarText(from date: Date, format: String, localeIdentifier: String = "en_US_POSIX") -> String {
         withFormatter(format: format, localeIdentifier: localeIdentifier) { $0.string(from: date) }
     }
+
+    /// Short wall-clock time (e.g. "9:32 PM") in the given zone, via the cached formatter.
+    static func timeOfDay(from date: Date, timeZone: TimeZone = .current) -> String {
+        withFormatter(format: "h:mm a", timeZone: timeZone) { $0.string(from: date) }
+    }
 }
 
 extension CompletionState {

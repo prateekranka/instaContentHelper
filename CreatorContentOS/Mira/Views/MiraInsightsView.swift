@@ -109,10 +109,8 @@ struct MiraInsightsView: View {
     }
 
     private func footer(_ report: InstagramInsightsReport) -> String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
         let handle = report.username.map { "@\($0)" } ?? "Instagram"
-        return "\(handle) · updated \(formatter.string(from: report.fetchedAt))"
+        return "\(handle) · updated \(SupabaseDateFormatting.timeOfDay(from: report.fetchedAt))"
     }
 
     // MARK: Data

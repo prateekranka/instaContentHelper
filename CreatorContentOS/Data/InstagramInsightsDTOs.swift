@@ -118,7 +118,7 @@ extension InstagramInsightsResponse {
 
     private static func parseDate(_ iso: String?) -> Date {
         guard let iso else { return Date() }
-        return ISO8601DateFormatter().date(from: iso) ?? Date()
+        return SupabaseDateFormatting.timestamp(from: iso) ?? Date()
     }
 }
 
