@@ -23,7 +23,7 @@ enum InstagramOAuth {
 
     /// Builds the authorization URL opened in the web-auth sheet, or nil when the
     /// app isn't configured with an Instagram app id / redirect yet.
-    static func authorizeURL(state: String = UUID().uuidString) -> URL? {
+    static func authorizeURL(state: String) -> URL? {
         guard let appID, let redirectURI else { return nil }
         var components = URLComponents(string: "https://www.instagram.com/oauth/authorize")
         components?.queryItems = [
@@ -38,9 +38,18 @@ enum InstagramOAuth {
 
     /// Extracts the `code` query item from the OAuth callback URL.
     static func authorizationCode(from callbackURL: URL) -> String? {
-        URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+        queryValue("code", in: callbackURL)
+    }
+
+    /// Extracts the `state` query item, which must match the one sent in `authorizeURL`.
+    static func state(from callbackURL: URL) -> String? {
+        queryValue("state", in: callbackURL)
+    }
+
+    private static func queryValue(_ name: String, in url: URL) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?
-            .first(where: { $0.name == "code" })?
+            .first(where: { $0.name == name })?
             .value?
             .nilIfBlank
     }

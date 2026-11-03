@@ -23,6 +23,9 @@ import {
 
 type InsightsRequest = { creator_id?: string };
 
+// Slightly under 7 days so a weekly check-in still finds last week's snapshot.
+const WEEK_BASELINE_MS = 6.5 * 24 * 60 * 60 * 1000;
+
 type ConnectionRow = {
   id: string;
   ig_user_id: string;
@@ -137,12 +140,16 @@ async function produceInsights(
     return jsonResponse(state("no_data", conn.account_type, conn.username));
   }
 
-  // Previous snapshot (for deltas) BEFORE inserting the new one.
+  // Baseline for week-over-week deltas: the newest snapshot that is at least
+  // ~a week old. Comparing to the latest snapshot would diff against a fetch
+  // from minutes ago. No baseline yet → no delta shown.
+  const baselineCutoff = new Date(Date.now() - WEEK_BASELINE_MS).toISOString();
   const { data: prevRows } = await admin
     .from("creator_account_insight_snapshots")
     .select("followers_count, reach_7d, saves_7d")
     .eq("workspace_id", session.workspaceID)
     .eq("creator_id", creatorID)
+    .lte("captured_at", baselineCutoff)
     .order("captured_at", { ascending: false })
     .limit(1);
 

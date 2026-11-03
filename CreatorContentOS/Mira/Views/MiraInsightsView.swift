@@ -139,7 +139,8 @@ struct MiraInsightsView: View {
 
     private func connect() async {
         message = nil
-        guard InstagramOAuth.isConfigured, let url = InstagramOAuth.authorizeURL() else {
+        let oauthState = UUID().uuidString
+        guard InstagramOAuth.isConfigured, let url = InstagramOAuth.authorizeURL(state: oauthState) else {
             message = "Instagram connection isn't configured in this build yet."
             return
         }
@@ -153,7 +154,9 @@ struct MiraInsightsView: View {
             let callback = try await webAuth.authenticate(
                 using: url, callbackURLScheme: InstagramOAuth.callbackScheme
             )
-            guard let code = InstagramOAuth.authorizationCode(from: callback) else {
+            // Reject callbacks that don't echo our state (login CSRF / account swap).
+            guard InstagramOAuth.state(from: callback) == oauthState,
+                  let code = InstagramOAuth.authorizationCode(from: callback) else {
                 message = "Couldn't read the Instagram response. Try again."
                 return
             }
