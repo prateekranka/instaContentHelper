@@ -95,7 +95,7 @@ export async function handleInstagramConnectRequest(
       account_type: tokens.accountType,
       access_token: tokens.accessToken,
       token_expires_at: tokens.expiresAt,
-      scopes: "instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement",
+      scopes: "instagram_basic,instagram_manage_insights",
       connected_at: new Date().toISOString(),
       revoked_at: null,
     }, { onConflict: "workspace_id,creator_id" });

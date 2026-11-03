@@ -12,56 +12,57 @@ Related code:
 - iOS screen `CreatorContentOS/Mira/Views/MiraInsightsView.swift`, config
   `CreatorContentOS/Data/InstagramOAuth.swift`
 
-## Login type: Facebook Login for Business ("Unified login")
+## Login type: Instagram API with Unified login (no Facebook Page)
 
-Newer Meta apps can't use *API setup with Instagram login*; the dashboard shows
-"API setup with Instagram login is not available for newer apps". So the creator
-signs in with **Facebook Login for Business**, and we read the Instagram
-professional account that is **linked to one of their Facebook Pages**.
+Newer Meta apps can't use *API setup with Instagram login*. Meta's replacement is
+**API setup with Unified login**: the creator logs in with **Instagram or
+Facebook** and shares their Instagram professional account with the app.
+**No Facebook Page is needed.** Under the hood this is Facebook Login for
+Business with a **System-user access token (SUAT)** configuration.
 
 Consequences:
-- Each creator needs an Instagram **Professional** (Creator or Business) account
-  **linked to a Facebook Page** they manage. Without that, connect returns
-  `instagram_account_not_linked` and the app explains how to fix it.
-- Credentials are the **top-level Meta app** id and secret
-  (App settings → Basic), not Instagram-scoped ones.
-- All Graph calls go to `graph.facebook.com` (version from the
-  `INSTAGRAM_GRAPH_VERSION` secret, default `v24.0`).
+- Each creator needs an Instagram **Professional** (Creator or Business) account.
+  Personal accounts can't share insights. Switching is free in Instagram settings.
+- The **app** must be connected to a **business portfolio** (Meta requires it for
+  Unified login).
+- Credentials are the **top-level Meta app** id and secret (App settings → Basic).
+- The code exchange returns a business integration system-user token. Its lifetime
+  comes from the configuration (choose *Never*).
+- The account is found with `GET /me/assigned_instagram_accounts`. All Graph calls
+  go to `graph.facebook.com` (version from `INSTAGRAM_GRAPH_VERSION`, default `v24.0`).
+- Older **User access token** configurations still work: `instagram-connect` falls
+  back to the Page-linked lookup (`/me/accounts`) when no assigned account exists.
+
+Docs: [Unified login overview](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login),
+[authentication](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/authentication),
+[permissions](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/permissions).
 
 ## 0. What you get without App Review
 
-Insights permissions require Meta App Review for the general public. You do **not**
-need review to build and pilot:
-
-- A Meta app in **Development mode** can grant these permissions to **app roles and
-  test users** (admins/developers/testers). You and a handful of pilot creators
-  use the **real** API immediately.
-- Everyone else sees the app's "Sample data" fallback until review clears.
-
-Submit App Review in parallel; flip to the public audience when approved. No
-credential scraping. Connecting is always the creator's own OAuth consent.
+Saving a configuration gives **Standard Access**, which works only for people with
+a role on the app (admins, developers, testers). Pilot creators get the real API
+immediately once they have a role. Public creators need **Advanced Access** through
+App Review and the app in **Live mode**.
 
 ## 1. Meta app
 
-The app is **Mira - AI PR Agency** (app id `2420286265379388`). It has the
-*Manage messaging & content on Instagram* use case, set up with Unified login.
+Pick an app that is **connected to a business portfolio**. Use cases → *Manage
+messaging & content on Instagram* → Customize → **API setup with Unified login**.
+If the page says "Business portfolio selection is mandatory", connect a portfolio
+first (App settings → Basic → Business portfolio).
 
 ## 2. Login configuration and permissions
 
-Facebook Login for Business takes its permissions from a **configuration**:
+On **API setup with Unified login → 1. Configure your app**:
 
-1. Use cases → Instagram → **API setup with Unified login** → *Configure your app*,
-   or Facebook Login for Business → **Configurations** → *Create configuration*.
-2. Token type: **User access token** (not System-user access token).
-3. Permissions, exactly:
-   - `instagram_basic` (read the account id and username)
-   - `instagram_manage_insights` (followers / reach / media saves)
-   - `pages_show_list` (find the Page the Instagram account is linked to)
-   - `pages_read_engagement` (read the Page's linked Instagram account)
+1. **Create new configuration.** Token type: **System-user access token (SUAT)**.
+   Expiration: **Never**. Business assets: **Instagram account** (required).
+2. Permissions: keep `instagram_basic` and **add `instagram_manage_insights`**
+   (the default configuration does not include it). Remove publishing, messaging,
+   comments and ads permissions; Mira only reads.
+3. Select the registered redirect URL (step 3) and **Save**.
 4. Note the **Configuration ID**. It goes in the app config as
    `INSTAGRAM_LOGIN_CONFIG_ID` (step 5).
-
-Do **not** add publishing or messaging permissions; we only read insights.
 
 ## 3. OAuth redirect URI (via the https bridge)
 
@@ -79,16 +80,16 @@ The **one redirect URL** used in all three places is:
 https://zogvvrxhiwozjmufvddu.functions.supabase.co/ig-oauth-redirect
 ```
 
-Register it in **Facebook Login for Business → Settings → Valid OAuth Redirect
-URIs**, and use the identical value for:
+Register it under **API setup with Unified login → Redirect URL** (it also shows in
+Facebook Login for Business → Settings → Valid OAuth Redirect URIs), and use the identical value for:
 - the client's `INSTAGRAM_REDIRECT_URI` (`LocalRuntime.xcconfig`), and
 - the `INSTAGRAM_REDIRECT_URI` Supabase secret (step 5).
 
 ## 4. Add pilot test users (Development mode)
 
-Meta app → **App roles → Roles** → add each pilot creator's **Facebook** account
-(Tester role). They accept the invite on Facebook. Each must manage a Facebook
-Page with a linked Instagram Professional account.
+Meta app → **App roles → Roles** → add each pilot creator (Tester role). They
+accept the invite. Each needs an Instagram Creator or Business account. No
+Facebook Page is needed.
 
 ## 5. Config and secrets
 
@@ -142,13 +143,15 @@ SUPABASE_PROJECT_REF=zogvvrxhiwozjmufvddu ALLOW_SUPABASE_CLI_SESSION=1 SKIP_MIGR
 1. Creator taps **Connect Instagram** on Profile → How you're doing.
 2. App opens `https://www.facebook.com/dialog/oauth` in
    `WebAuthenticationSession` with `client_id`, `redirect_uri`,
-   `response_type=code`, `config_id`, and a random `state`.
+   `response_type=code`, `override_default_response_type=true`, `config_id`, and a
+   random `state`. The creator logs in with Instagram or Facebook and picks their
+   Instagram account.
 3. The bridge forwards `?code=…&state=…` to `creatorcontenthelper://ig-auth`.
    The app rejects the callback if `state` doesn't match.
 4. App POSTs `{ creator_id, code, redirect_uri }` to **`instagram-connect`**, which
-   exchanges the code for a user token, upgrades it to a long-lived token
-   (`fb_exchange_token`), finds the Instagram account via `/me/accounts`
-   (`instagram_business_account`), and stores it in
+   exchanges the code for a token, finds the Instagram account via
+   `/me/assigned_instagram_accounts` (or, for older user-token configurations,
+   upgrades to a long-lived token and uses `/me/accounts`), and stores it in
    `creator_instagram_connections`. The token is never returned to the device.
 5. **`instagram-insights`** fetches followers / 7-day reach / 7-day saves, writes a
    snapshot, and computes week-over-week deltas against the newest snapshot that
@@ -156,8 +159,9 @@ SUPABASE_PROJECT_REF=zogvvrxhiwozjmufvddu ALLOW_SUPABASE_CLI_SESSION=1 SKIP_MIGR
 
 ## 8. Token lifecycle
 
-Facebook long-lived user tokens last ~60 days and can't be refreshed server-side.
-When the stored token has expired (or Graph returns an OAuthException), the app
+With the SUAT configuration and *Never* expiration, the token lasts until the
+creator removes the app or moves the Instagram account to another portfolio.
+Older user-token configurations last ~60 days. When the stored token has expired (or Graph returns an OAuthException), the app
 shows **"Permission needed"** and the creator reconnects.
 
 ## 9. App Review (for the public audience)
@@ -168,8 +172,8 @@ Prepare:
 - A **screencast** of the real connect flow and where each permission's data is
   used (the "How you're doing" screen).
 - A written **justification** per permission: `instagram_basic`,
-  `instagram_manage_insights`, `pages_show_list`, `pages_read_engagement`.
-- A test Facebook account with a Page and linked Instagram Professional account.
+  `instagram_manage_insights`.
+- A test Instagram Creator or Business account.
 
 On approval, switch the app to **Live mode**.
 
@@ -179,9 +183,9 @@ On approval, switch the app to **Live mode**.
 - `instagram_connect_failed` (502) → bad `code`, redirect-URI mismatch, wrong app
   secret, or the user isn't a tester in Development mode. The redirect URI must
   match exactly in the dashboard, the app config, and the secret.
-- `instagram_account_not_linked` → no Page with a linked Instagram Professional
-  account. Link one in Instagram → Settings → Account type and tools / Sharing to
-  other apps, or in the Page's settings.
+- `instagram_account_not_linked` → the creator did not share an Instagram
+  professional account during login, or the account is personal. Switch to a
+  Creator or Business account in Instagram settings, then connect again.
 - `instagram_permission_denied` / **"Permission needed"** → a permission wasn't
   granted, the token expired, or the account isn't a tester.
 - No deltas yet → less than a week of snapshots.

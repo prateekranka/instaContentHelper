@@ -1,7 +1,8 @@
 import Foundation
 
-/// Client-side Facebook Login for Business ("Unified login") configuration +
-/// helpers for connecting a creator's Instagram professional account.
+/// Client-side Instagram API with Unified login (Facebook Login for Business)
+/// configuration + helpers. The creator logs in with Instagram or Facebook and
+/// shares their Instagram professional account; no Facebook Page is needed.
 ///
 /// The app only ever holds the PUBLIC Meta app id, the login configuration id and
 /// the redirect URI (surfaced from the build config via Info.plist). The app
@@ -10,7 +11,7 @@ enum InstagramOAuth {
     static let callbackScheme = "creatorcontenthelper"
     /// Used only when no login configuration id is set; Facebook Login for
     /// Business takes its permissions from the configuration instead.
-    static let scopes = "instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement"
+    static let scopes = "instagram_basic,instagram_manage_insights"
 
     static var appID: String? {
         infoValue("INSTAGRAM_APP_ID")
@@ -39,6 +40,7 @@ enum InstagramOAuth {
             URLQueryItem(name: "redirect_uri", value: redirectURI),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "override_default_response_type", value: "true"),
         ]
         if let loginConfigID {
             items.append(URLQueryItem(name: "config_id", value: loginConfigID))

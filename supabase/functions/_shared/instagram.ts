@@ -1,7 +1,7 @@
-// Instagram API with Facebook Login for Business ("Unified login") — OAuth +
-// account insights. Newer Meta apps can't use Instagram Login, so the creator
-// signs in with Facebook and we read the Instagram professional account that is
-// linked to one of their Facebook Pages.
+// Instagram API with Unified login (Facebook Login for Business) — OAuth +
+// account insights. The creator logs in with Instagram or Facebook and shares
+// their Instagram professional account; no Facebook Page is needed. Older
+// user-token configurations still work through the Page-linked lookup.
 //
 // This module isolates all Instagram I/O behind thin fetch wrappers and keeps the
 // display/aggregation logic as pure functions (formatting, deltas, nudge, state
@@ -204,35 +204,46 @@ export async function exchangeCodeForTokens(args: {
   appSecret: string;
   redirectURI: string;
 }): Promise<InstagramTokens> {
-  const shortURL = new URL(`${GRAPH}/oauth/access_token`);
-  shortURL.searchParams.set("client_id", args.appID);
-  shortURL.searchParams.set("client_secret", args.appSecret);
-  shortURL.searchParams.set("redirect_uri", args.redirectURI);
-  shortURL.searchParams.set("code", args.code);
-  const shortRes = await fetch(shortURL);
-  if (!shortRes.ok) {
-    throw new Error(`facebook_code_exchange_failed:${shortRes.status}`);
+  const tokenURL = new URL(`${GRAPH}/oauth/access_token`);
+  tokenURL.searchParams.set("client_id", args.appID);
+  tokenURL.searchParams.set("client_secret", args.appSecret);
+  tokenURL.searchParams.set("redirect_uri", args.redirectURI);
+  tokenURL.searchParams.set("code", args.code);
+  const tokenRes = await fetch(tokenURL);
+  if (!tokenRes.ok) {
+    throw new Error(`facebook_code_exchange_failed:${tokenRes.status}`);
   }
-  const shortJSON = await shortRes.json() as { access_token?: string };
-  if (!shortJSON.access_token) {
+  const tokenJSON = await tokenRes.json() as { access_token?: string; expires_in?: number };
+  if (!tokenJSON.access_token) {
     throw new Error("facebook_code_exchange_missing_token");
   }
 
-  // Exchange the short-lived user token for a long-lived (~60d) one. Facebook
-  // user tokens can't be refreshed server-side; when one lapses, Graph returns
-  // an OAuthException and the app asks the creator to reconnect.
+  // Unified login (system-user access token configuration): the creator logs in
+  // with Instagram or Facebook and shares their Instagram account directly. No
+  // Facebook Page is involved and the token lifetime comes from the configuration.
+  const assigned = await fetchAssignedInstagramAccount(tokenJSON.access_token);
+  if (assigned) {
+    return {
+      igUserID: assigned.igUserID,
+      accessToken: tokenJSON.access_token,
+      expiresAt: expiryFrom(tokenJSON.expires_in),
+      username: assigned.username,
+      accountType: "business",
+    };
+  }
+
+  // User access token configuration: the Instagram account is reached through
+  // the Facebook Page it is linked to. Exchange for a long-lived (~60d) token.
   const longURL = new URL(`${GRAPH}/oauth/access_token`);
   longURL.searchParams.set("grant_type", "fb_exchange_token");
   longURL.searchParams.set("client_id", args.appID);
   longURL.searchParams.set("client_secret", args.appSecret);
-  longURL.searchParams.set("fb_exchange_token", shortJSON.access_token);
+  longURL.searchParams.set("fb_exchange_token", tokenJSON.access_token);
   const longRes = await fetch(longURL);
-  if (!longRes.ok) throw new Error(`facebook_long_token_failed:${longRes.status}`);
-  const longJSON = await longRes.json() as { access_token?: string; expires_in?: number };
-  const accessToken = longJSON.access_token ?? shortJSON.access_token;
-  const expiresAt = longJSON.expires_in
-    ? new Date(Date.now() + longJSON.expires_in * 1000).toISOString()
-    : null;
+  const longJSON = longRes.ok
+    ? await longRes.json() as { access_token?: string; expires_in?: number }
+    : {};
+  const accessToken = longJSON.access_token ?? tokenJSON.access_token;
 
   const account = await fetchLinkedInstagramAccount(accessToken);
   if (!account) throw new InstagramAccountNotLinkedError();
@@ -240,12 +251,28 @@ export async function exchangeCodeForTokens(args: {
   return {
     igUserID: account.igUserID,
     accessToken,
-    expiresAt,
+    expiresAt: expiryFrom(longJSON.expires_in ?? tokenJSON.expires_in),
     username: account.username,
-    // Only professional (Business or Creator) accounts can be linked to a Page,
-    // and Graph doesn't say which, so record the generic professional type.
     accountType: "business",
   };
+}
+
+function expiryFrom(expiresIn: number | undefined): string | null {
+  return expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+}
+
+/** Instagram accounts the creator shared with the app during Unified login. */
+async function fetchAssignedInstagramAccount(
+  accessToken: string,
+): Promise<{ igUserID: string; username: string | null } | null> {
+  const url = new URL(`${GRAPH}/me/assigned_instagram_accounts`);
+  url.searchParams.set("fields", "id,username");
+  url.searchParams.set("access_token", accessToken);
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const json = await res.json() as { data?: Array<{ id?: string; username?: string }> };
+  const account = json.data?.find((entry) => entry.id);
+  return account?.id ? { igUserID: account.id, username: account.username ?? null } : null;
 }
 
 async function fetchLinkedInstagramAccount(
