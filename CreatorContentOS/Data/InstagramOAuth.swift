@@ -1,13 +1,16 @@
 import Foundation
 
-/// Client-side Instagram Business Login configuration + helpers.
+/// Client-side Facebook Login for Business ("Unified login") configuration +
+/// helpers for connecting a creator's Instagram professional account.
 ///
-/// The app only ever holds the PUBLIC Instagram app id and the redirect URI
-/// (surfaced from the build config via Info.plist). The app secret and the
-/// code→token exchange stay server-side in the `instagram-connect` edge function.
+/// The app only ever holds the PUBLIC Meta app id, the login configuration id and
+/// the redirect URI (surfaced from the build config via Info.plist). The app
+/// secret and the code→token exchange stay server-side in `instagram-connect`.
 enum InstagramOAuth {
     static let callbackScheme = "creatorcontenthelper"
-    static let scopes = "instagram_business_basic,instagram_business_manage_insights"
+    /// Used only when no login configuration id is set; Facebook Login for
+    /// Business takes its permissions from the configuration instead.
+    static let scopes = "instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement"
 
     static var appID: String? {
         infoValue("INSTAGRAM_APP_ID")
@@ -17,22 +20,32 @@ enum InstagramOAuth {
         infoValue("INSTAGRAM_REDIRECT_URI")
     }
 
+    /// Facebook Login for Business configuration (User access token type).
+    static var loginConfigID: String? {
+        infoValue("INSTAGRAM_LOGIN_CONFIG_ID")
+    }
+
     static var isConfigured: Bool {
         appID != nil && redirectURI != nil
     }
 
     /// Builds the authorization URL opened in the web-auth sheet, or nil when the
-    /// app isn't configured with an Instagram app id / redirect yet.
+    /// app isn't configured with a Meta app id / redirect yet.
     static func authorizeURL(state: String) -> URL? {
         guard let appID, let redirectURI else { return nil }
-        var components = URLComponents(string: "https://www.instagram.com/oauth/authorize")
-        components?.queryItems = [
+        var components = URLComponents(string: "https://www.facebook.com/dialog/oauth")
+        var items = [
             URLQueryItem(name: "client_id", value: appID),
             URLQueryItem(name: "redirect_uri", value: redirectURI),
             URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "scope", value: scopes),
             URLQueryItem(name: "state", value: state),
         ]
+        if let loginConfigID {
+            items.append(URLQueryItem(name: "config_id", value: loginConfigID))
+        } else {
+            items.append(URLQueryItem(name: "scope", value: scopes))
+        }
+        components?.queryItems = items
         return components?.url
     }
 

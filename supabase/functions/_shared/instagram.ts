@@ -1,4 +1,7 @@
-// Instagram API with Instagram Login (Business Login) — OAuth + account insights.
+// Instagram API with Facebook Login for Business ("Unified login") — OAuth +
+// account insights. Newer Meta apps can't use Instagram Login, so the creator
+// signs in with Facebook and we read the Instagram professional account that is
+// linked to one of their Facebook Pages.
 //
 // This module isolates all Instagram I/O behind thin fetch wrappers and keeps the
 // display/aggregation logic as pure functions (formatting, deltas, nudge, state
@@ -54,20 +57,6 @@ export type InsightsReportDTO = {
 };
 
 // MARK: - Pure helpers (unit-tested)
-
-export function normalizeAccountType(raw: string | null | undefined): InstagramAccountType {
-  switch ((raw ?? "").toUpperCase()) {
-    case "BUSINESS":
-      return "business";
-    case "MEDIA_CREATOR":
-    case "CREATOR":
-      return "media_creator";
-    case "PERSONAL":
-      return "personal";
-    default:
-      return "unknown";
-  }
-}
 
 /** Professional (business/creator) accounts can return insights; personal cannot. */
 export function isProfessional(accountType: InstagramAccountType): boolean {
@@ -189,20 +178,25 @@ export function hasAnyMetric(snapshot: AccountSnapshot): boolean {
     snapshot.saves7d !== null;
 }
 
-/** True when a long-lived token should be refreshed (expires within `days`). */
-export function needsRefresh(expiresAt: string | null, now: Date, days = 7): boolean {
-  if (!expiresAt) return false;
-  const expiry = Date.parse(expiresAt);
-  if (!Number.isFinite(expiry)) return false;
-  return expiry - now.getTime() < days * 24 * 60 * 60 * 1000;
+/** Picks the first Facebook Page that has a linked Instagram professional account. */
+export function pickInstagramAccount(
+  pages: Array<{ instagram_business_account?: { id?: string; username?: string } }>,
+): { igUserID: string; username: string | null } | null {
+  for (const page of pages) {
+    const account = page.instagram_business_account;
+    if (account?.id) return { igUserID: account.id, username: account.username ?? null };
+  }
+  return null;
 }
 
-// MARK: - Instagram I/O (thin wrappers; not unit-tested)
+// MARK: - Graph API I/O (thin wrappers; not unit-tested)
 
-const GRAPH = "https://graph.instagram.com";
-const OAUTH = "https://api.instagram.com/oauth/access_token";
+const GRAPH = `https://graph.facebook.com/${Deno.env.get("INSTAGRAM_GRAPH_VERSION") ?? "v24.0"}`;
 
 export class InstagramPermissionError extends Error {}
+
+/** The Facebook user has no Page with a linked Instagram professional account. */
+export class InstagramAccountNotLinkedError extends Error {}
 
 export async function exchangeCodeForTokens(args: {
   code: string;
@@ -210,77 +204,64 @@ export async function exchangeCodeForTokens(args: {
   appSecret: string;
   redirectURI: string;
 }): Promise<InstagramTokens> {
-  const form = new FormData();
-  form.append("client_id", args.appID);
-  form.append("client_secret", args.appSecret);
-  form.append("grant_type", "authorization_code");
-  form.append("redirect_uri", args.redirectURI);
-  form.append("code", args.code);
-
-  const shortRes = await fetch(OAUTH, { method: "POST", body: form });
+  const shortURL = new URL(`${GRAPH}/oauth/access_token`);
+  shortURL.searchParams.set("client_id", args.appID);
+  shortURL.searchParams.set("client_secret", args.appSecret);
+  shortURL.searchParams.set("redirect_uri", args.redirectURI);
+  shortURL.searchParams.set("code", args.code);
+  const shortRes = await fetch(shortURL);
   if (!shortRes.ok) {
-    throw new Error(`instagram_code_exchange_failed:${shortRes.status}`);
+    throw new Error(`facebook_code_exchange_failed:${shortRes.status}`);
   }
-  const shortJSON = await shortRes.json() as { access_token?: string; user_id?: string | number };
-  if (!shortJSON.access_token || shortJSON.user_id === undefined) {
-    throw new Error("instagram_code_exchange_missing_token");
+  const shortJSON = await shortRes.json() as { access_token?: string };
+  if (!shortJSON.access_token) {
+    throw new Error("facebook_code_exchange_missing_token");
   }
 
-  // Exchange the short-lived token for a long-lived (~60d) one.
-  const longURL = new URL(`${GRAPH}/access_token`);
-  longURL.searchParams.set("grant_type", "ig_exchange_token");
+  // Exchange the short-lived user token for a long-lived (~60d) one. Facebook
+  // user tokens can't be refreshed server-side; when one lapses, Graph returns
+  // an OAuthException and the app asks the creator to reconnect.
+  const longURL = new URL(`${GRAPH}/oauth/access_token`);
+  longURL.searchParams.set("grant_type", "fb_exchange_token");
+  longURL.searchParams.set("client_id", args.appID);
   longURL.searchParams.set("client_secret", args.appSecret);
-  longURL.searchParams.set("access_token", shortJSON.access_token);
+  longURL.searchParams.set("fb_exchange_token", shortJSON.access_token);
   const longRes = await fetch(longURL);
-  if (!longRes.ok) throw new Error(`instagram_long_token_failed:${longRes.status}`);
+  if (!longRes.ok) throw new Error(`facebook_long_token_failed:${longRes.status}`);
   const longJSON = await longRes.json() as { access_token?: string; expires_in?: number };
   const accessToken = longJSON.access_token ?? shortJSON.access_token;
   const expiresAt = longJSON.expires_in
     ? new Date(Date.now() + longJSON.expires_in * 1000).toISOString()
     : null;
 
-  const profile = await fetchProfile(String(shortJSON.user_id), accessToken);
+  const account = await fetchLinkedInstagramAccount(accessToken);
+  if (!account) throw new InstagramAccountNotLinkedError();
 
   return {
-    igUserID: String(shortJSON.user_id),
+    igUserID: account.igUserID,
     accessToken,
     expiresAt,
-    username: profile.username,
-    accountType: profile.accountType,
+    username: account.username,
+    // Only professional (Business or Creator) accounts can be linked to a Page,
+    // and Graph doesn't say which, so record the generic professional type.
+    accountType: "business",
   };
 }
 
-export async function refreshLongLivedToken(
+async function fetchLinkedInstagramAccount(
   accessToken: string,
-): Promise<{ accessToken: string; expiresAt: string | null }> {
-  const url = new URL(`${GRAPH}/refresh_access_token`);
-  url.searchParams.set("grant_type", "ig_refresh_token");
+): Promise<{ igUserID: string; username: string | null } | null> {
+  const url = new URL(`${GRAPH}/me/accounts`);
+  url.searchParams.set("fields", "id,instagram_business_account{id,username}");
+  url.searchParams.set("limit", "100");
   url.searchParams.set("access_token", accessToken);
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`instagram_token_refresh_failed:${res.status}`);
-  const json = await res.json() as { access_token?: string; expires_in?: number };
-  return {
-    accessToken: json.access_token ?? accessToken,
-    expiresAt: json.expires_in
-      ? new Date(Date.now() + json.expires_in * 1000).toISOString()
-      : null,
+  await throwIfPermission(res);
+  if (!res.ok) throw new Error(`facebook_pages_lookup_failed:${res.status}`);
+  const json = await res.json() as {
+    data?: Array<{ instagram_business_account?: { id?: string; username?: string } }>;
   };
-}
-
-async function fetchProfile(
-  igUserID: string,
-  accessToken: string,
-): Promise<{ username: string | null; accountType: InstagramAccountType }> {
-  const url = new URL(`${GRAPH}/${igUserID}`);
-  url.searchParams.set("fields", "user_id,username,account_type");
-  url.searchParams.set("access_token", accessToken);
-  const res = await fetch(url);
-  if (!res.ok) return { username: null, accountType: "unknown" };
-  const json = await res.json() as { username?: string; account_type?: string };
-  return {
-    username: json.username ?? null,
-    accountType: normalizeAccountType(json.account_type),
-  };
+  return pickInstagramAccount(json.data ?? []);
 }
 
 /** Fetch followers + 7-day reach (+ best-effort 7-day saves). */
