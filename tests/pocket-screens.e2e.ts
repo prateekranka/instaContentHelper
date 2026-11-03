@@ -18,7 +18,7 @@ async function launch(device: Device, suffix: string, flags: Record<string, stri
   await device.openApp(bundleId, {
     relaunch: true,
     launchArguments: ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US',
-      ...Object.entries({ MCO_FORCE_FIXTURE_UI: '1', MCO_FORCE_APP_MODE: 'creator',
+      ...Object.entries({ MCO_FORCE_FIXTURE_UI: '1', MCO_LEGACY_POCKET_UI: '1', MCO_FORCE_APP_MODE: 'creator',
         MCO_QA_SESSION: `${session}-${suffix}`, ...flags })
         .flatMap(([key, value]) => [`-${key}`, value])],
   });

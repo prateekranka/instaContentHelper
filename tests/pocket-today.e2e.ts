@@ -87,7 +87,7 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
   await expect(screen.getByText('Posted', { exact: true })).toBeVisible();
   await device.openApp('com.prateekranka.creatorcontenthelper', {
     relaunch: true,
-    launchArguments: ['-MCO_FORCE_FIXTURE_UI', '1', '-MCO_FORCE_APP_MODE', 'creator',
+    launchArguments: ['-MCO_FORCE_FIXTURE_UI', '1', '-MCO_LEGACY_POCKET_UI', '1', '-MCO_FORCE_APP_MODE', 'creator',
       '-MCO_QA_SESSION', process.env.POCKET_E2E_SESSION!, '-MCO_FORCE_ONBOARDING', '0'],
   });
   await screen.getByTestId('today.startFilming').tap();
@@ -99,7 +99,7 @@ test('filming survives repeated navigation, edits, and posted undo', { timeout: 
   await app.screenshot('pocket-persisted-edits');
   await device.openApp('com.prateekranka.creatorcontenthelper', {
     relaunch: true,
-    launchArguments: ['-MCO_FORCE_FIXTURE_UI', '1', '-MCO_FORCE_APP_MODE', 'creator',
+    launchArguments: ['-MCO_FORCE_FIXTURE_UI', '1', '-MCO_LEGACY_POCKET_UI', '1', '-MCO_FORCE_APP_MODE', 'creator',
       '-MCO_QA_SESSION', process.env.POCKET_E2E_SESSION!, '-MCO_FORCE_ONBOARDING', '0'],
   });
   await selectTab(screen, 'You');

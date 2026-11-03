@@ -37,6 +37,16 @@ struct MiraPage<Content: View>: View {
                 .padding(24).frame(maxWidth: .infinity)
         }
         .background(MiraTheme.paper).foregroundStyle(MiraTheme.ink)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+                .accessibilityIdentifier("mira.keyboardDone")
+            }
+        }
     }
 }
 struct MiraField: View {
