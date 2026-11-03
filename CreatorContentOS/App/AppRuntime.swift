@@ -247,6 +247,12 @@ enum DebugLaunchFlags {
         DebugLaunchConfiguration.value(for: "MCO_FORCE_SCREEN")
     }
 
+    /// Fixture scenario for the "How you're doing" insights screen
+    /// (ready | sample | personal | permission | nodata | notconnected).
+    static var insightsScenario: String? {
+        DebugLaunchConfiguration.value(for: "MCO_INSIGHTS_SCENARIO")
+    }
+
     private static func isEnabled(_ key: String) -> Bool {
         DebugLaunchConfiguration.isEnabled(key)
     }

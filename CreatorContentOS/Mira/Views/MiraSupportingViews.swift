@@ -127,11 +127,11 @@ struct MiraAskView: View {
             }
             Button(operation == .ideas ? "Get ideas" : "Propose change") {
                 let lower = request.lowercased()
-                if ["publish to", "upload video", "instagram analytics", "send payment"].contains(where: {
+                if ["publish to", "upload video", "send payment"].contains(where: {
                     lower.contains($0)
                 }) {
                     store.error =
-                        "Mira helps with ideas, words and filming plans. Publishing, editing media and analytics are outside this notebook."
+                        "Mira helps with ideas, words and filming plans. Publishing, editing media and payments are outside this notebook."
                     return
                 }
                 onGenerate(
@@ -186,9 +186,39 @@ struct MiraProfileView: View {
             MiraField(title: "Things you would not say", text: field(\.avoid))
             Toggle("I usually film alone", isOn: field(\.solo))
             MiraField(title: "Optional real captions or spoken samples", text: field(\.samples))
-            Text("Mira uses only context you provide. No Instagram account is connected or analysed.")
+            Text("Mira uses the context you provide here to write like you. Instagram connects only if you choose it, and only to read your insights.")
                 .font(
                     .footnote)
+            Divider()
+            MiraSectionTitle(text: "How you're doing")
+            NavigationLink {
+                MiraInsightsView()
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.title3)
+                        .foregroundStyle(MiraTheme.olive)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Instagram insights").font(.headline)
+                        Text("Followers, reach and saves")
+                            .font(.footnote).foregroundStyle(MiraTheme.ink.opacity(0.7))
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(MiraTheme.ink.opacity(0.4))
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity)
+                .background(MiraTheme.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(MiraTheme.ink.opacity(0.08)))
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(MiraTheme.ink)
+            .accessibilityIdentifier("mira.profile.insights")
+            Text("Mira only reads your insights — it never posts for you.")
+                .font(.footnote).foregroundStyle(MiraTheme.ink.opacity(0.7))
             Divider()
             MiraSectionTitle(text: "Live generation")
             if case .live = appState.runtime.mode {
