@@ -25,22 +25,14 @@ Deno.serve((request: Request): Response => {
   }
   if (state) target.searchParams.set("state", state);
 
-  const href = target.toString();
-  // A plain 302 to a custom scheme isn't reliably followed inside web sheets,
-  // so redirect via JS (with a tap-through fallback) which ASWebAuthenticationSession
-  // intercepts dependably.
-  const html =
-    `<!doctype html><html><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-    `<title>Returning to ContentHelper</title></head>` +
-    `<body style="font-family:-apple-system,system-ui,sans-serif;padding:2rem;text-align:center;color:#111">` +
-    `<p>Returning to ContentHelper…</p>` +
-    `<p><a href="${href}" style="color:#111">Tap to continue</a></p>` +
-    `<script>location.replace(${JSON.stringify(href)});</script>` +
-    `</body></html>`;
-
-  return new Response(html, {
-    status: 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+  // Supabase serves function HTML as text/plain on the default domain, so a
+  // JS redirect page shows up as raw source. A 302 to the callback scheme is
+  // what ASWebAuthenticationSession intercepts.
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: target.toString(),
+      "Cache-Control": "no-store",
+    },
   });
 });
