@@ -210,7 +210,7 @@ final class SupabaseAuthenticationService: AuthenticationServicing, @unchecked S
             workspaceName: response.workspaceName,
             creatorDisplayName: response.creatorDisplayName,
             memberRole: response.memberRole,
-            pairedAt: response.pairedAt.flatMap(SupabaseTimestampParser.date(from:)) ?? Date(),
+            pairedAt: response.pairedAt.flatMap(SupabaseDateFormatting.timestamp(from:)) ?? Date(),
             authenticatedEmail: response.memberEmail ?? email
         )
         try runtimeStore.savePairedSession(session)

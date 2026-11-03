@@ -1,0 +1,54 @@
+name: Mira simulator build
+on:
+  push:
+    branches: [main, codex/remove-legacy-pocket]
+  pull_request:
+    paths: ['CreatorContentOS/**', 'CreatorContentOS.xcodeproj/**', '.github/workflows/mira-simulator-build.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Select newest installed Xcode
+        run: |
+          selected=$(python3 - <<'PY'
+          import glob, plistlib
+          apps = glob.glob('/Applications/Xcode*.app')
+          def version(app):
+              with open(app + '/Contents/Info.plist', 'rb') as f:
+                  return tuple(int(p) for p in plistlib.load(f)['CFBundleShortVersionString'].split('.'))
+          print(max(apps, key=version) + '/Contents/Developer')
+          PY
+          )
+          echo "DEVELOPER_DIR=$selected" >> "$GITHUB_ENV"
+      - name: Build unsigned simulator app
+        run: |
+          mkdir -p work/simulator-build
+          python3 - <<'PY'
+          import shutil
+          assert shutil.disk_usage('.').free >= 10 * 1024**3, 'Need 10 GiB free for build'
+          PY
+          xcodebuild -version > work/simulator-build/toolchain.txt
+          xcodebuild -project CreatorContentOS.xcodeproj -scheme CreatorContentOS \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath work/DerivedData -resultBundlePath work/simulator-build/Build.xcresult \
+            CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO ARCHS='arm64 x86_64' build \
+            > work/simulator-build/build.log 2>&1
+      - name: Package simulator app
+        run: |
+          cp work/simulator-build/toolchain.txt work/DerivedData/Build/Products/Debug-iphonesimulator/
+          printf '%s\n' "$GITHUB_SHA" > work/DerivedData/Build/Products/Debug-iphonesimulator/source-commit.txt
+          cd work/DerivedData/Build/Products/Debug-iphonesimulator
+          ditto -c -k --sequesterRsrc --keepParent ContentHelper.app "$GITHUB_WORKSPACE/work/simulator-build/ContentHelper-simulator.zip"
+          cp source-commit.txt toolchain.txt "$GITHUB_WORKSPACE/work/simulator-build/"
+          lipo -info ContentHelper.app/ContentHelper > "$GITHUB_WORKSPACE/work/simulator-build/architectures.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ContentHelper-simulator-${{ github.sha }}
+          path: work/simulator-build/
+          retention-days: 14

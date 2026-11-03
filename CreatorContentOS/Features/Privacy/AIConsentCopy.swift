@@ -13,7 +13,7 @@ enum AIConsentCopy {
     static let notNowTitle = "Not now"
 
     static let blockedMessage =
-        "Allow AI to write ideas first. You can also allow this later in You → Account."
+        "Allow AI to write ideas first. You can also allow this later in Profile → Review AI data permission."
 
     static let accountHeader = sheetTitle
     static let accountAllowTitle = allowTitle

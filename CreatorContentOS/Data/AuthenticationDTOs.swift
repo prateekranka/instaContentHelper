@@ -56,56 +56,6 @@ struct AuthenticationFunctionErrorResponse: Decodable, Sendable {
     }
 }
 
-struct TesterAccessRecord: Decodable, Identifiable, Hashable, Sendable {
-    var id: UUID
-    var email: String
-    var displayName: String?
-    var role: String
-    var status: String
-    var createdAt: String?
-    var updatedAt: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case email
-        case displayName = "display_name"
-        case role
-        case status
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
-    }
-}
-
-struct ManageTesterRequest: Encodable, Sendable {
-    var action: String
-    var email: String?
-    var memberID: UUID?
-    var displayName: String?
-
-    enum CodingKeys: String, CodingKey {
-        case action
-        case email
-        case memberID = "member_id"
-        case displayName = "display_name"
-    }
-}
-
-struct ManageTesterListResponse: Decodable, Sendable {
-    var testers: [TesterAccessRecord]
-}
-
-struct ManageTesterMutationResponse: Decodable, Sendable {
-    var tester: TesterAccessRecord
-    var otpSent: Bool?
-    var accessRevoked: Bool?
-
-    enum CodingKeys: String, CodingKey {
-        case tester
-        case otpSent = "otp_sent"
-        case accessRevoked = "access_revoked"
-    }
-}
-
 enum AuthenticationSessionEvent: Sendable {
     case signedOut
     case userDeleted
