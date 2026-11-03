@@ -17,8 +17,6 @@ import {
   InstagramPermissionError,
   InsightsReportDTO,
   isProfessional,
-  needsRefresh,
-  refreshLongLivedToken,
 } from "../_shared/instagram.ts";
 
 type InsightsRequest = { creator_id?: string };
@@ -112,19 +110,13 @@ async function produceInsights(
     return jsonResponse(state("connected_personal", conn.account_type));
   }
 
-  let accessToken = conn.access_token;
-  if (needsRefresh(conn.token_expires_at, new Date())) {
-    try {
-      const refreshed = await refreshLongLivedToken(accessToken);
-      accessToken = refreshed.accessToken;
-      await admin
-        .from("creator_instagram_connections")
-        .update({ access_token: refreshed.accessToken, token_expires_at: refreshed.expiresAt })
-        .eq("id", conn.id);
-    } catch (_error) {
-      // Non-fatal: try the existing token; a hard auth failure surfaces below.
-    }
+  // Facebook long-lived user tokens can't be refreshed server-side; once one
+  // lapses the creator reconnects.
+  const expiry = conn.token_expires_at ? Date.parse(conn.token_expires_at) : NaN;
+  if (Number.isFinite(expiry) && expiry <= Date.now()) {
+    return jsonResponse(state("permission_needed", conn.account_type));
   }
+  const accessToken = conn.access_token;
 
   let snapshot: AccountSnapshot;
   try {

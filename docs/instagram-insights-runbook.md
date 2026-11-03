@@ -6,176 +6,185 @@ before Meta App Review clears the public audience.
 
 Related code:
 - Migration `supabase/migrations/20261101120000_instagram_insights.sql`
-- Edge functions `instagram-connect`, `instagram-insights`, `instagram-disconnect`
+- Edge functions `instagram-connect`, `instagram-insights`, `instagram-disconnect`,
+  `ig-oauth-redirect`
 - Shared logic `supabase/functions/_shared/instagram.ts`
-- iOS screen `CreatorContentOS/Features/You/HowYouAreDoingView.swift`
+- iOS screen `CreatorContentOS/Mira/Views/MiraInsightsView.swift`, config
+  `CreatorContentOS/Data/InstagramOAuth.swift`
+
+## Login type: Facebook Login for Business ("Unified login")
+
+Newer Meta apps can't use *API setup with Instagram login*; the dashboard shows
+"API setup with Instagram login is not available for newer apps". So the creator
+signs in with **Facebook Login for Business**, and we read the Instagram
+professional account that is **linked to one of their Facebook Pages**.
+
+Consequences:
+- Each creator needs an Instagram **Professional** (Creator or Business) account
+  **linked to a Facebook Page** they manage. Without that, connect returns
+  `instagram_account_not_linked` and the app explains how to fix it.
+- Credentials are the **top-level Meta app** id and secret
+  (App settings → Basic), not Instagram-scoped ones.
+- All Graph calls go to `graph.facebook.com` (version from the
+  `INSTAGRAM_GRAPH_VERSION` secret, default `v24.0`).
 
 ## 0. What you get without App Review
 
 Insights permissions require Meta App Review for the general public. You do **not**
 need review to build and pilot:
 
-- A Meta app in **Development mode** can grant insights scopes to **app roles and
-  test users** (admins/developers/testers — roughly up to 25). You, Mamta, and a
-  handful of pilot creators use the **real** API immediately.
-- Everyone else sees the app's manual / "Sample data" fallback until review clears.
+- A Meta app in **Development mode** can grant these permissions to **app roles and
+  test users** (admins/developers/testers). You and a handful of pilot creators
+  use the **real** API immediately.
+- Everyone else sees the app's "Sample data" fallback until review clears.
 
 Submit App Review in parallel; flip to the public audience when approved. No
-credential scraping — connecting is always the creator's own OAuth consent.
+credential scraping. Connecting is always the creator's own OAuth consent.
 
-## 1. Create the Meta app
+## 1. Meta app
 
-1. developers.facebook.com → **Create app** → business/other as prompted.
-2. Add the **Instagram** product → **Instagram API with Instagram Login**
-   (a.k.a. *Business Login for Instagram*). This path connects Creator/Business
-   accounts directly with Instagram credentials — **no Facebook Page required**.
-3. Under Instagram → API setup with Instagram login, note the **Instagram app ID**
-   and **Instagram app secret** (these are the Instagram-scoped credentials, not
-   the top-level Facebook app id/secret).
+The app is **Mira - AI PR Agency** (app id `2420286265379388`). It has the
+*Manage messaging & content on Instagram* use case, set up with Unified login.
 
-## 2. Permissions (scopes)
+## 2. Login configuration and permissions
 
-Request exactly:
+Facebook Login for Business takes its permissions from a **configuration**:
 
-- `instagram_business_basic` — identity + `account_type` + media list
-- `instagram_business_manage_insights` — followers / reach / media saves
+1. Use cases → Instagram → **API setup with Unified login** → *Configure your app*,
+   or Facebook Login for Business → **Configurations** → *Create configuration*.
+2. Token type: **User access token** (not System-user access token).
+3. Permissions, exactly:
+   - `instagram_basic` (read the account id and username)
+   - `instagram_manage_insights` (followers / reach / media saves)
+   - `pages_show_list` (find the Page the Instagram account is linked to)
+   - `pages_read_engagement` (read the Page's linked Instagram account)
+4. Note the **Configuration ID**. It goes in the app config as
+   `INSTAGRAM_LOGIN_CONFIG_ID` (step 5).
 
-Do **not** request publishing/messaging scopes; we only read insights.
+Do **not** add publishing or messaging permissions; we only read insights.
 
 ## 3. OAuth redirect URI (via the https bridge)
 
 The iOS app drives OAuth in SwiftUI's `WebAuthenticationSession` with callback
-scheme `creatorcontenthelper://ig-auth`. **Confirmed:** Meta's *Valid OAuth
-Redirect URIs* field **rejects custom schemes** ("Enter a valid HTTPS URL"), so
-we use the included **`ig-oauth-redirect`** edge function as an https bridge:
+scheme `creatorcontenthelper://ig-auth`. Meta's redirect field **rejects custom
+schemes**, so the **`ig-oauth-redirect`** edge function is an https bridge:
 
-> Instagram → `https://<project-ref>.functions.supabase.co/ig-oauth-redirect?code=…`
-> → the function forwards to `creatorcontenthelper://ig-auth?code=…` → the app's
-> login sheet captures it.
+> Facebook → `https://<project-ref>.functions.supabase.co/ig-oauth-redirect?code=…&state=…`
+> → the function forwards to `creatorcontenthelper://ig-auth?code=…&state=…`
+> → the app's login sheet captures it.
 
-So the **one redirect URL** used in all three places must be the bridge URL:
+The **one redirect URL** used in all three places is:
 
 ```
-https://<YOUR-SUPABASE-PROJECT-REF>.functions.supabase.co/ig-oauth-redirect
+https://zogvvrxhiwozjmufvddu.functions.supabase.co/ig-oauth-redirect
 ```
 
-Register it in **Instagram → API setup with Unified login → Business login
-settings → Register a new redirect URL**, and use the identical value for:
-- the client's `INSTAGRAM_REDIRECT_URI` (Info.plist / `LocalRuntime.xcconfig`), and
+Register it in **Facebook Login for Business → Settings → Valid OAuth Redirect
+URIs**, and use the identical value for:
+- the client's `INSTAGRAM_REDIRECT_URI` (`LocalRuntime.xcconfig`), and
 - the `INSTAGRAM_REDIRECT_URI` Supabase secret (step 5).
-
-(The exact Supabase functions hostname can also appear as
-`https://<ref>.supabase.co/functions/v1/ig-oauth-redirect`; use whichever form
-your project serves — confirm after deploy.)
 
 ## 4. Add pilot test users (Development mode)
 
-Meta app → **App roles / Roles** → add each pilot creator's Instagram account as a
-**tester** (they accept the invite in their Instagram app under Settings →
-Website permissions / Apps and websites). Only these accounts can connect while
-the app is in Development mode. Each must be a **Professional (Creator/Business)**
-account — personal accounts cannot return insights (the app shows the
-"Professional account needed" state for those).
+Meta app → **App roles → Roles** → add each pilot creator's **Facebook** account
+(Tester role). They accept the invite on Facebook. Each must manage a Facebook
+Page with a linked Instagram Professional account.
 
-## 5. Supabase function secrets
+## 5. Config and secrets
 
-Set these for the edge functions (never in the app or in git):
+Supabase function secrets (never in the app or in git):
 
 ```sh
-supabase secrets set \
+supabase secrets set --project-ref zogvvrxhiwozjmufvddu \
   INSTAGRAM_APP_ID=2420286265379388 \
-  INSTAGRAM_APP_SECRET=your-instagram-app-secret \
-  INSTAGRAM_REDIRECT_URI=https://<project-ref>.functions.supabase.co/ig-oauth-redirect
+  INSTAGRAM_REDIRECT_URI=https://zogvvrxhiwozjmufvddu.functions.supabase.co/ig-oauth-redirect
 ```
 
-`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are already present for existing
-functions. `instagram-connect` returns `missing_function_secrets` (500) if the
-IG secrets are absent.
+Set `INSTAGRAM_APP_SECRET` (the Meta app secret from App settings → Basic) with a
+hidden prompt so it never lands in shell history:
+
+```sh
+read -rs "IG_SECRET?Paste Meta app secret: " && echo && supabase secrets set --project-ref zogvvrxhiwozjmufvddu --env-file <(printf 'INSTAGRAM_APP_SECRET=%s\n' "$IG_SECRET"); unset IG_SECRET
+```
+
+`instagram-connect` returns `missing_function_secrets` (500) if these are absent.
+
+iOS `CreatorContentOS/Config/LocalRuntime.xcconfig` (gitignored):
+
+```
+INSTAGRAM_APP_ID = 2420286265379388
+INSTAGRAM_REDIRECT_URI = https:/$()/zogvvrxhiwozjmufvddu.functions.supabase.co/ig-oauth-redirect
+INSTAGRAM_LOGIN_CONFIG_ID = <configuration id from step 2>
+```
+
+Without `INSTAGRAM_LOGIN_CONFIG_ID` the app falls back to a plain `scope=` login,
+which Facebook Login for Business apps ignore.
 
 ## 6. Deploy
 
-`instagram-connect`, `instagram-insights`, `instagram-disconnect` are already in
-the `FUNCTIONS` list of `scripts/deploy-live-supabase.sh`. Deploy with the
-standard script (see the Live Supabase runbook), which also pushes the new
-migration:
+`scripts/deploy-live-supabase.sh` deploys every function folder and pushes
+pending migrations (see the Live Supabase runbook):
 
 ```sh
-scripts/deploy-live-supabase.sh
+SUPABASE_PROJECT_REF=zogvvrxhiwozjmufvddu ALLOW_SUPABASE_CLI_SESSION=1 scripts/deploy-live-supabase.sh
 ```
 
-Verify the two tables exist: `creator_instagram_connections`,
-`creator_account_insight_snapshots`. The `ig-oauth-redirect` bridge and the three
-`instagram-*` functions are all in the deploy script's `FUNCTIONS` list.
+To redeploy only the Instagram functions:
 
-### Deploy handoff (for the backend owner)
-
-Everything is committed on the fork branch `feat/how-youre-doing-insights`. To go live:
-
-1. **Deploy** — run `scripts/deploy-live-supabase.sh` (pushes migration
-   `20261101120000_instagram_insights.sql` + the four new functions:
-   `instagram-connect`, `instagram-insights`, `instagram-disconnect`,
-   `ig-oauth-redirect`).
-2. **Confirm the bridge URL** — hit
-   `https://<project-ref>.functions.supabase.co/ig-oauth-redirect` in a browser;
-   it should return the "Returning to ContentHelper…" page. Send that exact URL
-   back to the app owner.
-3. **Set secrets** (step 5) using that bridge URL as `INSTAGRAM_REDIRECT_URI`.
-4. The app owner then: registers the **same** bridge URL in Meta (step 3), puts
-   it + `INSTAGRAM_APP_ID` in `LocalRuntime.xcconfig`, and points the app at this
-   Supabase project (`MCO_SUPABASE_URL` / `MCO_SUPABASE_PUBLISHABLE_KEY`).
-
-The one value that must be **identical** in all three places (Meta dashboard,
-`INSTAGRAM_REDIRECT_URI` secret, app config) is the bridge URL.
+```sh
+SUPABASE_PROJECT_REF=zogvvrxhiwozjmufvddu ALLOW_SUPABASE_CLI_SESSION=1 SKIP_MIGRATIONS=1 \
+  SUPABASE_FUNCTIONS="instagram-connect instagram-insights instagram-disconnect ig-oauth-redirect" \
+  scripts/deploy-live-supabase.sh
+```
 
 ## 7. Connect flow (what the app does)
 
-1. Creator taps **Connect Instagram** on *You → How you're doing*.
-2. App opens `https://www.instagram.com/oauth/authorize` in
-   `ASWebAuthenticationSession` with `client_id`, `redirect_uri`,
-   `response_type=code`, `scope=instagram_business_basic,instagram_business_manage_insights`,
-   and a random `state`.
-3. On consent, the callback delivers `?code=...` to `creatorcontenthelper://ig-auth`.
-4. App POSTs `{ creator_id, code }` to **`instagram-connect`**, which exchanges the
-   code for a long-lived token server-side and stores it in
-   `creator_instagram_connections` (token never returned to the device).
+1. Creator taps **Connect Instagram** on Profile → How you're doing.
+2. App opens `https://www.facebook.com/dialog/oauth` in
+   `WebAuthenticationSession` with `client_id`, `redirect_uri`,
+   `response_type=code`, `config_id`, and a random `state`.
+3. The bridge forwards `?code=…&state=…` to `creatorcontenthelper://ig-auth`.
+   The app rejects the callback if `state` doesn't match.
+4. App POSTs `{ creator_id, code, redirect_uri }` to **`instagram-connect`**, which
+   exchanges the code for a user token, upgrades it to a long-lived token
+   (`fb_exchange_token`), finds the Instagram account via `/me/accounts`
+   (`instagram_business_account`), and stores it in
+   `creator_instagram_connections`. The token is never returned to the device.
 5. **`instagram-insights`** fetches followers / 7-day reach / 7-day saves, writes a
-   snapshot, computes week-over-week deltas against the previous snapshot, derives
-   one nudge, and returns the view model. Deltas appear from the **second** fetch
-   onward (the first establishes the baseline).
+   snapshot, and computes week-over-week deltas against the newest snapshot that
+   is at least ~6.5 days old. Deltas appear once a week of history exists.
 
 ## 8. Token lifecycle
 
-Long-lived tokens last ~60 days. `instagram-insights` refreshes lazily when a
-token is within 7 days of expiry (`needsRefresh` → `ig_refresh_token`). A tester
-who refreshes insights at least every ~60 days never needs to reconnect. (A
-scheduled pg_cron refresh is a later hardening, not required for the pilot.)
+Facebook long-lived user tokens last ~60 days and can't be refreshed server-side.
+When the stored token has expired (or Graph returns an OAuthException), the app
+shows **"Permission needed"** and the creator reconnects.
 
 ## 9. App Review (for the public audience)
 
-Submit in parallel with the pilot. Prepare:
+Prepare:
 
 - **Business verification** of the owning organization.
-- A **screencast** showing the real connect flow and where each scope's data is
-  used in-app (the "How you're doing" screen).
-- A written **justification** per scope: `instagram_business_basic` (identify the
-  account and confirm it's Professional) and `instagram_business_manage_insights`
-  (show followers/reach/saves back to the creator).
-- A test Professional account for the reviewer.
+- A **screencast** of the real connect flow and where each permission's data is
+  used (the "How you're doing" screen).
+- A written **justification** per permission: `instagram_basic`,
+  `instagram_manage_insights`, `pages_show_list`, `pages_read_engagement`.
+- A test Facebook account with a Page and linked Instagram Professional account.
 
-On approval, switch the app to **Live mode** / advanced access; any Professional
-account can then connect.
+On approval, switch the app to **Live mode**.
 
 ## 10. Troubleshooting
 
-- `missing_function_secrets` → IG secrets not set (step 5).
-- `instagram_connect_failed` (502) → bad `code`, redirect-URI mismatch, or app not
-  in a state that allows the tester. Confirm `INSTAGRAM_REDIRECT_URI` matches the
-  dashboard and the authorize call exactly.
-- App shows **"Professional account needed"** → the connected account is personal;
-  switch it to Creator/Business in Instagram settings.
-- App shows **"Permission needed"** → the insights scope was not granted, or the
-  account isn't a tester while in Development mode.
-- No deltas yet → only one snapshot exists; deltas start on the next fetch.
+- `missing_function_secrets` → secrets not set (step 5).
+- `instagram_connect_failed` (502) → bad `code`, redirect-URI mismatch, wrong app
+  secret, or the user isn't a tester in Development mode. The redirect URI must
+  match exactly in the dashboard, the app config, and the secret.
+- `instagram_account_not_linked` → no Page with a linked Instagram Professional
+  account. Link one in Instagram → Settings → Account type and tools / Sharing to
+  other apps, or in the Page's settings.
+- `instagram_permission_denied` / **"Permission needed"** → a permission wasn't
+  granted, the token expired, or the account isn't a tester.
+- No deltas yet → less than a week of snapshots.
 - "Saves" missing while followers/reach show → account-level saves don't exist in
   the API; it's summed from recent media `saved` and can be unavailable
   (the snapshot is marked `data_quality = partial`).

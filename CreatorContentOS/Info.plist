@@ -32,6 +32,8 @@
 	<string>$(INSTAGRAM_APP_ID)</string>
 	<key>INSTAGRAM_REDIRECT_URI</key>
 	<string>$(INSTAGRAM_REDIRECT_URI)</string>
+	<key>INSTAGRAM_LOGIN_CONFIG_ID</key>
+	<string>$(INSTAGRAM_LOGIN_CONFIG_ID)</string>
 	<key>MCO_DEBUG_PAIRED_WORKSPACE_ID</key>
 	<string>$(MCO_DEBUG_PAIRED_WORKSPACE_ID)</string>
 	<key>MCO_DEBUG_PAIRED_CREATOR_ID</key>

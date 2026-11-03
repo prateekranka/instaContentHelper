@@ -6,7 +6,11 @@ import {
   jsonResponse,
   verifyDeviceSession,
 } from "../_shared/device-auth.ts";
-import { exchangeCodeForTokens } from "../_shared/instagram.ts";
+import {
+  exchangeCodeForTokens,
+  InstagramAccountNotLinkedError,
+  InstagramPermissionError,
+} from "../_shared/instagram.ts";
 
 type ConnectRequest = {
   creator_id?: string;
@@ -70,7 +74,14 @@ export async function handleInstagramConnectRequest(
   let tokens;
   try {
     tokens = await exchangeCodeForTokens({ code, appID, appSecret, redirectURI });
-  } catch (_error) {
+  } catch (error) {
+    // Expected outcomes the app explains to the creator, so 200 + error code.
+    if (error instanceof InstagramAccountNotLinkedError) {
+      return jsonResponse({ connected: false, error: "instagram_account_not_linked" });
+    }
+    if (error instanceof InstagramPermissionError) {
+      return jsonResponse({ connected: false, error: "instagram_permission_denied" });
+    }
     return jsonResponse({ error: "instagram_connect_failed" }, 502);
   }
 
@@ -84,7 +95,7 @@ export async function handleInstagramConnectRequest(
       account_type: tokens.accountType,
       access_token: tokens.accessToken,
       token_expires_at: tokens.expiresAt,
-      scopes: "instagram_business_basic,instagram_business_manage_insights",
+      scopes: "instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement",
       connected_at: new Date().toISOString(),
       revoked_at: null,
     }, { onConflict: "workspace_id,creator_id" });

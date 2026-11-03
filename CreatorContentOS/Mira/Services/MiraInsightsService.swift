@@ -32,7 +32,18 @@ struct MiraSupabaseInsightsService: MiraInsightsService {
             )
         )
         if let error = response.error?.nilIfBlank {
-            throw MiraError.invalid(error)
+            throw MiraError.invalid(Self.connectMessage(for: error))
+        }
+    }
+
+    private static func connectMessage(for code: String) -> String {
+        switch code {
+        case "instagram_account_not_linked":
+            "We couldn't find an Instagram professional account linked to your Facebook Pages. Link one in Instagram settings, then try again."
+        case "instagram_permission_denied":
+            "Mira needs permission to read your Instagram insights. Try connecting again and allow access."
+        default:
+            "Instagram didn't connect. Try again in a moment."
         }
     }
 

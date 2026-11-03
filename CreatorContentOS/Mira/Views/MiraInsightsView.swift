@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 /// "How you're doing" — account-level Instagram insights, in Mira's design language.
@@ -46,7 +47,7 @@ struct MiraInsightsView: View {
             }
             .buttonStyle(MiraPrimaryStyle())
             .disabled(isConnecting)
-            Text("We only read your insights. Mira never posts for you, and your password stays with Instagram.")
+            Text("You sign in with Facebook, which links to your Instagram professional account. We only read your insights. Mira never posts for you.")
                 .font(.footnote).foregroundStyle(MiraTheme.ink.opacity(0.7))
         }
     }
@@ -163,6 +164,8 @@ struct MiraInsightsView: View {
             try await MiraSupabaseInsightsService(session: session)
                 .connect(code: code, redirectURI: InstagramOAuth.redirectURI ?? "")
             await load()
+        } catch let error as MiraError {
+            message = error.errorDescription
         } catch {
             // User dismissed the sheet or cancelled; leave the CTA in place.
         }
