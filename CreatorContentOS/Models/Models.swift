@@ -764,7 +764,6 @@ enum YouRoute: Hashable, Sendable {
     case references
     case account
     case archive
-    case insights
 }
 
 enum CreatorRoute: Hashable, Sendable {

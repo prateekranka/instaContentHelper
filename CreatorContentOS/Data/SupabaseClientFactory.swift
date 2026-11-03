@@ -87,8 +87,7 @@ struct SupabaseRepositoryBundleFactory {
             ),
             archive: SupabaseArchiveRepository(client: client),
             testerAccess: SupabaseTesterAccessRepository(client: client),
-            runtimeHealth: SupabaseRuntimeHealthRepository(client: client),
-            instagramInsights: SupabaseInstagramInsightsRepository(client: client)
+            runtimeHealth: SupabaseRuntimeHealthRepository(client: client)
         )
     }
 }

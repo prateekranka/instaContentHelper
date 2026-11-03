@@ -149,10 +149,6 @@ final class AppServices {
     var isCheckingRuntimeHealth = false
     var lastRuntimeHealthCheckedAt: Date?
     var lastRuntimeHealthError: String?
-    var instagramInsights: InstagramInsightsState = .notConnected
-    var isLoadingInstagramInsights = false
-    var isConnectingInstagram = false
-    var lastInstagramInsightsError: String?
     var todayContentState: TodayContentState {
         get {
             guard let day = selectedTodayPieceID.flatMap({ dayStore.piece(for: $0) }) else {
@@ -1309,69 +1305,6 @@ final class AppServices {
         } catch {
             creatorProfileEditError = error.localizedDescription
             lastRepositoryError = error.localizedDescription
-            return false
-        }
-    }
-
-    // MARK: - Instagram insights ("How you're doing")
-
-    func refreshInstagramInsights() {
-        Task { @MainActor in await refreshInstagramInsightsImmediately() }
-    }
-
-    @discardableResult
-    func refreshInstagramInsightsImmediately() async -> Bool {
-        guard isLiveSupabaseRuntime else { return false }
-        guard !isLoadingInstagramInsights else { return false }
-
-        isLoadingInstagramInsights = true
-        defer { isLoadingInstagramInsights = false }
-
-        do {
-            instagramInsights = try await repositories.instagramInsights.fetchInsights(context: context)
-            lastInstagramInsightsError = nil
-            return true
-        } catch {
-            lastInstagramInsightsError = error.localizedDescription
-            return false
-        }
-    }
-
-    @discardableResult
-    func connectInstagram(code: String, redirectURI: String) async -> Bool {
-        guard !isConnectingInstagram else { return false }
-
-        isConnectingInstagram = true
-        defer { isConnectingInstagram = false }
-
-        do {
-            _ = try await repositories.instagramInsights.connect(
-                code: code,
-                redirectURI: redirectURI,
-                context: context
-            )
-            lastInstagramInsightsError = nil
-        } catch {
-            lastInstagramInsightsError = error.localizedDescription
-            return false
-        }
-
-        return await refreshInstagramInsightsImmediately()
-    }
-
-    func disconnectInstagram() {
-        Task { @MainActor in await disconnectInstagramImmediately() }
-    }
-
-    @discardableResult
-    func disconnectInstagramImmediately() async -> Bool {
-        do {
-            try await repositories.instagramInsights.disconnect(context: context)
-            instagramInsights = .notConnected
-            lastInstagramInsightsError = nil
-            return true
-        } catch {
-            lastInstagramInsightsError = error.localizedDescription
             return false
         }
     }
