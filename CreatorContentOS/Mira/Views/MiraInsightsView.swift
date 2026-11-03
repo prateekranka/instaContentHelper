@@ -47,7 +47,7 @@ struct MiraInsightsView: View {
             }
             .buttonStyle(MiraPrimaryStyle())
             .disabled(isConnecting)
-            Text("You sign in with Facebook, which links to your Instagram professional account. We only read your insights. Mira never posts for you.")
+            Text("Log in with Instagram and choose your account. Mira only reads your posts and insights. It never posts for you.")
                 .font(.footnote).foregroundStyle(MiraTheme.ink.opacity(0.7))
         }
     }

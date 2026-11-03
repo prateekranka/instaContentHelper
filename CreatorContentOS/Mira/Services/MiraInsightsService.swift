@@ -39,7 +39,7 @@ struct MiraSupabaseInsightsService: MiraInsightsService {
     private static func connectMessage(for code: String) -> String {
         switch code {
         case "instagram_account_not_linked":
-            "We couldn't find an Instagram professional account linked to your Facebook Pages. Link one in Instagram settings, then try again."
+            "We couldn't find an Instagram Creator or Business account. Connect again and choose your Instagram account when asked."
         case "instagram_permission_denied":
             "Mira needs permission to read your Instagram insights. Try connecting again and allow access."
         default:
