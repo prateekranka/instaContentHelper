@@ -3,98 +3,49 @@ import SwiftUI
 
 struct SignInView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ZStack {
-            PocketSheetTheme.Color.paper.ignoresSafeArea()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: PocketSheetSpace.section) {
-                    header
-                    welcomeCard
-                    signInActions
-                }
-                .padding(.horizontal, PocketSheetSpace.l)
-                .padding(.top, 48)
-                .padding(.bottom, 48)
-            }
+        MiraPage {
+            Text("Sign in to keep your ideas").font(.largeTitle)
+                .accessibilityIdentifier("sign-in.welcome")
+            Text("Sign in with Apple to connect your Mira account.")
+                .foregroundStyle(.secondary)
+            signInActions
         }
-        .tint(PocketSheetTheme.Color.ink)
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-            Text("Sign in to keep your ideas")
-                .font(PocketSheetType.screenTitle)
-                .foregroundStyle(PocketSheetTheme.Color.ink)
-            Text("Sign in with Apple to open your Creator workspace.")
-                .font(PocketSheetType.rowSubtitle)
-                .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-        }
-    }
-
-    private var welcomeCard: some View {
-        PocketSheetCard {
-            VStack(alignment: .leading, spacing: PocketSheetSpace.s) {
-                HStack(spacing: PocketSheetSpace.xs) {
-                    Image(systemName: "checkmark.circle")
-                        .font(PocketSheetType.listIcon)
-                    Text("Your next ready idea")
-                        .font(PocketSheetType.rowTitle)
-                }
-                .foregroundStyle(PocketSheetTheme.Color.ink)
-
-                Text("Open Today to find one shootable idea, with the hook, format, and effort already clear.")
-                    .font(PocketSheetType.bodyText)
-                    .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: PocketSheetSpace.xxs) {
-                    Text("A quiet reset that makes Monday feel lighter")
-                        .font(PocketSheetType.rowTitle)
-                        .foregroundStyle(PocketSheetTheme.Color.ink)
-                    Text("Short check-in · 10 minutes")
-                        .font(PocketSheetType.bodyText)
-                        .foregroundStyle(PocketSheetTheme.Color.inkMuted)
-                }
-                .padding(.top, PocketSheetSpace.xs)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Your next ready idea. Open Today to find one shootable idea with the hook, format, and effort already clear. A quiet reset that makes Monday feel lighter. Short check-in, 10 minutes.")
-        .accessibilityIdentifier("sign-in.welcome")
+        .tint(MiraTheme.olive)
     }
 
     private var signInActions: some View {
-        VStack(alignment: .leading, spacing: PocketSheetSpace.m) {
+        VStack(alignment: .leading, spacing: 16) {
             SignInWithAppleButton(.signIn) { request in
                 request.requestedScopes = [.email, .fullName]
             } onCompletion: { result in
                 handleAppleAuthorization(result)
             }
-            .signInWithAppleButtonStyle(.black)
+            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
             .frame(maxWidth: .infinity)
             .frame(minHeight: 44)
-            .clipShape(RoundedRectangle(cornerRadius: PocketSheetShape.controlRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .disabled(isBusy)
             .opacity(isBusy ? 0.52 : 1)
             .accessibilityIdentifier("sign-in-with-apple")
 
             if isBusy {
                 ProgressView()
-                    .tint(PocketSheetTheme.Color.ink)
+                    .tint(MiraTheme.ink)
                     .accessibilityIdentifier("sign-in-progress")
             }
 
             if let error = appState.authenticationError {
-                HStack(alignment: .top, spacing: PocketSheetSpace.xs) {
+                HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.circle")
                         .accessibilityHidden(true)
                     Text(error)
-                        .font(PocketSheetType.rowSubtitle)
+                        .font(.callout)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .foregroundStyle(PocketSheetTheme.Color.ink)
+                .foregroundStyle(MiraTheme.ink)
                 .accessibilityIdentifier("authentication-error")
             }
         }

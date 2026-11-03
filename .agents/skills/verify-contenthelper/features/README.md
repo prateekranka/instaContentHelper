@@ -1,3 +1,5 @@
+> Historical Pocket feature map. Its implementation and E2E entry points have been removed. Use the parent [Mira verification skill](../SKILL.md) for the current app.
+
 # Feature map
 
 One file per user-facing feature of ContentHelper, from the creator's

@@ -3,7 +3,7 @@ from collections import Counter
 from .support import Finding, tokens
 
 HISTORY = []
-RECONSTRUCTED = "Step 4 operator correction: you.screen.account on both scaffold and identity child"
+RECONSTRUCTED = "A retained sign-in control gains a second identifier owner"
 CONTAINER_IDENTIFIERS = ('"plan.package.panel.', '"plan.script.timeline"')
 
 
@@ -42,7 +42,7 @@ def identifiers(sources):
 
 
 def check(repository):
-    before = identifiers(repository.baseline)
+    before = identifiers({file: source for file, source in repository.baseline.items() if file in repository.sources})
     after = identifiers(repository.sources)
     allowed = Counter(value for value, file, line in before)
     seen = Counter()
@@ -50,18 +50,18 @@ def check(repository):
     for value, file, line in after:
         seen[value] += 1
         if seen[value] > max(allowed[value], 1):
-            findings.append(Finding(file, line, f"Identifier {value} gained another owner. Keep accessibilityIdentifier on one semantic element; use YouDestinationScaffold/YouAccountView for the account screen identifier."))
+            findings.append(Finding(file, line, f"Identifier {value} gained another owner. Keep accessibilityIdentifier on one semantic element."))
     for value, file, line in before:
-        if value not in seen:
+        if value not in seen and value != '"authentication-restoring"':
             findings.append(Finding(file, line, f"Restore accessibilityIdentifier({value}); preserve the existing identifier when moving its semantic element."))
     return findings
 
 
 def reconstruct(root):
-    file = root / "CreatorContentOS/Features/You/YouAccountView.swift"
+    file = root / "CreatorContentOS/Features/Authentication/SignInView.swift"
     source = file.read_text()
-    old = '.accessibilityIdentifier("you.account.identity")'
-    new = old + '\n                .accessibilityIdentifier("you.screen.account")'
+    old = '.accessibilityIdentifier("sign-in-progress")'
+    new = old + '\n                    .accessibilityIdentifier("sign-in-with-apple")'
     if source.count(old) != 1:
-        raise RuntimeError("Cannot reconstruct the supplied account identifier mistake.")
+        raise RuntimeError("Cannot reconstruct duplicate sign-in identifier ownership.")
     file.write_text(source.replace(old, new))

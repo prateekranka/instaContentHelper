@@ -1,3 +1,5 @@
+> Historical QA guide: the Pocket client and its E2E entry points have been removed. Use the Mira journey and configuration described in the root README.
+
 # Pocket native UI checks
 
 The native Creator app uses the Pocket design with monochrome chrome. These tests use TesterArmy e2e and the native mobile engine. They do not use an AI test provider or a live generation service.

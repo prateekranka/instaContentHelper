@@ -19,6 +19,8 @@ def check(repository):
     findings = repository.added(synchronous_calls, "Use AppServices.persistDaySnapshot or queueDaySnapshot; await persistence before sending an intent. Do not call synchronous saveSnapshot from app flows.")
     file = "CreatorContentOS/Data/TodayCacheStore.swift"
     source = repository.sources.get(file, "")
+    if not source:
+        return findings
     for body in bodies(source, "protocol", "TodayCacheStoring"):
         for token in body:
             if token.value == "saveSnapshot":

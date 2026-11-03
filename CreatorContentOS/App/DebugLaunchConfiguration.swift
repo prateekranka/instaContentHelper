@@ -10,30 +10,7 @@ import CryptoKit
 enum DebugLaunchConfiguration {
     private static let allowedKeys: Set<String> = [
         "MCO_FORCE_FIXTURE_UI",
-        "MCO_FORCE_APP_MODE",
-        "MCO_FORCE_SIGN_IN",
-        "MCO_FORCE_SCREEN",
-        "MCO_RESET_ONBOARDING",
-        "MCO_FORCE_ONBOARDING",
-        "MCO_FORCE_EMPTY_TODAY",
-        "MCO_SLOW_FIRST_IDEA",
-        "MCO_FAIL_FIRST_IDEA",
-        "MCO_FAIL_FIRST_IDEA_ONCE",
-        "MCO_FAIL_TODAY_DECISION_SYNC_ONCE",
-        "MCO_FAIL_TODAY_DECISION_SYNC",
-        "MCO_LONG_CONTENT",
-        "MCO_BREAK_UI_DATA",
-        "MCO_BREAK_UI_320",
-        "MCO_DYNAMIC_TYPE_ACCESSIBILITY5",
-        "MCO_REDUCED_MOTION",
-        "MCO_LOOP_SCENARIO",
         "MCO_INSIGHTS_SCENARIO",
-        "MCO_REVIEW_TWO_DRAFTS",
-        "MCO_START_DAY_REVIEW",
-        "MCO_REVIEWED_PIECES",
-        "MCO_REVIEW_SELECT_ALL",
-        "MCO_FAIL_SECOND_PIECE_APPROVAL",
-        "MCO_LOSE_SECOND_APPROVAL_REPLY_ONCE",
         "MCO_QA_SESSION"
     ]
 
@@ -81,27 +58,6 @@ enum DebugLaunchConfiguration {
         }
         return defaults
     }
-
-    static var onboardingDefaults: UserDefaults {
-        DebugLaunchConfiguration.isEnabled("MCO_FORCE_FIXTURE_UI")
-            ? fixtureDefaults
-            : .standard
-    }
-
-    static var fixtureCacheDirectory: URL? {
-        guard let base = try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        ) else {
-            return nil
-        }
-        return base
-            .appendingPathComponent("CreatorContentOS", isDirectory: true)
-            .appendingPathComponent("FixtureQA", isDirectory: true)
-            .appendingPathComponent(fixtureSession ?? "default", isDirectory: true)
-    }
 }
 #else
 enum DebugLaunchConfiguration {
@@ -119,8 +75,6 @@ enum DebugLaunchConfiguration {
 
     static var fixtureSession: String? { nil }
     static var fixtureDefaults: UserDefaults { .standard }
-    static var onboardingDefaults: UserDefaults { .standard }
-    static var fixtureCacheDirectory: URL? { nil }
 }
 #endif
 

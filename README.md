@@ -6,7 +6,7 @@ Mira is an AI-assisted creative partner for creators. The goal is to help a crea
 
 The native Mira app provides a project notebook, ideas, scripts, shot plans, filming progress, and contextual assistance. Its generation source and database migration are included in this repository but have not been verified as deployed. It does not publish to social platforms. See [the Mira handoff](docs/mira-handoff.md) for the original implementation details and verification limits.
 
-The Creator Loop work contains the separate Today, Plan, Shoot Folio, review, and per-piece planning implementation. It remains in the source, and a DEBUG fixture flag can open the older Pocket flow. The two flows currently use separate models and persistence; merging their source does not make them one continuous user journey. Design proposals in this repository are not proof of native behavior.
+Mira is the only native app flow in Debug and Release. The retired Today / Plan / Shoot Folio client, debug routes, dated-content cache and outbox, and background benchmark have been removed. Historical design documents and backend APIs remain in the repository; existing saved data is not deleted. See [the removal record](docs/legacy-pocket-removal.md).
 
 ## Collaborating
 
@@ -18,17 +18,17 @@ The Creator Loop work contains the separate Today, Plan, Shoot Folio, review, an
 
 ContentHelper is a native iPhone app built with SwiftUI. Its Xcode target and scheme are `CreatorContentOS`, and its app bundle is `ContentHelper.app`.
 
-## Latest creator design and Claude handover
+## Historical creator design and handover
 
-Start with [the complete Claude handover](docs/claude-handover.md) and [the complete screen review PDF](output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf). The PDF contains all 40 screen concepts on 10 pages. [Download the actual PDF](https://raw.githubusercontent.com/prateekranka/instaContentHelper/main/output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf) if the browser preview is unavailable.
+The earlier Creator Loop design is preserved in [the complete Claude handover](docs/claude-handover.md) and [the complete screen review PDF](output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf). The PDF contains all 40 screen concepts on 10 pages. [Download the actual PDF](https://raw.githubusercontent.com/prateekranka/instaContentHelper/main/output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf) if the browser preview is unavailable.
 
-The [design index](docs/design/creator-ios-v1-2026-10-18/README.md) includes all 10 final PNG boards. Read the [flow and state specification](docs/design/creator-ios-v1-2026-10-18/flow-and-state-spec.md) for the accepted behavior: Today / Plan / You, several pieces per date, approval of reviewed versions, later edits, and monochrome UI with color media. These latest decisions supersede older one-package-per-day rules. The screen concepts and social integration proposals are not yet native implementation or runtime proof.
+The [design index](docs/design/creator-ios-v1-2026-10-18/README.md) includes all 10 final PNG boards. Read the [flow and state specification](docs/design/creator-ios-v1-2026-10-18/flow-and-state-spec.md) for the accepted behavior: Today / Plan / You, several pieces per date, approval of reviewed versions, later edits, and monochrome UI with color media. These documents describe the retired client direction. They are historical references, not current Mira navigation or runtime proof.
 
 ## Existing native implementation
 
-The earlier Creator Loop workflow is Today → Plan → Shoot Folio. Today shows the daily idea. Plan prepares ideas for selected dates. Shoot Folio contains filming steps and post text. “Mark as posted” records completion; it does not publish to Instagram. This flow is available through a DEBUG fixture route, not the default Mira navigation.
+Mira opens Today and Projects, with Profile in the toolbar. Projects contain ideas, script and shot-list revisions, filming progress, and reviewed AI proposals. Profile provides Apple sign-in, AI permission, and Instagram insights. Local projects remain usable without sign-in.
 
-Read [the current project state and collaborator handoff](docs/project-state-2026-10-18.md) before starting work. The latest source includes the Pocket interface, adaptive onboarding, AI consent, editable post text, and package restoration work.
+Read [the Mira implementation plan](docs/mira-implementation-plan.md) and [the Mira handoff](docs/mira-handoff.md), noting their dated verification records.
 
 ## iPhone development
 
@@ -55,15 +55,14 @@ Runtime overrides belong in `CreatorContentOS/Config/LocalRuntime.xcconfig`, whi
 Install the locked Node dependencies with `npm ci`. Use TesterArmy e2e for app behavior and UI checks. Set the exact ID of an idle, booted simulator and the path of the app you just built:
 
 ```sh
-export POCKET_E2E_DEVICE='<idle-booted-simulator-UDID>'
-export POCKET_E2E_APP="$PWD/work/DerivedData/Build/Products/Debug-iphonesimulator/ContentHelper.app"
-export POCKET_E2E_OUTPUT="$PWD/work/evidence/pocket-install"
-POCKET_E2E_INSTALL=1 npx e2e run --grep 'Pocket opens'
-
-POCKET_E2E_SCENARIO=plan POCKET_E2E_OUTPUT="$PWD/work/evidence/pocket-plan" npx e2e run
+export MIRA_E2E_DEVICE='<idle-booted-simulator-UDID>'
+export MIRA_E2E_APP="$PWD/work/DerivedData/Build/Products/Debug-iphonesimulator/ContentHelper.app"
+export MIRA_E2E_BUNDLE='com.prateekranka.creatorcontenthelper'
+export MIRA_E2E_OUTPUT="$PWD/work/evidence/mira-journey"
+MIRA_E2E_INSTALL=1 npx e2e run
 ```
 
-Always set these variables; the recovered configuration retains paths from earlier development sessions. Read [the native QA guide](docs/pocket-native-qa.md) for scenarios and proof limits. Read [the current handoff](docs/project-state-2026-10-18.md) for the latest verification status.
+The default configuration runs `tests/mira-journey.e2e.ts`. It verifies the labelled demo from ideas through filming and retained progress after reopening. It uses no live AI provider. Set the exact simulator, bundle, and matching build path for each run. See [the removal record](docs/legacy-pocket-removal.md) for verification limits.
 
 ## Mira AI providers
 

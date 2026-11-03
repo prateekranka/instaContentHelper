@@ -41,7 +41,7 @@ final class MiraDependencies {
                 "Connect your account from Profile to use live generation. You can still write manually and open saved work."
             )
         }
-        if requiresConsent { try services.requireAIConsent(for: .planIdeas) }
+        if requiresConsent { try services.requireAIConsent() }
         return makeLiveGeneration(session)
     }
 }

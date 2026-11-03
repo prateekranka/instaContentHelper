@@ -1,5 +1,7 @@
 # Mira implementation handoff
 
+Current-source update: the old Pocket debug route and Creator Loop client have been removed. Mira is the only native flow. Older references to the route below describe the original delivery; see [the removal record](legacy-pocket-removal.md) and current README.
+
 Branch: `codex/mira-ios-mvp` in `prateekranka/instaContentHelper`. Base: `1580a82`. Worktree: `/workspace/mira-ios-mvp`. Work used one agent. No TestFlight or App Store distribution occurred.
 
 Owner update, 2026-10-27: all unit tests and their targets/runners have been removed.

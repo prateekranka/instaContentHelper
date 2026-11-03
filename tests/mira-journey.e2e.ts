@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/mobile';
 import { expect, type Locator, type Screen } from 'e2e';
-import { scrollToControl, tapVisibleControl } from './pocket-support';
+import { scrollToControl, tapVisibleControl } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
 
