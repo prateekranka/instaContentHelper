@@ -4,7 +4,19 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
-FUNCTIONS="exchange-auth-session pair-device revoke-device-session send-auth-email manage-testers publish-week read-content write-content import-references review-reference generate-week generate-plan-ideas generate-storyboard-thumbnail generate-storyboard-thumbnails make-day-available unpublish-day update-ready-day-package runtime-health instagram-connect instagram-insights instagram-disconnect ig-oauth-redirect"
+# Every folder under supabase/functions with an index.ts, so new or removed
+# functions never drift from this list. Set SUPABASE_FUNCTIONS to deploy a subset.
+FUNCTIONS="${SUPABASE_FUNCTIONS:-$(
+  for dir in supabase/functions/*/; do
+    name=$(basename "$dir")
+    [ "$name" = "_shared" ] && continue
+    [ -f "$dir/index.ts" ] && printf '%s ' "$name"
+  done
+)}"
+if [ -z "$FUNCTIONS" ]; then
+  echo "error: no functions found under supabase/functions" >&2
+  exit 1
+fi
 
 require_env() {
   name="$1"
@@ -82,20 +94,22 @@ EOF
   exit 1
 fi
 
+# --include-all applies migrations that landed out of timestamp order (e.g. a
+# branch merged after newer ones shipped) instead of refusing the whole push.
 if [ "${SKIP_MIGRATIONS:-0}" != "1" ]; then
   check_network_bans
   if [ -n "${SUPABASE_DB_URL:-}" ]; then
-    run_with_db_auth_cooldown supabase db push --db-url "$SUPABASE_DB_URL" --yes
+    run_with_db_auth_cooldown supabase db push --db-url "$SUPABASE_DB_URL" --include-all --yes
   elif [ -n "${SUPABASE_DB_PASSWORD:-}" ]; then
     if [ "${SUPABASE_SKIP_POOLER:-0}" = "1" ]; then
       supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD" --skip-pooler --yes
     else
       supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD" --yes
     fi
-    run_with_db_auth_cooldown supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --yes
+    run_with_db_auth_cooldown supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --include-all --yes
   else
     supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
-    run_with_db_auth_cooldown supabase db push --linked --yes
+    run_with_db_auth_cooldown supabase db push --linked --include-all --yes
   fi
 fi
 

@@ -35,25 +35,7 @@ Deploy migrations and all ContentHelper Edge Functions:
 scripts/deploy-live-supabase.sh | tee build-logs/live_supabase_deploy_$(date +%Y%m%d_%H%M%S).log
 ```
 
-The script deploys:
-
-- `exchange-auth-session`
-- `pair-device`
-- `revoke-device-session`
-- `send-auth-email`
-- `manage-testers`
-- `publish-week`
-- `read-content`
-- `write-content`
-- `import-references`
-- `review-reference`
-- `generate-week`
-- `generate-storyboard-thumbnail`
-- `generate-storyboard-thumbnails`
-- `make-day-available`
-- `unpublish-day`
-- `update-ready-day-package`
-- `runtime-health`
+The script applies every pending migration (including any that landed out of timestamp order) and deploys every function folder under `supabase/functions/` that has an `index.ts`. To deploy only some functions, set `SUPABASE_FUNCTIONS="name-one name-two"`.
 
 All functions deploy with JWT verification disabled because the app uses the publishable key plus `x-mco-device-token`; the service role key stays inside Edge Functions.
 
