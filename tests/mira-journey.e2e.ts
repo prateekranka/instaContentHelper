@@ -66,7 +66,9 @@ test('demo moves from an idea to a saved filming plan', async ({ app, screen, de
     await scrollToControl(screen, detail, 'up');
     await expect(detail).toBeVisible();
   }
-  await tap(screen, screen.getByRole('button', 'Start filming', { exact: true }));
+  const startFilming = screen.getByRole('button', 'Start filming', { exact: true });
+  await scrollToControl(screen, startFilming, 'up');
+  await tap(screen, startFilming);
   await expect(screen.getByText('Shot 1 of 3', { exact: true })).toBeVisible();
   await tap(screen, screen.getByRole('button', 'Mark filmed', { exact: true }));
   const filmedCount = screen.getByText('1 filmed by you', { exact: true });
@@ -145,9 +147,11 @@ test('Today cards swipe into the matching filming plan and retry one failed card
   await expect(title('Shot 1 of 3')).toBeVisible();
   await expect(picture(1)).toBeVisible();
   await tap(screen, screen.getByRole('button', 'Next', { exact: true }));
+  const chosenShot = title('A small pause in my day');
+  await scrollToControl(screen, chosenShot, 'up');
   await expect(title('Shot 2 of 3')).toBeVisible();
-  await expect(title('A small pause in my day')).toBeVisible();
-  await expect(picture(2)).toBeVisible();
+  await expect(chosenShot).toBeVisible();
+  await expect(screen.getByRole('image', 'Shot 2, side view, 20 seconds', { exact: true })).toBeVisible();
   await app.screenshot('today-selected-filming');
   await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
   await expect(title('Shot 2 of 3')).toBeVisible();
@@ -156,7 +160,6 @@ test('Today cards swipe into the matching filming plan and retry one failed card
 
   const request = screen.getByTestId('mira.today.request');
   await request.fill('Demo card failure');
-  await request.press('Enter');
   await make.tap();
   await expect(page(3)).toBeVisible();
   await page(2).tap();
