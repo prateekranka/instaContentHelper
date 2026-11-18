@@ -7,6 +7,7 @@ final class AppServices {
     let isLiveSupabaseRuntime: Bool
     let aiConsentStore: any AIConsentStoring
     var aiConsentAllowsOutbound = false
+    var aiConsentHasDeclined = false
     var isAIConsentSheetPresented = false
 
     init(isLiveSupabaseRuntime: Bool, aiConsentStore: any AIConsentStoring) {

@@ -6,7 +6,7 @@ extension AppServices {
         refreshAIConsentFlagsFromStore()
         guard !aiConsentAllowsOutbound else { return }
 
-        if !AIConsentPolicy.hasDeclinedCurrent(aiConsentStore.load()) {
+        if !aiConsentHasDeclined {
             isAIConsentSheetPresented = true
         }
         logAIConsentEvent("rejected")
@@ -27,7 +27,7 @@ extension AppServices {
 
     func setAIConsentSheetPresented(_ presented: Bool) {
         if !presented, isAIConsentSheetPresented, !aiConsentAllowsOutbound,
-            !AIConsentPolicy.hasDeclinedCurrent(aiConsentStore.load())
+            !aiConsentHasDeclined
         {
             saveAIConsentDecision(.declined)
             logAIConsentEvent("declined")
@@ -36,18 +36,19 @@ extension AppServices {
     }
 
     var aiConsentStatusCopy: String {
-        let record = aiConsentStore.load()
-        if AIConsentPolicy.allowsOutbound(record) {
+        if aiConsentAllowsOutbound {
             return AIConsentCopy.statusAllowed
         }
-        if AIConsentPolicy.hasDeclinedCurrent(record) {
+        if aiConsentHasDeclined {
             return AIConsentCopy.statusDeclined
         }
         return AIConsentCopy.statusUnknown
     }
 
     func refreshAIConsentFlagsFromStore() {
-        aiConsentAllowsOutbound = AIConsentPolicy.allowsOutbound(aiConsentStore.load())
+        let record = aiConsentStore.load()
+        aiConsentAllowsOutbound = AIConsentPolicy.allowsOutbound(record)
+        aiConsentHasDeclined = AIConsentPolicy.hasDeclinedCurrent(record)
     }
 
     private func saveAIConsentDecision(_ decision: AIConsentDecision) {
