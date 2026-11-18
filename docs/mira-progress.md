@@ -2,7 +2,7 @@
 
 Public tracker: https://mira-build-progress-production.up.railway.app
 
-Snapshot fetched: 2026-11-18T19:54:01.660Z. Last project activity: 2026-11-18T19:53:41.054Z. All recorded timestamps are UTC.
+Snapshot fetched: 2026-11-18T20:18:22.121Z. Last project activity: 2026-11-18T20:18:21.066Z. All recorded timestamps are UTC.
 
 Each task records its build, runtime and deployment evidence. Earlier unit-test counts are historical. Use the E2E testing rules in [the repository policy](../AGENTS.md).
 
@@ -14,7 +14,7 @@ Each task records its build, runtime and deployment evidence. Earlier unit-test 
 | — | MIRA-005 — Quick ideas **(blocked)** | MIRA-020 — Plan §8 — state and persistence hardening |
 | — | MIRA-006 — Editable scripts **(blocked)** | MIRA-022 — Remove all unit tests and persist owner policy |
 | — | MIRA-007 — Detailed storyboards **(blocked)** | MIRA-023 — Phase 1 — Better storyboard |
-| — | MIRA-008 — Shooting checklist and resume **(blocked)** | — |
+| — | MIRA-008 — Shooting checklist and resume **(blocked)** | MIRA-024 — Phase 2 — One-tap Reel |
 | — | MIRA-009 — AI backend and contracts **(blocked)** | — |
 | — | MIRA-010 — Durable generation and recovery **(blocked)** | — |
 | — | MIRA-011 — Contextual revisions and undo **(blocked)** | — |
@@ -24,7 +24,6 @@ Each task records its build, runtime and deployment evidence. Earlier unit-test 
 | — | MIRA-016 — Live Supabase deployment and generation verification | — |
 | — | MIRA-019 — Plan §5 — navigation and screen completion **(blocked)** | — |
 | — | MIRA-021 — Plan §9 — explicit native dependencies **(blocked)** | — |
-| — | MIRA-024 — Phase 2 — One-tap Reel **(blocked)** | — |
 
 ## Per-task evidence
 
@@ -328,14 +327,17 @@ Agent rules, Deno backend type check, scoped lint and Xcode 27.1 simulator build
 
 ### MIRA-024 — Phase 2 — One-tap Reel
 
-Working · Updated 2026-11-18T19:53:41.054Z
+Done · Updated 2026-11-18T20:18:21.066Z
 
-Checked at 2026-11-18T19:53:17Z. A read-only Supabase catalog query confirmed the per-member lock and two-job cap on project zogvvrxhiwozjmufvddu. Supabase listed mira-generation v14 active, updated 2026-11-18T18:49:12Z. No product changes, deployment, live AI calls, simulator run or device upload. Baseline main commit f54d24a5d0089240b866164a51d2b7d54c830b76 verified on GitHub.
+Approved migration 20261119012500 was the only pending migration and was applied and verified on zogvvrxhiwozjmufvddu at 2026-11-18T19:59:16Z. Agent checks, Deno contracts, seven local TesterArmy API scenarios and the Xcode 27.1 simulator build passed. One parallel live run on mira-generation v15 returned three distinct valid cards in 23.124 s (3,182 bytes), 23.002 s (2,975 bytes), and 22.146 s (2,970 bytes). Three overlapping jobs used one attempt each. v16 became active at 2026-11-18T20:11:45.671Z with frame types required for new shot revisions. TesterArmy passed card swipes, pictures, matching filming, relaunch, per-card retry, the step-by-step demo, old saved-project reopen, and dark-mode card and Ask Mira checks. Sqim uploaded a signed device build and the HTTPS install page returned 200. The install link is in the owner report. Install on an actual phone remains unverified.
 
-Blocker: Live public.mira_enqueue permits two active jobs per member. A third concurrent job receives HTTP 409 rate_limited. The owner approved an Edge Function-only deployment and excluded database migrations.
-
-Next action: Resolve admission for three independent durable jobs while keeping atomic rate and ownership checks.
-
+- [Pushed commit e7c8e70c5422068708ad8771f69f494c607e9b72](https://github.com/prateekranka/instaContentHelper/commit/e7c8e70c5422068708ad8771f69f494c607e9b72)
+- [Pushed commit 988ed577cc122ca1502977db5d49ca1e8e04c948](https://github.com/prateekranka/instaContentHelper/commit/988ed577cc122ca1502977db5d49ca1e8e04c948)
+- [Pushed commit 05b57f7075259c86fcc3579115c78148a958f639](https://github.com/prateekranka/instaContentHelper/commit/05b57f7075259c86fcc3579115c78148a958f639)
+- [Pushed commit bd2fafc864a2b46f1a5bc51b8d8829b86c2779db](https://github.com/prateekranka/instaContentHelper/commit/bd2fafc864a2b46f1a5bc51b8d8829b86c2779db)
+- [Pushed commit 7d3371bd0cd916b94d023dd4158582e28ecba8fe](https://github.com/prateekranka/instaContentHelper/commit/7d3371bd0cd916b94d023dd4158582e28ecba8fe)
+- [Pushed commit ed7f11c7a23bf87f1fcb1bd8e9547843ec6d01b1](https://github.com/prateekranka/instaContentHelper/commit/ed7f11c7a23bf87f1fcb1bd8e9547843ec6d01b1)
+- [Pushed commit 70b14db9f2e5847e7859f85e2e3d116524de75d6](https://github.com/prateekranka/instaContentHelper/commit/70b14db9f2e5847e7859f85e2e3d116524de75d6)
 
 Full criteria, created/started/completed timestamps and history: [JSON snapshot](mira-progress.json).
 
