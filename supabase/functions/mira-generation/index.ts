@@ -181,15 +181,27 @@ async function runJob(
       (error.message === "transient_provider_error" ||
         error.name === "TimeoutError" ||
         error.message === "result_persist_failed");
+    const reason = failureReason(error);
+    console.error(`mira_job_failed ${id} ${reason}`);
     await admin.from("mira_generation_jobs").update({
       status: transient && row.attempts < 3 ? "queued" : "failed",
       error: transient
         ? "Generation interrupted. Retrying is bounded; a prior provider request may have completed."
-        : "Generation failed validation or provider configuration. Your saved work is unchanged.",
+        : `Generation failed validation or provider configuration. Your saved work is unchanged. (${reason})`,
       next_attempt_at: new Date(Date.now() + row.attempts * 5000).toISOString(),
       updated_at: new Date().toISOString(),
     }).eq("id", id).eq("lease_id", row.lease_id).eq("status", "running");
   }
+}
+function failureReason(error: unknown): string {
+  if (!(error instanceof Error)) return "unknown_error";
+  if (error.name === "ZodError" && "issues" in error && Array.isArray(error.issues)) {
+    const issue = error.issues[0] as { path?: unknown[]; code?: unknown } | undefined;
+    const path = (issue?.path ?? []).map((part) => String(part)).join(".");
+    return `output_check_failed ${String(issue?.code ?? "")} ${path}`.trim().slice(0, 160);
+  }
+  if (error.name === "SyntaxError") return "invalid_json_from_provider";
+  return error.message.replace(/[^a-zA-Z0-9_. -]/g, "").slice(0, 160) || error.name;
 }
 declare const EdgeRuntime: undefined | {
   waitUntil(promise: Promise<unknown>): void;
