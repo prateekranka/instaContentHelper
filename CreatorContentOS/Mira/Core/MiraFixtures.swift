@@ -105,12 +105,12 @@ enum MiraFixtures {
             }
             let seconds = script.durationSeconds
             var shots =
-                input.storyboard?.shots ?? [
+                (input.operation == .storyboard ? nil : input.storyboard?.shots) ?? [
                     MiraShot(
                         purpose: "Introduce the idea", editedSeconds: 5, recordingSeconds: 12,
                         location: input.constraints.location, props: "Phone and a stable shelf",
-                        placement:
-                            "Stand the phone securely at eye level on a shelf, away from edges. Face a window.",
+                        placement: "Stand the phone on a steady shelf at eye level.",
+                        distance: "One arm’s length", framing: "Head and shoulders",
                         action: "Look at the lens and say the opening line. Pause before and after.",
                         words: script.hook, voiceover: false, onScreenText: "",
                         simplerAlternative: "Sit at a table with the phone supported by heavy books."),
@@ -118,8 +118,8 @@ enum MiraFixtures {
                         purpose: "Show your routine", editedSeconds: max(1, seconds - 10),
                         recordingSeconds: max(18, seconds), location: input.constraints.location,
                         props: "One familiar object from your routine",
-                        placement:
-                            "Place the phone on a stable table, with the object in frame. Keep the phone away from heat and water.",
+                        placement: "Prop the phone up on a steady table.",
+                        distance: "One arm’s length", framing: "Your hands and the object",
                         action:
                             "Film one simple action with your hands. Record the voiceover separately in a quiet place.",
                         words: script.spoken, voiceover: true, onScreenText: "My everyday routine",
@@ -128,17 +128,29 @@ enum MiraFixtures {
                         purpose: "Close the thought", editedSeconds: 5, recordingSeconds: 10,
                         location: input.constraints.location, props: "Same setup as the opening",
                         placement: "Return to the same eye-level phone position.",
+                        distance: "One arm’s length", framing: "Head and shoulders",
                         action: "Give a natural closing look, or hold the final scene for five seconds.",
                         words: "", voiceover: false, onScreenText: "",
                         simplerAlternative: "Use a still view of the finished setup."),
                 ]
-            if let target = input.targetShotID, let index = shots.firstIndex(where: { $0.id == target }) {
-                shots[index].placement =
-                    "Support the phone securely between heavy books on a stable table. Keep it away from edges."
+            let movesHome = input.request.localizedCaseInsensitiveContains("home")
+            let revisedIndices: [Int]
+            if input.operation == .reviseShot {
+                guard let index = shots.firstIndex(where: { $0.id == input.targetShotID }) else {
+                    return MiraOutput(conflicts: ["Choose the shot you want to change."])
+                }
+                shots[index].placement = "Prop the phone up against heavy books on a steady table."
                 shots[index].action = "Stay seated. Film the same action in one fixed view."
+                revisedIndices = [index]
+            } else {
+                revisedIndices = Array(shots.indices)
             }
-            if input.request.lowercased().contains("home") {
-                for i in shots.indices { shots[i].location = "Home" }
+            for index in revisedIndices {
+                if movesHome { shots[index].location = "Home" }
+                if shots[index].distance.isEmpty { shots[index].distance = "One arm’s length" }
+                if shots[index].framing.isEmpty {
+                    shots[index].framing = shots[index].voiceover ? "Your hands and the object" : "Head and shoulders"
+                }
             }
             let board = MiraStoryboard(
                 sourceScriptID: script.id, requirementsRevision: input.brief?.revision ?? 0, shots: shots,

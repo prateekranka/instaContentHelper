@@ -45,12 +45,18 @@ export const shotSchema = z.object({
   location: nonempty,
   props: text,
   placement: nonempty,
+  distance: z.string().trim().min(1).max(500),
+  framing: z.string().trim().min(1).max(500),
   action: nonempty,
   words: text,
   voiceover: z.boolean(),
   onScreenText: text,
   simplerAlternative: text,
 }).strict();
+const savedShotSchema = shotSchema.extend({
+  distance: text.optional(),
+  framing: text.optional(),
+});
 export const requirementSchema = z.object({
   id,
   kind: nonempty,
@@ -90,7 +96,9 @@ export const inputSchema = z.object({
   recentIdeas: z.array(text).max(30),
   idea: ideaSchema.nullish(),
   script: scriptSchema.nullish(),
-  storyboard: boardSchema.nullish(),
+  storyboard: boardSchema.extend({
+    shots: z.array(savedShotSchema).min(1).max(16),
+  }).nullish(),
   brief: briefSchema.nullish(),
   targetShotID: id.nullish(),
 }).strict();
@@ -102,9 +110,19 @@ export const outputSchema = z.object({
   brief: briefSchema.optional(),
   conflicts: z.array(nonempty).max(20),
 }).strict();
-export type MiraOutput = z.infer<typeof outputSchema>;
+const reviseShotOutputSchema = outputSchema.extend({
+  storyboard: boardSchema.extend({ shots: z.array(shotSchema).length(1) })
+    .optional(),
+});
+export function providerOutputSchema(operation: MiraInput["operation"]) {
+  return operation === "reviseShot" ? reviseShotOutputSchema : outputSchema;
+}
+export type MiraOutput = Omit<z.infer<typeof outputSchema>, "storyboard"> & {
+  storyboard?: NonNullable<MiraInput["storyboard"]>;
+};
 export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
-  const output = outputSchema.parse(value), op = input.operation;
+  const op = input.operation;
+  const output: MiraOutput = providerOutputSchema(op).parse(value);
   const fail = (message: string): never => {
     throw new Error("invalid_output:" + message);
   };
@@ -171,6 +189,17 @@ export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
       board!.sourceScriptID !== input.script!.id ||
       board!.requirementsRevision !== (input.brief?.revision ?? 0)
     ) fail("source_revision");
+    if (op === "reviseShot") {
+      const previous = input.storyboard;
+      const revised = board!.shots[0];
+      if (!previous?.shots.some((shot) => shot.id === input.targetShotID)) {
+        fail("invalid_shot_target");
+      }
+      if (revised.id !== input.targetShotID) fail("wrong_shot_target");
+      board!.shots = previous!.shots.map((shot) =>
+        shot.id === input.targetShotID ? revised : shot
+      );
+    }
     const shots = board!.shots;
     if (
       new Set(shots.map((x) => x.id)).size !== shots.length ||
@@ -203,21 +232,6 @@ export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
           x.requirementID === r.id && (x.shotIDs.length || x.scriptExcerpt)
         ) && !output.conflicts.length
       ) fail("unmapped_requirement");
-    }
-    if (op === "reviseShot") {
-      if (
-        !input.targetShotID ||
-        !input.storyboard?.shots.some((x) => x.id === input.targetShotID)
-      ) fail("invalid_shot_target");
-      for (
-        const previous of input.storyboard!.shots.filter((x) =>
-          x.id !== input.targetShotID
-        )
-      ) {
-        if (
-          !shots.some((x) => JSON.stringify(x) === JSON.stringify(previous))
-        ) fail("unrelated_shot_changed");
-      }
     }
   }
   const expected = op === "ideas"

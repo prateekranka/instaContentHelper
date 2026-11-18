@@ -40,13 +40,16 @@ beforeAll(async () => {
 
 afterAll(async () => { if (server && server.exitCode === null) server.kill('SIGTERM'); });
 
-async function call(id: string, action: 'start' | 'status', provider: string, mode = 'ok', consent = true, token = true) {
+async function call(
+  id: string, action: 'start' | 'status', provider: string,
+  mode = 'ok', consent = true, token = true, jobInput: object = input,
+) {
   const response = await fetch(`${base}/mira-generation`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-fixture-provider': provider, 'x-fixture-mode': mode,
       ...(token ? { 'x-mco-device-token': 'fixture-device-token' } : {}) },
     body: JSON.stringify({ action, id, creatorID, ...(action === 'start' ? {
-      inputRevision: 1, input, ...(consent ? { consentVersion: 1 } : {}),
+      inputRevision: 1, input: jobInput, ...(consent ? { consentVersion: 1 } : {}),
     } : {}) }),
   });
   return { status: response.status, body: await response.json() };
@@ -91,4 +94,47 @@ test('a provider outage is queued for retry and invalid output fails closed', as
   expect((await call(invalid, 'start', 'openai', 'invalid')).status).toBe(200);
   seen = await observations();
   expect(seen.jobs.find((job) => job.id === invalid)?.status).toBe('failed');
+});
+
+test('a storyboard has filming fields and revising one shot preserves a legacy shot', async () => {
+  const script = {
+    id: crypto.randomUUID(), hook: 'Here is my breakfast.', spoken: 'Add fruit to the bowl.',
+    caption: 'My breakfast', durationSeconds: 20, language: 'English',
+  };
+  const storyboardInput = { ...input, operation: 'storyboard', script };
+  async function run(jobInput: object, mode = 'ok') {
+    const id = crypto.randomUUID();
+    const start = await call(id, 'start', 'openai', mode, true, true, jobInput);
+    expect(start.status).toBe(200);
+    const result = await call(id, 'status', 'openai', mode);
+    expect(result.status).toBe(200);
+    return result.body.job;
+  }
+
+  const invalid = await run(storyboardInput, 'blank-distance');
+  expect(invalid.state).toBe('failed');
+
+  const generated = await run(storyboardInput);
+  expect(generated.state).toBe('succeeded');
+  const board = generated.output.storyboard;
+  expect(board.shots).toHaveLength(2);
+  expect(board.shots[0].distance).toBe('One arm’s length');
+  expect(board.shots[0].framing).toBe('Head and shoulders');
+
+  const legacyShot = { ...board.shots[1] };
+  delete legacyShot.distance;
+  delete legacyShot.framing;
+  const revision = {
+    ...storyboardInput, operation: 'reviseShot', targetShotID: board.shots[0].id,
+    storyboard: { ...board, shots: [board.shots[0], legacyShot] },
+  };
+  expect((await run(revision, 'wrong-target')).state).toBe('failed');
+  const revised = await run(revision);
+  expect(revised.state).toBe('succeeded');
+  const shots = revised.output.storyboard.shots;
+  expect(shots).toHaveLength(2);
+  expect(shots[0].id).toBe(revision.targetShotID);
+  expect(shots[0].distance).toBe('Two big steps');
+  expect(shots[0].framing).toBe('Waist up');
+  expect(JSON.stringify(shots[1])).toBe(JSON.stringify(legacyShot));
 });

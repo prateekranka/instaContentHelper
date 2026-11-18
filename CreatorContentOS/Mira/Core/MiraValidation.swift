@@ -93,14 +93,17 @@ enum MiraValidation {
                         } || !output.conflicts.isEmpty, "A confirmed requirement is unmapped.")
                 }
                 if operation == .reviseShot {
-                    try require(
-                        input.targetShotID != nil
-                            && input.storyboard?.shots.contains(where: { $0.id == input.targetShotID })
-                                == true,
-                        "Unknown shot revision target.")
-                    for shot in input.storyboard?.shots.filter({ $0.id != input.targetShotID }) ?? [] {
-                        try require(board.shots.contains(shot), "An unrelated shot changed.")
+                    guard let target = input.targetShotID, let previous = input.storyboard?.shots,
+                        previous.contains(where: { $0.id == target })
+                    else {
+                        throw MiraError.invalid("Unknown shot revision target.")
                     }
+                    try require(
+                        board.shots.map(\.id) == previous.map(\.id),
+                        "A single-shot revision must keep the same shots in order.")
+                    try require(
+                        zip(previous, board.shots).allSatisfy { $0.id == target || $0 == $1 },
+                        "An unrelated shot changed.")
                 }
             }
         case .requirements:

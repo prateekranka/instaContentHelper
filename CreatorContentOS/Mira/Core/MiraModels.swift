@@ -76,6 +76,8 @@ struct MiraShot: Codable, Equatable, Identifiable, Sendable {
     var location: String
     var props: String
     var placement: String
+    var distance = ""
+    var framing = ""
     var action: String
     var words: String
     var voiceover: Bool
@@ -85,6 +87,48 @@ struct MiraShot: Codable, Equatable, Identifiable, Sendable {
         var copy = self
         copy.id = other.id
         return copy == other
+    }
+}
+extension MiraShot {
+    private enum CodingKeys: String, CodingKey {
+        case id, purpose, editedSeconds, recordingSeconds, location, props, placement, distance, framing,
+            action, words, voiceover, onScreenText, simplerAlternative
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        purpose = try values.decode(String.self, forKey: .purpose)
+        editedSeconds = try values.decode(Int.self, forKey: .editedSeconds)
+        recordingSeconds = try values.decode(Int.self, forKey: .recordingSeconds)
+        location = try values.decode(String.self, forKey: .location)
+        props = try values.decode(String.self, forKey: .props)
+        placement = try values.decode(String.self, forKey: .placement)
+        distance = try values.decodeIfPresent(String.self, forKey: .distance) ?? ""
+        framing = try values.decodeIfPresent(String.self, forKey: .framing) ?? ""
+        action = try values.decode(String.self, forKey: .action)
+        words = try values.decode(String.self, forKey: .words)
+        voiceover = try values.decode(Bool.self, forKey: .voiceover)
+        onScreenText = try values.decode(String.self, forKey: .onScreenText)
+        simplerAlternative = try values.decode(String.self, forKey: .simplerAlternative)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(purpose, forKey: .purpose)
+        try values.encode(editedSeconds, forKey: .editedSeconds)
+        try values.encode(recordingSeconds, forKey: .recordingSeconds)
+        try values.encode(location, forKey: .location)
+        try values.encode(props, forKey: .props)
+        try values.encode(placement, forKey: .placement)
+        try values.encodeIfPresent(distance.isEmpty ? nil : distance, forKey: .distance)
+        try values.encodeIfPresent(framing.isEmpty ? nil : framing, forKey: .framing)
+        try values.encode(action, forKey: .action)
+        try values.encode(words, forKey: .words)
+        try values.encode(voiceover, forKey: .voiceover)
+        try values.encode(onScreenText, forKey: .onScreenText)
+        try values.encode(simplerAlternative, forKey: .simplerAlternative)
     }
 }
 struct MiraRequirement: Codable, Equatable, Identifiable, Sendable {

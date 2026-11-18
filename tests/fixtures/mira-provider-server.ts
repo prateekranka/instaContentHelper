@@ -73,10 +73,38 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
   };
   const env = { get: (name: string) => values[name] };
   const providerFetch: typeof fetch = async (requestInfo, init) => {
-    const payload = JSON.parse(String(init?.body));
+    const payload = await new Request(requestInfo, init).json();
     calls.push({ url: String(requestInfo), model: payload.model ?? 'fixture-model', mode });
     if (mode === 'unavailable') return new Response('', { status: 503 });
-    const text = mode === 'invalid' ? '{}' : JSON.stringify(output);
+    const input = JSON.parse(payload.messages?.[1]?.content ?? payload.contents?.[0]?.parts?.[0]?.text ?? '{}');
+    let result: unknown = output;
+    if (input.operation === 'storyboard' || input.operation === 'reviseShot') {
+      const first = {
+        id: '30000000-0000-4000-8000-000000000001', purpose: 'Introduce the routine',
+        editedSeconds: 6, recordingSeconds: 12, location: 'Home', props: 'Phone and books',
+        placement: 'Prop the phone against books on the table.',
+        distance: mode === 'blank-distance' ? '  ' : 'One arm’s length', framing: 'Head and shoulders',
+        action: 'Sit at the table.', words: 'Here is my breakfast.', voiceover: false,
+        onScreenText: 'My breakfast', simplerAlternative: 'Stay seated.',
+      };
+      const second = {
+        ...first, id: '30000000-0000-4000-8000-000000000002', purpose: 'Show the bowl',
+        editedSeconds: 14, framing: 'Your hands and the bowl', recordingSeconds: 20,
+      };
+      const shots = input.operation === 'reviseShot'
+        ? [{
+          ...first, id: mode === 'wrong-target' ? second.id : first.id,
+          placement: 'Put the phone on a steady shelf.', distance: 'Two big steps', framing: 'Waist up',
+        }]
+        : [first, second];
+      result = {
+        conflicts: [],
+        storyboard: {
+          id: crypto.randomUUID(), sourceScriptID: input.script.id, requirementsRevision: 0, shots, mappings: [],
+        },
+      };
+    }
+    const text = mode === 'invalid' ? '{}' : JSON.stringify(result);
     return Response.json(selected === 'gemini'
       ? { candidates: [{ content: { parts: [{ text }] } }] }
       : { choices: [{ message: { content: text } }] });
