@@ -3,21 +3,14 @@ import SwiftUI
 struct MiraStoryboardView: View {
     var store: MiraStore
     var projectID: UUID
-    var onAsk: () -> Void
     var onUpdate: () -> Void
     var body: some View {
         if let project = store.project(projectID), let board = project.storyboard {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 20) {
                 MiraSectionTitle(text: "Your filming plan")
                 Text(
                     "About \(board.shots.reduce(0){$0+$1.editedSeconds}) seconds edited · \(board.shots.count) shots"
                 ).font(.headline)
-                Text("Locations: \(Set(board.shots.map(\.location)).sorted().joined(separator:", "))")
-                Text("Props: \(Set(board.shots.map(\.props)).sorted().joined(separator:"; "))")
-                if board.shots.contains(where: { $0.voiceover }) {
-                    Text("Voiceover: record the marked spoken lines separately in a quiet place.").font(
-                        .callout)
-                }
                 if project.storyboardIsStale {
                     Text(
                         "This shot list is out of date. Your earlier plan and filming history are preserved."
@@ -30,26 +23,50 @@ struct MiraStoryboardView: View {
                             maxWidth: .infinity, minHeight: 52)
                     }.buttonStyle(MiraPrimaryStyle())
                 }
-                Button("Ask Mira about this plan", action: onAsk)
                 ForEach(Array(board.shots.enumerated()), id: \.element.id) { index, shot in
-                    DisclosureGroup {
-                        MiraShotDetails(shot: shot)
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Shot \(index + 1)").font(.largeTitle.bold())
+                            .accessibilityAddTraits(.isHeader)
+                        Text(shot.purpose).font(.title3.weight(.semibold))
                         if project.needsReview.contains(shot.id) {
                             Text("Changed shot · review before filming").font(.headline)
                         }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("\(index+1). \(shot.purpose)").font(.headline)
-                            Text(
-                                "\(shot.editedSeconds)s edited · Record about \(shot.recordingSeconds)s\(project.filmed.contains(shot.id) ? " · Filmed by you" : "")"
-                            ).font(.callout)
+                        if project.filmed.contains(shot.id) {
+                            Label("Filmed by you", systemImage: "checkmark.circle").font(.headline)
                         }
+                        Divider()
+                        MiraShotRow(title: "Phone position", icon: "iphone", value: shot.placement)
+                        MiraShotRow(title: "Distance", icon: "ruler", value: shot.distance)
+                        MiraShotRow(title: "Framing", icon: "viewfinder", value: shot.framing)
+                        MiraShotRow(
+                            title: "Seconds", icon: "clock",
+                            value: "\(shot.editedSeconds) seconds in the final video")
+                        MiraShotRow(title: "Words to say", icon: "mic", value: shot.words)
+                        if shot.voiceover && !shot.words.isEmpty {
+                            Text("Record these words separately.").font(.title3)
+                        }
+                        MiraShotRow(title: "On-screen text", icon: "textformat", value: shot.onScreenText)
+                        DisclosureGroup("More filming details") {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Where: \(shot.location)")
+                                if !shot.props.isEmpty { Text("What you need: \(shot.props)") }
+                                Text("Record for about \(shot.recordingSeconds) seconds.")
+                                Text(shot.action)
+                                if !shot.simplerAlternative.isEmpty {
+                                    Text("Simpler option: \(shot.simplerAlternative)")
+                                }
+                            }.font(.title3).padding(.top, 12)
+                        }
+                        .font(.headline)
                     }
-                    Divider()
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.primary.opacity(0.18)))
+                    .foregroundStyle(.primary)
                 }
                 if !board.mappings.isEmpty {
                     MiraSectionTitle(text: "Brand requirements included in the plan")
-                    Text("This checks the plan, not a finished video.").font(.footnote)
                     ForEach(project.brief.requirements) { requirement in
                         let mapping = board.mappings.first { $0.requirementID == requirement.id }
                         Text("\(requirement.kind): \(requirement.value)").font(.headline)
@@ -62,8 +79,25 @@ struct MiraStoryboardView: View {
                             Text("Not mapped · needs review")
                         }
                     }
+                } else if project.brief.confirmed {
+                    Text("Brand requirements confirmed").font(.headline)
                 }
             }
+        }
+    }
+}
+private struct MiraShotRow: View {
+    let title: String
+    let icon: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: icon).accessibilityHidden(true)
+                Text(title)
+            }.font(.title3.bold())
+            Text(value.isEmpty ? "None" : value).font(.title3)
         }
     }
 }
@@ -71,8 +105,16 @@ struct MiraShotDetails: View {
     var shot: MiraShot
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Phone placement").font(.headline)
+            Text("Phone position").font(.headline)
             Text(shot.placement)
+            if !shot.distance.isEmpty {
+                Text("Distance").font(.headline)
+                Text(shot.distance)
+            }
+            if !shot.framing.isEmpty {
+                Text("Framing").font(.headline)
+                Text(shot.framing)
+            }
             Text("What to do").font(.headline)
             Text(shot.action)
             if !shot.words.isEmpty {

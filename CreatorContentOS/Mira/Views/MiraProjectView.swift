@@ -10,6 +10,8 @@ struct MiraProjectView: View {
     var body: some View {
         Group {
             if let project = store.project(projectID) {
+                let showingShots = project.selectedIdeaID != nil && project.editorScreen == .shots
+                    && project.storyboard != nil
                 MiraPage {
                     if project.isDemo {
                         Text("DEMO · Example generation, no AI request").font(.caption).foregroundStyle(
@@ -56,10 +58,9 @@ struct MiraProjectView: View {
                                 Text("Shots").tag(MiraProjectScreen.shots)
                             }.pickerStyle(.segmented)
                         }
-                        if project.editorScreen == .shots, project.storyboard != nil {
+                        if showingShots {
                             MiraStoryboardView(
                                 store: store, projectID: projectID,
-                                onAsk: { onSheet(.ask(projectID, .reviseStoryboard, nil)) },
                                 onUpdate: {
                                     store.approveScript(projectID)
                                     onGenerate(
@@ -72,28 +73,50 @@ struct MiraProjectView: View {
                                 store: store, projectID: projectID, onGenerate: onGenerate,
                                 onAsk: { onSheet(.ask(projectID, .reviseScript, nil)) })
                         }
-                        Button("Choose another idea") {
-                            store.chooseAnotherIdea(projectID)
+                        if !showingShots {
+                            Button("Choose another idea") { store.chooseAnotherIdea(projectID) }
                         }
                     }
-                    Divider()
-                    Button("Add brand requirements") { onSheet(.brief(projectID)) }
-                    if project.brief.confirmed {
-                        Text("Brand requirements confirmed · Included in the plan when mapped below").font(
-                            .footnote)
+                    if !showingShots {
+                        Divider()
+                        if project.brief.confirmed {
+                            Text("Brand requirements confirmed · Included in the plan when mapped below").font(
+                                .footnote)
+                        }
+                        projectActions(project)
                     }
-                    if !project.undo.isEmpty {
-                        Button("Undo last content change") { store.update(projectID) { $0.undoLastChange() } }
+                }
+                .navigationTitle("Your Reel")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    if showingShots {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Menu {
+                                Button("Ask Mira about this plan") {
+                                    onSheet(.ask(projectID, .reviseStoryboard, nil))
+                                }
+                                projectActions(project)
+                                Button("Choose another idea") { store.chooseAnotherIdea(projectID) }
+                            } label: {
+                                Label("Plan options", systemImage: "ellipsis.circle")
+                            }
+                        }
                     }
-                    ShareLink(item: shareText(project)) {
-                        Label("Share current plan", systemImage: "square.and.arrow.up")
-                    }
-                }.navigationTitle("Your Reel").navigationBarTitleDisplayMode(.inline)
+                }
             } else {
                 ContentUnavailableView(
                     "Project unavailable", systemImage: "book.closed",
                     description: Text("It may have been deleted."))
             }
+        }
+    }
+    @ViewBuilder private func projectActions(_ project: MiraProject) -> some View {
+        Button("Add brand requirements") { onSheet(.brief(projectID)) }
+        if !project.undo.isEmpty {
+            Button("Undo last content change") { store.update(projectID) { $0.undoLastChange() } }
+        }
+        ShareLink(item: shareText(project)) {
+            Label("Share current plan", systemImage: "square.and.arrow.up")
         }
     }
     private func ideas(_ project: MiraProject) -> some View {
@@ -185,7 +208,11 @@ struct MiraProjectView: View {
         if let b = p.storyboard {
             for (i, shot) in b.shots.enumerated() {
                 text +=
-                    "\nShot \(i+1) · \(shot.editedSeconds)s edited\n\(shot.placement)\n\(shot.action)\n\(shot.words)\n"
+                    "\nShot \(i+1) · \(shot.editedSeconds)s edited\n\(shot.placement)\n"
+                if !shot.distance.isEmpty { text += "Distance: \(shot.distance)\n" }
+                if !shot.framing.isEmpty { text += "Framing: \(shot.framing)\n" }
+                text += "\(shot.action)\n\(shot.words)\n"
+                if !shot.onScreenText.isEmpty { text += "On-screen text: \(shot.onScreenText)\n" }
             }
         }
         return text
@@ -232,6 +259,8 @@ struct MiraJobView: View {
                         Text("\(i+1). \(shot.purpose)").font(.headline)
                         Text(shot.action)
                         Text(shot.placement)
+                        if !shot.distance.isEmpty { Text("Distance: \(shot.distance)") }
+                        if !shot.framing.isEmpty { Text("Framing: \(shot.framing)") }
                     }
                 }
                 if let brief = output.brief {
