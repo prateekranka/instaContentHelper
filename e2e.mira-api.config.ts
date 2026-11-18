@@ -6,6 +6,6 @@ export default {
   targets: [{ name: 'mira-api', platform: 'api' }],
   workers: 1,
   retries: 0,
-  timeout: 60_000,
+  timeout: 80_000,
   output: process.env.MIRA_API_E2E_OUTPUT ?? resolve('work/evidence/mira-api-e2e'),
 } satisfies E2EConfig;

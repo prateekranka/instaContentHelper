@@ -37,6 +37,14 @@ export const scriptSchema = z.object({
   durationSeconds: z.number().int().min(5).max(180),
   language: nonempty,
 }).strict();
+export const frameTypeSchema = z.enum([
+  "face",
+  "headShoulders",
+  "halfBody",
+  "fullBody",
+  "side",
+  "closeUp",
+]);
 export const shotSchema = z.object({
   id,
   purpose: nonempty,
@@ -47,6 +55,7 @@ export const shotSchema = z.object({
   placement: nonempty,
   distance: z.string().trim().min(1).max(500),
   framing: z.string().trim().min(1).max(500),
+  frameType: frameTypeSchema,
   action: nonempty,
   words: text,
   voiceover: z.boolean(),
@@ -56,6 +65,7 @@ export const shotSchema = z.object({
 const savedShotSchema = shotSchema.extend({
   distance: text.optional(),
   framing: text.optional(),
+  frameType: frameTypeSchema.optional(),
 });
 export const requirementSchema = z.object({
   id,
@@ -80,9 +90,16 @@ export const boardSchema = z.object({
       .strict(),
   ).max(40),
 }).strict();
+const legacyShotSchema = shotSchema.extend({
+  frameType: frameTypeSchema.optional(),
+});
+const legacyBoardSchema = boardSchema.extend({
+  shots: z.array(legacyShotSchema).min(1).max(16),
+});
 export const inputSchema = z.object({
   operation: z.enum([
     "ideas",
+    "todayIdea",
     "script",
     "storyboard",
     "reviseScript",
@@ -94,6 +111,7 @@ export const inputSchema = z.object({
   constraints: constraintsSchema,
   request: text,
   recentIdeas: z.array(text).max(30),
+  angle: nonempty.optional(),
   idea: ideaSchema.nullish(),
   script: scriptSchema.nullish(),
   storyboard: boardSchema.extend({
@@ -106,15 +124,28 @@ export type MiraInput = z.infer<typeof inputSchema>;
 export const outputSchema = z.object({
   ideas: z.array(ideaSchema).length(3).optional(),
   script: scriptSchema.optional(),
-  storyboard: boardSchema.optional(),
+  storyboard: legacyBoardSchema.optional(),
   brief: briefSchema.optional(),
   conflicts: z.array(nonempty).max(20),
 }).strict();
 const reviseShotOutputSchema = outputSchema.extend({
-  storyboard: boardSchema.extend({ shots: z.array(shotSchema).length(1) })
+  storyboard: legacyBoardSchema.extend({
+    shots: z.array(legacyShotSchema).length(1),
+  })
     .optional(),
 });
+const storyboardOutputSchema = outputSchema.extend({
+  storyboard: boardSchema.optional(),
+});
+const todayIdeaOutputSchema = z.object({
+  ideas: z.array(ideaSchema).length(1),
+  script: scriptSchema,
+  storyboard: boardSchema.extend({ shots: z.array(shotSchema).min(3).max(5) }),
+  conflicts: z.array(nonempty).length(0),
+}).strict();
 export function providerOutputSchema(operation: MiraInput["operation"]) {
+  if (operation === "todayIdea") return todayIdeaOutputSchema;
+  if (operation === "storyboard") return storyboardOutputSchema;
   return operation === "reviseShot" ? reviseShotOutputSchema : outputSchema;
 }
 export type MiraOutput = Omit<z.infer<typeof outputSchema>, "storyboard"> & {
@@ -122,6 +153,30 @@ export type MiraOutput = Omit<z.infer<typeof outputSchema>, "storyboard"> & {
 };
 export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
   const op = input.operation;
+  if (op === "todayIdea") {
+    const output = todayIdeaOutputSchema.parse(value);
+    const idea = output.ideas[0];
+    if (
+      input.recentIdeas.some((title) =>
+        title.trim().toLowerCase() === idea.title.trim().toLowerCase()
+      )
+    ) {
+      throw Error("invalid_output:repeated_idea");
+    }
+    if (idea.filmingMinutes > input.constraints.filmingMinutes) {
+      throw Error("invalid_output:filming_time");
+    }
+    validateOutput({ script: output.script, conflicts: [] }, {
+      ...input,
+      operation: "script",
+    });
+    validateOutput({ storyboard: output.storyboard, conflicts: [] }, {
+      ...input,
+      operation: "storyboard",
+      script: output.script,
+    });
+    return output;
+  }
   const output: MiraOutput = providerOutputSchema(op).parse(value);
   const fail = (message: string): never => {
     throw new Error("invalid_output:" + message);

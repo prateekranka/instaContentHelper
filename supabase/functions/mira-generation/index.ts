@@ -74,6 +74,9 @@ export async function handleMira(
       !body.input || body.inputRevision === undefined ||
       body.consentVersion !== 1
     ) return jsonResponse({ error: "input_and_consent_required" }, 400);
+    if (body.input.operation === "todayIdea" && !body.input.angle?.trim()) {
+      return jsonResponse({ error: "angle_required" }, 400);
+    }
     if (
       body.input.operation !== "requirements" && body.input.brief &&
       !body.input.brief.confirmed

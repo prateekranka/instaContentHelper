@@ -78,31 +78,46 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
     if (mode === 'unavailable') return new Response('', { status: 503 });
     const input = JSON.parse(payload.messages?.[1]?.content ?? payload.contents?.[0]?.parts?.[0]?.text ?? '{}');
     let result: unknown = output;
-    if (input.operation === 'storyboard' || input.operation === 'reviseShot') {
+    if (['storyboard', 'reviseShot', 'todayIdea'].includes(input.operation)) {
+      const script = input.operation === 'todayIdea' ? {
+        id: crypto.randomUUID(), hook: 'Here is my breakfast.', spoken: 'Add fruit to the bowl.',
+        caption: 'My breakfast', durationSeconds: 20, language: 'English',
+      } : input.script;
       const first = {
         id: '30000000-0000-4000-8000-000000000001', purpose: 'Introduce the routine',
         editedSeconds: 6, recordingSeconds: 12, location: 'Home', props: 'Phone and books',
         placement: 'Prop the phone against books on the table.',
-        distance: mode === 'blank-distance' ? '  ' : 'One arm’s length', framing: 'Head and shoulders',
+        distance: mode === 'blank-distance' ? '  ' : 'One arm’s length', framing: 'Head and shoulders', frameType: 'headShoulders',
         action: 'Sit at the table.', words: 'Here is my breakfast.', voiceover: false,
         onScreenText: 'My breakfast', simplerAlternative: 'Stay seated.',
       };
       const second = {
         ...first, id: '30000000-0000-4000-8000-000000000002', purpose: 'Show the bowl',
-        editedSeconds: 14, framing: 'Your hands and the bowl', recordingSeconds: 20,
+        editedSeconds: 14, frameType: 'closeUp', framing: 'Your hands and the bowl', recordingSeconds: 20,
       };
       const shots = input.operation === 'reviseShot'
         ? [{
           ...first, id: mode === 'wrong-target' ? second.id : first.id,
-          placement: 'Put the phone on a steady shelf.', distance: 'Two big steps', framing: 'Waist up',
+          placement: 'Put the phone on a steady shelf.', distance: 'Two big steps', framing: 'Waist up', frameType: 'halfBody',
         }]
         : [first, second];
       result = {
         conflicts: [],
         storyboard: {
-          id: crypto.randomUUID(), sourceScriptID: input.script.id, requirementsRevision: 0, shots, mappings: [],
+          id: crypto.randomUUID(), sourceScriptID: script.id, requirementsRevision: 0, shots, mappings: [],
         },
       };
+      if (input.operation === 'todayIdea') {
+        const third = { ...first, id: crypto.randomUUID(), purpose: 'Finish the idea', editedSeconds: 4 };
+        const idea = { ...output.ideas[0], title: input.angle, hook: script.hook };
+        const board = {
+          id: crypto.randomUUID(), sourceScriptID: mode === 'wrong-source' ? crypto.randomUUID() : script.id,
+          requirementsRevision: 0, shots: [first, { ...second, editedSeconds: 10 }, third], mappings: [],
+        };
+        if (mode === 'missing-frame') Reflect.deleteProperty(first, 'frameType');
+        if (mode === 'wrong-duration') third.editedSeconds += 8;
+        result = { conflicts: [], ideas: [idea], script, storyboard: board };
+      }
     }
     const text = mode === 'invalid' ? '{}' : JSON.stringify(result);
     return Response.json(selected === 'gemini'
