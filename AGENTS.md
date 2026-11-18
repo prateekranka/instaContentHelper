@@ -25,5 +25,6 @@
 
 ## Workflow
 
-Work without subagents. Keep the public Mira tracker updated with actual timestamps,
+Use subagents only when the work divides cleanly into separate parts. Give each
+subagent one clear part, with no overlap in files. Keep the public Mira tracker updated with actual timestamps,
 verification results, blockers and remotely verified GitHub commit links.
