@@ -2,20 +2,18 @@
 
 Public tracker: https://mira-build-progress-production.up.railway.app
 
-Snapshot fetched: 2026-10-27T09:31:58.483Z. Last project activity: 2026-10-27T09:31:57.601Z. All recorded timestamps are UTC.
+Snapshot fetched: 2026-11-18T18:58:00.943Z. Last project activity: 2026-11-18T18:58:00.504Z. All recorded timestamps are UTC.
 
-The native Mira journey, cross-platform workflow/persistence and Supabase job source are implemented. Compilation/type checks and recorded E2E evidence are separate from native runtime and production deployment. The owner removed all unit suites and prohibits future unit tests; earlier unit counts are historical only. Prefer realistic E2E scenarios with reproducible artifacts under [the repository policy](../AGENTS.md). The owner confirmed existing server-side AI credential reuse and waived archive/device access. Full native compilation, native UI/speech/accessibility and live Supabase generation remain unverified.
-
-Multiple Working tasks await required native or production verification. They represent one agent’s sequential implementation, with external verification blockers recorded on each card. No completion percentage is inferred from source changes.
+Each task records its build, runtime and deployment evidence. Earlier unit-test counts are historical. Use the E2E testing rules in [the repository policy](../AGENTS.md).
 
 | Planned | Working | Done |
 | --- | --- | --- |
 | MIRA-014 — Accessibility and physical device validation **(blocked)** | MIRA-002 — Toolchain and native build proof **(blocked)** | MIRA-001 — Tracker deployment and update CLI |
-| MIRA-016 — Live Supabase deployment and generation verification **(blocked)** | MIRA-003 — Visual tokens and navigation **(blocked)** | MIRA-017 — Linux core build verification |
+| — | MIRA-003 — Visual tokens and navigation **(blocked)** | MIRA-017 — Linux core build verification |
 | — | MIRA-004 — Models and persistence **(blocked)** | MIRA-018 — PostgreSQL durable-job verification |
 | — | MIRA-005 — Quick ideas **(blocked)** | MIRA-020 — Plan §8 — state and persistence hardening |
 | — | MIRA-006 — Editable scripts **(blocked)** | MIRA-022 — Remove all unit tests and persist owner policy |
-| — | MIRA-007 — Detailed storyboards **(blocked)** | — |
+| — | MIRA-007 — Detailed storyboards **(blocked)** | MIRA-023 — Phase 1 — Better storyboard |
 | — | MIRA-008 — Shooting checklist and resume **(blocked)** | — |
 | — | MIRA-009 — AI backend and contracts **(blocked)** | — |
 | — | MIRA-010 — Durable generation and recovery **(blocked)** | — |
@@ -23,6 +21,7 @@ Multiple Working tasks await required native or production verification. They re
 | — | MIRA-012 — Voice and multilingual behaviour **(blocked)** | — |
 | — | MIRA-013 — Optional pasted brief requirements **(blocked)** | — |
 | — | MIRA-015 — Final documentation and handoff **(blocked)** | — |
+| — | MIRA-016 — Live Supabase deployment and generation verification | — |
 | — | MIRA-019 — Plan §5 — navigation and screen completion **(blocked)** | — |
 | — | MIRA-021 — Plan §9 — explicit native dependencies **(blocked)** | — |
 
@@ -224,7 +223,7 @@ Next action: Retain the explicit acceptance checklist without claiming it passed
 
 ### MIRA-015 — Final documentation and handoff
 
-Working · Updated 2026-10-27T09:13:03.377Z
+Working · Updated 2026-10-27T09:33:19.142Z
 
 Handoff documents implemented source, repeatable checks, pins, adaptation decisions, approved API before/after and explicit unverified native/live checks. Public tracker URL is live; hosted API/browser/restart/redeploy acceptance passed. Final documentation reconciliation will follow live backend deployment.
 
@@ -235,18 +234,19 @@ Next action: Continue remaining authorized work when its access prerequisites ar
 - [Pushed commit 0b821ee909c22ec240865c318afe3a15a1a3c626](https://github.com/prateekranka/instaContentHelper/commit/0b821ee909c22ec240865c318afe3a15a1a3c626)
 - [Pushed commit b9b136862c17ef52c5db82fd01300b3e79f6125f](https://github.com/prateekranka/instaContentHelper/commit/b9b136862c17ef52c5db82fd01300b3e79f6125f)
 - [Pushed commit cefa846fa66edf4c10f198ea34b2dadba586829b](https://github.com/prateekranka/instaContentHelper/commit/cefa846fa66edf4c10f198ea34b2dadba586829b)
+- [Pushed commit 7e3264631fea92e4c112bfa1df2a13e27c3d408d](https://github.com/prateekranka/instaContentHelper/commit/7e3264631fea92e4c112bfa1df2a13e27c3d408d)
 
 ### MIRA-016 — Live Supabase deployment and generation verification
 
-Planned · Updated 2026-10-26T21:12:24.258Z
+Working · Updated 2026-11-18T18:58:00.504Z
 
-The owner approved production deployment of the reviewed additive endpoint/jobs table. Source and local/CI checks pass; production mutation and live provider calls have not yet occurred.
+Supabase CLI authentication worked. The approved Mira Phase 1 function-only deployment reached active v14. One isolated live TesterArmy storyboard check returned distance and framing on every shot with the existing OpenAI gpt-6.2-sol settings. The temporary QA device session was revoked. The run applied no migration.
 
-Blocker: Supabase CLI authentication is waiting for the one-time browser verification code.
-
-Next action: Finish secure CLI login and verify the existing repository project before deploying the approved addition.
+Next action: Live verification of ideas, scripts, job ownership, cancellation and relaunch reconciliation remains open.
 
 - [Pushed commit a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0](https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0)
+- [Pushed commit 2047498a1efed58546f34f935564c57bb373b0f9](https://github.com/prateekranka/instaContentHelper/commit/2047498a1efed58546f34f935564c57bb373b0f9)
+- [Pushed commit d73cdedf55470aa5f622310a739e438627c88393](https://github.com/prateekranka/instaContentHelper/commit/d73cdedf55470aa5f622310a739e438627c88393)
 
 ### MIRA-017 — Linux core build verification
 
@@ -313,6 +313,17 @@ PASS: 71 unit source/support files removed; no unit-test targets/runners remain.
 Next action: Apply the recorded owner testing policy to all future work; keep existing native/live verification limitations explicit.
 
 - [Pushed commit ba9a340ef58a93984f14f88eb96c5fa4ab0e30bd](https://github.com/prateekranka/instaContentHelper/commit/ba9a340ef58a93984f14f88eb96c5fa4ab0e30bd)
+
+### MIRA-023 — Phase 1 — Better storyboard
+
+Done · Updated 2026-11-18T18:58:00.052Z
+
+Agent rules, Deno backend type check, scoped lint and Xcode 27.1 simulator build passed. TesterArmy passed six local API cases, two simulator scenarios and one legacy-project reopen. All six rows appeared and filming progress survived relaunch. Profile updated immediately after Allow and Decline. Supabase mira-generation v14 is active. Supabase recorded the deployment at 2026-11-18T18:49:12+00:00. One deployed OpenAI gpt-6.2-sol storyboard returned filled distance and framing for every shot. The development-signed Sqim device build uploaded and its install page returned HTTP 200. Installation on a physical phone and a full accessibility audit remain unverified.
+
+- [Pushed commit 2047498a1efed58546f34f935564c57bb373b0f9](https://github.com/prateekranka/instaContentHelper/commit/2047498a1efed58546f34f935564c57bb373b0f9)
+- [Pushed commit 0b66bdc1f52fb9d561c87972e42f0fb69b34c46d](https://github.com/prateekranka/instaContentHelper/commit/0b66bdc1f52fb9d561c87972e42f0fb69b34c46d)
+- [Pushed commit d73cdedf55470aa5f622310a739e438627c88393](https://github.com/prateekranka/instaContentHelper/commit/d73cdedf55470aa5f622310a739e438627c88393)
+- [Pushed commit 9712f4b496a5e9a4b0ab613ee9237717b17f4cf0](https://github.com/prateekranka/instaContentHelper/commit/9712f4b496a5e9a4b0ab613ee9237717b17f4cf0)
 
 Full criteria, created/started/completed timestamps and history: [JSON snapshot](mira-progress.json).
 

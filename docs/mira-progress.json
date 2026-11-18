@@ -632,7 +632,8 @@
       "commits": [
         "https://github.com/prateekranka/instaContentHelper/commit/0b821ee909c22ec240865c318afe3a15a1a3c626",
         "https://github.com/prateekranka/instaContentHelper/commit/b9b136862c17ef52c5db82fd01300b3e79f6125f",
-        "https://github.com/prateekranka/instaContentHelper/commit/cefa846fa66edf4c10f198ea34b2dadba586829b"
+        "https://github.com/prateekranka/instaContentHelper/commit/cefa846fa66edf4c10f198ea34b2dadba586829b",
+        "https://github.com/prateekranka/instaContentHelper/commit/7e3264631fea92e4c112bfa1df2a13e27c3d408d"
       ],
       "verification": "Handoff documents implemented source, repeatable checks, pins, adaptation decisions, approved API before/after and explicit unverified native/live checks. Public tracker URL is live; hosted API/browser/restart/redeploy acceptance passed. Final documentation reconciliation will follow live backend deployment.",
       "blocker": "Approved Supabase deployment awaits secure CLI verification. Native build/runtime remain unverified under the owner’s archive/device waiver.",
@@ -640,7 +641,7 @@
       "codeTask": true,
       "createdAt": "2026-10-26T16:40:50.484Z",
       "startedAt": "2026-10-26T17:54:58.289Z",
-      "updatedAt": "2026-10-27T09:13:03.377Z",
+      "updatedAt": "2026-10-27T09:33:19.142Z",
       "completedAt": null,
       "history": [
         {
@@ -677,6 +678,11 @@
           "at": "2026-10-27T09:13:03.377Z",
           "note": "Sections 5/8/9 implementation and focused evidence are pushed. The exact source commit passed GitHub Actions (19 Swift tests and PostgreSQL). Public progress snapshot and the section-by-section verification record are reconciled; native build/UI/speech and live Supabase checks remain explicitly unverified.",
           "status": "Working"
+        },
+        {
+          "at": "2026-10-27T09:33:19.142Z",
+          "note": "Owner testing policy and completed removal are recorded in repository guidance, plan, handoff and public snapshot. All 71 unit source/support files, unit targets and runners are removed. Build/type-check CI passed without unit execution. Existing unit counts are explicitly historical; future work uses realistic E2E scenarios and reproducible artifacts under AGENTS.md.",
+          "status": "Working"
         }
       ]
     },
@@ -690,17 +696,19 @@
         "Apply new migration and deploy mira-generation using existing server-side secrets",
         "Verify ideas, scripts, shots, ownership, cancellation and relaunch reconciliation against live service"
       ],
-      "status": "Planned",
+      "status": "Working",
       "commits": [
-        "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0"
+        "https://github.com/prateekranka/instaContentHelper/commit/a32d125c9d1dca2dde1ef62ddc749e833d4b2ee0",
+        "https://github.com/prateekranka/instaContentHelper/commit/2047498a1efed58546f34f935564c57bb373b0f9",
+        "https://github.com/prateekranka/instaContentHelper/commit/d73cdedf55470aa5f622310a739e438627c88393"
       ],
-      "verification": "The owner approved production deployment of the reviewed additive endpoint/jobs table. Source and local/CI checks pass; production mutation and live provider calls have not yet occurred.",
-      "blocker": "Supabase CLI authentication is waiting for the one-time browser verification code.",
-      "nextAction": "Finish secure CLI login and verify the existing repository project before deploying the approved addition.",
+      "verification": "Supabase CLI authentication worked. The approved Mira Phase 1 function-only deployment reached active v14. One isolated live TesterArmy storyboard check returned distance and framing on every shot with the existing OpenAI gpt-6.2-sol settings. The temporary QA device session was revoked. The run applied no migration.",
+      "blocker": null,
+      "nextAction": "Live verification of ideas, scripts, job ownership, cancellation and relaunch reconciliation remains open.",
       "codeTask": true,
       "createdAt": "2026-10-26T17:54:58.292Z",
-      "startedAt": null,
-      "updatedAt": "2026-10-26T21:12:24.258Z",
+      "startedAt": "2026-11-18T18:58:00.504Z",
+      "updatedAt": "2026-11-18T18:58:00.504Z",
       "completedAt": null,
       "history": [
         {
@@ -712,6 +720,11 @@
           "at": "2026-10-26T21:12:24.258Z",
           "note": "Backend addition approved by owner; continuing with existing server-side provider credentials.",
           "status": "Planned"
+        },
+        {
+          "at": "2026-11-18T18:58:00.504Z",
+          "note": "Replaced the historical CLI sign-in blocker with the observed deployment and live storyboard check.",
+          "status": "Working"
         }
       ]
     },
@@ -999,8 +1012,46 @@
         }
       ],
       "blocker": null
+    },
+    {
+      "id": "MIRA-023",
+      "title": "Phase 1 — Better storyboard",
+      "description": "Give each shot a clear phone setup, framing, timing, and words. Update Profile when the creator changes AI consent.",
+      "milestone": "Mira Phase 1",
+      "criteria": [
+        "Generated shots include distance and framing. Legacy projects reopen and single-shot revisions preserve the other shots.",
+        "On iPhone, the shot list shows six labelled fields and keeps filming progress.",
+        "Profile updates immediately after Allow or Decline.",
+        "Record the simulator build, TesterArmy checks, live model result, endpoint version, and device build."
+      ],
+      "status": "Done",
+      "commits": [
+        "https://github.com/prateekranka/instaContentHelper/commit/2047498a1efed58546f34f935564c57bb373b0f9",
+        "https://github.com/prateekranka/instaContentHelper/commit/0b66bdc1f52fb9d561c87972e42f0fb69b34c46d",
+        "https://github.com/prateekranka/instaContentHelper/commit/d73cdedf55470aa5f622310a739e438627c88393",
+        "https://github.com/prateekranka/instaContentHelper/commit/9712f4b496a5e9a4b0ab613ee9237717b17f4cf0"
+      ],
+      "verification": "Agent rules, Deno backend type check, scoped lint and Xcode 27.1 simulator build passed. TesterArmy passed six local API cases, two simulator scenarios and one legacy-project reopen. All six rows appeared and filming progress survived relaunch. Profile updated immediately after Allow and Decline. Supabase mira-generation v14 is active. Supabase recorded the deployment at 2026-11-18T18:49:12+00:00. One deployed OpenAI gpt-6.2-sol storyboard returned filled distance and framing for every shot. The development-signed Sqim device build uploaded and its install page returned HTTP 200. Installation on a physical phone and a full accessibility audit remain unverified.",
+      "createdAt": "2026-11-18T18:47:58.058Z",
+      "updatedAt": "2026-11-18T18:58:00.052Z",
+      "startedAt": "2026-11-18T18:47:58.058Z",
+      "completedAt": "2026-11-18T18:58:00.052Z",
+      "history": [
+        {
+          "at": "2026-11-18T18:47:58.058Z",
+          "note": "Reviewed the stopped run and started Phase 1 implementation and verification.",
+          "status": "Working"
+        },
+        {
+          "at": "2026-11-18T18:58:00.052Z",
+          "note": "Phase 1 verification and delivery complete. GitHub main contains all four source and test commits.",
+          "status": "Done"
+        }
+      ],
+      "blocker": null,
+      "nextAction": ""
     }
   ],
-  "fetchedAt": "2026-10-27T09:31:58.483Z",
-  "activityAt": "2026-10-27T09:31:57.601Z"
+  "fetchedAt": "2026-11-18T18:58:00.943Z",
+  "activityAt": "2026-11-18T18:58:00.504Z"
 }
