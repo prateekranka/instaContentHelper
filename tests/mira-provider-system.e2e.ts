@@ -132,6 +132,7 @@ test('a storyboard has filming fields and revising one shot preserves a legacy s
     storyboard: { ...board, shots: [board.shots[0], legacyShot] },
   };
   expect((await run(revision, 'wrong-target')).state).toBe('failed');
+  expect((await run(revision, 'missing-frame')).state).toBe('failed');
   const revised = await run(revision);
   expect(revised.state).toBe('succeeded');
   const shots = revised.output.storyboard.shots;

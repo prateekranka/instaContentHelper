@@ -8,7 +8,7 @@ type Env = { get(name: string): string | undefined };
 type JsonGenerationRequest = {
   system: string;
   input: unknown;
-  schema: unknown;
+  schema: Record<string, unknown>;
 };
 
 export interface MiraGenerationAdapter {

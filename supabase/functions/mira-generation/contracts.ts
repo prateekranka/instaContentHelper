@@ -90,12 +90,6 @@ export const boardSchema = z.object({
       .strict(),
   ).max(40),
 }).strict();
-const legacyShotSchema = shotSchema.extend({
-  frameType: frameTypeSchema.optional(),
-});
-const legacyBoardSchema = boardSchema.extend({
-  shots: z.array(legacyShotSchema).min(1).max(16),
-});
 export const inputSchema = z.object({
   operation: z.enum([
     "ideas",
@@ -124,18 +118,15 @@ export type MiraInput = z.infer<typeof inputSchema>;
 export const outputSchema = z.object({
   ideas: z.array(ideaSchema).length(3).optional(),
   script: scriptSchema.optional(),
-  storyboard: legacyBoardSchema.optional(),
+  storyboard: boardSchema.optional(),
   brief: briefSchema.optional(),
   conflicts: z.array(nonempty).max(20),
 }).strict();
 const reviseShotOutputSchema = outputSchema.extend({
-  storyboard: legacyBoardSchema.extend({
-    shots: z.array(legacyShotSchema).length(1),
+  storyboard: boardSchema.extend({
+    shots: z.array(shotSchema).length(1),
   })
     .optional(),
-});
-const storyboardOutputSchema = outputSchema.extend({
-  storyboard: boardSchema.optional(),
 });
 const todayIdeaOutputSchema = z.object({
   ideas: z.array(ideaSchema).length(1),
@@ -145,7 +136,6 @@ const todayIdeaOutputSchema = z.object({
 }).strict();
 export function providerOutputSchema(operation: MiraInput["operation"]) {
   if (operation === "todayIdea") return todayIdeaOutputSchema;
-  if (operation === "storyboard") return storyboardOutputSchema;
   return operation === "reviseShot" ? reviseShotOutputSchema : outputSchema;
 }
 export type MiraOutput = Omit<z.infer<typeof outputSchema>, "storyboard"> & {

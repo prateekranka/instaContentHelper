@@ -101,6 +101,7 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
           placement: 'Put the phone on a steady shelf.', distance: 'Two big steps', framing: 'Waist up', frameType: 'halfBody',
         }]
         : [first, second];
+      if (mode === 'missing-frame') Reflect.deleteProperty(shots[0], 'frameType');
       result = {
         conflicts: [],
         storyboard: {
@@ -114,7 +115,6 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
           id: crypto.randomUUID(), sourceScriptID: mode === 'wrong-source' ? crypto.randomUUID() : script.id,
           requirementsRevision: 0, shots: [first, { ...second, editedSeconds: 10 }, third], mappings: [],
         };
-        if (mode === 'missing-frame') Reflect.deleteProperty(first, 'frameType');
         if (mode === 'wrong-duration') third.editedSeconds += 8;
         result = { conflicts: [], ideas: [idea], script, storyboard: board };
       }
