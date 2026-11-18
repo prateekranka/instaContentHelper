@@ -44,7 +44,9 @@ function completionAdapter(
               json_schema: { name: "mira_artifact", strict: false, schema },
             }
             : { type: "json_object" },
-          max_tokens: 7000,
+          ...(provider.provider === "openai" && /^(gpt-[5-9]|o\d)/.test(model)
+            ? { max_completion_tokens: 7000, reasoning_effort: "low" }
+            : { max_tokens: 7000 }),
         }),
       });
       if (!response.ok) {
