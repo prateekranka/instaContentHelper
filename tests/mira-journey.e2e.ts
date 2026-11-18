@@ -29,7 +29,7 @@ test('demo moves from an idea to a saved filming plan', async ({ app, screen, de
     if (await back.count() === 0) break;
     await back.tap();
   }
-  await expect(screen.getByTestId('mira.new-project')).toBeVisible({ timeout: 45_000 });
+  await expect(screen.getByTestId('mira.today.make')).toBeVisible({ timeout: 45_000 });
   await tap(screen, screen.getByRole('button', 'Try Mamta’s demo notebook', { exact: true }));
   await expect(screen.getByText('DEMO · Example generation, no AI request')).toBeVisible();
   await tap(screen, screen.getByRole('button', 'Show three ideas', { exact: true }));
@@ -105,4 +105,68 @@ test('Profile shows Allow and Decline immediately after each choice', async ({ a
     await expect(screen.getByText(status, { exact: true })).toBeVisible();
     await app.screenshot(`mira-profile-${status}`);
   }
+});
+
+
+test('Today cards swipe into the matching filming plan and retry one failed card', async ({ app, screen, device }) => {
+  if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
+  await dismissSystemVerification(screen);
+  for (let step = 0; step < 2; step += 1) {
+    const back = screen.getByTestId('BackButton');
+    if (await back.count() === 0) break;
+    await back.tap();
+  }
+  const make = screen.getByTestId('mira.today.make');
+  const title = (label: string) => screen.getByText(label, { exact: true, visible: true });
+  const page = (number: number) => screen.getByTestId(`mira.today.page.${number}`);
+  const picture = (number: number) => screen.getByTestId(`mira.shot.picture.${number}`, { visible: true });
+  const swipeLeft = async () => {
+    const card = await screen.getByRole('scroll-view', { visible: true }).first().boundingBox();
+    await screen.swipe({ from: { x: card.x + card.width * 0.86, y: card.y + card.height * 0.73 },
+      to: { x: card.x + card.width * 0.14, y: card.y + card.height * 0.73 } });
+  };
+  await expect(make).toBeVisible();
+  await make.tap();
+  await expect(page(3)).toBeVisible();
+  await page(1).tap();
+  await expect(title('A quick movement break')).toBeVisible();
+  await expect(picture(2)).toBeVisible();
+  await app.screenshot('today-movement-card');
+  await swipeLeft();
+  await expect(title('My simple breakfast')).toBeVisible();
+  await expect(picture(2)).toBeVisible();
+  await app.screenshot('today-food-card');
+  await swipeLeft();
+  await expect(title('A small pause in my day')).toBeVisible();
+  await expect(picture(2)).toBeVisible();
+  await app.screenshot('today-mindset-card');
+  await tap(screen, screen.getByRole('button', 'Make this one', { exact: true, visible: true }));
+  await expect(title('Shot 1 of 3')).toBeVisible();
+  await expect(picture(1)).toBeVisible();
+  await tap(screen, screen.getByRole('button', 'Next', { exact: true }));
+  await expect(title('Shot 2 of 3')).toBeVisible();
+  await expect(title('A small pause in my day')).toBeVisible();
+  await expect(picture(2)).toBeVisible();
+  await app.screenshot('today-selected-filming');
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
+  await expect(title('Shot 2 of 3')).toBeVisible();
+  await expect(title('A small pause in my day')).toBeVisible();
+  for (let step = 0; step < 2; step += 1) await screen.getByTestId('BackButton').tap();
+
+  const request = screen.getByTestId('mira.today.request');
+  await request.fill('Demo card failure');
+  await request.press('Enter');
+  await make.tap();
+  await expect(page(3)).toBeVisible();
+  await page(2).tap();
+  const retry = screen.getByRole('button', 'Try again', { exact: true, visible: true });
+  await expect(retry).toBeVisible();
+  await app.screenshot('today-one-card-failure');
+  await retry.tap();
+  await expect(title('My simple breakfast')).toBeVisible();
+  await page(1).tap();
+  await expect(title('A quick movement break')).toBeVisible();
+  await page(3).tap();
+  await expect(title('A small pause in my day')).toBeVisible();
 });
