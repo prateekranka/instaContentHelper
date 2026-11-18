@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from 'e2e';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 
 let server: ChildProcess;
@@ -137,4 +138,59 @@ test('a storyboard has filming fields and revising one shot preserves a legacy s
   expect(shots[0].distance).toBe('Two big steps');
   expect(shots[0].framing).toBe('Waist up');
   expect(JSON.stringify(shots[1])).toBe(JSON.stringify(legacyShot));
+});
+
+test('the deployed Mira endpoint returns filming fields for a solo storyboard', async () => {
+  test.skip(process.env.MIRA_API_E2E_LIVE !== '1', 'Supply credentials for an isolated live QA workspace.');
+  const liveCreator = process.env.MCO_LIVE_CREATOR_ID;
+  const deviceToken = process.env.MCO_LIVE_DEVICE_TOKEN;
+  const publishableKey = process.env.MCO_SUPABASE_PUBLISHABLE_KEY;
+  const shotPath = process.env.MIRA_API_E2E_LIVE_SHOT_PATH;
+  if (!liveCreator || !deviceToken || !publishableKey || !shotPath) {
+    throw new Error('Live Mira QA session or shot evidence path is missing.');
+  }
+
+  const id = crypto.randomUUID();
+  async function request(action: 'start' | 'status', extra = {}) {
+    const response = await fetch('https://zogvvrxhiwozjmufvddu.supabase.co/functions/v1/mira-generation', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json', 'x-mco-device-token': deviceToken!,
+        apikey: publishableKey!, authorization: `Bearer ${publishableKey}`,
+      },
+      body: JSON.stringify({ action, id, creatorID: liveCreator, ...extra }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(`Mira ${action} HTTP ${response.status}: ${body.error ?? 'unknown'}`);
+    return body.job;
+  }
+
+  let job = await request('start', {
+    consentVersion: 1,
+    inputRevision: 1,
+    input: {
+      ...input,
+      operation: 'storyboard',
+      constraints: { ...input.constraints, equipment: 'Phone, table and books', reelSeconds: 20 },
+      request: 'A simple breakfast reel. I am filming alone at home. Use short, clear English.',
+      script: {
+        id: crypto.randomUUID(), hook: 'Here is my quick breakfast.',
+        spoken: 'I put yogurt in a bowl. I add sliced banana and oats. That is all I need.',
+        caption: 'A quick breakfast at home', durationSeconds: 20, language: 'English',
+      },
+    },
+  });
+  await expect.poll(async () => {
+    job = await request('status');
+    return job.state !== 'working' || Boolean(job.error);
+  }, { timeout: 50_000, interval: 2_000 }).toBe(true);
+  if (job.state !== 'succeeded') throw new Error(job.error ?? `Mira job state: ${job.state}`);
+  const shots = job.output.storyboard?.shots;
+  expect(shots?.length ?? 0).toBeGreaterThan(0);
+  for (const shot of shots) {
+    expect(shot.distance.trim().length).toBeGreaterThan(0);
+    expect(shot.framing.trim().length).toBeGreaterThan(0);
+  }
+  await writeFile(shotPath, JSON.stringify(shots[0], null, 2) + '\n', { mode: 0o600 });
 });
