@@ -44,14 +44,22 @@ function completionAdapter(
               json_schema: { name: "mira_artifact", strict: false, schema },
             }
             : { type: "json_object" },
-          max_tokens: 7000,
+          ...(provider.provider === "openai" && /^(gpt-[5-9]|o\d)/.test(model)
+            ? { max_completion_tokens: 7000, reasoning_effort: "low" }
+            : { max_tokens: 7000 }),
         }),
       });
       if (!response.ok) {
+        if (response.status === 429 || response.status >= 500) {
+          throw Error("transient_provider_error");
+        }
+        const detail = await response.json().catch(() => null);
+        const reason = [detail?.error?.code, detail?.error?.param]
+          .filter((part) => typeof part === "string" && part.length > 0)
+          .map((part) => String(part).replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 60))
+          .join(" ");
         throw Error(
-          response.status === 429 || response.status >= 500
-            ? "transient_provider_error"
-            : "provider_request_rejected",
+          `provider_request_rejected ${response.status}${reason ? ` ${reason}` : ""}`,
         );
       }
       const body = await response.json();

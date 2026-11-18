@@ -38,5 +38,15 @@ export async function generate(
     }`;
   const adapter = resolveMiraGenerationAdapter(env, fetchFn);
   const result = await adapter.generateJson({ system, input, schema });
-  return validateOutput(result, input);
+  return validateOutput(normalizeOutput(result), input);
+}
+
+function normalizeOutput(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const output: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(value)) {
+    if (field !== null) output[key] = field;
+  }
+  if (output.conflicts === undefined) output.conflicts = [];
+  return output;
 }
