@@ -2,7 +2,7 @@
 
 Public tracker: https://mira-build-progress-production.up.railway.app
 
-Snapshot fetched: 2026-11-18T18:58:00.943Z. Last project activity: 2026-11-18T18:58:00.504Z. All recorded timestamps are UTC.
+Snapshot fetched: 2026-11-18T19:54:01.660Z. Last project activity: 2026-11-18T19:53:41.054Z. All recorded timestamps are UTC.
 
 Each task records its build, runtime and deployment evidence. Earlier unit-test counts are historical. Use the E2E testing rules in [the repository policy](../AGENTS.md).
 
@@ -24,6 +24,7 @@ Each task records its build, runtime and deployment evidence. Earlier unit-test 
 | — | MIRA-016 — Live Supabase deployment and generation verification | — |
 | — | MIRA-019 — Plan §5 — navigation and screen completion **(blocked)** | — |
 | — | MIRA-021 — Plan §9 — explicit native dependencies **(blocked)** | — |
+| — | MIRA-024 — Phase 2 — One-tap Reel **(blocked)** | — |
 
 ## Per-task evidence
 
@@ -324,6 +325,17 @@ Agent rules, Deno backend type check, scoped lint and Xcode 27.1 simulator build
 - [Pushed commit 0b66bdc1f52fb9d561c87972e42f0fb69b34c46d](https://github.com/prateekranka/instaContentHelper/commit/0b66bdc1f52fb9d561c87972e42f0fb69b34c46d)
 - [Pushed commit d73cdedf55470aa5f622310a739e438627c88393](https://github.com/prateekranka/instaContentHelper/commit/d73cdedf55470aa5f622310a739e438627c88393)
 - [Pushed commit 9712f4b496a5e9a4b0ab613ee9237717b17f4cf0](https://github.com/prateekranka/instaContentHelper/commit/9712f4b496a5e9a4b0ab613ee9237717b17f4cf0)
+
+### MIRA-024 — Phase 2 — One-tap Reel
+
+Working · Updated 2026-11-18T19:53:41.054Z
+
+Checked at 2026-11-18T19:53:17Z. A read-only Supabase catalog query confirmed the per-member lock and two-job cap on project zogvvrxhiwozjmufvddu. Supabase listed mira-generation v14 active, updated 2026-11-18T18:49:12Z. No product changes, deployment, live AI calls, simulator run or device upload. Baseline main commit f54d24a5d0089240b866164a51d2b7d54c830b76 verified on GitHub.
+
+Blocker: Live public.mira_enqueue permits two active jobs per member. A third concurrent job receives HTTP 409 rate_limited. The owner approved an Edge Function-only deployment and excluded database migrations.
+
+Next action: Resolve admission for three independent durable jobs while keeping atomic rate and ownership checks.
+
 
 Full criteria, created/started/completed timestamps and history: [JSON snapshot](mira-progress.json).
 
