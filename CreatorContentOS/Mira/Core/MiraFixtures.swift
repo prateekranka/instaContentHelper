@@ -12,6 +12,44 @@ enum MiraFixtures {
     }
     static func output(for input: MiraGenerationInput) -> MiraOutput {
         switch input.operation {
+        case .todayIdea:
+            let angle = input.angle ?? ""
+            let title: String
+            let hook: String
+            let action: String
+            let framing: String
+            if angle.hasPrefix("A short") {
+                title = "A quick movement break"
+                hook = "Here's a movement I do between tasks."
+                action = "Show the movement from start to finish."
+                framing = "Full body"
+            } else if angle.hasPrefix("A food") {
+                title = "My simple breakfast"
+                hook = "This is the breakfast I make when I'm short on time."
+                action = "Put the ingredients into a bowl."
+                framing = "Your hands and the bowl"
+            } else {
+                title = "A small pause in my day"
+                hook = "This is how I give myself a moment to pause."
+                action = "Sit at the table and take one quiet breath."
+                framing = "Side view"
+            }
+            let script = MiraScript(
+                hook: hook, spoken: "I make time for one small thing and then get on with my day.",
+                caption: "One small thing from my day.", durationSeconds: min(input.constraints.reelSeconds, 30),
+                language: input.profile.language.rawValue)
+            var storyboardInput = input
+            storyboardInput.operation = .storyboard
+            storyboardInput.script = script
+            guard var board = output(for: storyboardInput).storyboard else { return MiraOutput() }
+            board.shots[1].purpose = title
+            board.shots[1].action = action
+            board.shots[1].framing = framing
+            board.shots[1].frameType = .forFraming(framing)
+            let idea = MiraIdea(
+                title: title, hook: hook, visual: action, fit: "You can film this on your own.",
+                filmingMinutes: min(10, input.constraints.filmingMinutes), setup: input.constraints.location)
+            return MiraOutput(ideas: [idea], script: script, storyboard: board)
         case .ideas:
             let minutes = min(input.constraints.filmingMinutes, 15)
             if !input.recentIdeas.isEmpty {
@@ -152,6 +190,9 @@ enum MiraFixtures {
                     shots[index].framing = shots[index].voiceover ? "Your hands and the object" : "Head and shoulders"
                 }
             }
+            if input.operation == .storyboard {
+                for index in shots.indices { shots[index].frameType = .forFraming(shots[index].framing) }
+            }
             let board = MiraStoryboard(
                 sourceScriptID: script.id, requirementsRevision: input.brief?.revision ?? 0, shots: shots,
                 mappings: [])
@@ -180,9 +221,14 @@ enum MiraFixtures {
 }
 
 struct MiraFixtureGenerationService: MiraGenerationService {
+    var failTodayCard = false
     func start(_ job: MiraJob) async throws -> MiraJob {
         try Task.checkCancellation()
         var result = job
+        if failTodayCard, job.input.operation == .todayIdea, job.input.angle?.hasPrefix("A food") == true {
+            result.state = .failed
+            return result
+        }
         result.output = MiraFixtures.output(for: job.input)
         result.state = .succeeded
         try MiraValidation.validate(result.output!, for: job.input.operation, input: job.input)

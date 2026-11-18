@@ -6,6 +6,7 @@ struct MiraDocument: Codable, Equatable, Sendable {
     var projects: [MiraProject] = []
     var position = MiraPosition()
     var navigation: MiraNavigation?
+    var defaultConstraints: MiraConstraints?
     var demoMode = false
     var sequence = 0
     var continuationProject: MiraProject? {
@@ -16,6 +17,7 @@ struct MiraDocument: Codable, Equatable, Sendable {
     func restoredNavigation() -> MiraNavigation {
         func valid(_ route: MiraRoute) -> Bool {
             guard let project = projects.first(where: { $0.id == route.projectID }) else { return false }
+            if case .todayCards = route { return project.todayCards?.isEmpty == false }
             if case .shooting = route { return project.storyboard != nil }
             return true
         }

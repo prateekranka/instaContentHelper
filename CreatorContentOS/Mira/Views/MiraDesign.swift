@@ -61,6 +61,8 @@ struct MiraSectionTitle: View {
 enum MiraSheet: Identifiable {
     case profile
     case ask(UUID, MiraOperation, UUID?)
+    case askToday(UUID, UUID)
+    case todayScript(UUID, UUID)
     case adjustIdea(UUID, UUID)
     case brief(UUID)
     case manualIdea(UUID)
@@ -69,6 +71,8 @@ enum MiraSheet: Identifiable {
         case .profile: "profile"
         case .ask(let id, let operation, let target):
             "ask-\(id)-\(operation)-\(String(describing:target))"
+        case .askToday(let id, let card): "ask-today-\(id)-\(card)"
+        case .todayScript(let id, let card): "today-script-\(id)-\(card)"
         case .adjustIdea(let id, let idea): "adjust-\(id)-\(idea)"
         case .brief(let id): "brief-\(id)"
         case .manualIdea(let id): "idea-\(id)"

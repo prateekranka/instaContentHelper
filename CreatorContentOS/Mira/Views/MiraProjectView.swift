@@ -17,6 +17,9 @@ struct MiraProjectView: View {
                         Text("DEMO · Example generation, no AI request").font(.caption).foregroundStyle(
                             MiraTheme.olive)
                     }
+                    if project.todayCards?.isEmpty == false {
+                        NavigationLink("Today's ideas", value: MiraRoute.todayCards(projectID))
+                    }
                     Text(project.stage.rawValue).font(.callout).foregroundStyle(.secondary)
                     TextField(
                         "Project name",
@@ -139,10 +142,7 @@ struct MiraProjectView: View {
             HStack {
                 ForEach([10, 20, 45], id: \.self) { minutes in
                     Button("\(minutes) min") {
-                        store.update(projectID) {
-                            $0.constraints.filmingMinutes = minutes
-                            $0.touch()
-                        }
+                        store.setConstraint(\.filmingMinutes, to: minutes, in: projectID)
                     }
                 }
             }
@@ -194,10 +194,7 @@ struct MiraProjectView: View {
         return Binding(
             get: { store.project(projectID)?.constraints[keyPath: path] ?? initial },
             set: { value in
-                store.update(projectID) {
-                    $0.constraints[keyPath: path] = value
-                    $0.touch()
-                }
+                store.setConstraint(path, to: value, in: projectID)
             })
     }
     private func shareText(_ p: MiraProject) -> String {

@@ -68,6 +68,33 @@ struct MiraScript: Codable, Equatable, Identifiable, Sendable {
     var durationSeconds: Int
     var language: String
 }
+enum MiraFrameType: String, Codable, Sendable {
+    case face, headShoulders, halfBody, fullBody, side, closeUp
+
+    var label: String {
+        switch self {
+        case .face: "face"
+        case .headShoulders: "head and shoulders"
+        case .halfBody: "half body"
+        case .fullBody: "full body"
+        case .side: "side view"
+        case .closeUp: "close-up"
+        }
+    }
+
+    static func forFraming(_ framing: String) -> Self {
+        let text = framing.lowercased().replacingOccurrences(of: "-", with: " ")
+        if ["side", "profile view"].contains(where: text.contains) { return .side }
+        if ["full body", "whole body", "head to toe", "head to feet"].contains(where: text.contains) {
+            return .fullBody
+        }
+        if ["shoulder", "chest up"].contains(where: text.contains) { return .headShoulders }
+        if ["hands", "bowl", "food", "plate", "object"].contains(where: text.contains) { return .closeUp }
+        if ["face", "head only"].contains(where: text.contains) { return .face }
+        if ["close up", "closeup"].contains(where: text.contains) { return .closeUp }
+        return .halfBody
+    }
+}
 struct MiraShot: Codable, Equatable, Identifiable, Sendable {
     var id = UUID()
     var purpose: String
@@ -78,6 +105,8 @@ struct MiraShot: Codable, Equatable, Identifiable, Sendable {
     var placement: String
     var distance = ""
     var framing = ""
+    var frameType: MiraFrameType?
+    var pictureType: MiraFrameType { frameType ?? .forFraming(framing) }
     var action: String
     var words: String
     var voiceover: Bool
@@ -86,13 +115,14 @@ struct MiraShot: Codable, Equatable, Identifiable, Sendable {
     func sameContent(as other: MiraShot) -> Bool {
         var copy = self
         copy.id = other.id
+        copy.frameType = other.frameType
         return copy == other
     }
 }
 extension MiraShot {
     private enum CodingKeys: String, CodingKey {
         case id, purpose, editedSeconds, recordingSeconds, location, props, placement, distance, framing,
-            action, words, voiceover, onScreenText, simplerAlternative
+            frameType, action, words, voiceover, onScreenText, simplerAlternative
     }
 
     init(from decoder: Decoder) throws {
@@ -106,6 +136,7 @@ extension MiraShot {
         placement = try values.decode(String.self, forKey: .placement)
         distance = try values.decodeIfPresent(String.self, forKey: .distance) ?? ""
         framing = try values.decodeIfPresent(String.self, forKey: .framing) ?? ""
+        frameType = try values.decodeIfPresent(MiraFrameType.self, forKey: .frameType)
         action = try values.decode(String.self, forKey: .action)
         words = try values.decode(String.self, forKey: .words)
         voiceover = try values.decode(Bool.self, forKey: .voiceover)
@@ -124,6 +155,7 @@ extension MiraShot {
         try values.encode(placement, forKey: .placement)
         try values.encodeIfPresent(distance.isEmpty ? nil : distance, forKey: .distance)
         try values.encodeIfPresent(framing.isEmpty ? nil : framing, forKey: .framing)
+        try values.encodeIfPresent(frameType, forKey: .frameType)
         try values.encode(action, forKey: .action)
         try values.encode(words, forKey: .words)
         try values.encode(voiceover, forKey: .voiceover)
@@ -165,7 +197,7 @@ enum MiraStage: String, Codable, Sendable {
     case complete = "Filming complete"
 }
 enum MiraOperation: String, Codable, Sendable {
-    case ideas, script, storyboard, reviseScript, reviseShot, reviseStoryboard, requirements
+    case ideas, todayIdea, script, storyboard, reviseScript, reviseShot, reviseStoryboard, requirements
 }
 enum MiraGenerationState: String, Codable, Sendable {
     case idle, working, failed, cancelled, succeeded
@@ -181,6 +213,7 @@ struct MiraGenerationInput: Codable, Equatable, Sendable {
     var storyboard: MiraStoryboard?
     var brief: MiraBrief?
     var targetShotID: UUID?
+    var angle: String?
 }
 struct MiraOutput: Codable, Equatable, Sendable {
     var ideas: [MiraIdea]?
@@ -197,6 +230,13 @@ struct MiraJob: Codable, Equatable, Identifiable, Sendable {
     var output: MiraOutput?
     var error: String?
 }
+struct MiraTodayCard: Codable, Equatable, Identifiable, Sendable {
+    var id = UUID()
+    var job: MiraJob
+    var previousOutput: MiraOutput?
+    var output: MiraOutput? { job.output ?? previousOutput }
+    var ready: Bool { job.state == .succeeded && job.output?.ideas?.count == 1 }
+}
 struct MiraPosition: Codable, Equatable, Sendable {
     var projectID: UUID?
     var screen = "project"
@@ -204,14 +244,15 @@ struct MiraPosition: Codable, Equatable, Sendable {
 }
 enum MiraTab: String, Codable, Hashable, Sendable { case today, projects }
 enum MiraProjectScreen: String, Codable, CaseIterable, Sendable {
-    case ideas, script, shots, shooting
+    case ideas, script, shots, shooting, todayCards
 }
 enum MiraRoute: Codable, Hashable, Sendable {
     case project(UUID)
     case shooting(UUID)
+    case todayCards(UUID)
     var projectID: UUID {
         switch self {
-        case .project(let id), .shooting(let id): id
+        case .project(let id), .shooting(let id), .todayCards(let id): id
         }
     }
 }
@@ -254,6 +295,8 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var inputRevision = 0
     var job: MiraJob?
     var undo: [MiraUndo] = []
+    var todayCards: [MiraTodayCard]?
+    var hasWorkingCards: Bool { todayCards?.contains { $0.job.state == .working } == true }
     var isDemo = false
     var lastScreen: MiraProjectScreen?
     var script: MiraScript? { scripts.first { $0.id == activeScriptID } }
@@ -266,6 +309,13 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             return .shots
         }
         return .script
+    }
+    var todayResumePath: [MiraRoute] {
+        guard todayCards?.isEmpty == false else { return resumePath }
+        if lastScreen == .shooting, storyboard != nil, !storyboardIsStale {
+            return [.todayCards(id), .shooting(id)]
+        }
+        return [.todayCards(id)]
     }
     var resumePath: [MiraRoute] {
         var path: [MiraRoute] = [.project(id)]
@@ -388,45 +438,14 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             approvedScriptID = nil
             lastScreen = .script
         }
-        if var board = output.storyboard {
+        if let board = output.storyboard {
             guard let current = script, board.sourceScriptID == current.id,
                 board.requirementsRevision == effectiveBriefRevision
             else {
                 throw MiraError.invalid(
                     "Shot list belongs to an older script or brief. Generate an updated proposal.")
             }
-            let old = storyboard
-            var preserved: [UUID] = []
-            var review: [UUID] = []
-            var matched = Set<UUID>()
-            let oldIDs = Set(old?.shots.map(\.id) ?? [])
-            var replacements: [UUID: UUID] = [:]
-            for index in board.shots.indices {
-                let shot = board.shots[index]
-                if let unchanged = old?.shots.first(where: {
-                    !matched.contains($0.id) && $0.sameContent(as: shot)
-                }) {
-                    matched.insert(unchanged.id)
-                    board.shots[index].id = unchanged.id
-                    replacements[shot.id] = unchanged.id
-                    if filmed.contains(unchanged.id) { preserved.append(unchanged.id) }
-                    if needsReview.contains(unchanged.id) { review.append(unchanged.id) }
-                } else if old != nil {
-                    if oldIDs.contains(shot.id) { board.shots[index].id = UUID() }
-                    replacements[shot.id] = board.shots[index].id
-                    review.append(board.shots[index].id)
-                }
-            }
-            for index in board.mappings.indices {
-                board.mappings[index].shotIDs = board.mappings[index].shotIDs.map { replacements[$0] ?? $0 }
-            }
-            board.id = UUID()
-            storyboards.append(board)
-            activeStoryboardID = board.id
-            filmed = preserved
-            needsReview = review
-            shotIndex = min(shotIndex, max(0, board.shots.count - 1))
-            lastScreen = .shots
+            installStoryboard(board)
         }
         if var brief = output.brief {
             brief.confirmed = false
@@ -434,6 +453,65 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             self.brief = brief
         }
         touch()
+    }
+    mutating func makeTodayCard(_ cardID: UUID) -> Bool {
+        guard let card = todayCards?.first(where: { $0.id == cardID }), card.ready,
+            var idea = card.output?.ideas?.first, var script = card.output?.script,
+            var board = card.output?.storyboard, board.requirementsRevision == effectiveBriefRevision
+        else { return false }
+        checkpoint()
+        if ideas.contains(where: { $0.id == idea.id }) { idea.id = UUID() }
+        ideas.append(idea)
+        selectedIdeaID = idea.id
+        title = idea.title
+        script.id = UUID()
+        scripts.append(script)
+        activeScriptID = script.id
+        approvedScriptID = script.id
+        board.sourceScriptID = script.id
+        constraints = card.job.input.constraints
+        installStoryboard(board)
+        shotIndex = 0
+        startedFilming = true
+        lastScreen = .shooting
+        touch()
+        return true
+    }
+
+    private mutating func installStoryboard(_ value: MiraStoryboard) {
+        var board = value
+        let old = storyboard
+        var preserved: [UUID] = []
+        var review: [UUID] = []
+        var matched = Set<UUID>()
+        let oldIDs = Set(old?.shots.map(\.id) ?? [])
+        var replacements: [UUID: UUID] = [:]
+        for index in board.shots.indices {
+            let shot = board.shots[index]
+            if let unchanged = old?.shots.first(where: {
+                !matched.contains($0.id) && $0.sameContent(as: shot)
+            }) {
+                matched.insert(unchanged.id)
+                board.shots[index].id = unchanged.id
+                replacements[shot.id] = unchanged.id
+                if filmed.contains(unchanged.id) { preserved.append(unchanged.id) }
+                if needsReview.contains(unchanged.id) { review.append(unchanged.id) }
+            } else if old != nil {
+                if oldIDs.contains(shot.id) { board.shots[index].id = UUID() }
+                replacements[shot.id] = board.shots[index].id
+                review.append(board.shots[index].id)
+            }
+        }
+        for index in board.mappings.indices {
+            board.mappings[index].shotIDs = board.mappings[index].shotIDs.map { replacements[$0] ?? $0 }
+        }
+        board.id = UUID()
+        storyboards.append(board)
+        activeStoryboardID = board.id
+        filmed = preserved
+        needsReview = review
+        shotIndex = min(shotIndex, max(0, board.shots.count - 1))
+        lastScreen = .shots
     }
 }
 enum MiraError: Error, LocalizedError, Equatable {

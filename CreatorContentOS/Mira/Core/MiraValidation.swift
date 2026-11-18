@@ -10,9 +10,27 @@ enum MiraValidation {
         if !output.conflicts.isEmpty, output.ideas == nil, output.script == nil, output.storyboard == nil,
             output.brief == nil
         {
-            return
+            if operation != .todayIdea { return }
         }
         switch operation {
+        case .todayIdea:
+            guard let idea = output.ideas?.first, output.ideas?.count == 1,
+                let script = output.script, let board = output.storyboard, let input
+            else { throw MiraError.invalid("The Reel card was incomplete.") }
+            try require(output.brief == nil && output.conflicts.isEmpty, "The Reel card has conflicts.")
+            try require(
+                !idea.title.isEmpty && !idea.hook.isEmpty && !idea.visual.isEmpty && !idea.fit.isEmpty
+                    && !idea.setup.isEmpty && idea.filmingMinutes > 0
+                    && idea.filmingMinutes <= input.constraints.filmingMinutes,
+                "Idea details were incomplete or did not fit the filming time.")
+            try require(
+                (3...5).contains(board.shots.count) && board.shots.allSatisfy { $0.frameType != nil },
+                "Expected three to five shots with a picture for each shot.")
+            try require(script.language == input.profile.language.rawValue, "The script language is incorrect.")
+            try validate(MiraOutput(script: script), for: .script, input: input)
+            var boardInput = input
+            boardInput.script = script
+            try validate(MiraOutput(storyboard: board), for: .storyboard, input: boardInput)
         case .ideas:
             guard let ideas = output.ideas else { throw MiraError.invalid("Ideas were missing.") }
             try require(

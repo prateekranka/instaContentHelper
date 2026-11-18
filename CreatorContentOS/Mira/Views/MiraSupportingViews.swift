@@ -78,7 +78,11 @@ struct MiraAskView: View {
     var body: some View {
         MiraPage {
             Text(context).font(.headline)
-            Text("Mira proposes a change here. You review and Apply before it replaces your work.")
+            if operation == .todayIdea {
+                if let contextIdea { Text(contextIdea.title).font(.title2) }
+            } else {
+                Text("Mira proposes a change here. You review and Apply before it replaces your work.")
+            }
             if operation == .reviseScript {
                 Button("Shorter") { request = "Make this shorter while preserving the main point" }
                 Button("More conversational") {
@@ -118,7 +122,7 @@ struct MiraAskView: View {
                     "This Reel is planned for \(p.constraints.location), with \(p.constraints.filmingMinutes) minutes to prepare and film. The shot list separates recording time from edited duration. Voiceover is recorded separately where marked. Filmed status is your own checklist."
                 )
             }
-            Button("Explain this plan") { explanation.toggle() }
+            if operation != .todayIdea { Button("Explain this plan") { explanation.toggle() } }
             if store.project(projectID)?.job?.state == .working {
                 Text(
                     "Mira is working on your earlier request. Reconnect or cancel it from this project first."
@@ -144,7 +148,7 @@ struct MiraAskView: View {
             ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
         }
         .onAppear {
-            if let idea = contextIdea, request.isEmpty {
+            if operation != .todayIdea, let idea = contextIdea, request.isEmpty {
                 request =
                     "Adjust this idea: \(idea.title). Hook: \(idea.hook). Viewers see: \(idea.visual). My change: "
             }
@@ -156,6 +160,7 @@ struct MiraAskView: View {
     private var context: String {
         switch operation {
         case .ideas: "Ideas for this Reel"
+        case .todayIdea: "Change this idea"
         case .reviseScript: "Revise this script"
         case .reviseShot: "Make this shot easier"
         case .reviseStoryboard: "Revise this filming plan"
