@@ -137,6 +137,7 @@ struct MiraShootingView: View {
     var store: MiraStore
     var projectID: UUID
     var onAsk: (UUID) -> Void
+    var onDone: () -> Void
     var body: some View {
         MiraPage {
             if let project = store.project(projectID), let board = project.storyboard,
@@ -148,10 +149,9 @@ struct MiraShootingView: View {
                 Text("\(board.shots.filter{project.filmed.contains($0.id)}.count) filmed by you").font(
                     .callout)
                 MiraShotPicture(shot: shot, number: index + 1)
-                Text(shot.purpose).font(.system(.largeTitle, design: .serif))
-                Text(
-                    "Record about \(shot.recordingSeconds) seconds · Use about \(shot.editedSeconds) seconds in your edit"
-                )
+                Text(index == 0 ? "Say your opening line" : (index == board.shots.count - 1 ? "Say your last line" : "Say the next part"))
+                    .font(.title.bold())
+                Text("Film for about \(shot.recordingSeconds) seconds").monospacedDigit()
                 MiraShotDetails(shot: shot)
                 if project.storyboardIsStale {
                     Text("The script or brief changed. Update the shot list before continuing.").font(
@@ -179,7 +179,8 @@ struct MiraShootingView: View {
                         .footnote
                     ).foregroundStyle(.secondary)
                 if project.stage == .complete {
-                    Text("Your filming checklist is complete.").font(.headline)
+                    Button("Finish", action: onDone).buttonStyle(MiraPrimaryStyle())
+                        .accessibilityIdentifier("mira.filming.finish")
                 }
             } else {
                 Text("Make a shot list before filming.")
@@ -191,6 +192,64 @@ struct MiraShootingView: View {
     }
     private func move(_ index: Int) {
         store.moveShot(projectID, to: index)
+    }
+}
+
+struct MiraDoneView: View {
+    var store: MiraStore
+    var projectID: UUID
+    @Environment(\.openURL) private var openURL
+    @State private var copied = false
+    var body: some View {
+        MiraPage {
+            if let project = store.project(projectID), let board = project.storyboard,
+                !board.shots.isEmpty
+            {
+                let count = board.shots.filter { project.filmed.contains($0.id) }.count
+                let caption = project.script?.caption.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                Text(count == 1 ? "1 clip filmed" : "\(count) clips filmed")
+                    .font(.largeTitle.bold()).monospacedDigit()
+                MiraSectionTitle(text: "Your caption")
+                if caption.isEmpty {
+                    Text("No caption yet").font(.title3)
+                } else {
+                    Text(caption).font(.title3).textSelection(.enabled)
+                    Button(copied ? "Copied" : "Copy caption") {
+                        UIPasteboard.general.string = caption
+                        copied = true
+                    }.buttonStyle(.bordered).accessibilityIdentifier("mira.done.copy")
+                        .sensoryFeedback(.success, trigger: copied)
+                }
+                MiraSectionTitle(text: "Clip order")
+                ForEach(Array(board.shots.enumerated()), id: \.element.id) { index, shot in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text("\(index + 1)").font(.title3.bold()).monospacedDigit()
+                        Text(line(shot, index)).font(.title3)
+                        Spacer(minLength: 8)
+                        if project.filmed.contains(shot.id) {
+                            Image(systemName: "checkmark.circle.fill").font(.title3)
+                                .accessibilityLabel("Filmed")
+                        }
+                    }
+                }
+                Button("Open Instagram") {
+                    openURL(URL(string: "instagram://app")!) { accepted in
+                        if !accepted {
+                            openURL(URL(string: "https://apps.apple.com/app/instagram/id389801252")!)
+                        }
+                    }
+                }.buttonStyle(MiraPrimaryStyle()).accessibilityIdentifier("mira.done.instagram")
+                Text("Mira does not post. You post in Instagram.").font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Make a shot list before filming.")
+            }
+        }.navigationTitle("Done").navigationBarTitleDisplayMode(.inline)
+    }
+    private func line(_ shot: MiraShot, _ index: Int) -> String {
+        if !shot.words.isEmpty { return shot.words }
+        if !shot.onScreenText.isEmpty { return shot.onScreenText }
+        return "Shot \(index + 1)"
     }
 }
 

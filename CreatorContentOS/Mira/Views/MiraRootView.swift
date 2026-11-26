@@ -180,10 +180,7 @@ struct MiraRootView: View {
             MiraTodayCardsView(
                 store: store, projectID: id,
                 onMake: { cardID in
-                    if store.makeTodayCard(id, cardID: cardID) {
-                        if navigation.tab == .today { navigation.today.append(.shooting(id)) }
-                        else { navigation.projects.append(.shooting(id)) }
-                    }
+                    if store.makeTodayCard(id, cardID: cardID) { push(.words(id)) }
                 },
                 onRetry: { retryCard(id, cardID: $0) },
                 onChange: { sheet = .askToday(id, $0) },
@@ -200,8 +197,18 @@ struct MiraRootView: View {
                 .task { reconnectCards(id, reportError: false) }
         case .shooting(let id):
             MiraShootingView(
-                store: store, projectID: id, onAsk: { shot in sheet = .ask(id, .reviseShot, shot) })
+                store: store, projectID: id, onAsk: { shot in sheet = .ask(id, .reviseShot, shot) },
+                onDone: { push(.done(id)) })
+        case .words(let id):
+            MiraWordsView(
+                store: store, projectID: id, onGenerate: generate, onReconnect: reconnect,
+                onCancel: cancel, onApproved: { push(.shooting(id)) })
+        case .done(let id):
+            MiraDoneView(store: store, projectID: id)
         }
+    }
+    private func push(_ route: MiraRoute) {
+        if navigation.tab == .today { navigation.today.append(route) } else { navigation.projects.append(route) }
     }
     private func service(_ id: UUID?, requiresConsent: Bool = true) throws -> any MiraGenerationService {
         try dependencies.generationService(

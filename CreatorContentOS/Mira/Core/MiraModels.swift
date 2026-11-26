@@ -244,15 +244,17 @@ struct MiraPosition: Codable, Equatable, Sendable {
 }
 enum MiraTab: String, Codable, Hashable, Sendable { case today, projects }
 enum MiraProjectScreen: String, Codable, CaseIterable, Sendable {
-    case ideas, script, shots, shooting, todayCards
+    case ideas, script, shots, shooting, todayCards, words
 }
 enum MiraRoute: Codable, Hashable, Sendable {
     case project(UUID)
     case shooting(UUID)
     case todayCards(UUID)
+    case words(UUID)
+    case done(UUID)
     var projectID: UUID {
         switch self {
-        case .project(let id), .shooting(let id), .todayCards(let id): id
+        case .project(let id), .shooting(let id), .todayCards(let id), .words(let id), .done(let id): id
         }
     }
 }
@@ -312,6 +314,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     }
     var todayResumePath: [MiraRoute] {
         guard todayCards?.isEmpty == false else { return resumePath }
+        if lastScreen == .words, script != nil { return [.todayCards(id), .words(id)] }
         if lastScreen == .shooting, storyboard != nil, !storyboardIsStale {
             return [.todayCards(id), .shooting(id)]
         }
@@ -319,6 +322,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     }
     var resumePath: [MiraRoute] {
         var path: [MiraRoute] = [.project(id)]
+        if lastScreen == .words, script != nil { return [.project(id), .words(id)] }
         if lastScreen == .shooting, storyboard != nil, !storyboardIsStale { path.append(.shooting(id)) }
         return path
     }
@@ -467,13 +471,13 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         script.id = UUID()
         scripts.append(script)
         activeScriptID = script.id
-        approvedScriptID = script.id
+        approvedScriptID = nil
         board.sourceScriptID = script.id
         constraints = card.job.input.constraints
         installStoryboard(board)
         shotIndex = 0
-        startedFilming = true
-        lastScreen = .shooting
+        startedFilming = false
+        lastScreen = .words
         touch()
         return true
     }
@@ -499,7 +503,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             } else if old != nil {
                 if oldIDs.contains(shot.id) { board.shots[index].id = UUID() }
                 replacements[shot.id] = board.shots[index].id
-                review.append(board.shots[index].id)
+                if startedFilming || !filmed.isEmpty { review.append(board.shots[index].id) }
             }
         }
         for index in board.mappings.indices {
