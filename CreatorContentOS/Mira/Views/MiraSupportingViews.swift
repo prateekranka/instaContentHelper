@@ -170,6 +170,8 @@ struct MiraAskView: View {
 }
 struct MiraProfileView: View {
     var store: MiraStore
+    var onStepByStep: () -> Void
+    var onDemo: () -> Void
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
@@ -202,7 +204,7 @@ struct MiraProfileView: View {
                 HStack(spacing: 12) {
                     Image(systemName: "chart.bar.fill")
                         .font(.title3)
-                        .foregroundStyle(MiraTheme.olive)
+                        .foregroundStyle(MiraTheme.accent)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Instagram insights").font(.headline)
                         Text("Followers, reach and saves")
@@ -224,6 +226,24 @@ struct MiraProfileView: View {
             .accessibilityIdentifier("mira.profile.insights")
             Text("Mira only reads your insights — it never posts for you.")
                 .font(.footnote).foregroundStyle(MiraTheme.ink.opacity(0.7))
+            Divider()
+            MiraSectionTitle(text: "Other ways to start")
+            Button(action: onStepByStep) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Plan step by step").font(.headline)
+                    Text("Opens in the Projects tab. You choose each part yourself.").font(.subheadline)
+                }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+            }
+            .buttonStyle(.bordered).controlSize(.large)
+            .accessibilityIdentifier("mira.profile.stepByStep")
+            Button(action: onDemo) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Try the example notebook").font(.headline)
+                    Text("Example — not your content. It uses no AI.").font(.subheadline)
+                }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+            }
+            .buttonStyle(.bordered).controlSize(.large)
+            .accessibilityIdentifier("mira.profile.demo")
             Divider()
             MiraSectionTitle(text: "Live generation")
             if case .live = appState.runtime.mode {

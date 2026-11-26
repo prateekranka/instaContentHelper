@@ -241,9 +241,11 @@ enum MiraFixtures {
 
 struct MiraFixtureGenerationService: MiraGenerationService {
     var failTodayCard = false
+    var slowTodayCards = false
     func start(_ job: MiraJob) async throws -> MiraJob {
         try Task.checkCancellation()
         var result = job
+        if slowTodayCards, job.input.operation == .todayIdea { return result }
         if failTodayCard, job.input.operation == .todayIdea, job.input.angle?.hasPrefix("A food") == true {
             result.state = .failed
             return result
@@ -253,7 +255,15 @@ struct MiraFixtureGenerationService: MiraGenerationService {
         try MiraValidation.validate(result.output!, for: job.input.operation, input: job.input)
         return result
     }
-    func status(_ job: MiraJob) async throws -> MiraJob { try await start(job) }
+    func status(_ job: MiraJob) async throws -> MiraJob {
+        if slowTodayCards, job.input.operation == .todayIdea {
+            let angle = job.input.angle ?? ""
+            let wait = angle.hasPrefix("A short") ? 2 : angle.hasPrefix("A food") ? 8 : 14
+            try await Task.sleep(for: .seconds(wait))
+            return try await MiraFixtureGenerationService().start(job)
+        }
+        return try await start(job)
+    }
     func cancel(_ job: MiraJob) async throws -> MiraJob {
         var result = job
         result.state = .cancelled

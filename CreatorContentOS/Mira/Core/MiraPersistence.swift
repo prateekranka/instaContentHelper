@@ -10,7 +10,11 @@ struct MiraDocument: Codable, Equatable, Sendable {
     var demoMode = false
     var sequence = 0
     var continuationProject: MiraProject? {
-        let unfinished = projects.filter { !$0.archived && $0.stage != .complete }
+        let unfinished = projects.filter { project in
+            !project.archived && project.stage != .complete
+                && (!project.ideas.isEmpty || !project.scripts.isEmpty || project.hasWorkingCards
+                    || project.todayCards?.contains { $0.output != nil } == true)
+        }
         return unfinished.first { $0.id == position.projectID }
             ?? unfinished.max { $0.updatedAt < $1.updatedAt }
     }

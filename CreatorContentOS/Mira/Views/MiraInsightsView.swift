@@ -64,7 +64,7 @@ struct MiraInsightsView: View {
             if report.source != .api {
                 Text(report.source == .sample ? "Sample data" : "Manually entered")
                     .font(.caption).padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(MiraTheme.olive.opacity(0.18), in: Capsule())
+                    .background(MiraTheme.accent.opacity(0.18), in: Capsule())
             }
             ForEach(report.headline) { metric in
                 tile(metric)
@@ -73,7 +73,7 @@ struct MiraInsightsView: View {
                 Text(nudge)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(MiraTheme.olive.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                    .background(MiraTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
             }
             if !report.detail.isEmpty {
                 Divider()
@@ -100,7 +100,7 @@ struct MiraInsightsView: View {
             Text(metric.label).font(.subheadline).foregroundStyle(MiraTheme.ink.opacity(0.7))
             Text(metric.value).font(.largeTitle.weight(.semibold))
             if let delta = metric.delta {
-                Text(delta).font(.footnote).foregroundStyle(MiraTheme.olive)
+                Text(delta).font(.footnote).foregroundStyle(MiraTheme.accent)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
