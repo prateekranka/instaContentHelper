@@ -14,7 +14,7 @@ struct MiraProjectView: View {
                     && project.storyboard != nil
                 MiraPage {
                     if project.isDemo {
-                        Text("DEMO · Example generation, no AI request").font(.caption).foregroundStyle(
+                        Text("Example — not your content").font(.caption).foregroundStyle(
                             MiraTheme.olive)
                     }
                     if project.todayCards?.isEmpty == false {
@@ -127,12 +127,6 @@ struct MiraProjectView: View {
             MiraSectionTitle(text: "What do you have time for?")
             MiraVoiceTextField(
                 title: "Tell Mira", text: binding(\.request), language: store.document.profile.language)
-            Button("Read constraints from my request") {
-                store.update(projectID) {
-                    $0.constraints.populate(from: $0.request)
-                    $0.touch()
-                }
-            }
             Text(
                 "These are editable assumptions. Preparation and filming time is separate from the final Reel length."
             ).font(.footnote)
@@ -229,17 +223,17 @@ struct MiraJobView: View {
                 ProgressView("Mira is working")
                 Text("Your work is saved. You can leave and reconnect this request later.").font(.callout)
                 if !store.hasActiveRequest(project.id) {
-                    Button("Reconnect saved request") { onReconnect(project.id) }
+                    Button("Check again") { onReconnect(project.id) }
                 }
                 Button("Cancel generation", role: .cancel) { onCancel(project.id) }
             }
             if let error = job.error { Text(error).font(.callout) }
             if job.state == .failed || job.state == .cancelled {
-                Text(job.state == .cancelled ? "Generation cancelled" : "Generation failed")
+                Text(job.state == .cancelled ? "Stopped. Try again?" : "Mira could not finish. Try again?")
                 Button("Try a new request", action: onRegenerate)
             }
             if let output = job.output {
-                MiraSectionTitle(text: "Review Mira’s proposal")
+                MiraSectionTitle(text: "Mira's new version")
                 if let script = output.script {
                     Text(script.hook).font(.headline)
                     Text(script.spoken)
@@ -274,11 +268,11 @@ struct MiraJobView: View {
                     ).font(.callout)
                     Button("Generate from current work", action: onRegenerate)
                 } else {
-                    Button("Apply proposal") { store.applyProposal(project.id) }.buttonStyle(
+                    Button("Use this") { store.applyProposal(project.id) }.buttonStyle(
                         MiraPrimaryStyle()
                     ).disabled(!output.conflicts.isEmpty)
                 }
-                Button("Discard proposal") { store.update(project.id) { $0.job = nil } }
+                Button("Keep mine") { store.update(project.id) { $0.job = nil } }
                 if job.input.operation == .reviseScript, !job.input.request.isEmpty {
                     Button("Remember this tone preference for future scripts") {
                         store.remember(job.input.request)

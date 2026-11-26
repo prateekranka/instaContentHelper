@@ -24,14 +24,14 @@ test('demo moves from an idea to a saved filming plan', async ({ app, screen, de
     launchArguments: fixtureLaunch,
   });
   await dismissSystemVerification(screen);
-  for (let step = 0; step < 2; step += 1) {
+  for (let step = 0; step < 4; step += 1) {
     const back = screen.getByTestId('BackButton');
     if (await back.count() === 0) break;
     await back.tap();
   }
   await expect(screen.getByTestId('mira.today.make')).toBeVisible({ timeout: 45_000 });
   await tap(screen, screen.getByRole('button', 'Try Mamta’s demo notebook', { exact: true }));
-  await expect(screen.getByText('DEMO · Example generation, no AI request')).toBeVisible();
+  await expect(screen.getByText('Example — not your content')).toBeVisible();
   await tap(screen, screen.getByRole('button', 'Show three ideas', { exact: true }));
   const firstIdea = screen.getByText('One breakfast I actually make', { exact: true });
   await scrollToControl(screen, firstIdea);
@@ -89,7 +89,7 @@ test('Profile shows Allow and Decline immediately after each choice', async ({ a
   if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
   await device.openApp(bundleId, { relaunch: true, launchArguments: english });
   await dismissSystemVerification(screen);
-  for (let step = 0; step < 2; step += 1) {
+  for (let step = 0; step < 4; step += 1) {
     const back = screen.getByTestId('BackButton');
     if (await back.count() === 0) break;
     await back.tap();
@@ -114,7 +114,7 @@ test('Today cards swipe into the matching filming plan and retry one failed card
   if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
   await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
   await dismissSystemVerification(screen);
-  for (let step = 0; step < 2; step += 1) {
+  for (let step = 0; step < 4; step += 1) {
     const back = screen.getByTestId('BackButton');
     if (await back.count() === 0) break;
     await back.tap();
@@ -144,10 +144,12 @@ test('Today cards swipe into the matching filming plan and retry one failed card
   await expect(picture(2)).toBeVisible();
   await app.screenshot('today-mindset-card');
   await tap(screen, screen.getByRole('button', 'Make this one', { exact: true, visible: true }));
-  await expect(title('Shot 1 of 3')).toBeVisible();
+  await expect(screen.getByTestId('mira.words.approve')).toBeVisible();
+  await tap(screen, screen.getByTestId('mira.words.approve'));
+  await expect(title('Shot 1 of 3')).toBeVisible({ timeout: 45_000 });
   await expect(picture(1)).toBeVisible();
   await tap(screen, screen.getByRole('button', 'Next', { exact: true }));
-  const chosenShot = title('A small pause in my day');
+  const chosenShot = title('Say the next part');
   await scrollToControl(screen, chosenShot, 'up');
   await expect(title('Shot 2 of 3')).toBeVisible();
   await expect(chosenShot).toBeVisible();
@@ -155,8 +157,8 @@ test('Today cards swipe into the matching filming plan and retry one failed card
   await app.screenshot('today-selected-filming');
   await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
   await expect(title('Shot 2 of 3')).toBeVisible();
-  await expect(title('A small pause in my day')).toBeVisible();
-  for (let step = 0; step < 2; step += 1) await screen.getByTestId('BackButton').tap();
+  await expect(title('Say the next part')).toBeVisible();
+  for (let step = 0; step < 3; step += 1) await screen.getByTestId('BackButton').tap();
 
   const request = screen.getByTestId('mira.today.request');
   await request.fill('Demo card failure');
@@ -172,4 +174,73 @@ test('Today cards swipe into the matching filming plan and retry one failed card
   await expect(title('A quick movement break')).toBeVisible();
   await page(3).tap();
   await expect(title('A small pause in my day')).toBeVisible();
+});
+
+test('Your words gate leads to approved filming and the Done screen', async ({ app, screen, device }) => {
+  if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
+  await dismissSystemVerification(screen);
+  for (let step = 0; step < 4; step += 1) {
+    const back = screen.getByTestId('BackButton');
+    if (await back.count() === 0) break;
+    await back.tap();
+  }
+  const make = screen.getByTestId('mira.today.make');
+  const title = (label: string) => screen.getByText(label, { exact: true, visible: true });
+  const approve = screen.getByTestId('mira.words.approve');
+  await expect(make).toBeVisible({ timeout: 45_000 });
+  await make.tap();
+  await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
+  await screen.getByTestId('mira.today.page.1').tap();
+  await expect(title('A quick movement break')).toBeVisible({ timeout: 45_000 });
+  await tap(screen, screen.getByRole('button', 'Make this one', { exact: true, visible: true }));
+  await expect(approve).toBeVisible();
+  await expect(screen.getByText('Shot 1 of 3', { exact: true })).not.toBeVisible();
+  await app.screenshot('words-gate');
+
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
+  await dismissSystemVerification(screen);
+  await expect(approve).toBeVisible({ timeout: 45_000 });
+  await app.screenshot('words-gate-after-relaunch');
+
+  await tap(screen, screen.getByTestId('mira.words.change'));
+  await expect(screen.getByTestId('mira.words.send')).toBeVisible();
+  await tap(screen, screen.getByRole('button', 'Cancel', { exact: true, visible: true }));
+
+  await tap(screen, screen.getByTestId('mira.words.simpler'));
+  const newVersion = screen.getByText('Mira\'s new version', { exact: true });
+  await scrollToControl(screen, newVersion);
+  await expect(newVersion).toBeVisible({ timeout: 45_000 });
+  await app.screenshot('words-new-version');
+  await tap(screen, screen.getByTestId('mira.words.use'));
+  await expect(newVersion).not.toBeVisible();
+
+  await tap(screen, approve);
+  await expect(title('Shot 1 of 3')).toBeVisible({ timeout: 45_000 });
+  await app.screenshot('words-approved-filming');
+  for (let shot = 1; shot <= 3; shot += 1) {
+    const header = screen.getByText(`Shot ${shot} of 3`, { exact: true });
+    await scrollToControl(screen, header, 'up');
+    await expect(header).toBeVisible();
+    const mark = screen.getByRole('button', 'Mark filmed', { exact: true });
+    await scrollToControl(screen, mark);
+    await tap(screen, mark);
+    if (shot < 3) {
+      const next = screen.getByRole('button', 'Next', { exact: true });
+      await scrollToControl(screen, next);
+      await tap(screen, next);
+    }
+  }
+  const finish = screen.getByTestId('mira.filming.finish');
+  await scrollToControl(screen, finish);
+  await tap(screen, finish);
+  await expect(title('3 clips filmed')).toBeVisible();
+  const copy = screen.getByTestId('mira.done.copy');
+  await scrollToControl(screen, copy);
+  await tap(screen, copy);
+  await expect(screen.getByRole('button', 'Copied', { exact: true })).toBeVisible();
+  const instagram = screen.getByTestId('mira.done.instagram');
+  await scrollToControl(screen, instagram);
+  await expect(instagram).toBeVisible();
+  await app.screenshot('done-screen');
 });

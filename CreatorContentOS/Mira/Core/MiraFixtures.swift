@@ -99,7 +99,7 @@ enum MiraFixtures {
         case .script, .reviseScript:
             let short = input.request.localizedCaseInsensitiveContains("short")
             let hook: String
-            let spoken: String
+            var spoken: String
             let caption: String
             switch input.profile.language {
             case .english:
@@ -131,6 +131,10 @@ enum MiraFixtures {
                 caption =
                     input.profile.writingSystem == .devanagari
                     ? "आज का छोटा सा routine।" : "Aaj ka chhota sa routine."
+            }
+            if input.operation == .reviseScript, let original = input.script?.spoken, spoken == original {
+                let parts = spoken.components(separatedBy: ". ")
+                if parts.count > 1 { spoken = parts.dropLast().joined(separator: ". ") + "." }
             }
             return MiraOutput(
                 script: MiraScript(
@@ -188,6 +192,21 @@ enum MiraFixtures {
                 if shots[index].distance.isEmpty { shots[index].distance = "One arm’s length" }
                 if shots[index].framing.isEmpty {
                     shots[index].framing = shots[index].voiceover ? "Your hands and the object" : "Head and shoulders"
+                }
+            }
+            if input.operation == .reviseStoryboard {
+                for index in shots.indices {
+                    if shots[index].voiceover {
+                        shots[index].words = script.spoken
+                    } else if index == 0 {
+                        shots[index].words = script.hook
+                    }
+                }
+                let total = shots.reduce(0) { $0 + $1.editedSeconds }
+                if let longest = shots.indices.max(by: { shots[$0].editedSeconds < shots[$1].editedSeconds }) {
+                    shots[longest].editedSeconds = max(1, shots[longest].editedSeconds + seconds - total)
+                    shots[longest].recordingSeconds = max(
+                        shots[longest].recordingSeconds, shots[longest].editedSeconds)
                 }
             }
             if input.operation == .storyboard {

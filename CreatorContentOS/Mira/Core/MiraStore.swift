@@ -50,7 +50,8 @@ final class MiraStore {
         if let route = navigation.activePath.last, let project = project(route.projectID) {
             let screen: MiraProjectScreen
             switch route {
-            case .shooting: screen = .shooting
+            case .shooting, .done: screen = .shooting
+            case .words: screen = .words
             case .todayCards: screen = .todayCards
             case .project: screen = project.editorScreen
             }
@@ -97,6 +98,16 @@ final class MiraStore {
     func approveScript(_ id: UUID) {
         guard project(id)?.script != nil else { return }
         update(id) {
+            $0.approvedScriptID = $0.activeScriptID
+            $0.touch()
+        }
+    }
+    func approveWords(_ id: UUID) {
+        guard let project = project(id), let script = project.script,
+            project.approvedScriptID != script.id
+        else { return }
+        update(id) {
+            $0.checkpoint()
             $0.approvedScriptID = $0.activeScriptID
             $0.touch()
         }
