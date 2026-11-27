@@ -175,6 +175,7 @@ struct MiraProfileView: View {
     @AppStorage(MiraLook.defaultsKey) private var look: MiraLook = .system
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
+    @Environment(MiraProblemReports.self) private var problemReports
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         MiraPage {
@@ -264,6 +265,10 @@ struct MiraProfileView: View {
             Text(
                 "Live requests send profile text, the selected project content, and confirmed brief context to the existing Supabase AI service. Recordings are not uploaded."
             ).font(.footnote)
+            if !problemReports.files.isEmpty {
+                Divider()
+                problemReportsRow
+            }
         }.navigationTitle("Profile").toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") {
@@ -272,6 +277,26 @@ struct MiraProfileView: View {
                 }
             }
         }
+    }
+
+    private var problemReportsRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Problem reports").font(.headline)
+                let count = problemReports.files.count
+                Text("\(count) \(count == 1 ? "report" : "reports")")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            ShareLink(items: problemReports.files) {
+                Text("Share")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("mira.profile.problemReports")
     }
 
     private var lookSetting: some View {

@@ -10,6 +10,7 @@ import CryptoKit
 enum DebugLaunchConfiguration {
     private static let allowedKeys: Set<String> = [
         "MCO_APPEARANCE",
+        "MCO_DEBUG_CRASH",
         "MCO_FORCE_FIXTURE_UI",
         "MCO_INSIGHTS_SCENARIO",
         "MCO_QA_SESSION"
