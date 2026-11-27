@@ -44,12 +44,13 @@ def main():
     total = 0
     for name in [args.rule] if args.rule else rules():
         module = importlib.import_module(f"agent_rules.{name}")
-        cases = [(f"git {ref}: {', '.join(files)}", ref, files) for ref, files in module.HISTORY]
+        cases = [(f"git {ref}: {', '.join(files)}", ref, files, None) for ref, files in module.HISTORY]
         if hasattr(module, "reconstruct"):
-            cases.append((module.RECONSTRUCTED, None, []))
+            cases.append((module.RECONSTRUCTED, None, [], module.reconstruct))
+        cases.extend((label, None, [], reproduce) for label, reproduce in getattr(module, "RECONSTRUCTIONS", []))
         if not cases:
             raise RuntimeError(f"{name} has no past-mistake proof.")
-        for label, ref, files in cases:
+        for label, ref, files, reproduce in cases:
             with tempfile.TemporaryDirectory(prefix=f"creator-loop-{name}-") as directory:
                 root = Path(directory)
                 copy_sources(root)
@@ -57,8 +58,8 @@ def main():
                     target = root / file
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(git_source(ref, file))
-                if ref is None:
-                    module.reconstruct(root)
+                if reproduce is not None:
+                    reproduce(root)
                 result = run_check(root, name)
                 diagnostics = [line for line in result.stdout.splitlines() if f"error [{name}]" in line]
                 if result.returncode != 1 or not diagnostics:
@@ -68,7 +69,7 @@ def main():
                 for line in diagnostics:
                     print(line)
                 total += 1
-    print(f"PASS: {total} historical reproductions rejected; working tree source never replaced.")
+    print(f"PASS: {total} source reproductions rejected; working tree source never replaced.")
 
 
 if __name__ == "__main__":
