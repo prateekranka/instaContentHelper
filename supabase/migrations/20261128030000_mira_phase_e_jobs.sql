@@ -231,4 +231,3 @@ begin
 
   return query select * from public.mira_shot_pictures where job_id = p_job_id order by position;
 end $$;
-
