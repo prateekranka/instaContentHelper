@@ -92,6 +92,96 @@ async function stopLeftoverIdeas(screen: Screen) {
   }
 }
 
+async function d2Fixture(scenario: string, update: Record<string, string | number | boolean> = {}) {
+  const address = process.env.MIRA_D2_FIXTURE_CONTROL;
+  test.skip(!address || !process.env.MIRA_E2E_D2_ENDPOINT, 'Set both D2 fixture endpoints for these phone scenarios.');
+  const response = await fetch(`${address}/control`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenario, ...update }),
+  });
+  expect(response.ok).toBe(true);
+  return await response.json() as {
+    card: number; starts: number; prematureOptIns: number; optedIn: number;
+    expiredGets: number; freshGets: number; refreshes: number;
+  }[];
+}
+
+const d2Step = (screen: Screen, name: string) => screen.getByLabel(name, { exact: true, visible: true });
+const d2Picture = (screen: Screen, kind: string, shot: number) =>
+  screen.getByRole('image', `${kind} for shot ${shot}`, { exact: true, visible: true });
+
+test('D2 wait follows the server steps and opens the first ready card', async ({ app, screen, device }) => {
+  const scenario = 'Demo D2 steps';
+  await d2Fixture(scenario, { begin: true });
+  await launchMira(app, screen, device);
+  await startTodayCard(screen, scenario, 1);
+  await expect.poll(async () => (await d2Fixture(scenario)).length).toBe(3);
+  const idea = d2Step(screen, 'Finding an idea, done');
+  await expect(idea).not.toBeVisible();
+  await d2Fixture(scenario, { card: 1, step: 'idea_ready' });
+  await expect(idea).toBeVisible();
+  await expect(d2Step(screen, 'Writing your words, now')).toBeVisible();
+  await expect(d2Step(screen, 'Planning 3 shots, next')).toBeVisible();
+  await app.screenshot('wait-idea-ready');
+  await d2Fixture(scenario, { card: 1, step: 'script_ready' });
+  await expect(d2Step(screen, 'Writing your words, done')).toBeVisible();
+  await expect(d2Step(screen, 'Planning 3 shots, now')).toBeVisible();
+  await app.screenshot('wait-script-ready');
+  await d2Fixture(scenario, { card: 1, step: 'storyboard_ready' });
+  await expect(d2Step(screen, 'Planning 3 shots, done')).toBeVisible();
+  await expect(screen.getByTestId('mira.today.makeCard.1')).not.toBeVisible();
+  await app.screenshot('wait-storyboard-ready');
+  await d2Fixture(scenario, { card: 1, finish: true });
+  await expect(screen.getByTestId('mira.today.makeCard.1')).toBeVisible();
+  await expect(screen.getByTestId('mira.today.page.2')).toHaveAccessibleName('Idea 2 of 3, Mira is making it');
+  await d2Fixture(scenario, { finish: true });
+  await expect(screen.getByRole('button', /^Idea [1-3] of 3, ready$/)).toHaveCount(3);
+});
+
+test('D2 legacy reply without a step keeps the simple wait screen', async ({ app, screen, device }) => {
+  const scenario = 'Demo D2 legacy';
+  await d2Fixture(scenario, { begin: true });
+  await launchMira(app, screen, device);
+  await startTodayCard(screen, scenario, 1);
+  await expect.poll(async () => (await d2Fixture(scenario)).length).toBe(3);
+  await expect(screen.getByText('Mira is making idea 1 of 3', { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByLabel(/^Finding an idea,/)).not.toBeVisible();
+  await expect(screen.getByText('About 1 minute', { exact: true })).toBeVisible();
+  await app.screenshot('wait-legacy');
+  await d2Fixture(scenario, { finish: true });
+  await expect(screen.getByRole('button', /^Idea [1-3] of 3, ready$/)).toHaveCount(3);
+  await expect(screen.getByTestId('mira.today.makeCard.1')).toBeVisible();
+});
+
+test('D2 previews keep drawn frames and refresh an expired picture URL', async ({ app, screen, device }) => {
+  const scenario = 'Demo D2 pictures';
+  await d2Fixture(scenario, { begin: true });
+  await launchMira(app, screen, device);
+  await startTodayCard(screen, scenario, 1);
+  await expect.poll(async () => (await d2Fixture(scenario)).length).toBe(3);
+  await d2Fixture(scenario, { card: 1, previews: 'pending' });
+  await d2Fixture(scenario, { finish: true });
+  const stats = async () => (await d2Fixture(scenario)).find(item => item.card === 1);
+  await expect.poll(async () => (await stats())?.optedIn ?? 0).toBeGreaterThan(0);
+  await expect(screen.getByTestId('mira.today.makeCard.1')).toBeVisible();
+  await expect(d2Picture(screen, 'Drawn frame', 1)).toBeVisible();
+  await app.screenshot('drawn-placeholder');
+  await d2Fixture(scenario, { card: 1, previews: 'ready' });
+  await expect(d2Picture(screen, 'AI picture', 1)).toBeVisible({ timeout: 45_000 });
+  await expect(d2Picture(screen, 'Drawn frame', 2)).toBeVisible();
+  await expect(d2Picture(screen, 'Drawn frame', 3)).toBeVisible();
+  await app.screenshot('ai-picture-and-drawn-backup');
+  const counts = await stats();
+  expect(counts?.expiredGets ?? 0).toBeGreaterThan(0);
+  expect(counts?.refreshes ?? 0).toBeGreaterThan(0);
+  expect(counts?.freshGets ?? 0).toBeGreaterThan(0);
+  expect((await d2Fixture(scenario)).map(({ starts, prematureOptIns }) => [starts, prematureOptIns]))
+    .toEqual([[1, 0], [1, 0], [1, 0]]);
+  await tap(screen, screen.getByTestId('mira.today.makeCard.1'));
+  await tap(screen, screen.getByTestId('mira.words.approve'));
+  await expect(d2Picture(screen, 'AI picture', 1)).toBeVisible();
+  await app.screenshot('fixture-filming-ai-picture');
+});
+
 test('demo moves from an idea to a saved filming plan', async ({ app, screen, device }) => {
   await launchMira(app, screen, device, true);
   await openToday(screen);
@@ -757,11 +847,17 @@ test('S3 denied speech shows one Settings action and still accepts typing', asyn
   const mic = screen.getByTestId('mira.today.mic');
   await expect(mic).toHaveAccessibleName('Speak instead of typing');
   await app.screenshot('mic-idle');
-  await mic.tap();
   const denied = screen.getByText(
     'To use voice input, allow Speech Recognition and Microphone in Settings. You can still type.', { exact: true },
   );
   const settings = screen.getByRole('button', 'Open Settings', { exact: true, visible: true });
+  try {
+    await mic.tap();
+    if (!await denied.isVisible()) await device.openApp(bundleId);
+  } catch (error) {
+    if (!(error instanceof Error && /not running|foreground|application.*interrupt/i.test(error.message))) throw error;
+    await device.openApp(bundleId);
+  }
   await expect(denied).toBeVisible();
   await expect(settings).toHaveCount(1);
   await expect(mic).toHaveAccessibleName('Open Settings');
