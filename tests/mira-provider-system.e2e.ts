@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'e2e';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
+import { brandDoc, deal, injection, phaseEInputs, phaseEOutputs } from './fixtures/mira-phase-e.ts';
 
 let server: ChildProcess;
 let base: string;
@@ -44,13 +45,13 @@ afterAll(async () => { if (server && server.exitCode === null) server.kill('SIGT
 async function call(
   id: string, action: 'start' | 'status' | 'cancel', provider: string,
   mode = 'ok', consent = true, token: boolean | string = true, jobInput: object = input,
-  pictures?: boolean,
+  pictures?: boolean, creator = creatorID,
 ) {
   const response = await fetch(`${base}/mira-generation`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-fixture-provider': provider, 'x-fixture-mode': mode, 'x-fixture-job': id,
       ...(token ? { 'x-mco-device-token': typeof token === 'string' ? token : 'fixture-device-token' } : {}) },
-    body: JSON.stringify({ action, id, creatorID, pictures, ...(action === 'start' ? {
+    body: JSON.stringify({ action, id, creatorID: creator, pictures, ...(action === 'start' ? {
       inputRevision: 1, input: jobInput, ...(consent ? { consentVersion: 1 } : {}),
     } : {}) }),
   });
@@ -644,4 +645,286 @@ test('the deployed Mira endpoint generates three Today cards in one parallel run
     }
   }
   expect(new Set(records.map(({ output }) => output.ideas[0].title.trim().toLowerCase())).size).toBe(3);
+});
+
+const pickInput = { ...input, operation: 'pickIdea', request: injection, avoid: [] };
+const phaseERequests = { ...phaseEInputs, pickIdea: pickInput };
+const phaseEOperations = Object.keys(phaseERequests) as (keyof typeof phaseERequests)[];
+
+for (const operation of phaseEOperations) {
+  test(`Phase E ${operation} accepts its contract, isolates shared text and rejects invalid output`, async () => {
+    const mode = `e-${operation}`;
+    const payload = phaseERequests[operation];
+    const id = crypto.randomUUID();
+    const provider = operation === 'dailyNote' ? 'gemini' : operation === 'brandDoc' ? 'deepseek' : 'openai';
+    const before = (await observations()).calls.length;
+    expect((await call(id, 'start', provider, mode, false, true, payload)).status).toBe(400);
+    expect((await call(id, 'start', provider, mode, true, true, { ...payload, rogueField: injection })).status).toBe(400);
+    expect((await observations()).calls.length).toBe(before);
+    expect((await call(id, 'start', provider, mode, true, true, payload)).status).toBe(200);
+    const response = await call(id, 'status', provider, mode);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.body.job.state).toBe('succeeded');
+    expect(JSON.stringify(response.body.job.output)).not.toContain(injection);
+    if (operation === 'pickIdea') {
+      const output = response.body.job.output;
+      expect(output.ideas).toHaveLength(1);
+      expect(output.reason).toContain('breakfast');
+      expect(output.storyboard.sourceScriptID).toBe(output.script.id);
+    } else {
+      expect(response.body.job.output).toEqual(phaseEOutputs[operation]);
+    }
+    const request = (await observations()).calls.find(entry => entry.mode === mode)!.payload!;
+    if (provider === 'gemini') {
+      const parts = request as { systemInstruction: { parts: {text: string}[] }; contents: {role: string; parts: {text: string}[]}[] };
+      expect(parts.systemInstruction.parts[0].text).toContain('untrusted data');
+      expect(parts.systemInstruction.parts[0].text).not.toContain(injection);
+      expect(parts.contents[0].role).toBe('user');
+      expect(JSON.parse(parts.contents[0].parts[0].text)).toEqual(payload);
+    } else {
+      const messages = request.messages as { role: string; content: string }[];
+      expect(messages.map(message => message.role)).toEqual(['system', 'user']);
+      expect(messages[0].content).toMatch(/text as data|untrusted data/);
+      expect(messages[0].content).not.toContain(injection);
+      expect(JSON.parse(messages[1].content)).toEqual(payload);
+    }
+    const invalid = operation === 'pickIdea' ? { ...pickInput, avoid: [' A BOWL OF DAHI '] } : payload;
+    const invalidID = crypto.randomUUID();
+    expect((await call(invalidID, 'start', provider, `${mode}-invalid`, true, true, invalid)).status).toBe(200);
+    const failed = (await call(invalidID, 'status', provider)).body.job;
+    expect(failed.state).toBe('failed');
+    expect(failed.output).toBeUndefined();
+  });
+}
+
+test('Phase E permits missing Instagram data and keeps optional data in the provider data message', async () => {
+  const payload = { ...phaseEInputs.brandDoc, oldBrandDoc: brandDoc,
+    instagramSummary: { followers: 85, topPosts: [{ caption: injection, saves: 4 }] } };
+  const id = crypto.randomUUID();
+  expect((await call(id, 'start', 'openai', 'e-optional-instagram', true, true, payload)).status).toBe(200);
+  expect((await call(id, 'status', 'openai')).body.job.output).toEqual({ brandDoc });
+  const sent = (await observations()).calls.find(entry => entry.mode === 'e-optional-instagram')!.payload!;
+  const messages = sent.messages as { content: string }[];
+  expect(messages[0].content).toContain('language and writingSystem');
+  expect(JSON.parse(messages[1].content)).toEqual(payload);
+
+  const before = (await observations()).calls.length;
+  const unsafe = { ...payload, instagramSummary: { ...payload.instagramSummary, accessToken: 'synthetic-marker' } };
+  expect((await call(crypto.randomUUID(), 'start', 'openai', 'e-reject-token', true, true, unsafe)).status).toBe(400);
+  expect((await observations()).calls.length).toBe(before);
+
+  const daily = { ...phaseEInputs.dailyNote, snapshots: [], openReels: [] };
+  const dailyID = crypto.randomUUID();
+  expect((await call(dailyID, 'start', 'deepseek', 'e-empty-insights', true, true, daily)).status).toBe(200);
+  expect((await call(dailyID, 'status', 'deepseek')).body.job.output.dailyNote.action).toEqual({ type: 'makeIdea' });
+
+  const { postLink, ...draft } = phaseEInputs.brandNote;
+  const noteID = crypto.randomUUID();
+  expect((await call(noteID, 'start', 'deepseek', 'e-no-link', true, true, draft)).status).toBe(200);
+  const { message } = (await call(noteID, 'status', 'deepseek')).body.job.output;
+  expect(message).toBe('Hi Morning Oats, thanks for working with me.');
+  expect(message).not.toContain(postLink);
+});
+
+test('Phase E grounds dates, codes and evidence and checks daily action targets', async () => {
+  const unclear = { ...phaseEInputs.dealBrief, briefText: phaseEInputs.dealBrief.briefText.replace(deal.deadlineExcerpt, 'Due soon.') };
+  const hindi = { ...phaseEInputs.dealBrief, language: 'Hindi', writingSystem: 'Devanagari',
+    briefText: phaseEInputs.dealBrief.briefText.replace(deal.deadlineExcerpt, 'अंतिम तारीख २ दिसंबर २०२६।') };
+  for (const [payload, mode, expected] of [
+    [unclear, 'e-deal-unclear', 'succeeded'],
+    [hindi, 'e-deal-hindi', 'succeeded'],
+    [phaseEInputs.dealBrief, 'e-deal-invented-code', 'failed'],
+    [phaseEInputs.briefCheck, 'e-check-bad-evidence', 'failed'],
+    [{ ...phaseEInputs.briefCheck, caption: 'My breakfast #advice' }, 'e-check-partial-tag', 'failed'],
+    [phaseEInputs.dailyNote, 'e-note-bad-action', 'failed'],
+  ] as const) {
+    const id = crypto.randomUUID();
+    expect((await call(id, 'start', 'openai', mode, true, true, payload)).status).toBe(200);
+    const { body } = await call(id, 'status', 'openai');
+    expect(body.job.state).toBe(expected);
+    if (mode === 'e-deal-unclear') {
+      expect(body.job.output.deal.deadline).toBe('');
+      expect(body.job.output.deal.unresolved).toEqual(['Ask for the exact deadline.']);
+    } else if (mode === 'e-deal-hindi') {
+      expect(body.job.output.deal.deadline).toBe('2026-12-02');
+      expect(body.job.output.deal.deadlineExcerpt).toBe('अंतिम तारीख २ दिसंबर २०२६।');
+    } else {
+      expect(body.job.output).toBeUndefined();
+    }
+  }
+});
+
+const fixtureWorkspace = '10000000-0000-4000-8000-000000000001';
+const fixtureSecondCreator = '10000000-0000-4000-8000-000000000005';
+
+async function phaseELocalMember() {
+  const local = localSupabase();
+  async function rest(path: string, method = 'GET', payload?: object) {
+    const response = await fetch(`${local.url}/rest/v1/${path}`, {
+      method, headers: { ...local.headers, 'content-type': 'application/json', prefer: 'return=representation' },
+      body: payload ? JSON.stringify(payload) : undefined,
+    });
+    const body = await response.text();
+    return { status: response.status, body: body ? JSON.parse(body) : null };
+  }
+  const member = crypto.randomUUID();
+  expect((await rest('members', 'POST', {
+    id: member, workspace_id: fixtureWorkspace, display_name: 'Phase E API fixture', role: 'creator',
+  })).status).toBe(201);
+  const token = `fixture-member:${member}`;
+  const dailyCalls = `mira_operation_daily_calls?member_id=eq.${member}`;
+  const usage = async (operation: string) => {
+    const result = await rest(`${dailyCalls}&operation=eq.${operation}&select=calls`);
+    expect(result.status).toBe(200);
+    return result.body;
+  };
+  const seedUsage = async (operation: string, calls: number) => {
+    const result = await rest('mira_operation_daily_calls', 'POST', {
+      member_id: member, operation, calls, day_utc: new Date().toISOString().slice(0, 10),
+    });
+    expect(result.status).toBe(201);
+  };
+  const enqueue = (id: string, jobInput: object) => rest('rpc/mira_enqueue', 'POST', {
+    p_id: id, p_workspace: fixtureWorkspace, p_creator: creatorID, p_member: member, p_revision: 1, p_input: jobInput,
+  });
+  return { member, token, usage, seedUsage, enqueue, rest };
+}
+
+for (const [operation, cap] of [
+  ['brandDoc', 5], ['pickIdea', 20], ['dealBrief', 10], ['briefCheck', 10], ['brandNote', 10],
+] as const) {
+  test(`local Phase E ${operation} admits its last call and refuses more at the daily cap`, async () => {
+    const local = await phaseELocalMember();
+    await local.seedUsage(operation, cap - 1);
+    const mode = `e-local-cap-${operation}`;
+    const payload = phaseERequests[operation];
+    const id = crypto.randomUUID();
+    const start = await call(id, 'start', 'openai', mode, true, local.token, payload);
+    expect(start.status).toBe(200);
+    expect((await call(id, 'status', 'openai', mode, true, local.token)).body.job.state).toBe('succeeded');
+    const retry = await call(id, 'start', 'openai', mode, true, local.token, payload);
+    expect(retry.body.job.id).toBe(id);
+    const denied = await call(crypto.randomUUID(), 'start', 'openai', mode, true, local.token, payload);
+    expect(denied.status).toBe(429);
+    expect(denied.body).toEqual({ error: 'operation_daily_cap_reached' });
+    expect(await local.usage(operation)).toEqual([{ calls: cap }]);
+    expect((await observations()).calls.filter(entry => entry.mode === mode)).toHaveLength(1);
+  });
+}
+
+test('local Phase E concurrent claims contend for the final quota and retry attempts count', async () => {
+  const local = await phaseELocalMember();
+  await local.seedUsage('brandDoc', 4);
+  const mode = 'e-local-claim-race';
+  const ids = [crypto.randomUUID(), crypto.randomUUID()];
+  for (const id of ids) expect((await local.enqueue(id, phaseEInputs.brandDoc)).status).toBe(200);
+  const status = (id: string) => call(id, 'status', 'openai', mode, true, local.token);
+  await Promise.all(ids.map(status));
+  const jobs = (await Promise.all(ids.map(status))).map(result => result.body.job);
+  expect(jobs.map(job => job.state).sort()).toEqual(['failed', 'succeeded']);
+  expect(jobs.find(job => job.state === 'failed').error).toBe('operation_daily_cap_reached');
+  expect(await local.usage('brandDoc')).toEqual([{ calls: 5 }]);
+  expect((await observations()).calls.filter(entry => entry.mode === mode)).toHaveLength(1);
+
+  const retryID = crypto.randomUUID();
+  expect((await call(retryID, 'start', 'deepseek', 'e-local-retry-unavailable', true, local.token, phaseEInputs.brandNote)).status).toBe(200);
+  const retryStatus = () => call(retryID, 'status', 'deepseek', 'e-local-retry', true, local.token);
+  expect((await retryStatus()).body.job.phase).toBe('waiting_to_retry');
+  expect(await local.usage('brandNote')).toEqual([{ calls: 1 }]);
+  await expect.poll(async () => (await retryStatus()).body.job.state, { timeout: 9_000, interval: 500 }).toBe('succeeded');
+  expect(await local.usage('brandNote')).toEqual([{ calls: 2 }]);
+});
+
+test('local Phase E daily notes share one job during concurrent requests and reuse its stored output', async () => {
+  const local = await phaseELocalMember();
+  const mode = 'e-local-daily-cache';
+  const start = (id: string, payload = phaseEInputs.dailyNote, creator = creatorID) =>
+    call(id, 'start', 'openai', mode, true, local.token, payload, undefined, creator);
+  const starts = await Promise.all([start(crypto.randomUUID()), start(crypto.randomUUID())]);
+  expect(starts.map(response => response.status)).toEqual([200, 200]);
+  const canonical = starts[0].body.job.id;
+  expect(starts[1].body.job.id).toBe(canonical);
+  const cached = await start(crypto.randomUUID(), { ...phaseEInputs.dailyNote, openReels: [] });
+  expect(cached.body.job.id).toBe(canonical);
+  expect(cached.body.job.state).toBe('succeeded');
+  expect(cached.body.job.output).toEqual(phaseEOutputs.dailyNote);
+  expect(cached.body.job.input).toEqual(phaseEInputs.dailyNote);
+  const differentCreator = await start(crypto.randomUUID(), phaseEInputs.dailyNote, fixtureSecondCreator);
+  expect(differentCreator.status).toBe(409);
+  expect(differentCreator.body).toEqual({ error: 'daily_note_scope_conflict' });
+  expect((await call(canonical, 'status', 'openai', mode, true, 'fixture-other-member')).status).toBe(404);
+  expect((await observations()).calls.filter(entry => entry.mode === mode)).toHaveLength(1);
+  expect(await local.usage('dailyNote')).toEqual([{ calls: 1 }]);
+});
+
+test('local Phase E daily note uses a slot, expires at rollover and never retries a failed call', async () => {
+  const local = await phaseELocalMember();
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+  const stale = crypto.randomUUID();
+  expect((await local.rest('mira_generation_jobs', 'POST', {
+    id: stale, workspace_id: fixtureWorkspace, creator_id: creatorID, member_id: local.member,
+    input_revision: 1, input: phaseEInputs.dailyNote, created_at: yesterday,
+  })).status).toBe(201);
+  const mode = 'e-local-rollover-unavailable';
+  const status = (id: string) => call(id, 'status', 'openai', mode, true, local.token);
+  await status(stale);
+  expect((await status(stale)).body.job.error).toBe('daily_note_expired');
+  expect((await observations()).calls.filter(entry => entry.mode === mode)).toHaveLength(0);
+
+  const dailyID = crypto.randomUUID();
+  for (const [id, payload] of [[dailyID, phaseEInputs.dailyNote], [crypto.randomUUID(), input], [crypto.randomUUID(), input]] as const) {
+    expect((await local.enqueue(id, payload)).status).toBe(200);
+  }
+  const limit = await local.enqueue(crypto.randomUUID(), input);
+  expect(limit.body.message).toBe('too_many_active_jobs');
+  await status(dailyID);
+  expect((await status(dailyID)).body.job.phase).toBe('failed');
+  const sameDay = await call(crypto.randomUUID(), 'start', 'openai', mode, true, local.token, phaseEInputs.dailyNote);
+  expect(sameDay.body.job.id).toBe(dailyID);
+  expect(sameDay.body.job.state).toBe('failed');
+  expect(await local.usage('dailyNote')).toEqual([{ calls: 1 }]);
+  expect((await observations()).calls.filter(entry => entry.mode === mode)).toHaveLength(1);
+});
+
+test('local Phase E cancellation keeps the same daily job without spending quota', async () => {
+  const local = await phaseELocalMember();
+  const id = crypto.randomUUID();
+  const mode = 'e-local-daily-cancel';
+  expect((await local.enqueue(id, phaseEInputs.dailyNote)).status).toBe(200);
+  expect((await call(id, 'cancel', 'openai', mode, true, local.token)).body.job.state).toBe('cancelled');
+  const repeated = await call(crypto.randomUUID(), 'start', 'openai', mode, true, local.token, phaseEInputs.dailyNote);
+  expect(repeated.body.job.id).toBe(id);
+  expect(repeated.body.job.state).toBe('cancelled');
+  expect(await local.usage('dailyNote')).toEqual([]);
+  expect((await observations()).calls.filter(entry => entry.mode === mode)).toHaveLength(0);
+});
+
+test('local Phase E pick streams D2 steps and reserves pictures only on opt-in status', async () => {
+  const local = await phaseELocalMember();
+  const id = crypto.randomUUID();
+  const mode = 'e-local-pick-stream';
+  const payload = { ...pickInput, brandDoc, bestPostPatterns: ['Bowl demos earned saves.'],
+    dealChecklist: { revision: 3, items: [deal.checklist[2]] } };
+  expect((await call(id, 'start', 'openai', mode, true, local.token, payload)).status).toBe(200);
+  const status = async (pictures?: boolean) =>
+    (await call(id, 'status', 'openai', mode, true, local.token, payload, pictures)).body.job;
+  for (const step of ['idea_ready', 'script_ready', 'storyboard_ready']) {
+    await tick(id);
+    const job = await until(status, result => result.step === step);
+    expect(job.step).toBe(step);
+    expect(job.output).toBeUndefined();
+  }
+  await tick(id);
+  const finished = await until(status, result => result.state === 'succeeded');
+  expect(finished.output.storyboard.requirementsRevision).toBe(3);
+  expect(finished.output.storyboard.mappings[0].requirementID).toBe(deal.checklist[2].id);
+  expect(finished.pictures).toBeUndefined();
+  expect(await pictureCalls(mode)).toHaveLength(0);
+  expect((await status(true)).pictures).toHaveLength(3);
+  const pictured = await until(() => status(true), result =>
+    result.pictures?.every((picture: { status: string }) => picture.status === 'ready'));
+  expect(pictured.pictures.map((picture: { status: string }) => picture.status)).toEqual(['ready', 'ready', 'ready']);
+  expect((await status()).pictures).toBeUndefined();
+  expect(await pictureCalls(mode)).toHaveLength(3);
 });

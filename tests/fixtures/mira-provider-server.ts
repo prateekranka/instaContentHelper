@@ -2,6 +2,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { handleMira } from '../../supabase/functions/mira-generation/index.ts';
 import { generate } from '../../supabase/functions/mira-generation/provider.ts';
 import { sha256Hex } from '../../supabase/functions/_shared/device-auth.ts';
+import { phaseEFixture } from './mira-phase-e.ts';
 
 const localPort = Deno.env.get('MIRA_API_E2E_LOCAL_PORT');
 const localRole = Deno.env.get('MIRA_API_E2E_LOCAL_SERVICE_ROLE');
@@ -32,14 +33,14 @@ const tables: Record<string, Row[]> = {
     { id: 'other-installation', workspace_id: workspaceID, member_id: otherMember, token_hash: otherTokenHash, revoked_at: null },
   ],
   members: [memberID, otherMember].map(id => ({ id, workspace_id: workspaceID, role: 'creator', status: 'active' })),
-  creators: [{ id: creatorID, workspace_id: workspaceID }],
+  creators: [creatorID, '10000000-0000-4000-8000-000000000005'].map(id => ({ id, workspace_id: workspaceID })),
 };
 
 class Query {
   private conditions: ((row: Row) => boolean)[] = [];
   private changes?: Row;
   private many = false;
-  constructor(private table: string, private mode: string) {}
+  constructor(private table: string, private mode: string, private fixtureRows?: Row[]) {}
   select(_columns: string) { return this; }
   eq(key: string, value: unknown) { this.conditions.push((row) => row[key] === value); return this; }
   is(key: string, value: unknown) { return this.eq(key, value); }
@@ -49,7 +50,7 @@ class Query {
   update(changes: Row) { this.changes = changes; return this; }
   result() {
     const rows = this.table === 'mira_generation_jobs' ? [...jobs.values()] :
-      this.table === 'mira_shot_pictures' ? pictures : tables[this.table] ?? [];
+      this.table === 'mira_shot_pictures' ? pictures : this.fixtureRows ?? tables[this.table] ?? [];
     const matches = rows.filter((item) => this.conditions.every((condition) => condition(item)));
     if (this.changes?.status === 'ready' && this.mode === 'd2-lost-picture-write') {
       return { data: null, error: new Error('fixture_lost_picture_write') };
@@ -152,10 +153,20 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
   }
   const selected = request.headers.get('x-fixture-provider') ?? 'deepseek';
   const mode = request.headers.get('x-fixture-mode') ?? 'ok';
+  const phaseELocal = mode.startsWith('e-local-');
+  if (phaseELocal && !localAdmin) return new Response(null, { status: 503 });
+  const fixtureToken = request.headers.get('x-mco-device-token') ?? '';
+  const fixtureMember = /^fixture-member:([a-f0-9-]{36})$/.exec(fixtureToken)?.[1];
+  const extraRows: Record<string, Row[]> = {};
+  if (phaseELocal && fixtureMember) {
+    extraRows.device_installations = [{ id: id + '-fixture', workspace_id: workspaceID, member_id: fixtureMember,
+      token_hash: await sha256Hex(fixtureToken), revoked_at: null }];
+    extraRows.members = [{ id: fixtureMember, workspace_id: workspaceID, role: 'creator', status: 'active' }];
+  }
   const values: Record<string, string> = {
     SUPABASE_URL: 'https://fixture.invalid', SUPABASE_SERVICE_ROLE_KEY: 'fixture-server-key',
     MIRA_AI_PROVIDER: selected, MIRA_MODEL: 'fixture-model',
-    MIRA_PICTURES_PER_CARD: mode.startsWith('d2-') && !['d2-stream', 'd2-cut'].includes(mode) ? '5' : '0',
+    MIRA_PICTURES_PER_CARD: (mode.startsWith('d2-') && !['d2-stream', 'd2-cut'].includes(mode)) || mode === 'e-local-pick-stream' ? '5' : '0',
     OPENAI_API_KEY: 'fixture-openai-key', DEEPSEEK_API_KEY: 'fixture-deepseek-key', GEMINI_API_KEY: 'fixture-gemini-key',
   };
   const env = { get: (name: string) => values[name] };
@@ -163,20 +174,21 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
     const payload = await new Request(requestInfo, init).json();
     const imageRequest = String(requestInfo).endsWith('/images/generations');
     calls.push({ url: String(requestInfo), model: payload.model ?? 'fixture-model', mode,
-      payload: imageRequest ? payload : undefined });
+      payload: imageRequest || mode.startsWith('e-') ? payload : undefined });
     if (imageRequest) {
       if (['d2-mixed', 'd2-local-storage'].includes(mode) && payload.prompt.includes('Your hands and the bowl')) {
         return new Response('', { status: 503 });
       }
       return Response.json({ data: [{ b64_json: '/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAqADAAQAAAABAAAAAgAAAAD/7QA4UGhvdG9zaG9wIDMuMAA4QklNBAQAAAAAAAA4QklNBCUAAAAAABDUHYzZjwCyBOmACZjs+EJ+/8AAEQgAAgACAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/bAEMAAgICAgICAwICAwUDAwMFBgUFBQUGCAYGBgYGCAoICAgICAgKCgoKCgoKCgwMDAwMDA4ODg4ODw8PDw8PDw8PD//bAEMBAgICBAQEBwQEBxALCQsQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEP/dAAQAAf/aAAwDAQACEQMRAD8AvN94/Wm05vvH602vzM9Q/9k=' }] });
     }
-    if (mode === 'unavailable') return new Response('', { status: 503 });
+    if (mode === 'unavailable' || mode.endsWith('-unavailable')) return new Response('', { status: 503 });
     const input = JSON.parse(payload.messages?.[1]?.content ?? payload.contents?.[0]?.parts?.[0]?.text ?? '{}');
-    let result: unknown = output;
-    if (['storyboard', 'reviseShot', 'todayIdea'].includes(input.operation)) {
-      const script = input.operation === 'todayIdea' ? {
+    let result: unknown = phaseEFixture(input.operation, mode, input) ?? output;
+    const oneIdea = ['todayIdea', 'pickIdea'].includes(input.operation);
+    if (oneIdea || ['storyboard', 'reviseShot'].includes(input.operation)) {
+      const script = oneIdea ? {
         id: crypto.randomUUID(), hook: 'Here is my breakfast.', spoken: 'Add fruit to the bowl.',
-        caption: 'My breakfast', durationSeconds: 20, language: 'English',
+        caption: 'My breakfast', durationSeconds: 20, language: input.profile.language,
       } : input.script;
       const first = {
         id: '30000000-0000-4000-8000-000000000001', purpose: 'Introduce the routine',
@@ -203,22 +215,30 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
           id: crypto.randomUUID(), sourceScriptID: script.id, requirementsRevision: 0, shots, mappings: [],
         },
       };
-      if (input.operation === 'todayIdea') {
+      if (oneIdea) {
         const third = { ...first, id: crypto.randomUUID(), purpose: 'Finish the idea', editedSeconds: 4 };
-        const idea = { ...output.ideas[0], title: input.angle, hook: script.hook,
+        const idea = { ...output.ideas[0], title: input.angle ?? 'A bowl of dahi', hook: script.hook,
           visual: 'Show a bowl of dahi 🥣 with "script": braces { and commas, and a slash \\.' };
         const board = {
           id: crypto.randomUUID(), sourceScriptID: mode === 'wrong-source' ? crypto.randomUUID() : script.id,
           requirementsRevision: 0, shots: [first, { ...second, editedSeconds: 10 }, third], mappings: [],
         };
         if (mode === 'wrong-duration') third.editedSeconds += 8;
-        result = { conflicts: [], ideas: [idea], script, storyboard: board };
+        if (input.operation === 'pickIdea') {
+          board.requirementsRevision = input.dealChecklist?.revision ?? 0;
+          board.mappings = input.dealChecklist?.items.map((item: { id: string }) => ({
+            requirementID: item.id, shotIDs: [first.id], scriptExcerpt: '',
+          })) ?? [];
+        }
+        result = { ideas: [idea], ...(input.operation === 'pickIdea' ? {
+          reason: 'You can film your breakfast at home today.',
+        } : {}), script, storyboard: board, conflicts: [] };
       }
     }
     const text = mode === 'invalid' ? '{}' : JSON.stringify(result);
     if (payload.stream) {
       const gates: (() => void)[] = [];
-      const manual = mode === 'd2-stream' || mode === 'd2-cut';
+      const manual = ['d2-stream', 'd2-cut', 'e-local-pick-stream'].includes(mode);
       if (manual) streamGates.set(id, gates);
       const encoder = new TextEncoder();
       const frame = (delta: string, reason: string | null = null) =>
@@ -235,7 +255,8 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
           if (manual) {
             const value = result as Record<string, unknown>;
             const parts = [
-              `{"ideas":${JSON.stringify(value.ideas)},`,
+              `{"ideas":${JSON.stringify(value.ideas)},` +
+                (value.reason ? `"reason":${JSON.stringify(value.reason)},` : ""),
               `"script":${JSON.stringify(value.script)},`,
               `"storyboard":${JSON.stringify(value.storyboard)},`,
               '"conflicts":[]}',
@@ -264,18 +285,18 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
       ? { candidates: [{ content: { parts: [{ text }] } }] }
       : { choices: [{ message: { content: text } }] });
   };
-  const database = mode === 'd2-local-storage' ? localAdmin : undefined;
+  const database = mode === 'd2-local-storage' || phaseELocal ? localAdmin : undefined;
   return await handleMira(request, {
     env,
     admin: {
       from: (table: string) => database && ['mira_generation_jobs', 'mira_shot_pictures'].includes(table)
-        ? database.from(table) : new Query(table, mode),
+        ? database.from(table) : new Query(table, mode, extraRows[table]),
       storage: database?.storage ?? admin.storage,
       rpc: (name: string, args: Row) => database ? database.rpc(name, args) : admin.rpc(name, args, mode),
     },
     generate: (input, config, signal, _fetch, onStep) => generate(input, config, signal, providerFetch, onStep),
     pictureFetch: providerFetch,
-    ...(mode === 'd2-stream' || mode === 'd2-cut' ? {
+    ...(['d2-stream', 'd2-cut', 'e-local-pick-stream'].includes(mode) ? {
       defer: (work: Promise<unknown>) => { void work.catch(() => {}); },
     } : {}),
   });
