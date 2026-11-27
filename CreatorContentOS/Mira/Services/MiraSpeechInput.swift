@@ -31,9 +31,7 @@ final class MiraSpeechInput: MiraSpeechInputService {
     func start(locale: String) async {
         let attempt = UUID()
         guard transition(.start(attempt)) else { return }
-        let speech = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
-        }
+        let speech = await Self.speechAllowed()
         guard state == .askingPermission(attempt) else { return }
         guard speech else {
             transition(.denied(attempt))
@@ -94,6 +92,23 @@ final class MiraSpeechInput: MiraSpeechInputService {
         } catch {
             releaseAudio()
             transition(.failed(attempt, "The microphone did not start. Try again or type your request."))
+        }
+    }
+
+    nonisolated private static func speechAllowed() async -> Bool {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized:
+            return true
+        case .denied, .restricted:
+            return false
+        case .notDetermined:
+            return await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { @Sendable status in
+                    continuation.resume(returning: status == .authorized)
+                }
+            }
+        @unknown default:
+            return false
         }
     }
 

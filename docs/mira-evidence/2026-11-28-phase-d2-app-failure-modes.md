@@ -13,3 +13,5 @@
 | Privacy and install | Installing removes the Instagram session or the existing AI decision. | Run the Profile Keep check before and after install and after testing. Stop on a change. Install over the existing app. |
 | Live cost | The phone test starts more than six text requests or eighteen picture requests. | Reserve three text requests for Today and three for step-by-step. Count Today shot slots and request actions. Separate observed pictures from provider usage. |
 | Build and rules | Simulator and device builds diverge, runtime settings are missing, or the new state introduces a second mutable owner. | Build both targets, check required device bundle settings as yes or no, and run all seven agent-rule groups. |
+
+The first phone run captured a speech crash at 04:38:21 IST. The iOS authorization callback ran on a background queue. A callback inferred to run on the main actor can crash before the denied state updates. The phone retry must tap the mic with the same denied permission, see Open Settings and type. The known denied state must skip the system authorization request.
