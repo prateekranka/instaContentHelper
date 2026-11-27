@@ -26,10 +26,31 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
+      - name: Check state-machine tables
+        run: python3 scripts/check-state-machine-doc.py
       - name: Check agent rules
         run: python3 scripts/check-agent-rules.py
       - name: Prove rules reject past mistakes
         run: python3 scripts/prove-agent-rules.py
+  tla-models:
+    name: TLA+ models
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Set up Java
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Cache TLC jar
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: work/tla-cache
+          key: tla2tools-${{ hashFiles('specs/tla/run.sh') }}
+      - name: Check TLA+ models
+        run: specs/tla/run.sh
   deno:
     name: Deno contracts
     runs-on: ubuntu-latest
