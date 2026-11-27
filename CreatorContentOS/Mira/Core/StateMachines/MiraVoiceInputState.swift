@@ -42,7 +42,7 @@ enum MiraVoiceInputState: Equatable {
         switch self {
         case .idle: nil
         case .askingPermission: "Checking microphone permission."
-        case .denied: "Allow Mira to use the microphone in Settings, or type your request."
+        case .denied: "To use voice input, allow Speech Recognition and Microphone in Settings. You can still type."
         case .recording(_, let elapsed): "Recording · \(elapsed) of 60 seconds."
         case .finishing: "Finishing your recording."
         case .failed(let reason): reason

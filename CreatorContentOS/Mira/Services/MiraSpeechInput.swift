@@ -35,9 +35,13 @@ final class MiraSpeechInput: MiraSpeechInputService {
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
         }
         guard state == .askingPermission(attempt) else { return }
+        guard speech else {
+            transition(.denied(attempt))
+            return
+        }
         let microphone = await AVAudioApplication.requestRecordPermission()
         guard state == .askingPermission(attempt) else { return }
-        guard speech && microphone else {
+        guard microphone else {
             transition(.denied(attempt))
             return
         }
