@@ -233,13 +233,14 @@ test('Today cards swipe into the matching filming plan and retry one failed card
 
   const request = screen.getByTestId('mira.today.request');
   await fillText(request, 'Demo card failure');
+  await closeKeyboard(screen, request);
   await make.tap();
   await expect(page(3)).toBeVisible();
   await page(2).tap();
   const retry = screen.getByRole('button', 'Try again', { exact: true, visible: true });
   await expect(retry).toBeVisible();
   await app.screenshot('today-one-card-failure');
-  await retry.tap();
+  await tap(screen, retry);
   await expect(title('My simple breakfast')).toBeVisible();
   await page(1).tap();
   await expect(title('A quick movement break')).toBeVisible();
@@ -461,7 +462,7 @@ test('S1 B2 open filming closes its controls when the approval is undone', async
   await openProjectFromList(screen, 'My simple breakfast');
   await expect(screen.getByText('Shot 1 of 3', { exact: true, visible: true })).toBeVisible();
   await screen.getByTestId('BackButton').tap();
-  await screen.getByRole('button', 'Plan options', { exact: true }).tap();
+  await (await menuControl(screen, 'Plan options')).tap();
   await screen.getByRole('button', 'Undo last content change', { exact: true }).tap();
   await openTab(screen, 'Today');
   const message = screen.getByTestId('mira.approveFirst.message');
@@ -477,7 +478,7 @@ test('S1 B2 open filming closes its controls when the approval is undone', async
   await tap(screen, screen.getByTestId('mira.words.approve'));
   await expect(screen.getByText('Shot 1 of 3', { exact: true, visible: true })).toBeVisible({ timeout: 45_000 });
   await openTab(screen, 'Projects');
-  await screen.getByRole('button', 'Plan options', { exact: true }).tap();
+  await (await menuControl(screen, 'Plan options')).tap();
   await screen.getByRole('button', 'Undo last content change', { exact: true }).tap();
   await openTab(screen, 'Today');
   await expect(message).toBeVisible();
@@ -581,8 +582,8 @@ test('crash log', async ({ app, screen, device }) => {
   await launchMira(screen, device);
   await backOut(screen);
   await screen.getByRole('button', 'Profile', { exact: true }).tap();
-  const connect = screen.getByText('Connect account', { exact: true });
-  await scrollToControl(screen, connect);
+  const accountStatus = screen.getByText(/^(Connect account|Allowed|Not decided yet|Not allowed yet)$/);
+  await scrollToControl(screen, accountStatus);
   const reports = screen.getByTestId('mira.profile.problemReports');
   if (await reports.count() > 0) {
     await scrollToControl(screen, reports);
