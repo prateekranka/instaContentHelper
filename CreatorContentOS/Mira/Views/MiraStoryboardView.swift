@@ -84,7 +84,7 @@ struct MiraStoryboardView: View {
                             Text("Not mapped · needs review")
                         }
                     }
-                } else if project.brief.confirmed {
+                } else if case .confirmed = project.briefState {
                     Text("Brand requirements confirmed").font(.headline)
                 }
             }

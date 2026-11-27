@@ -61,13 +61,14 @@ private struct LaunchAIConsentStore: AIConsentStoring {
     private let record: AIConsentRecord?
 
     init?() {
-        switch DebugLaunchConfiguration.value(for: "MCO_AI_CONSENT_OVERRIDE") {
+        let scenario = DebugLaunchConfiguration.value(for: "MCO_AI_CONSENT_OVERRIDE")
+        switch scenario {
         case "unknown":
             record = nil
-        case "declined":
+        case "allowed", "declined", "out-of-date":
             record = AIConsentRecord(
-                consentVersion: AIConsentPolicy.currentVersion,
-                decision: .declined,
+                consentVersion: scenario == "out-of-date" ? "contenthelper-ai-consent-previous" : AIConsentPolicy.currentVersion,
+                decision: scenario == "declined" ? .declined : .accepted,
                 decidedAt: SupabaseDateFormatting.isoTimestampString(),
                 destinationsAcknowledged: AIConsentPolicy.destinations)
         default:

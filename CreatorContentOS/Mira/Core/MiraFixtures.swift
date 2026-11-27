@@ -252,35 +252,39 @@ final class MiraFixtureRefusals: @unchecked Sendable {
 }
 
 struct MiraFixtureGenerationService: MiraGenerationService {
+    static let retryPhaseRequest = "Demo server retry"
     static let busyRequest = "Demo busy server"
     static let unknownStopRequest = "Demo stop unknown"
     private static let refusals = MiraFixtureRefusals()
     var failTodayCard = false
     var slowTodayCards = false
     var slowShotUpdate = false
-    func start(_ job: MiraJob) async throws -> MiraJob {
+    func start(_ job: MiraJob) async throws -> MiraJobResponse {
         try Task.checkCancellation()
         var result = job
         let request = job.input.request
+        if request == Self.retryPhaseRequest, job.input.operation == .todayIdea {
+            return MiraJobResponse(job: job, phase: "waiting_to_retry")
+        }
         if job.input.operation == .todayIdea, [Self.busyRequest, Self.unknownStopRequest].contains(request) {
             let last = job.input.angle?.hasPrefix("A personal") == true
             if last && (request == Self.unknownStopRequest || Self.refusals.refuse(job.id, times: 2)) {
                 throw MiraError.busy
             }
-            if request == Self.busyRequest && !last { return result }
+            if request == Self.busyRequest && !last { return MiraJobResponse(job: result) }
         }
-        if slowTodayCards, job.input.operation == .todayIdea { return result }
-        if slowShotUpdate, job.input.operation == .reviseStoryboard { return result }
+        if slowTodayCards, job.input.operation == .todayIdea { return MiraJobResponse(job: result) }
+        if slowShotUpdate, job.input.operation == .reviseStoryboard { return MiraJobResponse(job: result) }
         if failTodayCard, job.input.operation == .todayIdea, job.input.angle?.hasPrefix("A food") == true {
             result.state = .failed
-            return result
+            return MiraJobResponse(job: result)
         }
         result.output = MiraFixtures.output(for: job.input)
         result.state = .succeeded
         try MiraValidation.validate(result.output!, for: job.input.operation, input: job.input)
-        return result
+        return MiraJobResponse(job: result)
     }
-    func status(_ job: MiraJob) async throws -> MiraJob {
+    func status(_ job: MiraJob) async throws -> MiraJobResponse {
         if slowShotUpdate, job.input.operation == .reviseStoryboard {
             try await Task.sleep(for: .seconds(18))
             return try await MiraFixtureGenerationService().start(job)
@@ -290,7 +294,7 @@ struct MiraFixtureGenerationService: MiraGenerationService {
             var result = job
             result.output = MiraFixtures.output(for: job.input)
             result.state = .succeeded
-            return result
+            return MiraJobResponse(job: result)
         }
         if slowTodayCards, job.input.operation == .todayIdea {
             let angle = job.input.angle ?? ""
@@ -300,10 +304,10 @@ struct MiraFixtureGenerationService: MiraGenerationService {
         }
         return try await start(job)
     }
-    func cancel(_ job: MiraJob) async throws -> MiraJob {
+    func cancel(_ job: MiraJob) async throws -> MiraJobResponse {
         if job.input.request == Self.unknownStopRequest { throw MiraError.notFound }
         var result = job
         result.state = .cancelled
-        return result
+        return MiraJobResponse(job: result)
     }
 }

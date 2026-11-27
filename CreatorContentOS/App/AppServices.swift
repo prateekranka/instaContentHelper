@@ -6,13 +6,16 @@ import Observation
 final class AppServices {
     let isLiveSupabaseRuntime: Bool
     let aiConsentStore: any AIConsentStoring
-    var aiConsentAllowsOutbound = false
-    var aiConsentHasDeclined = false
+    private(set) var aiConsent = MiraAIConsentState.notAsked
     var isAIConsentSheetPresented = false
 
     init(isLiveSupabaseRuntime: Bool, aiConsentStore: any AIConsentStoring) {
         self.isLiveSupabaseRuntime = isLiveSupabaseRuntime
         self.aiConsentStore = aiConsentStore
-        refreshAIConsentFlagsFromStore()
+        refreshAIConsent()
+    }
+
+    func refreshAIConsent() {
+        aiConsent = aiConsent.handle(.read(aiConsentStore.load(), currentVersion: AIConsentPolicy.currentVersion))
     }
 }

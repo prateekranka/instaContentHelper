@@ -13,39 +13,7 @@ struct MiraRootView: View {
     @State private var todayRequest = ""
     @State private var todayNeedsAIConsent = false
     var body: some View {
-        Group {
-            if store.loaded {
-                TabView(selection: Binding(
-                    get: { store.location.tab }, set: { store.navigate(.selectTab($0)) }
-                )) {
-                    NavigationStack(path: Binding(
-                        get: { store.location.path(.today) }, set: { store.navigate(.setPath(.today, $0)) }
-                    )) {
-                        today.navigationDestination(for: MiraRoute.self, destination: destination)
-                    }.tabItem { Label("Today", systemImage: "sun.max") }.tag(MiraTab.today)
-                    NavigationStack(path: Binding(
-                        get: { store.location.path(.projects) }, set: { store.navigate(.setPath(.projects, $0)) }
-                    )) {
-                        MiraProjectsView(store: store, onOpen: { open($0, tab: .projects) }, onDelete: delete)
-                            .navigationDestination(
-                                for: MiraRoute.self, destination: destination
-                            )
-                            .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
-                    }.tabItem { Label("Projects", systemImage: "book.closed") }.tag(MiraTab.projects)
-                }
-                .environment(\.miraTabBarClearance, 64)
-            } else {
-                MiraPage {
-                    Text("Mira").font(.largeTitle)
-                    if store.loadFailed {
-                        Text(store.error ?? "Your library could not be opened.")
-                        Button("Try opening saved work again") { Task { await store.load() } }
-                    } else {
-                        ProgressView("Opening your notebook")
-                    }
-                }
-            }
-        }
+        libraryContent
         .tint(MiraTheme.accent)
         .sheet(item: $sheet) { value in
             NavigationStack {
@@ -102,14 +70,14 @@ struct MiraRootView: View {
         .alert(
             "Mira",
             isPresented: Binding(
-                get: { store.error != nil && store.loaded }, set: { if !$0 { store.error = nil } })
+                get: { store.library.alert != nil }, set: { if !$0 { store.dismissError() } })
         ) {
-            Button("OK") { store.error = nil }
+            Button("OK") { store.dismissError() }
         } message: {
-            Text(store.error ?? "")
+            Text(store.library.alert ?? "")
         }
         .safeAreaInset(edge: .bottom) {
-            if let message = store.saveMessage {
+            if case .loaded(let message?, _) = store.library {
                 Text(message).font(.callout).padding().frame(maxWidth: .infinity).background(
                     MiraTheme.paper
                 )
@@ -119,6 +87,56 @@ struct MiraRootView: View {
         .task { await store.load() }
         .onChange(of: scenePhase) { _, phase in if phase != .active { Task { await store.flush() } } }
     }
+    @ViewBuilder private var libraryContent: some View {
+        switch store.library {
+        case .loaded:
+            libraryTabs
+        case .unopened, .opening:
+            MiraPage {
+                Text("Mira").font(.largeTitle)
+                ProgressView("Opening your notebook")
+            }
+        case .openFailed(let failure):
+            MiraPage {
+                Text("Mira").font(.largeTitle)
+                Text(failure.message)
+                if failure == .newerVersion {
+                    Text(store.library.nextAction.title)
+                } else {
+                    Button(store.library.nextAction.title) { Task { await store.load() } }
+                }
+            }
+        }
+    }
+
+    private var libraryTabs: some View {
+        let selection = Binding<MiraTab>(
+            get: { store.location.tab }, set: { store.navigate(.selectTab($0)) })
+        return TabView(selection: selection) {
+            todayStack.tabItem { Label("Today", systemImage: "sun.max") }.tag(MiraTab.today)
+            projectsStack.tabItem { Label("Projects", systemImage: "book.closed") }.tag(MiraTab.projects)
+        }
+        .environment(\.miraTabBarClearance, 64)
+    }
+
+    private var todayStack: some View {
+        NavigationStack(path: tabPath(.today)) {
+            today.navigationDestination(for: MiraRoute.self, destination: destination)
+        }
+    }
+
+    private var projectsStack: some View {
+        NavigationStack(path: tabPath(.projects)) {
+            MiraProjectsView(store: store, onOpen: { open($0, tab: .projects) }, onDelete: delete)
+                .navigationDestination(for: MiraRoute.self, destination: destination)
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
+        }
+    }
+
+    private func tabPath(_ tab: MiraTab) -> Binding<[MiraRoute]> {
+        Binding(get: { store.location.path(tab) }, set: { store.navigate(.setPath(tab, $0)) })
+    }
+
     @ViewBuilder private var profileButton: some View {
         let button = Button {
             sheet = .profile
@@ -134,7 +152,7 @@ struct MiraRootView: View {
     private var today: some View {
         MiraTodayHome(
             store: store, request: $todayRequest,
-            needsAIConsent: todayNeedsAIConsent && services.isLiveSupabaseRuntime && services.aiConsentHasDeclined,
+            blockedConsent: todayNeedsAIConsent && services.isLiveSupabaseRuntime ? services.aiConsent : nil,
             onMake: makeToday,
             onReviewAIConsent: { services.setAIConsentSheetPresented(true) },
             onContinue: { open($0, tab: .today) },
@@ -163,7 +181,7 @@ struct MiraRootView: View {
         } catch is AIConsentRequired {
             todayNeedsAIConsent = true
         } catch {
-            store.error = error.localizedDescription
+            store.reportError(error.localizedDescription)
         }
     }
     private func open(_ id: UUID, tab: MiraTab) {
@@ -191,7 +209,7 @@ struct MiraRootView: View {
                     do {
                         let generation = try service(id, requiresConsent: false)
                         Task { await store.cancelCard(id, cardID: cardID, service: generation) }
-                    } catch { store.error = error.localizedDescription }
+                    } catch { store.reportError(error.localizedDescription) }
                 })
                 .task { reconnectCards(id, reportError: false) }
         case .shooting(let id):
@@ -227,32 +245,32 @@ struct MiraRootView: View {
             store.generate(
                 id, operation: operation, request: request, target: target, language: language,
                 service: try service(id))
-        } catch { store.error = error.localizedDescription }
+        } catch { store.reportError(error.localizedDescription) }
     }
     private func retryCard(_ id: UUID, cardID: UUID, request: String? = nil, language: MiraLanguage? = nil) {
         do {
             store.retryCard(id, cardID: cardID, request: request, language: language, service: try service(id))
-        } catch { store.error = error.localizedDescription }
+        } catch { store.reportError(error.localizedDescription) }
     }
     private func reconnectCards(_ id: UUID, reportError: Bool) {
         guard store.project(id)?.hasWorkingCards == true else { return }
         do { store.reconnectCards(id, service: try service(id)) }
-        catch { if reportError { store.error = error.localizedDescription } }
+        catch { if reportError { store.reportError(error.localizedDescription) } }
     }
     private func reconnect(_ id: UUID) {
         do { store.reconnect(id, service: try service(id)) } catch {
-            store.error = error.localizedDescription
+            store.reportError(error.localizedDescription)
         }
     }
     private func cancel(_ id: UUID) {
         do {
             let value = try service(id, requiresConsent: false)
             Task { await store.cancel(id, service: value) }
-        } catch { store.error = error.localizedDescription }
+        } catch { store.reportError(error.localizedDescription) }
     }
     private func delete(_ id: UUID) {
         guard store.project(id)?.hasWorkingCards != true else {
-            store.error = "Stop the saved card requests from Today before deleting this project."
+            store.reportError("Stop the saved card requests from Today before deleting this project.")
             return
         }
         if !store.requestState(store.project(id)?.job).pending {
@@ -266,11 +284,10 @@ struct MiraRootView: View {
                 if !store.requestState(store.project(id)?.job).pending {
                     store.delete(id)
                 } else {
-                    store.error =
-                        "Cancellation could not be confirmed. The project is kept so you can reconnect its saved request."
+                    store.reportError("Cancellation could not be confirmed. The project is kept so you can reconnect its saved request.")
                 }
             }
-        } catch { store.error = error.localizedDescription }
+        } catch { store.reportError(error.localizedDescription) }
     }
 }
 
@@ -404,7 +421,7 @@ struct MiraChipFlow: Layout {
 struct MiraTodayHome: View {
     let store: MiraStore
     @Binding var request: String
-    let needsAIConsent: Bool
+    let blockedConsent: MiraAIConsentState?
     let onMake: () -> Void
     let onReviewAIConsent: () -> Void
     let onContinue: (UUID) -> Void
@@ -437,17 +454,9 @@ struct MiraTodayHome: View {
                     .accessibilityIdentifier("mira.today.request")
                     microphone
                 }
-                if let speech, speech.recording {
-                    Text("Listening · \(speech.elapsed) of 60 seconds. Tap stop when you finish.")
-                        .font(.subheadline).monospacedDigit()
+                if let message = speech?.state.message {
+                    Text(message).font(.subheadline).monospacedDigit()
                         .accessibilityAddTraits(.updatesFrequently)
-                } else if let error = speech?.error {
-                    Text(error).font(.subheadline)
-                    Button("Open Settings") {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            UIApplication.shared.open(url)
-                        }
-                    }.buttonStyle(.bordered)
                 }
                 MiraChipFlow(spacing: 8) {
                     ForEach(Self.places, id: \.id) { chip($0, group: Self.places) }
@@ -468,14 +477,14 @@ struct MiraTodayHome: View {
                     onMake()
                 }
                 .buttonStyle(MiraPrimaryStyle())
-                .disabled(speech?.recording == true)
+                .disabled(speech?.state.isRecording == true)
                 .accessibilityIdentifier("mira.today.make")
             }
-            if needsAIConsent {
+            if let blockedConsent, blockedConsent == .declined || blockedConsent == .outOfDate {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Allow AI to write ideas first.")
+                    Text(blockedConsent == .outOfDate ? "Review AI permission again to write ideas." : "Allow AI to write ideas first.")
                         .accessibilityIdentifier("mira.today.aiPermissionNeeded")
-                    Button("Review AI permission", action: onReviewAIConsent)
+                    Button(blockedConsent.nextAction.title, action: onReviewAIConsent)
                         .buttonStyle(.bordered).controlSize(.large)
                 }
             }
@@ -508,12 +517,18 @@ struct MiraTodayHome: View {
         }
         .onAppear { if speech == nil { speech = dependencies.makeSpeechInput() } }
         .onDisappear { speech?.stop() }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { speech?.stop() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                speech?.refreshPermissions()
+            } else if phase == .background || speech?.state.isRecording == true {
+                speech?.stop()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in
             speech?.stop()
         }
         .onChange(of: speech?.transcript ?? "") { _, spoken in
-            guard speech?.recording == true else { return }
+            guard !spoken.isEmpty else { return }
             request = joined(spokenBase, spoken)
         }
     }
@@ -529,28 +544,13 @@ struct MiraTodayHome: View {
         return name.isEmpty ? "\(part)." : "\(part), \(name)."
     }
 
-    private var microphone: some View {
-        let recording = speech?.recording == true
-        return Button {
-            guard let speech else { return }
-            if speech.recording {
-                speech.stop()
-            } else {
-                spokenBase = request
-                let locale = store.document.profile.language == .english ? "en-IN" : "hi-IN"
-                Task { await speech.start(locale: locale) }
-            }
-        } label: {
-            Image(systemName: recording ? "stop.fill" : "mic.fill")
-                .font(.title2.weight(.semibold))
-                .frame(width: 60, height: 60)
-                .foregroundStyle(MiraTheme.paper)
-                .background(MiraTheme.accent, in: Circle())
+    @ViewBuilder private var microphone: some View {
+        if let speech {
+            let locale = store.document.profile.language == .english ? "en-IN" : "hi-IN"
+            MiraVoiceButton(speech: speech, locale: locale, compact: true) { spokenBase = request }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("mira.today.mic")
         }
-        .buttonStyle(.plain)
-        .disabled(speech?.requesting == true)
-        .accessibilityLabel(recording ? "Stop listening" : "Speak instead of typing")
-        .accessibilityIdentifier("mira.today.mic")
     }
 
     private func chip(
@@ -569,7 +569,7 @@ struct MiraTodayHome: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .disabled(speech?.recording == true)
+        .disabled(speech?.state.isRecording == true)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("mira.today.chip.\(item.id)")
     }
@@ -693,6 +693,7 @@ struct MiraTodayCardsView: View {
         switch state {
         case .ready: ("checkmark.circle.fill", "ready")
         case .waiting: ("clock", "waiting to start")
+        case .waitingToRetry: ("clock", MiraAIRequest.retryMessage)
         case .making, .reconnect: ("hourglass", "Mira is making it")
         case .failed: ("exclamationmark.circle", "did not load")
         case .needsUpdate: ("checkmark.circle", "needs an update")
@@ -766,6 +767,8 @@ struct MiraTodayCardsView: View {
             Text("Waiting to start…").font(.title2.weight(.semibold))
                 .accessibilityIdentifier("mira.today.waiting.\(index + 1)")
             Text("Mira starts this idea when another one is done.").font(.title3)
+        case .waitingToRetry:
+            Text(MiraAIRequest.retryMessage).font(.title2.weight(.semibold))
         case .reconnect(_, let reason):
             Text(reason ?? "Reconnect to check this idea.").font(.title3)
             Button(state.nextAction.title, action: onReconnect).buttonStyle(MiraPrimaryStyle())

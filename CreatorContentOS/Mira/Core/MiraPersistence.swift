@@ -65,12 +65,28 @@ protocol MiraCreatorProfileRepository: Sendable {
 actor MiraFileRepository: MiraProjectRepository, MiraCreatorProfileRepository {
     let directory: URL
     private var latestSequence = -1
-    init(directory: URL) { self.directory = directory }
+    private let seedDamagedFixture: Bool
+
+    init(directory: URL, seedDamagedFixture: Bool = false) {
+        self.directory = directory
+        self.seedDamagedFixture = seedDamagedFixture
+    }
     private var file: URL { directory.appendingPathComponent("mira-v2.json") }
     private var backup: URL { directory.appendingPathComponent("mira-backup.json") }
     func load() throws -> MiraDocument {
         let manager = FileManager.default
         try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+#if DEBUG
+        if seedDamagedFixture, !manager.fileExists(atPath: file.path), !manager.fileExists(atPath: backup.path) {
+            var document = MiraDocument()
+            var project = MiraProject()
+            project.title = "Recovered sample Reel"
+            project.isDemo = true
+            document.projects = [project]
+            try JSONEncoder().encode(document).write(to: backup, options: .withoutOverwriting)
+            try Data("Damaged fixture".utf8).write(to: file, options: .withoutOverwriting)
+        }
+#endif
         if !manager.fileExists(atPath: file.path) {
             if manager.fileExists(atPath: backup.path) { try restoreBackup() }
             return MiraDocument()
@@ -94,15 +110,11 @@ actor MiraFileRepository: MiraProjectRepository, MiraCreatorProfileRepository {
             document = try decode(data)
         } catch {
             if let error = error as? MiraError, error == .newerVersion { throw error }
-            throw MiraError.storage(
-                "Saved work could not be read. It has been preserved for recovery. Mira will not replace it with an empty document."
-            )
+            throw MiraLibraryOpenFailure.damaged
         }
         try data.write(to: file, options: .atomic)
         latestSequence = document.sequence
-        throw MiraError.storage(
-            "Recovered your last safe save. Try opening saved work again. Any damaged document is kept for recovery."
-        )
+        throw MiraLibraryOpenFailure.restored
     }
     private func decode(_ data: Data) throws -> MiraDocument {
         let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any]

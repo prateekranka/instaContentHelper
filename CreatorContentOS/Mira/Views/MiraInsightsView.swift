@@ -8,27 +8,24 @@ struct MiraInsightsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.webAuthenticationSession) private var webAuth
 
-    @State private var state: InstagramInsightsState = .notConnected
-    @State private var isLoading = false
-    @State private var isConnecting = false
-    @State private var message: String?
+    @State private var state = MiraInsightsState.unopened
 
     var body: some View {
         MiraPage {
             MiraSectionTitle(text: "How you're doing")
             switch state {
-            case .notConnected:
+            case .unopened, .loading:
+                ProgressView("Checking your Instagram insights")
+            case .connecting:
+                ProgressView("Connecting to Instagram")
+            case .loaded(let result):
+                content(result)
+            case .loadFailed(let message, let previous):
+                if let previous, previous != .notConnected { content(previous) }
+                Text(message).font(.footnote).foregroundStyle(MiraTheme.ink.opacity(0.7))
+                Button(state.nextAction.title) { Task { await load() } }
+            case .connectionFailed(let message):
                 notConnected
-            case .connectedPersonal:
-                info("Insights need a Professional account", "Switch your Instagram to a Creator or Business account to see your numbers here.")
-            case .permissionNeeded:
-                info("Permission needed", "Let Mira read your numbers when you connect Instagram.")
-            case .noData:
-                info("Not available yet", "No insights yet. Check back after your next post goes live.")
-            case .ready(let report):
-                ready(report)
-            }
-            if let message {
                 Text(message).font(.footnote).foregroundStyle(MiraTheme.ink.opacity(0.7))
             }
         }
@@ -37,16 +34,28 @@ struct MiraInsightsView: View {
         .task { await load() }
     }
 
-    // MARK: States
+    @ViewBuilder private func content(_ result: InstagramInsightsState) -> some View {
+        switch result {
+        case .notConnected:
+            notConnected
+        case .connectedPersonal:
+            info("Insights need a Professional account", "Switch your Instagram to a Creator or Business account to see your numbers here.")
+        case .permissionNeeded:
+            info("Permission needed", "Let Mira read your numbers when you connect Instagram.")
+        case .noData:
+            info("Not available yet", "No insights yet. Check back after your next post goes live.")
+        case .ready(let report):
+            ready(report)
+        }
+    }
 
     private var notConnected: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("See your followers, reach and saves — and what's working — without leaving Mira.")
-            Button(isConnecting ? "Connecting…" : "Connect Instagram") {
+            Button(state.nextAction.title) {
                 Task { await connect() }
             }
             .buttonStyle(MiraPrimaryStyle())
-            .disabled(isConnecting)
             Text("Log in with Instagram and choose your account. Mira only reads your posts and insights. It never posts for you.")
                 .font(.footnote).foregroundStyle(MiraTheme.ink.opacity(0.7))
         }
@@ -120,54 +129,72 @@ struct MiraInsightsView: View {
         if case .live(let session) = appState.runtime.mode { session } else { nil }
     }
 
+    @discardableResult
+    private func transition(_ event: MiraInsightsEvent) -> Bool {
+        guard let next = state.handle(event) else { return false }
+        state = next
+        return true
+    }
+
     private func load() async {
+        let attempt = UUID()
+        guard transition(.load(attempt)) else { return }
 #if DEBUG
         if DebugLaunchFlags.forceFixtureUI {
-            state = InstagramInsightsFixture.state(for: DebugLaunchFlags.insightsScenario)
+            transition(.loaded(attempt, InstagramInsightsFixture.state(for: DebugLaunchFlags.insightsScenario)))
             return
         }
 #endif
-        guard let session = liveSession else { state = .notConnected; return }
-        isLoading = true
-        defer { isLoading = false }
+        guard let session = liveSession else {
+            transition(.loaded(attempt, .notConnected))
+            return
+        }
+        await fetch(session, attempt: attempt)
+    }
+
+    private func fetch(_ session: PairedDeviceSession, attempt: UUID) async {
         do {
-            state = try await MiraSupabaseInsightsService(session: session).fetchInsights()
-            message = nil
+            let result = try await MiraSupabaseInsightsService(session: session).fetchInsights()
+            try Task.checkCancellation()
+            transition(.loaded(attempt, result))
         } catch {
-            message = (error as? MiraError)?.errorDescription ?? error.localizedDescription
+            if Task.isCancelled {
+                transition(.cancelled(attempt))
+            } else {
+                transition(.failed(attempt, error.localizedDescription))
+            }
         }
     }
 
     private func connect() async {
-        message = nil
-        let oauthState = UUID().uuidString
+        let attempt = UUID()
+        guard transition(.connect(attempt)) else { return }
+        let oauthState = attempt.uuidString
         guard InstagramOAuth.isConfigured, let url = InstagramOAuth.authorizeURL(state: oauthState) else {
-            message = "Instagram connection isn't configured in this build yet."
+            transition(.failed(attempt, "Instagram connection isn't configured in this build yet."))
             return
         }
         guard let session = liveSession else {
-            message = "Connect your account from Profile first."
+            transition(.failed(attempt, "Connect your account from Profile first."))
             return
         }
-        isConnecting = true
-        defer { isConnecting = false }
         do {
             let callback = try await webAuth.authenticate(
                 using: url, callbackURLScheme: InstagramOAuth.callbackScheme
             )
-            // Reject callbacks that don't echo our state (login CSRF / account swap).
             guard InstagramOAuth.state(from: callback) == oauthState,
                   let code = InstagramOAuth.authorizationCode(from: callback) else {
-                message = "Couldn't read the Instagram response. Try again."
+                transition(.failed(attempt, "Couldn't read the Instagram response. Try again."))
                 return
             }
             try await MiraSupabaseInsightsService(session: session)
                 .connect(code: code, redirectURI: InstagramOAuth.redirectURI ?? "")
-            await load()
+            guard transition(.connected(attempt)) else { return }
+            await fetch(session, attempt: attempt)
         } catch let error as MiraError {
-            message = error.errorDescription
+            transition(.failed(attempt, error.localizedDescription))
         } catch {
-            // User dismissed the sheet or cancelled; leave the CTA in place.
+            transition(.cancelled(attempt))
         }
     }
 }

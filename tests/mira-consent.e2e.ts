@@ -1,18 +1,22 @@
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type Screen } from 'e2e';
 import { launchArguments } from '../e2e.mira.config';
-import { scrollToControl, tapVisibleControl } from './mobile-support';
+import { scrollToControl, tapVisibleControl, waitForMobileApp } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
 
-async function openConsentStatus(screen: Screen, device: Device, override?: 'unknown' | 'declined') {
+async function openConsentStatus(screen: Screen, device: Device, override?: 'unknown' | 'allowed' | 'declined' | 'out-of-date') {
   await device.openApp(bundleId, {
     relaunch: true,
     launchArguments: override ? [...launchArguments, '-MCO_AI_CONSENT_OVERRIDE', override] : launchArguments,
   });
-  const today = screen.getByRole('tablist', 'Tab Bar', { exact: true })
-    .getByRole('button', 'Today', { exact: true });
-  await today.tap();
+  await waitForMobileApp(screen);
+  const tabs = screen.getByRole('tablist', 'Tab Bar', { exact: true });
+  await expect(tabs).toBeAttached({ timeout: 45_000 });
+  const alert = screen.getByRole('alert', /Apple.Account Verification/);
+  if (await alert.count() > 0) await alert.getByRole('button', 'Not Now', { exact: true }).tap();
+  const today = tabs.getByRole('tab', 'Today', { exact: true });
+  await (await today.count() ? today : tabs.getByRole('button', 'Today', { exact: true })).tap();
   const profile = screen.getByRole('button', 'Profile', { exact: true });
   const back = screen.getByTestId('BackButton');
   for (let step = 0; step < 4 && !await profile.isVisible() && await back.isVisible(); step += 1) {
@@ -62,4 +66,19 @@ test('Saved AI permission is allowed on a normal launch', async ({ app, screen, 
   await scrollToControl(screen, allowed);
   await expect(allowed).toBeVisible();
   await app.screenshot('profile-ai-permission-allowed');
+});
+
+test('S3 allowed override shows Allowed in Profile', async ({ app, screen, device }) => {
+  await openConsentStatus(screen, device, 'allowed');
+  const allowed = screen.getByText('Allowed', { exact: true });
+  await scrollToControl(screen, allowed);
+  await expect(allowed).toBeVisible();
+  await app.screenshot('consent-allowed-override');
+});
+
+test('S3 earlier permission requires review again', async ({ app, screen, device }) => {
+  await openConsentStatus(screen, device, 'out-of-date');
+  await tapMake(screen, 'Review needed');
+  await expect(screen.getByText('AI data permission', { exact: true })).toBeVisible();
+  await app.screenshot('consent-out-of-date');
 });
