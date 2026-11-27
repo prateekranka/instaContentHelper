@@ -365,7 +365,7 @@ test('S1 B1 the Projects shot list asks her to approve the words before filming'
   const back = screen.getByTestId('BackButton');
   await expect(screen.getByTestId('mira.words.approve')).toBeVisible();
   await back.tap();
-  const shotsSection = screen.getByRole('button', 'Shots', { exact: true });
+  const shotsSection = screen.getByRole('tab', 'Shots', { exact: true });
   await scrollToControl(screen, shotsSection, 'up');
   await tap(screen, shotsSection);
   const approveLink = screen.getByTestId('mira.shots.approve');
