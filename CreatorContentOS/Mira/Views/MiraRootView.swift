@@ -7,6 +7,7 @@ struct MiraRootView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.scenePhase) private var scenePhase
     let dependencies: MiraDependencies
+    let colorSchemePreference: ColorScheme?
     private var store: MiraStore { dependencies.store }
     @State private var navigation = MiraNavigation()
     @State private var sheet: MiraSheet?
@@ -86,7 +87,9 @@ struct MiraRootView: View {
                 case .brief(let id): MiraBriefView(store: store, projectID: id, onGenerate: generate)
                 case .manualIdea(let id): MiraManualIdeaView(store: store, projectID: id)
                 }
-            }.tint(MiraTheme.accent)
+            }
+            .tint(MiraTheme.accent)
+            .preferredColorScheme(colorSchemePreference)
         }
         .modifier(MiraConsentPresenter())
         .alert(

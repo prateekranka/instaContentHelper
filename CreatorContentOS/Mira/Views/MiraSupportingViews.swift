@@ -172,11 +172,14 @@ struct MiraProfileView: View {
     var store: MiraStore
     var onStepByStep: () -> Void
     var onDemo: () -> Void
+    @AppStorage(MiraLook.defaultsKey) private var look: MiraLook = .system
     @Environment(AppState.self) private var appState
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         MiraPage {
+            lookSetting
+            Divider()
             Text(
                 "A little context helps Mira write like you. Every field is optional; you can come back later."
             )
@@ -270,6 +273,33 @@ struct MiraProfileView: View {
             }
         }
     }
+
+    private var lookSetting: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            MiraSectionTitle(text: "Look")
+            ForEach(MiraLook.allCases, id: \.self) { choice in
+                Button {
+                    look = choice
+                } label: {
+                    HStack {
+                        Text(choice.title)
+                        Spacer()
+                        if choice == look {
+                            Image(systemName: "checkmark").accessibilityHidden(true)
+                        }
+                    }
+                    .font(.title3)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityAddTraits(choice == look ? .isSelected : [])
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("mira.profile.look")
+    }
+
     private func field<T>(_ path: WritableKeyPath<MiraProfile, T>) -> Binding<T> {
         Binding(
             get: { store.document.profile[keyPath: path] },
