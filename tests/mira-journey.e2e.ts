@@ -1,7 +1,7 @@
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type App, type Locator, type Screen } from 'e2e';
 import { fixtureSessionArguments } from '../e2e.mira.config';
-import { closeKeyboard, mobileKeyboard, scrollToControl, tapVisibleControl, waitForMobileApp } from './mobile-support';
+import { appIsRunning, closeKeyboard, mobileKeyboard, scrollToControl, tapVisibleControl, waitForMobileApp } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
 const english = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_APPEARANCE', 'light'];
@@ -805,8 +805,10 @@ test('S3 editing a confirmed sample brief requires review again', async ({ app, 
   const brief = screen.getByRole('button', 'Add brand requirements', { exact: true });
   await tap(screen, brief);
   const original = screen.getByRole('textbox', 'Original brand requirements', { exact: true });
+  const keyboard = screen.getByRole('window', 'Next keyboard', { exact: true });
   await fillText(original, 'Caption: Oats from home');
-  await closeKeyboard(screen, original);
+  await original.press('Enter');
+  await expect(keyboard).not.toBeVisible();
   await tap(screen, screen.getByRole('button', 'Extract proposed requirements', { exact: true }));
   const close = screen.getByRole('button', 'Close', { exact: true });
   await expect(close).not.toBeVisible();
@@ -822,7 +824,9 @@ test('S3 editing a confirmed sample brief requires review again', async ({ app, 
   await expect(confirmed).toBeAttached();
   await tap(screen, brief);
   await fillText(original, 'Caption: A new caption');
-  await closeKeyboard(screen, original);
+  await original.press('Enter');
+  await expect(keyboard).not.toBeVisible();
+  await expect(screen.getByText(/^Source changed ·/)).toBeAttached();
   await scrollToControl(screen, confirm);
   await expect(confirm).toBeDisabled();
   await app.screenshot('brief-source-changed');
@@ -871,7 +875,8 @@ test('S3 denied speech shows one Settings action and still accepts typing', asyn
   await app.screenshot('mic-denied');
   const request = screen.getByTestId('mira.today.request');
   await fillText(request, 'Film a sample clip at home');
-  await closeKeyboard(screen, request);
+  await request.press('Enter');
+  await expect(screen.getByRole('window', 'Next keyboard', { exact: true })).not.toBeVisible();
   expect(await request.inputValue()).toBe('Film a sample clip at home');
   await app.screenshot('mic-denied-typing');
 });

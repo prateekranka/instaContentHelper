@@ -1,15 +1,17 @@
 import { expect, type Screen, type Locator } from 'e2e';
 
+export async function appIsRunning(screen: Screen) {
+  try {
+    await screen.getByTestId('BackButton').count();
+    return true;
+  } catch (error) {
+    if (error instanceof Error && /is not running/.test(error.message)) return false;
+    throw error;
+  }
+}
+
 export async function waitForMobileApp(screen: Screen) {
-  await expect.poll(async () => {
-    try {
-      await screen.getByTestId('BackButton').count();
-      return true;
-    } catch (error) {
-      if (error instanceof Error && /is not running/.test(error.message)) return false;
-      throw error;
-    }
-  }, { timeout: 20_000, interval: 1_000 }).toBe(true);
+  await expect.poll(() => appIsRunning(screen), { timeout: 20_000, interval: 1_000 }).toBe(true);
 }
 
 export async function tapVisibleControl(screen: Screen, locator: Locator) {
