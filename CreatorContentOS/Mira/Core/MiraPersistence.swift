@@ -9,13 +9,13 @@ struct MiraDocument: Codable, Equatable, Sendable {
     var defaultConstraints: MiraConstraints?
     var demoMode = false
     var sequence = 0
-    var continuationProject: MiraProject? {
+    func continuationProject(resuming projectID: UUID?) -> MiraProject? {
         let unfinished = projects.filter { project in
             !project.archived && project.stage != .complete
                 && (!project.ideas.isEmpty || !project.scripts.isEmpty || project.hasWorkingCards
                     || project.todayCards?.contains { $0.output != nil } == true)
         }
-        return unfinished.first { $0.id == position.projectID }
+        return unfinished.first { $0.id == projectID }
             ?? unfinished.max { $0.updatedAt < $1.updatedAt }
     }
     func restoredNavigation() -> MiraNavigation {

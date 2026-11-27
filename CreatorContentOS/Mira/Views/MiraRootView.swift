@@ -474,7 +474,8 @@ struct MiraTodayHome: View {
                         .buttonStyle(.bordered).controlSize(.large)
                 }
             }
-            if let project = store.document.continuationProject, project.id != workingBatch?.id {
+            if let project = store.document.continuationProject(resuming: store.location.lastProject),
+                project.id != workingBatch?.id {
                 Button {
                     onContinue(project.id)
                 } label: {

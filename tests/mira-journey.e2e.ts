@@ -606,7 +606,9 @@ async function bottomAboveTabs(app: App, screen: Screen, end: Locator, label: st
 test('S2 Plan step by step uses plain microphone words and scrolls above the tab bar', async ({ app, screen, device }) => {
   await launchMira(screen, device);
   await openToday(screen);
-  await bottomAboveTabs(app, screen, screen.getByTestId('mira.today.make'), 's2-today-bottom');
+  const continueCard = screen.getByTestId('mira.today.continue');
+  const todayEnd = await continueCard.count() ? continueCard : screen.getByTestId('mira.today.make');
+  await bottomAboveTabs(app, screen, todayEnd, 's2-today-bottom');
   await screen.getByRole('button', 'Profile', { exact: true }).tap();
   await tap(screen, screen.getByTestId('mira.profile.stepByStep'));
   const note = screen.getByText('Your voice stays on this phone. Check the words before you send them.', { exact: true });
@@ -638,7 +640,7 @@ test('S2 resumes cards, words, filming plan and filming with content clear of th
   await expect(plan).toBeVisible();
   await launchMira(screen, device);
   await expect(plan).toBeVisible();
-  const opening = screen.getByText('Words to say', { exact: true }).first();
+  const opening = screen.getByText("Here's a movement I do between tasks.", { exact: true }).first();
   await bottomAboveTabs(app, screen, opening, 's2-shot-one-text');
   await bottomAboveTabs(app, screen, screen.getByText('More filming details', { exact: true }).last(), 's2-resume-plan');
 
