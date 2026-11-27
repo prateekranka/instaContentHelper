@@ -1,11 +1,52 @@
 import { expect, type Screen, type Locator } from 'e2e';
 
 export async function tapVisibleControl(screen: Screen, locator: Locator) {
-  await scrollToControl(screen, locator);
+  const scrolledBox = await scrollToControl(screen, locator);
+  await expect(locator).toBeVisible();
+  await expect(locator).toBeEnabled();
+  const next = await controlBox(locator);
+  const box = next && sameBox(next, scrolledBox) ? next : await stableBox(locator);
+  await screen.tapAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+}
+
+export async function tapWhenSteady(screen: Screen, locator: Locator) {
   await expect(locator).toBeVisible();
   await expect(locator).toBeEnabled();
   const box = await stableBox(locator);
   await screen.tapAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+}
+
+async function floatingBoxes(screen: Screen, scrollView: Locator, role: 'button' | 'link') {
+  const everyLocator = screen.getByRole(role, { visible: true });
+  const contentLocator = scrollView.getByRole(role, { visible: true });
+  const every = await everyLocator.allTextContents();
+  const content = await contentLocator.allTextContents();
+  const starts: number[] = [];
+  for (let start = 0; start + content.length <= every.length; start += 1) {
+    if (content.every((text, index) => every[start + index] === text)) starts.push(start);
+  }
+  const controls = await everyLocator.all();
+  if (controls.length === every.length && content.length === 0) return readBoxes(controls);
+  if (controls.length === every.length && starts.length === 1) {
+    const outside = controls.filter((_, index) => index < starts[0] || index >= starts[0] + content.length);
+    return readBoxes(outside);
+  }
+  const contentBoxes = await readBoxes(await contentLocator.all());
+  const boxes = await readBoxes(controls);
+  return boxes.filter(box => !contentBoxes.some(other => sameBox(other, box)));
+}
+
+async function readBoxes(controls: Locator[]) {
+  const boxes: Box[] = [];
+  for (const control of controls) boxes.push(await control.boundingBox());
+  return boxes;
+}
+
+type Box = Awaited<ReturnType<Locator['boundingBox']>>;
+
+function sameBox(first: Box, second: Box) {
+  return first !== null && second !== null && first.x === second.x && first.y === second.y
+    && first.width === second.width && first.height === second.height;
 }
 
 // Scroll through the actual app scroll view. A screen-wide synthesized scroll
@@ -30,15 +71,16 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   const keyboardTop = (await controlBox(keyboard))?.y ?? tabBar.y;
   const viewportBottom = Math.min(tabBar.y - 8, keyboardTop - 8, bottom ?? tabBar.y);
   let visibleBottom = Math.min(viewportBottom, scrollBox.y + scrollBox.height - 2);
+  const safeBottom = Math.min(visibleBottom, (visibleTop + viewportBottom) / 2 - 8);
+  const inSafeArea = (box: Box) => box !== null && box.width > 0 && box.height > 0
+    && box.y >= targetTop && box.y + box.height <= safeBottom;
+  if (inSafeArea(initialBox)) {
+    const box = await stableBox(locator, initialBox);
+    if (inSafeArea(box)) return box;
+  }
   for (const role of ['button', 'link'] as const) {
-    const controls = scope.getByRole(role, { visible: true });
-    const contentControls = await scrollView.getByRole(role, { visible: true }).all();
-    const contentBoxes = await Promise.all(contentControls.map(control => control.boundingBox()));
-    for (const control of await controls.all()) {
-      const box = await control.boundingBox();
-      if (contentBoxes.some(content => content.x === box.x && content.y === box.y
-        && content.width === box.width && content.height === box.height)) continue;
-      if (box.width > 0 && box.height > 0
+    for (const box of await floatingBoxes(scope, scrollView, role)) {
+      if (box && box.width > 0 && box.height > 0
         && box.x < scrollBox.x + scrollBox.width && box.x + box.width > scrollBox.x
         && box.y >= (visibleTop + viewportBottom) / 2 && box.y < viewportBottom) {
         visibleBottom = Math.min(visibleBottom, box.y - 8);
@@ -62,7 +104,7 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
         const inScrollView = await scrollView.filter({ has: locator }).count() > 0;
         targetBottom = inScrollView ? visibleBottom : viewportBottom;
       }
-      if (box.width > 0 && box.height > 0 && box.y >= targetTop && box.y + box.height <= targetBottom) return;
+      if (box.width > 0 && box.height > 0 && box.y >= targetTop && box.y + box.height <= targetBottom) return box;
       lastDirection = box.y < targetTop ? 'up' : 'down';
     }
     expect(visibleBottom).toBeGreaterThan(visibleTop);
@@ -77,6 +119,7 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   expect(box.y).toBeGreaterThanOrEqual(targetTop);
   const inScrollView = await scrollView.filter({ has: locator }).count() > 0;
   expect(box.y + box.height).toBeLessThanOrEqual(inScrollView ? visibleBottom : viewportBottom);
+  return box;
 }
 
 async function controlBox(locator: Locator) {
@@ -90,7 +133,7 @@ async function controlBox(locator: Locator) {
   }
 }
 
-async function stableBox(locator: Locator, initialBox?: Awaited<ReturnType<Locator['boundingBox']>>) {
+async function stableBox(locator: Locator, initialBox?: Box) {
   let box = initialBox ?? await locator.boundingBox();
   let stableSamples = 0;
   await expect.poll(async () => {
