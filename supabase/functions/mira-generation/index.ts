@@ -209,13 +209,10 @@ function toJob(row: Record<string, unknown>) {
   const expired = row.status === "running" &&
     typeof row.lease_until === "string" &&
     Date.parse(row.lease_until) <= Date.now();
+  const operation = (row.input as { operation?: string } | null)?.operation;
+  const maxAttempts = operation === "dailyNote" ? 1 : 3;
   const phase = (row.status === "queued" && Number(row.attempts) > 0) ||
-      (expired && Number(row.attempts) < (
-            (row.input as { operation?: string } | null)?.operation ===
-                "dailyNote"
-              ? 1
-              : 3
-          ))
+      (expired && Number(row.attempts) < maxAttempts)
     ? "waiting_to_retry"
     : row.status;
   return {

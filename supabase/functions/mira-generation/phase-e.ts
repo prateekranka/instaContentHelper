@@ -49,10 +49,7 @@ const checklistItem = z.object({
   requiredText: exact.optional(),
 }).strict();
 function hasRequiredText(source: string, required: string): boolean {
-  const escaped = required.replace(/[.*+?^$(){}|[\]\\]/g, "\\$&").replaceAll(
-    "$",
-    "\\$",
-  );
+  const escaped = required.replace(/[.*+?^$(){}|[\]\\]/g, "\\$&");
   const word = "[\\p{L}\\p{M}\\p{N}_]";
   return new RegExp("(?<!" + word + ")" + escaped + "(?!" + word + ")", "u")
     .test(source);

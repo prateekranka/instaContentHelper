@@ -4,7 +4,7 @@ const checklist = [
   { id: '40000000-0000-4000-8000-000000000001', kind: 'caption',
     text: 'Add the ad disclosure', excerpt: 'Put #ad in the caption.', requiredText: '#ad' },
   { id: '40000000-0000-4000-8000-000000000002', kind: 'onScreenText',
-    text: 'Show the discount code', excerpt: 'Show code OAT10 on screen.', requiredText: 'OAT10' },
+    text: 'Show the discount code', excerpt: 'Show code OAT$10 on screen.', requiredText: 'OAT$10' },
   { id: '40000000-0000-4000-8000-000000000003', kind: 'shot',
     text: 'Show the oats pack', excerpt: 'Show the oats pack in a close-up.' },
 ];
@@ -15,7 +15,7 @@ export const brandDoc = {
 };
 export const deal = {
   brand: 'Morning Oats', fee: '₹5,000', deadline: '2026-12-02', deadlineExcerpt: 'Due 2 December 2026.',
-  checklist, disclosures: ['#ad'], codes: ['OAT10'], unresolved: [],
+  checklist, disclosures: ['#ad'], codes: ['OAT$10'], unresolved: [],
 };
 const reel = { id: '41000000-0000-4000-8000-000000000001', title: 'My breakfast Reel' };
 const postLink = 'https://www.instagram.com/reel/example/';
@@ -37,7 +37,7 @@ export const phaseEOutputs = {
   dealBrief: { deal },
   briefCheck: { checks: [
     { itemID: checklist[0].id, status: 'met', evidence: { field: 'caption', excerpt: '#ad' } },
-    { itemID: checklist[1].id, status: 'can-fix', fix: { field: 'onScreenText', text: 'Use code OAT10.' } },
+    { itemID: checklist[1].id, status: 'can-fix', fix: { field: 'onScreenText', text: 'Use code OAT$10.' } },
     { itemID: checklist[2].id, status: 'missing' },
   ] },
   brandNote: { message: `Hi Morning Oats, the Reel is live. Thanks for working with me!\n${postLink}` },
