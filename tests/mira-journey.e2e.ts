@@ -378,6 +378,8 @@ test('S1 B1 the Projects shot list asks her to approve the words before filming'
   await expect(screen.getByText('Shot 1 of 3', { exact: true, visible: true })).toBeVisible({ timeout: 45_000 });
   await back.tap();
   await back.tap();
+  await scrollToControl(screen, shotsSection, 'up');
+  await tap(screen, shotsSection);
   const continueLink = screen.getByRole('button', 'Continue filming', { exact: true });
   await scrollToControl(screen, continueLink, 'up');
   await expect(continueLink).toBeVisible();
