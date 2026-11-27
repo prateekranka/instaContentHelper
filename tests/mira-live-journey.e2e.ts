@@ -514,3 +514,28 @@ test('S2 saved live plan scrolls the final shot above the tab bar', async ({ app
   expect(footerBox!.y + footerBox!.height).toBeLessThanOrEqual(filmingTabs!.y - 8);
   await app.screenshot('filming-bottom-after-relaunch');
 });
+
+test('S2 Projects list scrolls its final row above the tab bar', async ({ app, screen, device }) => {
+  await launch(app, screen, device);
+  await root(screen, 'Projects');
+  const page = await screen.getByRole('scroll-view', { visible: true }).first().boundingBox();
+  const tabs = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
+  expect(page).not.toBeNull();
+  expect(tabs).not.toBeNull();
+  const x = page!.x + page!.width / 2;
+  const swipe = () => screen.swipe({
+    from: { x, y: tabs!.y - 36 },
+    to: { x, y: page!.y + 70 },
+  });
+  const lastDelete = screen.getByRole('button', 'Delete', { exact: true, visible: true }).last();
+  const rowPosition = async () => {
+    const box = await lastDelete.boundingBox();
+    return box!.y + box!.height;
+  };
+  for (let step = 0; step < 16; step += 1) await swipe();
+  const settledPosition = await rowPosition();
+  await swipe();
+  await expect.poll(rowPosition).toBeCloseTo(settledPosition, 0);
+  expect(settledPosition).toBeLessThanOrEqual(tabs!.y - 8);
+  await app.screenshot('projects-final-row-above-tab-bar');
+});
