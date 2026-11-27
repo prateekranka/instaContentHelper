@@ -1,3 +1,4 @@
+import os
 import pathlib
 import subprocess
 import signal
@@ -5,7 +6,7 @@ import uuid
 
 root = pathlib.Path(__file__).resolve().parent.parent
 name = 'mira-contract-' + uuid.uuid4().hex[:12]
-docker = ['docker', '--host=unix:///var/run/docker.sock']
+docker = ['docker', f"--host={os.environ.get('DOCKER_HOST', 'unix:///var/run/docker.sock')}"]
 def interrupted(_number, _frame):
     raise SystemExit('SQL check interrupted')
 signal.signal(signal.SIGTERM, interrupted)
@@ -22,7 +23,13 @@ try:
     finally:
         log.terminate()
         log.wait(timeout=5)
-    subprocess.run(docker + ['cp', str(root/'supabase/migrations/20261026170000_mira_generation_jobs.sql'), name+':/migration.sql'], check=True)
+    migrations = [
+        '20261026170000_mira_generation_jobs.sql',
+        '20261119012500_mira_three_active_jobs.sql',
+        '20261127190000_mira_job_state_machine.sql',
+    ]
+    for migration in migrations:
+        subprocess.run(docker + ['cp', str(root/'supabase/migrations'/migration), f'{name}:/{migration}'], check=True)
     with (root/'supabase/functions/mira-generation/jobs_test.sql').open('rb') as stream:
         subprocess.run(docker + ['exec', '-i', name, 'psql', '-U', 'postgres'], stdin=stream, check=True, timeout=40)
 finally:
