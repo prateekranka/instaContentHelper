@@ -554,6 +554,7 @@ test('the deployed Mira endpoint generates three Today cards in one parallel run
   const began = Date.now();
   const records = await Promise.all(todayAngles.map(async (angle) => {
     const id = crypto.randomUUID();
+    const steps: { step: string; atMillis: number }[] = [];
     async function request(action: 'start' | 'status') {
       const response = await fetch('https://zogvvrxhiwozjmufvddu.supabase.co/functions/v1/mira-generation', {
         method: 'POST',
@@ -576,6 +577,8 @@ test('the deployed Mira endpoint generates three Today cards in one parallel run
       });
       const body = await response.json();
       if (!response.ok) throw new Error(`Mira ${action} HTTP ${response.status}: ${body.error ?? 'unknown'}`);
+      const step = body.job.step;
+      if (step && step !== steps.at(-1)?.step) steps.push({ step, atMillis: Date.now() - began });
       return body.job;
     }
     try {
@@ -588,11 +591,11 @@ test('the deployed Mira endpoint generates three Today cards in one parallel run
       const output = job.output;
       const elapsedSeconds = (Date.now() - began) / 1_000;
       return {
-        id, angle, admittedAt, elapsedSeconds, state: job.state, error: job.error,
+        id, angle, admittedAt, elapsedSeconds, steps, state: job.state, error: job.error,
         bytes: output ? Buffer.byteLength(JSON.stringify(output)) : 0, output,
       };
     } catch (error) {
-      return { id, angle, elapsedSeconds: (Date.now() - began) / 1_000, state: 'request_failed',
+      return { id, angle, elapsedSeconds: (Date.now() - began) / 1_000, state: 'request_failed', steps,
         error: error instanceof Error ? error.message : String(error), bytes: 0, output: undefined };
     }
   }));
@@ -601,6 +604,9 @@ test('the deployed Mira endpoint generates three Today cards in one parallel run
   for (const record of records) {
     expect(record.elapsedSeconds).toBeLessThanOrEqual(60);
     expect(record.state).toBe('succeeded');
+    if (process.env.MIRA_API_E2E_EXPECT_STEPS === '1') {
+      expect(record.steps.at(-1)?.step).toBe('storyboard_ready');
+    }
     const output = record.output;
     expect(output.ideas).toHaveLength(1);
     expect(output.conflicts).toHaveLength(0);

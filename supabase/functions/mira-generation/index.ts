@@ -185,10 +185,11 @@ export async function handleMira(
   return response;
 }
 function toJob(row: Record<string, unknown>) {
+  const expired = row.status === "running" &&
+    typeof row.lease_until === "string" &&
+    Date.parse(row.lease_until) <= Date.now();
   const phase = (row.status === "queued" && Number(row.attempts) > 0) ||
-      (row.status === "running" && Number(row.attempts) < 3 &&
-        typeof row.lease_until === "string" &&
-        Date.parse(row.lease_until) <= Date.now())
+      (expired && Number(row.attempts) < 3)
     ? "waiting_to_retry"
     : row.status;
   return {
@@ -199,7 +200,7 @@ function toJob(row: Record<string, unknown>) {
       ? "working"
       : row.status,
     phase,
-    step: phase === "running" || phase === "succeeded"
+    step: (phase === "running" && !expired) || phase === "succeeded"
       ? row.step ?? undefined
       : undefined,
     output: row.output ?? undefined,
