@@ -347,7 +347,9 @@ test('S1 B1 the Projects shot list asks her to approve the words before filming'
   const back = screen.getByTestId('BackButton');
   await expect(screen.getByTestId('mira.words.approve')).toBeVisible();
   await back.tap();
-  await tap(screen, screen.getByRole('button', 'Shots', { exact: true }));
+  const shotsSection = screen.getByRole('button', 'Shots', { exact: true });
+  await scrollToControl(screen, shotsSection, 'up');
+  await tap(screen, shotsSection);
   const approveLink = screen.getByTestId('mira.shots.approve');
   await scrollToControl(screen, approveLink, 'up');
   await expect(approveLink).toBeVisible();
@@ -461,7 +463,7 @@ test('S1 B5 Stop on an idea that the server never took ends as stopped', async (
   await dismissSystemVerification(screen);
   await startTodayCard(screen, 'Demo stop unknown', 3);
   await expect(screen.getByTestId('mira.today.waiting.3')).toBeVisible({ timeout: 10_000 });
-  await screen.getByRole('button', 'More', { exact: true }).tap();
+  await screen.getByRole('pop-up-button', 'More', { exact: true }).tap();
   await screen.getByRole('button', 'Stop this idea', { exact: true }).tap();
   await expect(screen.getByText('This idea was stopped.', { exact: true, visible: true })).toBeVisible();
   await expect(screen.getByRole('button', 'Try again', { exact: true, visible: true })).toBeVisible();
