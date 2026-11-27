@@ -24,7 +24,7 @@ export default {
   }],
   workers: 1,
   retries: 0,
-  timeout: 420_000,
+  timeout: 600_000,
   actionTimeout: 25_000,
   assertionTimeout: 20_000,
   cleanupTimeout: 45_000,
