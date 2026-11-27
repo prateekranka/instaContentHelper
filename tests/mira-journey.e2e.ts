@@ -640,6 +640,7 @@ test('S2 resumes cards, words, filming plan and filming with content clear of th
   await row.tap();
   await screen.getByTestId('BackButton').tap();
   await bottomAboveTabs(app, screen, screen.getByRole('button', 'Share current plan', { exact: true }), 's2-script-bottom');
+  await scrollToControl(screen, screen.getByRole('textbox', 'Project name', { exact: true }), 'up');
   const shots = await sectionControl(screen, 'Shots');
   await scrollToControl(screen, shots, 'up');
   await tap(screen, shots);
