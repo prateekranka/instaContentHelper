@@ -165,14 +165,16 @@ final class MiraStore {
     ) {
         guard let project = project(id), project.script != nil else { return }
         let current = wordsStates[id] ?? .reviewing
-        guard let (next, effect) = wordsState(project).handle(event) else { return }
-        wordsStates[id] = next
         if case .appeared = event {
+            if let (next, _) = current.handle(event) { wordsStates[id] = next }
             if case .needsReconnect = requestState(project.job) {
                 sendWords(id, .reconnect, service: service)
             }
             advanceWordsIfVisible(id)
+            return
         }
+        guard let (next, effect) = wordsState(project).handle(event) else { return }
+        wordsStates[id] = next
         do {
             switch effect {
             case .approve:
@@ -497,8 +499,11 @@ final class MiraStore {
         generationTasks[job.id] = Task {
             defer { generationTasks[job.id] = nil }
             guard await flush(), !Task.isCancelled else {
-                if !Task.isCancelled, case .waitingToStart = transitionRequest(job, .saveFailed) {
-                    scheduleWaiting()
+                guard !Task.isCancelled else { return }
+                if waitingStarts[job.id] != nil {
+                    wait(id, job: job, cardID: cardID, service: service)
+                } else {
+                    transitionRequest(job, .saveFailed)
                 }
                 return
             }

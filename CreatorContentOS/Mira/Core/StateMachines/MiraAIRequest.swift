@@ -29,8 +29,7 @@ enum MiraAIRequest: Equatable {
         switch (self, event) {
         case (.needsReconnect, .send): .sending(attempts: 0)
         case (.waitingToStart(let attempts), .send): .sending(attempts: attempts)
-        case (.sending(let attempts), .saveFailed):
-            attempts > 0 ? .waitingToStart(attempts: attempts) : .needsReconnect(reason: nil)
+        case (.sending, .saveFailed): .needsReconnect(reason: nil)
         case (.sending, .accepted(let id)): .working(jobID: id)
         case (.sending(let attempts), .refused):
             attempts < 30 ? .waitingToStart(attempts: attempts + 1)

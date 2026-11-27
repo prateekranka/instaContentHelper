@@ -57,7 +57,8 @@ enum MiraWordsState {
 
     func handle(_ event: MiraWordsEvent) -> (Self, MiraWordsEffect?)? {
         switch (self, event) {
-        case (_, .appeared), (_, .requestStarted): (.reviewing, nil)
+        case (.opening, .appeared), (_, .requestStarted): (.reviewing, nil)
+        case (_, .appeared): (self, nil)
         case (.reviewing, .change), (.ready, .change), (.needsShots, .change), (.retry, .change):
             (.changing(""), nil)
         case (.changing, .note(let text)): (.changing(text), nil)
