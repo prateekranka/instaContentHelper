@@ -27,7 +27,8 @@ function record(entry: Entry) {
 
 async function request(scenario: number, action: string, calls: number, tap: () => Promise<void>) {
   const prior = recorded();
-  expect(prior.reduce((total, entry) => total + (entry.calls ?? 0), 0) + calls).toBeLessThanOrEqual(12);
+  const limit = Number(process.env.MIRA_E2E_LIVE_REQUEST_LIMIT ?? '12');
+  expect(prior.reduce((total, entry) => total + (entry.calls ?? 0), 0) + calls).toBeLessThanOrEqual(limit);
   expect(prior.filter(entry => entry.scenario === scenario && entry.action === action && entry.calls)).toHaveLength(0);
   record({ scenario, action, calls });
   await tap();
