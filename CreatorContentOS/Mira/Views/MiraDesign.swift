@@ -103,7 +103,7 @@ struct MiraTextInput: View {
     }
 
     private var field: some View {
-        TextField(title, text: Binding(get: { text }, set: update), axis: axis)
+        TextField(title, text: Binding(get: { text }, set: { newValue in update(newValue) }), axis: axis)
             .submitLabel(.done)
             .focused(focus, equals: id)
             .onSubmit { focus.wrappedValue = nil }
