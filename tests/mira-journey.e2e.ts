@@ -669,41 +669,8 @@ test('S2 resumes cards, words, filming plan and filming with content clear of th
     's2-resume-filming');
 });
 
-test('S3 microphone shows one action before and after a recording attempt', async ({ app, screen, device }) => {
-  await launchMira(app, screen, device);
-  await openToday(screen);
-  const mic = screen.getByTestId('mira.today.mic');
-  await expect(mic).toHaveAccessibleName('Speak instead of typing');
-  await app.screenshot('mic-idle');
-  await mic.tap();
-  const recording = screen.getByText(/^Recording · \d+ of 60 seconds\.$/, { visible: true });
-  const denied = screen.getByText('Allow Mira to use the microphone in Settings, or type your request.', { exact: true });
-  const prompt = screen.getByRole('alert').filter({ hasText: /microphone|speech recognition/i });
-  await expect.poll(async () => {
-    if (await prompt.isVisible()) return 'prompt';
-    if (await recording.isVisible()) return 'recording';
-    if (await denied.isVisible()) return 'denied';
-    return 'pending';
-  }, { timeout: 20_000 }).not.toBe('pending');
-  if (await prompt.isVisible()) {
-    await app.screenshot('mic-system-permission');
-    test.skip(true, 'The phone asks for access. No system permission choice was made.');
-  }
-  if (await denied.isVisible()) {
-    await expect(mic).toHaveAccessibleName('Open Settings');
-    await app.screenshot('mic-denied');
-    return;
-  }
-  await expect(recording).toBeVisible();
-  await expect(mic).toHaveAccessibleName('Stop recording');
-  await app.screenshot('mic-recording');
-  await mic.tap();
-  await expect(recording).not.toBeVisible();
-  await expect(mic).toHaveAccessibleName('Speak instead of typing');
-  await app.screenshot('mic-stopped');
-});
-
 test('S3 relaunch keeps the sample projects', async ({ app, screen, device }) => {
+  await device.closeApp();
   await launchMira(app, screen, device);
   await openToday(screen);
   for (let step = 0; step < 2; step += 1) {
@@ -785,3 +752,41 @@ async function stopLeftoverIdeasAfterOpening(screen: Screen) {
   await stopLeftoverIdeas(screen);
   await expect(screen.getByTestId('mira.today.make')).toBeVisible();
 }
+
+test('S3 microphone shows one action before and after a recording attempt', { video: 'on' }, async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await openToday(screen);
+  const mic = screen.getByTestId('mira.today.mic');
+  await expect(mic).toHaveAccessibleName('Speak instead of typing');
+  await app.screenshot('mic-idle');
+  try {
+    await mic.tap();
+    const recording = screen.getByText(/^Recording · \d+ of 60 seconds\.$/, { visible: true });
+    const denied = screen.getByText('Allow Mira to use the microphone in Settings, or type your request.', { exact: true });
+    const prompt = screen.getByRole('alert', /microphone|speech recognition/i);
+    await expect.poll(async () => {
+      if (await prompt.isVisible()) return 'prompt';
+      if (await recording.isVisible()) return 'recording';
+      if (await denied.isVisible()) return 'denied';
+      return 'pending';
+    }, { timeout: 20_000 }).not.toBe('pending');
+    if (await prompt.isVisible()) {
+      await app.screenshot('mic-system-permission');
+      test.skip(true, 'The phone asks for access. No system permission choice was made.');
+    }
+    if (await denied.isVisible()) {
+      await expect(mic).toHaveAccessibleName('Open Settings');
+      await app.screenshot('mic-denied');
+      return;
+    }
+    await expect(recording).toBeVisible();
+    await expect(mic).toHaveAccessibleName('Stop recording');
+    await app.screenshot('mic-recording');
+    await mic.tap();
+    await expect(recording).not.toBeVisible();
+    await expect(mic).toHaveAccessibleName('Speak instead of typing');
+    await app.screenshot('mic-stopped');
+  } finally {
+    await device.closeApp();
+  }
+});
