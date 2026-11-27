@@ -119,11 +119,16 @@ struct MiraRootView: View {
         .task { await store.load() }
         .onChange(of: scenePhase) { _, phase in if phase != .active { Task { await store.flush() } } }
     }
-    private var profileButton: some View {
-        Button {
+    @ViewBuilder private var profileButton: some View {
+        let button = Button {
             sheet = .profile
         } label: {
             Label("Profile", systemImage: "person.crop.circle")
+        }
+        if DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil {
+            button.accessibilityIdentifier("mira.fixture.profile")
+        } else {
+            button
         }
     }
     private var today: some View {
