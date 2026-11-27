@@ -30,6 +30,24 @@ async function openToday(screen: Screen) {
   const todayTab = screen.getByRole('tab', 'Today', { exact: true });
   if (await todayTab.count() > 0) await todayTab.first().tap();
   await backOut(screen);
+  await stopLeftoverIdeas(screen);
+}
+
+async function stopLeftoverIdeas(screen: Screen) {
+  for (let batch = 0; batch < 3; batch += 1) {
+    const open = screen.getByTestId('mira.today.open');
+    if (await open.count() === 0) return;
+    await open.tap();
+    await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
+    const busy = screen.getByRole('button', /^Idea \d of 3, (waiting to start|Mira is making it)$/);
+    for (let idea = 0; idea < 3 && await busy.count() > 0; idea += 1) {
+      await busy.first().tap();
+      await screen.getByRole('pop-up-button', 'More', { exact: true }).tap();
+      await screen.getByRole('button', 'Stop this idea', { exact: true }).tap();
+      await expect(screen.getByText('This idea was stopped.', { exact: true, visible: true })).toBeVisible();
+    }
+    await backOut(screen);
+  }
 }
 
 test('demo moves from an idea to a saved filming plan', async ({ app, screen, device }) => {
