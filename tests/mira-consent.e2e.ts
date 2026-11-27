@@ -1,7 +1,7 @@
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type Screen } from 'e2e';
 import { launchArguments } from '../e2e.mira.config';
-import { scrollToControl, tapVisibleControl } from './mobile-support';
+import { scrollToControl, tapVisibleControl, waitForMobileApp } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
 
@@ -10,6 +10,7 @@ async function openConsentStatus(screen: Screen, device: Device, override?: 'unk
     relaunch: true,
     launchArguments: override ? [...launchArguments, '-MCO_AI_CONSENT_OVERRIDE', override] : launchArguments,
   });
+  await waitForMobileApp(screen);
   const tabs = screen.getByRole('tablist', 'Tab Bar', { exact: true });
   await expect(tabs).toBeAttached({ timeout: 45_000 });
   const alert = screen.getByRole('alert', /Apple.Account Verification/);

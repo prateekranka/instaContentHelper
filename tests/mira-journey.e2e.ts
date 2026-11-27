@@ -1,7 +1,7 @@
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type App, type Locator, type Screen } from 'e2e';
 import { fixtureSessionArguments } from '../e2e.mira.config';
-import { closeKeyboard, mobileKeyboard, scrollToControl, tapVisibleControl } from './mobile-support';
+import { closeKeyboard, mobileKeyboard, scrollToControl, tapVisibleControl, waitForMobileApp } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
 const english = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_APPEARANCE', 'light'];
@@ -11,20 +11,10 @@ async function tap(screen: Screen, locator: Locator) {
   await tapVisibleControl(screen, locator);
 }
 
-async function appIsRunning(screen: Screen) {
-  try {
-    await screen.getByTestId('BackButton').count();
-    return true;
-  } catch (error) {
-    if (error instanceof Error && /is not running/.test(error.message)) return false;
-    throw error;
-  }
-}
-
 async function launchMira(app: App, screen: Screen, device: Device, install = false) {
   if (install && process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
   await app.open();
-  await expect.poll(() => appIsRunning(screen), { timeout: 20_000, interval: 1_000 }).toBe(true);
+  await waitForMobileApp(screen);
   await dismissSystemVerification(screen);
 }
 
@@ -96,7 +86,7 @@ async function stopLeftoverIdeas(screen: Screen) {
       await busy.first().tap();
       await (await menuControl(screen, 'More')).tap();
       await screen.getByRole('button', 'Stop this idea', { exact: true }).tap();
-      await expect(screen.getByText('This idea was stopped.', { exact: true, visible: true })).toBeVisible();
+      await expect(screen.getByText('This idea was stopped.', { exact: true, visible: true }).first()).toBeVisible();
     }
     await backOut(screen);
   }
@@ -699,6 +689,7 @@ test('S3 an isolated damaged library restores its last safe save', async ({ app,
       '-MCO_QA_DAMAGED_LIBRARY', '1',
     ],
   });
+  await waitForMobileApp(screen);
   await dismissSystemVerification(screen);
   await expect(screen.getByText(/Recovered your last safe save/)).toBeVisible();
   await app.screenshot('damaged-file-restored');
@@ -721,7 +712,11 @@ test('S3 editing a confirmed sample brief requires review again', async ({ app, 
   await fillText(original, 'Caption: Oats from home');
   await closeKeyboard(screen, original);
   await tap(screen, screen.getByRole('button', 'Extract proposed requirements', { exact: true }));
-  await tap(screen, screen.getByRole('button', 'Use this', { exact: true }));
+  const close = screen.getByRole('button', 'Close', { exact: true });
+  await expect(close).not.toBeVisible();
+  const use = screen.getByRole('button', 'Use this', { exact: true });
+  await scrollToControl(screen, use, 'up');
+  await tap(screen, use);
   await tap(screen, brief);
   const confirm = screen.getByRole('button', 'Confirm these requirements', { exact: true });
   await scrollToControl(screen, confirm);
@@ -735,14 +730,17 @@ test('S3 editing a confirmed sample brief requires review again', async ({ app, 
   await scrollToControl(screen, confirm);
   await expect(confirm).toBeDisabled();
   await app.screenshot('brief-source-changed');
-  await screen.getByRole('button', 'Close', { exact: true }).tap();
+  await close.tap();
   await expect(confirmed).not.toBeAttached();
 });
 
 test('S3 server backoff shows Waiting to try again and can stop', async ({ app, screen, device }) => {
   await launchMira(app, screen, device);
   await startTodayCard(screen, 'Demo server retry', 1);
-  await expect(screen.getByText('Waiting to try again', { exact: true, visible: true })).toBeVisible();
+  const selected = screen.getByTestId('mira.today.page.1');
+  await expect(selected).toBeSelected();
+  await expect(selected).toHaveAccessibleName('Idea 1 of 3, Waiting to try again');
+  await expect(screen.getByText('Waiting to try again', { exact: true, visible: true }).first()).toBeVisible();
   await app.screenshot('waiting-to-try-again');
   await stopLeftoverIdeasAfterOpening(screen);
 });
@@ -753,40 +751,25 @@ async function stopLeftoverIdeasAfterOpening(screen: Screen) {
   await expect(screen.getByTestId('mira.today.make')).toBeVisible();
 }
 
-test('S3 microphone shows one action before and after a recording attempt', { video: 'on' }, async ({ app, screen, device }) => {
+test('S3 denied speech shows one Settings action and still accepts typing', async ({ app, screen, device }) => {
   await launchMira(app, screen, device);
   await openToday(screen);
   const mic = screen.getByTestId('mira.today.mic');
   await expect(mic).toHaveAccessibleName('Speak instead of typing');
   await app.screenshot('mic-idle');
-  try {
-    await mic.tap();
-    const recording = screen.getByText(/^Recording · \d+ of 60 seconds\.$/, { visible: true });
-    const denied = screen.getByText('Allow Mira to use the microphone in Settings, or type your request.', { exact: true });
-    const prompt = screen.getByRole('alert', /microphone|speech recognition/i);
-    await expect.poll(async () => {
-      if (await prompt.isVisible()) return 'prompt';
-      if (await recording.isVisible()) return 'recording';
-      if (await denied.isVisible()) return 'denied';
-      return 'pending';
-    }, { timeout: 20_000 }).not.toBe('pending');
-    if (await prompt.isVisible()) {
-      await app.screenshot('mic-system-permission');
-      test.skip(true, 'The phone asks for access. No system permission choice was made.');
-    }
-    if (await denied.isVisible()) {
-      await expect(mic).toHaveAccessibleName('Open Settings');
-      await app.screenshot('mic-denied');
-      return;
-    }
-    await expect(recording).toBeVisible();
-    await expect(mic).toHaveAccessibleName('Stop recording');
-    await app.screenshot('mic-recording');
-    await mic.tap();
-    await expect(recording).not.toBeVisible();
-    await expect(mic).toHaveAccessibleName('Speak instead of typing');
-    await app.screenshot('mic-stopped');
-  } finally {
-    await device.closeApp();
-  }
+  await mic.tap();
+  const denied = screen.getByText(
+    'To use voice input, allow Speech Recognition and Microphone in Settings. You can still type.', { exact: true },
+  );
+  const settings = screen.getByRole('button', 'Open Settings', { exact: true, visible: true });
+  await expect(denied).toBeVisible();
+  await expect(settings).toHaveCount(1);
+  await expect(mic).toHaveAccessibleName('Open Settings');
+  await expect(screen.getByRole('alert')).not.toBeVisible();
+  await app.screenshot('mic-denied');
+  const request = screen.getByTestId('mira.today.request');
+  await fillText(request, 'Film a sample clip at home');
+  await closeKeyboard(screen, request);
+  expect(await request.inputValue()).toBe('Film a sample clip at home');
+  await app.screenshot('mic-denied-typing');
 });
