@@ -19,22 +19,38 @@ struct MiraDocument: Codable, Equatable, Sendable {
             ?? unfinished.max { $0.updatedAt < $1.updatedAt }
     }
     func restoredNavigation() -> MiraNavigation {
-        func valid(_ route: MiraRoute) -> Bool {
-            guard let project = projects.first(where: { $0.id == route.projectID }) else { return false }
-            if case .todayCards = route { return project.todayCards?.isEmpty == false }
-            if case .shooting = route { return project.storyboard != nil }
-            return true
+        func restored(_ path: [MiraRoute]) -> [MiraRoute] {
+            var result: [MiraRoute] = []
+            for route in path {
+                guard let project = projects.first(where: { $0.id == route.projectID }) else { continue }
+                var next = route
+                switch route {
+                case .todayCards:
+                    if project.todayCards?.isEmpty != false { continue }
+                case .shooting(let id), .done(let id):
+                    if project.storyboard == nil { continue }
+                    if !project.isApproved {
+                        guard project.script != nil else { continue }
+                        next = .words(id)
+                    }
+                case .project, .words: break
+                }
+                if result.last != next { result.append(next) }
+            }
+            return result
         }
         if var navigation {
-            navigation.today = navigation.today.filter(valid)
-            navigation.projects = navigation.projects.filter(valid)
+            navigation.today = restored(navigation.today)
+            navigation.projects = restored(navigation.projects)
             return navigation
         }
         guard let id = position.projectID, let project = projects.first(where: { $0.id == id }) else {
             return MiraNavigation()
         }
         var path: [MiraRoute] = [.project(id)]
-        if position.screen == "shooting", project.storyboard != nil { path.append(.shooting(id)) }
+        if position.screen == "shooting", project.storyboard != nil, project.isApproved {
+            path.append(.shooting(id))
+        }
         return MiraNavigation(today: path)
     }
 }

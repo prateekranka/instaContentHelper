@@ -30,6 +30,24 @@ async function openToday(screen: Screen) {
   const todayTab = screen.getByRole('tab', 'Today', { exact: true });
   if (await todayTab.count() > 0) await todayTab.first().tap();
   await backOut(screen);
+  await stopLeftoverIdeas(screen);
+}
+
+async function stopLeftoverIdeas(screen: Screen) {
+  for (let batch = 0; batch < 3; batch += 1) {
+    const open = screen.getByTestId('mira.today.open');
+    if (await open.count() === 0) return;
+    await open.tap();
+    await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
+    const busy = screen.getByRole('button', /^Idea \d of 3, (waiting to start|Mira is making it)$/);
+    for (let idea = 0; idea < 3 && await busy.count() > 0; idea += 1) {
+      await busy.first().tap();
+      await screen.getByRole('pop-up-button', 'More', { exact: true }).tap();
+      await screen.getByRole('button', 'Stop this idea', { exact: true }).tap();
+      await expect(screen.getByText('This idea was stopped.', { exact: true, visible: true })).toBeVisible();
+    }
+    await backOut(screen);
+  }
 }
 
 test('demo moves from an idea to a saved filming plan', async ({ app, screen, device }) => {
@@ -310,4 +328,169 @@ test('Today has one question, chips, Continue rules and start options in Profile
   await screen.getByTestId('BackButton').tap();
   await expect(screen.getByTestId('mira.today.continue')).toBeVisible();
   await app.screenshot(`d1-today-continue-${look}`);
+});
+
+async function startTodayCard(screen: Screen, request: string, card: number) {
+  await openToday(screen);
+  const make = screen.getByTestId('mira.today.make');
+  await expect(make).toBeVisible({ timeout: 45_000 });
+  await screen.getByTestId('mira.today.request').fill(request);
+  await screen.getByRole('button', 'Done', { exact: true }).tap();
+  await make.tap();
+  await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
+  await screen.getByTestId(`mira.today.page.${card}`).tap();
+}
+
+async function chooseTodayCard(screen: Screen, card: number, title: string) {
+  await startTodayCard(screen, '', card);
+  await expect(screen.getByText(title, { exact: true, visible: true })).toBeVisible({ timeout: 45_000 });
+  await tap(screen, screen.getByTestId(`mira.today.makeCard.${card}`));
+  await expect(screen.getByTestId('mira.words.approve')).toBeVisible();
+}
+
+async function openProjectFromList(screen: Screen, title: string) {
+  await screen.getByRole('tab', 'Projects', { exact: true }).tap();
+  await backOut(screen);
+  const row = screen.getByText(title, { exact: true, visible: true }).first();
+  await scrollToControl(screen, row);
+  await row.tap();
+}
+
+test('S1 B1 the Projects shot list asks her to approve the words before filming', async ({ app, screen, device }) => {
+  if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
+  await dismissSystemVerification(screen);
+  await chooseTodayCard(screen, 1, 'A quick movement break');
+  await openProjectFromList(screen, 'A quick movement break');
+  const back = screen.getByTestId('BackButton');
+  await expect(screen.getByTestId('mira.words.approve')).toBeVisible();
+  await back.tap();
+  const shotsSection = screen.getByRole('tab', 'Shots', { exact: true });
+  await scrollToControl(screen, shotsSection, 'up');
+  await tap(screen, shotsSection);
+  const approveLink = screen.getByTestId('mira.shots.approve');
+  await scrollToControl(screen, approveLink, 'up');
+  await expect(approveLink).toBeVisible();
+  await expect(screen.getByRole('button', 'Start filming', { exact: true })).not.toBeVisible();
+  await app.screenshot(`s1-b1-shots-approve-${look}`);
+  await tap(screen, approveLink);
+  await tap(screen, screen.getByTestId('mira.words.approve'));
+  await expect(screen.getByText('Shot 1 of 3', { exact: true, visible: true })).toBeVisible({ timeout: 45_000 });
+  await back.tap();
+  await back.tap();
+  await scrollToControl(screen, shotsSection, 'up');
+  await tap(screen, shotsSection);
+  const continueLink = screen.getByRole('button', 'Continue filming', { exact: true });
+  await scrollToControl(screen, continueLink, 'up');
+  await expect(continueLink).toBeVisible();
+  await expect(screen.getByTestId('mira.shots.approve')).not.toBeVisible();
+  await app.screenshot(`s1-b1-shots-approved-${look}`);
+});
+
+test('S1 B2 open filming closes its controls when the approval is undone', async ({ app, screen, device }) => {
+  if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
+  await dismissSystemVerification(screen);
+  await chooseTodayCard(screen, 2, 'My simple breakfast');
+  await tap(screen, screen.getByTestId('mira.words.approve'));
+  await expect(screen.getByText('Shot 1 of 3', { exact: true, visible: true })).toBeVisible({ timeout: 45_000 });
+  await openProjectFromList(screen, 'My simple breakfast');
+  await expect(screen.getByText('Shot 1 of 3', { exact: true, visible: true })).toBeVisible();
+  await screen.getByTestId('BackButton').tap();
+  await screen.getByRole('button', 'Plan options', { exact: true }).tap();
+  await screen.getByRole('button', 'Undo last content change', { exact: true }).tap();
+  await screen.getByRole('tab', 'Today', { exact: true }).tap();
+  const message = screen.getByTestId('mira.approveFirst.message');
+  await expect(message).toBeVisible();
+  await expect(screen.getByRole('button', 'Mark filmed', { exact: true })).not.toBeVisible();
+  await expect(screen.getByText('Shot 1 of 3', { exact: true, visible: true })).not.toBeVisible();
+  await app.screenshot(`s1-b2-filming-gate-${look}`);
+
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
+  await dismissSystemVerification(screen);
+  await expect(screen.getByTestId('mira.words.approve')).toBeVisible({ timeout: 45_000 });
+  await expect(message).not.toBeVisible();
+  await app.screenshot(`s1-b2-relaunch-words-${look}`);
+  await tap(screen, screen.getByTestId('mira.words.approve'));
+  await expect(screen.getByText('Shot 1 of 3', { exact: true, visible: true })).toBeVisible({ timeout: 45_000 });
+  await screen.getByRole('tab', 'Projects', { exact: true }).tap();
+  await screen.getByRole('button', 'Plan options', { exact: true }).tap();
+  await screen.getByRole('button', 'Undo last content change', { exact: true }).tap();
+  await screen.getByRole('tab', 'Today', { exact: true }).tap();
+  await expect(message).toBeVisible();
+  await tap(screen, screen.getByTestId('mira.approveFirst.words'));
+  await expect(screen.getByTestId('mira.words.approve')).toBeVisible();
+  await tap(screen, screen.getByTestId('mira.words.approve'));
+  await expect(screen.getByText('Shot 1 of 3', { exact: true, visible: true })).toBeVisible({ timeout: 45_000 });
+  const mark = screen.getByRole('button', 'Mark filmed', { exact: true });
+  await scrollToControl(screen, mark);
+  await expect(mark).toBeVisible();
+  await screen.getByTestId('BackButton').tap();
+  await expect(screen.getByTestId('mira.words.start')).toBeVisible();
+});
+
+test('S1 B3 Continue says Approve your words until she approves', async ({ app, screen, device }) => {
+  if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
+  await dismissSystemVerification(screen);
+  await chooseTodayCard(screen, 3, 'A small pause in my day');
+  await openToday(screen);
+  const continueCard = screen.getByTestId('mira.today.continue');
+  await expect(continueCard).toBeVisible();
+  await expect(screen.getByText('Approve your words', { exact: true })).toBeVisible();
+  await expect(screen.getByText('Start filming', { exact: true })).not.toBeVisible();
+  await app.screenshot(`s1-b3-continue-approve-${look}`);
+  await continueCard.tap();
+  await expect(screen.getByTestId('mira.words.approve')).toBeVisible();
+  await tap(screen, screen.getByTestId('mira.words.approve'));
+  await expect(screen.getByText('Shot 1 of 3', { exact: true, visible: true })).toBeVisible({ timeout: 45_000 });
+  await openToday(screen);
+  await expect(screen.getByText('Continue filming', { exact: true })).toBeVisible();
+  await screen.getByRole('tab', 'Projects', { exact: true }).tap();
+  await backOut(screen);
+  await expect(screen.getByText('Filming · Continue filming', { exact: true }).first()).toBeVisible();
+  await app.screenshot(`s1-b3-projects-stage-${look}`);
+});
+
+test('S1 B4 a full server shows Waiting to start and sends the idea again by itself', async ({ app, screen, device }) => {
+  if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
+  await dismissSystemVerification(screen);
+  await startTodayCard(screen, 'Demo busy server', 3);
+  const waiting = screen.getByTestId('mira.today.waiting.3');
+  await expect(waiting).toBeVisible({ timeout: 10_000 });
+  await expect(screen.getByText('Mira is making idea 3 of 3', { exact: true, visible: true })).not.toBeVisible();
+  await app.screenshot(`s1-b4-waiting-${look}`);
+  await screen.getByTestId('BackButton').tap();
+  const open = screen.getByTestId('mira.today.open');
+  await expect(open).toBeVisible();
+  await expect(screen.getByTestId('mira.today.make')).not.toBeVisible();
+  await app.screenshot(`s1-b4-today-open-${look}`);
+  await open.tap();
+  await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
+  await expect(screen.getByText('About 1 minute', { exact: true })).not.toBeVisible({ timeout: 45_000 });
+  await screen.getByTestId('mira.today.page.3').tap();
+  await expect(screen.getByText('A small pause in my day', { exact: true, visible: true })).toBeVisible();
+  await expect(waiting).not.toBeVisible();
+  await app.screenshot(`s1-b4-all-ready-${look}`);
+  await screen.getByTestId('BackButton').tap();
+  await expect(screen.getByTestId('mira.today.make')).toBeVisible();
+});
+
+test('S1 B5 Stop on an idea that the server never took ends as stopped', async ({ app, screen, device }) => {
+  if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
+  await dismissSystemVerification(screen);
+  await startTodayCard(screen, 'Demo stop unknown', 3);
+  await expect(screen.getByTestId('mira.today.waiting.3')).toBeVisible({ timeout: 10_000 });
+  await screen.getByRole('pop-up-button', 'More', { exact: true }).tap();
+  await screen.getByRole('button', 'Stop this idea', { exact: true }).tap();
+  await expect(screen.getByText('This idea was stopped.', { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByRole('button', 'Try again', { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByTestId('mira.today.waiting.3')).not.toBeVisible();
+  await app.screenshot(`s1-b5-stopped-${look}`);
+  await screen.getByTestId('mira.today.page.1').tap();
+  await expect(screen.getByText('A quick movement break', { exact: true, visible: true })).toBeVisible();
+  await screen.getByTestId('BackButton').tap();
+  await expect(screen.getByTestId('mira.today.make')).toBeVisible();
 });

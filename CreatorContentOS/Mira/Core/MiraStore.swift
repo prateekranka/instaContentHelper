@@ -18,6 +18,14 @@ final class MiraStore {
     private var saveTask: Task<Void, Never>?
     private var generationTasks: [UUID: Task<Void, Never>] = [:]
     private var editingDrafts: [UUID: UUID] = [:]
+    private struct WaitingStart {
+        var projectID: UUID
+        var cardID: UUID?
+        var service: any MiraGenerationService
+        var tries = 0
+    }
+    private var waitingStarts: [UUID: WaitingStart] = [:]
+    private var waitingTimer: Task<Void, Never>?
     init(repository: any MiraProjectRepository) { self.repository = repository }
     func load() async {
         guard !loaded else { return }
@@ -32,6 +40,7 @@ final class MiraStore {
         }
     }
     func project(_ id: UUID) -> MiraProject? { document.projects.first { $0.id == id } }
+    func isWaitingToStart(_ jobID: UUID) -> Bool { waitingStarts[jobID] != nil }
     func hasActiveRequest(_ id: UUID) -> Bool {
         guard let job = project(id)?.job else { return false }
         return generationTasks[job.id] != nil
@@ -75,14 +84,12 @@ final class MiraStore {
         }
     }
     func startFilming(_ id: UUID) {
-        guard let project = project(id), project.storyboard != nil, !project.storyboardIsStale else {
-            return
-        }
+        guard let project = project(id), project.canFilm else { return }
         update(id) { $0.startedFilming = true }
         visit(id, screen: .shooting)
     }
     func toggleFilmed(_ id: UUID, shotID: UUID) {
-        guard let project = project(id), !project.storyboardIsStale,
+        guard let project = project(id), project.canFilm,
             project.storyboard?.shots.contains(where: { $0.id == shotID }) == true
         else { return }
         update(id) {
@@ -384,7 +391,12 @@ final class MiraStore {
         guard generationTasks[job.id] == nil else { return }
         generationTasks[job.id] = Task {
             defer { generationTasks[job.id] = nil }
-            guard await flush(), !Task.isCancelled else { return }
+            guard await flush(), !Task.isCancelled else {
+                if waitingStarts[job.id] != nil, !Task.isCancelled {
+                    wait(id, job: job, cardID: cardID, service: service)
+                }
+                return
+            }
             await perform(id, job: job, cardID: cardID, service: service)
         }
     }
@@ -398,7 +410,15 @@ final class MiraStore {
 
     private func perform(_ id: UUID, job: MiraJob, cardID: UUID?, service: any MiraGenerationService) async {
         do {
-            var result = try await service.start(job)
+            var result: MiraJob
+            do {
+                result = try await service.start(job)
+            } catch MiraError.busy {
+                guard !Task.isCancelled, currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
+                wait(id, job: job, cardID: cardID, service: service)
+                return
+            }
+            waitingStarts[job.id] = nil
             for _ in 0..<45 {
                 try Task.checkCancellation()
                 guard currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
@@ -408,6 +428,7 @@ final class MiraStore {
             }
             try Task.checkCancellation()
             guard let project = project(id), currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
+            if result.state != .working { sendWaiting() }
             if let cardID {
                 receiveCard(id, cardID: cardID, pending: job, result: result)
                 return
@@ -430,6 +451,7 @@ final class MiraStore {
             }
         } catch {
             guard !Task.isCancelled, currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
+            waitingStarts[job.id] = nil
             if let cardID {
                 update(id) { project in
                     guard let index = project.todayCards?.firstIndex(where: { $0.id == cardID }) else { return }
@@ -440,6 +462,55 @@ final class MiraStore {
                 self.error = error.localizedDescription
             }
         }
+    }
+
+    private func wait(_ id: UUID, job: MiraJob, cardID: UUID?, service: any MiraGenerationService) {
+        let tries = (waitingStarts[job.id]?.tries ?? 0) + 1
+        guard tries <= 30 else {
+            waitingStarts[job.id] = nil
+            let message = "Mira is busy. Tap Reconnect to try again."
+            update(id) { project in
+                if let cardID, let index = project.todayCards?.firstIndex(where: { $0.id == cardID }) {
+                    project.todayCards?[index].job.error = message
+                } else if cardID == nil {
+                    project.job?.error = message
+                }
+            }
+            return
+        }
+        waitingStarts[job.id] = WaitingStart(projectID: id, cardID: cardID, service: service, tries: tries)
+        guard waitingTimer == nil else { return }
+        waitingTimer = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(20)) } catch { return }
+            self?.waitingTimer = nil
+            self?.sendWaiting()
+        }
+    }
+
+    private func sendWaiting() {
+        for (jobID, waiting) in waitingStarts {
+            guard let job = currentJob(waiting.projectID, cardID: waiting.cardID, matching: jobID) else {
+                waitingStarts[jobID] = nil
+                continue
+            }
+            run(waiting.projectID, job: job, cardID: waiting.cardID, service: waiting.service)
+        }
+    }
+
+    private func stopped(_ id: UUID, cardID: UUID?, jobID: UUID) {
+        waitingStarts[jobID] = nil
+        update(id) { project in
+            if let cardID, let index = project.todayCards?.firstIndex(where: { $0.id == cardID }),
+                project.todayCards?[index].job.id == jobID
+            {
+                project.todayCards?[index].job.state = .cancelled
+                project.todayCards?[index].job.error = nil
+            } else if cardID == nil, project.job?.id == jobID {
+                project.job?.state = .cancelled
+                project.job?.error = nil
+            }
+        }
+        sendWaiting()
     }
 
     private func receiveCard(_ id: UUID, cardID: UUID, pending: MiraJob, result: MiraJob) {
@@ -478,6 +549,7 @@ final class MiraStore {
         guard let card = project(id)?.todayCards?.first(where: { $0.id == cardID }),
             card.job.state == .working else { return }
         let job = card.job
+        waitingStarts[job.id] = nil
         generationTasks[job.id]?.cancel()
         await generationTasks[job.id]?.value
         guard currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
@@ -485,6 +557,9 @@ final class MiraStore {
             defer { generationTasks[job.id] = nil }
             do {
                 receiveCard(id, cardID: cardID, pending: job, result: try await service.cancel(job))
+                sendWaiting()
+            } catch MiraError.notFound {
+                stopped(id, cardID: cardID, jobID: job.id)
             } catch {
                 update(id) { project in
                     guard let index = project.todayCards?.firstIndex(where: { $0.id == cardID }) else { return }
@@ -512,11 +587,15 @@ final class MiraStore {
     }
     func cancel(_ id: UUID, service: any MiraGenerationService) async {
         guard let job = project(id)?.job else { return }
+        waitingStarts[job.id] = nil
         generationTasks[job.id]?.cancel()
         await generationTasks[job.id]?.value
         do {
             let result = try await service.cancel(job)
             update(id) { $0.job = result }
+            sendWaiting()
+        } catch MiraError.notFound {
+            stopped(id, cardID: nil, jobID: job.id)
         } catch {
             update(id) {
                 $0.job?.error = "Cancellation is not confirmed. Reconnect to reconcile the saved request."

@@ -239,12 +239,35 @@ enum MiraFixtures {
     }
 }
 
+final class MiraFixtureRefusals: @unchecked Sendable {
+    private let lock = NSLock()
+    private var refused: [UUID: Int] = [:]
+    func refuse(_ id: UUID, times: Int) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let count = refused[id, default: 0]
+        refused[id] = count + 1
+        return count < times
+    }
+}
+
 struct MiraFixtureGenerationService: MiraGenerationService {
+    static let busyRequest = "Demo busy server"
+    static let unknownStopRequest = "Demo stop unknown"
+    private static let refusals = MiraFixtureRefusals()
     var failTodayCard = false
     var slowTodayCards = false
     func start(_ job: MiraJob) async throws -> MiraJob {
         try Task.checkCancellation()
         var result = job
+        let request = job.input.request
+        if job.input.operation == .todayIdea, [Self.busyRequest, Self.unknownStopRequest].contains(request) {
+            let last = job.input.angle?.hasPrefix("A personal") == true
+            if last && (request == Self.unknownStopRequest || Self.refusals.refuse(job.id, times: 2)) {
+                throw MiraError.busy
+            }
+            if request == Self.busyRequest && !last { return result }
+        }
         if slowTodayCards, job.input.operation == .todayIdea { return result }
         if failTodayCard, job.input.operation == .todayIdea, job.input.angle?.hasPrefix("A food") == true {
             result.state = .failed
@@ -256,6 +279,13 @@ struct MiraFixtureGenerationService: MiraGenerationService {
         return result
     }
     func status(_ job: MiraJob) async throws -> MiraJob {
+        if job.input.request == Self.busyRequest, job.input.operation == .todayIdea {
+            try await Task.sleep(for: .seconds(job.input.angle?.hasPrefix("A short") == true ? 12 : 24))
+            var result = job
+            result.output = MiraFixtures.output(for: job.input)
+            result.state = .succeeded
+            return result
+        }
         if slowTodayCards, job.input.operation == .todayIdea {
             let angle = job.input.angle ?? ""
             let wait = angle.hasPrefix("A short") ? 2 : angle.hasPrefix("A food") ? 8 : 14
@@ -265,6 +295,7 @@ struct MiraFixtureGenerationService: MiraGenerationService {
         return try await start(job)
     }
     func cancel(_ job: MiraJob) async throws -> MiraJob {
+        if job.input.request == Self.unknownStopRequest { throw MiraError.notFound }
         var result = job
         result.state = .cancelled
         return result

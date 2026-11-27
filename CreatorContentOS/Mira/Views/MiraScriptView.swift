@@ -134,7 +134,13 @@ struct MiraWordsView: View {
             }
             Text("About \(script.durationSeconds) seconds").font(.body).monospacedDigit()
                 .foregroundStyle(.secondary)
-            if working {
+            if working, let job, store.isWaitingToStart(job.id) {
+                Text("Waiting to start…").font(.title3.weight(.semibold))
+                    .accessibilityIdentifier("mira.words.waiting")
+                Text("Mira starts this when your other ideas are done.").font(.body)
+                Button("Stop") { onCancel(projectID) }.buttonStyle(.bordered).controlSize(.large)
+                    .accessibilityIdentifier("mira.words.waiting.stop")
+            } else if working {
                 HStack(spacing: 12) {
                     ProgressView()
                     Text(job?.input.operation == .reviseStoryboard ? "Updating your shots…" : "Mira is writing a new version…")

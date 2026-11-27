@@ -220,7 +220,11 @@ struct MiraJobView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if job.state == .working {
-                ProgressView("Mira is working")
+                if store.isWaitingToStart(job.id) {
+                    Text("Waiting to start…").font(.headline)
+                } else {
+                    ProgressView("Mira is working")
+                }
                 Text("Your work is saved. You can leave and reconnect this request later.").font(.callout)
                 if !store.hasActiveRequest(project.id) {
                     Button("Check again") { onReconnect(project.id) }
