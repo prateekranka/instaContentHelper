@@ -17,6 +17,7 @@ enum MiraWordsState {
     case opening
     case shotUpdateFailed(UUID)
     case waiting
+    case waitingToRetry
     case writing(MiraOperation)
     case reconnecting
     case stopping
@@ -30,6 +31,7 @@ enum MiraWordsState {
         if case .opening = self { return .opening }
         switch request {
         case .waitingToStart: return .waiting
+        case .waitingToRetry: return .waitingToRetry
         case .sending, .working: return .writing(project.job?.input.operation ?? .reviseScript)
         case .needsReconnect: return .reconnecting
         case .stopping: return .stopping
@@ -76,7 +78,7 @@ enum MiraWordsState {
                                    job.input.profile.language))
         case (.needsShots, .retry): (.reviewing, .generate(.reviseStoryboard, Self.shotsRequest, nil, nil))
         case (.reconnecting, .reconnect): (self, .reconnect)
-        case (.reconnecting, .stop), (.waiting, .stop), (.writing, .stop): (self, .stop)
+        case (.reconnecting, .stop), (.waiting, .stop), (.waitingToRetry, .stop), (.writing, .stop): (self, .stop)
         case (.applyingShots(let job), .received): (self, .applyShots(job))
         case (.applyingShots, .shotsApplied): (.opening, .openFilming)
         case (.applyingShots(let job), .shotsRejected): (.shotUpdateFailed(job.id), nil)
@@ -88,7 +90,7 @@ enum MiraWordsState {
         switch self {
         case .reviewing: .approveWords
         case .changing: .editWords
-        case .waiting, .writing: .stop
+        case .waiting, .waitingToRetry, .writing: .stop
         case .reconnecting: .reconnect
         case .proposal: .reviewProposal
         case .retry: .retry

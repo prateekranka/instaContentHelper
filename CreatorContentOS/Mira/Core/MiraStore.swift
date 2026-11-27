@@ -2,19 +2,16 @@ import Foundation
 import Observation
 
 protocol MiraGenerationService: Sendable {
-    func start(_ job: MiraJob) async throws -> MiraJob
-    func status(_ job: MiraJob) async throws -> MiraJob
-    func cancel(_ job: MiraJob) async throws -> MiraJob
+    func start(_ job: MiraJob) async throws -> MiraJobResponse
+    func status(_ job: MiraJob) async throws -> MiraJobResponse
+    func cancel(_ job: MiraJob) async throws -> MiraJobResponse
 }
 
 @MainActor @Observable
 final class MiraStore {
     var document = MiraDocument()
     private(set) var location = MiraLocationState(document: MiraDocument())
-    var loaded = false
-    var loadFailed = false
-    var error: String?
-    var saveMessage: String?
+    private(set) var library = MiraLibraryState.unopened
     private let repository: any MiraProjectRepository
     private var saveTask: Task<Void, Never>?
     private var wordsStates: [UUID: MiraWordsState] = [:]
@@ -29,19 +26,31 @@ final class MiraStore {
     private var waitingStarts: [UUID: WaitingStart] = [:]
     private var waitingTimer: Task<Void, Never>?
     init(repository: any MiraProjectRepository) { self.repository = repository }
+    @discardableResult
+    private func transitionLibrary(_ event: MiraLibraryEvent) -> Bool {
+        guard let next = library.handle(event) else { return false }
+        library = next
+        return true
+    }
+
     func load() async {
-        guard !loaded else { return }
+        guard transitionLibrary(.open) else { return }
         do {
             document = try await repository.load()
             location = MiraLocationState(document: document)
-            loaded = true
-            loadFailed = false
-            error = nil
+            transitionLibrary(.opened)
+        } catch MiraError.newerVersion {
+            transitionLibrary(.openFailed(.newerVersion))
+        } catch let failure as MiraLibraryOpenFailure {
+            transitionLibrary(.openFailed(failure))
         } catch {
-            self.error = error.localizedDescription
-            loadFailed = true
+            transitionLibrary(.openFailed(.unavailable(error.localizedDescription)))
         }
     }
+
+    func reportError(_ message: String) { transitionLibrary(.reportError(message)) }
+    func dismissError() { transitionLibrary(.dismissError) }
+
     func project(_ id: UUID) -> MiraProject? { document.projects.first { $0.id == id } }
     func requestState(_ job: MiraJob?) -> MiraAIRequest {
         guard let job else { return .idle }
@@ -65,7 +74,7 @@ final class MiraStore {
         _ id: UUID, immediate: Bool = true, screen: MiraProjectScreen? = nil,
         _ change: (inout MiraProject) -> Void
     ) {
-        guard loaded, let index = document.projects.firstIndex(where: { $0.id == id }) else { return }
+        guard case .loaded = library, let index = document.projects.firstIndex(where: { $0.id == id }) else { return }
         let oldJob = document.projects[index].job?.id
         change(&document.projects[index])
         if let oldJob, oldJob != document.projects[index].job?.id { requestStates[oldJob] = nil }
@@ -73,6 +82,16 @@ final class MiraStore {
             location = location.handle(.remember(id, screen, makeCurrent: false))
         }
         save(immediate: immediate)
+    }
+
+    @discardableResult
+    func editBrief(_ id: UUID, _ event: MiraBriefEvent, immediate: Bool = false) -> Bool {
+        guard let next = project(id)?.briefState.handle(event) else { return false }
+        update(id, immediate: immediate) {
+            $0.brief = next.record
+            $0.touch()
+        }
+        return true
     }
 
     func navigate(_ event: MiraLocationEvent) {
@@ -209,7 +228,7 @@ final class MiraStore {
                 Task { await cancel(id, service: generation) }
             case .applyShots, nil: break
             }
-        } catch { self.error = error.localizedDescription }
+        } catch { reportError(error.localizedDescription) }
     }
 
     private func advanceWordsIfVisible(_ id: UUID) {
@@ -273,7 +292,7 @@ final class MiraStore {
         }
     }
     func save(immediate: Bool = true) {
-        guard loaded, !loadFailed else { return }
+        guard case .loaded = library else { return }
         encodeLocation()
         document.sequence += 1
         let snapshot = document
@@ -282,23 +301,26 @@ final class MiraStore {
             if !immediate { do { try await Task.sleep(for: .milliseconds(450)) } catch { return } }
             do {
                 try await repository.save(snapshot)
-                saveMessage = nil
+                if document.sequence == snapshot.sequence { transitionLibrary(.saved) }
             } catch {
-                saveMessage = "Changes are in memory but could not be saved. \(error.localizedDescription)"
+                if document.sequence == snapshot.sequence {
+                    transitionLibrary(.saveFailed("Changes are in memory but could not be saved. \(error.localizedDescription)"))
+                }
             }
         }
     }
     @discardableResult func flush() async -> Bool {
-        guard loaded, !loadFailed else { return false }
+        guard case .loaded = library else { return false }
         saveTask?.cancel()
         encodeLocation()
         document.sequence += 1
+        let snapshot = document
         do {
-            try await repository.save(document)
-            saveMessage = nil
+            try await repository.save(snapshot)
+            if document.sequence == snapshot.sequence { transitionLibrary(.saved) }
             return true
         } catch {
-            saveMessage = error.localizedDescription
+            if document.sequence == snapshot.sequence { transitionLibrary(.saveFailed(error.localizedDescription)) }
             return false
         }
     }
@@ -376,7 +398,7 @@ final class MiraStore {
     ) {
         guard let project = project(id) else { return }
         if requestState(project.job).pending {
-            error = "A saved request is already running. Reconnect or cancel it first."
+            reportError("A saved request is already running. Reconnect or cancel it first.")
             return
         }
         var profile = project.isDemo ? MiraFixtures.mamta : document.profile
@@ -387,21 +409,21 @@ final class MiraStore {
         }
         if let language { profile.language = language }
         if [.storyboard, .reviseShot, .reviseStoryboard].contains(operation), project.script == nil {
-            error = "Choose a script first."
+            reportError("Choose a script first.")
             return
         }
         if operation == .script && project.idea == nil {
-            error = "Choose an idea before generating a script."
+            reportError("Choose an idea before generating a script.")
             return
         }
         if operation == .requirements
             && project.brief.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
-            error = "Paste the original brand requirements first."
+            reportError("Paste the original brand requirements first.")
             return
         }
         if operation == .reviseShot && project.storyboardIsStale {
-            error = "Update the full shot list to your current script before changing one shot."
+            reportError("Update the full shot list to your current script before changing one shot.")
             return
         }
         let input = MiraGenerationInput(
@@ -409,7 +431,7 @@ final class MiraStore {
             request: request.isEmpty ? project.request : request,
             recentIdeas: Array(project.ideas.suffix(30).map(\.title)), idea: project.idea,
             script: project.script, storyboard: project.storyboard,
-            brief: operation == .requirements || project.brief.confirmed ? project.brief : nil,
+            brief: operation == .requirements ? project.brief : project.briefState.confirmedRecord,
             targetShotID: target)
         let job = MiraJob(inputRevision: project.inputRevision, input: input)
         update(id) { $0.job = job }
@@ -470,7 +492,7 @@ final class MiraStore {
             input.constraints.populate(from: request)
         }
         if let language { input.profile.language = language }
-        input.brief = project.brief.confirmed ? project.brief : nil
+        input.brief = project.briefState.confirmedRecord
         var recentIdeas = cards.filter { $0.id != cardID }.compactMap { $0.output?.ideas?.first?.title }
         recentIdeas.append(contentsOf: input.recentIdeas)
         input.recentIdeas = Array(recentIdeas.prefix(30))
@@ -487,7 +509,7 @@ final class MiraStore {
         guard let card = project.todayCards?.first(where: { $0.id == cardID }),
             cardState(card, in: project).handle(.make) != nil, project.makeTodayCard(cardID)
         else {
-            error = "This card needs an update before you can film it."
+            reportError("This card needs an update before you can film it.")
             return false
         }
         update(id, screen: .words) { $0 = project }
@@ -518,29 +540,41 @@ final class MiraStore {
         return job?.id == jobID && job?.state == .working ? job : nil
     }
 
+    private func validateReply(_ reply: MiraJob, for job: MiraJob) throws {
+        guard reply.id == job.id, reply.inputRevision == job.inputRevision, reply.input == job.input else {
+            throw MiraError.invalid("Could not match this reply.")
+        }
+    }
+
     private func perform(_ id: UUID, job: MiraJob, cardID: UUID?, service: any MiraGenerationService) async {
         do {
-            var result: MiraJob
+            var response: MiraJobResponse
             do {
-                result = try await service.start(job)
+                response = try await service.start(job)
             } catch MiraError.busy {
                 guard !Task.isCancelled, currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
                 wait(id, job: job, cardID: cardID, service: service)
                 return
             }
             try Task.checkCancellation()
+            try validateReply(response.job, for: job)
             guard currentJob(id, cardID: cardID, matching: job.id) != nil,
-                transitionRequest(job, .accepted(job.id)) != nil
+                transitionRequest(job, .accepted(response)) != nil
             else { return }
             waitingStarts[job.id] = nil
             for _ in 0..<45 {
                 try Task.checkCancellation()
                 guard currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
-                if result.state != .working { break }
+                if response.job.state != .working { break }
                 try await Task.sleep(for: .seconds(3))
-                result = try await service.status(job)
+                response = try await service.status(job)
+                try Task.checkCancellation()
+                try validateReply(response.job, for: job)
+                guard currentJob(id, cardID: cardID, matching: job.id) != nil,
+                    transitionRequest(job, .progress(response)) != nil else { return }
             }
             try Task.checkCancellation()
+            var result = response.job
             guard let project = project(id), currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
             if let cardID {
                 receiveCard(id, cardID: cardID, pending: job, result: result)
@@ -569,7 +603,7 @@ final class MiraStore {
             let message = cardID == nil ? error.localizedDescription
                 : "Could not check this idea. Reconnect to keep your place."
             needsReconnect(id, cardID: cardID, job: job, message: message)
-            if cardID == nil { self.error = message }
+            if cardID == nil { reportError(message) }
         }
     }
 
@@ -680,10 +714,8 @@ final class MiraStore {
         await generationTasks[job.id]?.value
         guard currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
         do {
-            let result = try await service.cancel(job)
-            guard result.id == job.id, result.input == job.input, result.inputRevision == job.inputRevision else {
-                throw MiraError.invalid("Could not match this reply.")
-            }
+            let result = try await service.cancel(job).job
+            try validateReply(result, for: job)
             finishStop(id, cardID: cardID, pending: job, result: result)
         } catch MiraError.notFound {
             stopped(id, cardID: cardID, job: job)
@@ -693,15 +725,14 @@ final class MiraStore {
                 ? "Cancellation is not confirmed. Reconnect to reconcile the saved request."
                 : "Could not confirm the stop. Reconnect to check this idea."
             needsReconnect(id, cardID: cardID, job: job, message: message)
-            if cardID == nil { self.error = error.localizedDescription }
+            if cardID == nil { reportError(error.localizedDescription) }
         }
     }
 
     func applyProposal(_ id: UUID, keepWordsScreen: Bool = false) {
         guard let project = project(id), let job = project.job, let output = job.output else { return }
         guard project.inputRevision == job.inputRevision else {
-            error =
-                "Your work changed while Mira was generating. The proposal is preserved. Generate a new proposal from your current work."
+            reportError("Your work changed while Mira was generating. The proposal is preserved. Generate a new proposal from your current work.")
             return
         }
         do {
@@ -713,7 +744,7 @@ final class MiraStore {
             else if output.storyboard != nil { screen = .shots }
             else { screen = output.script != nil ? .script : nil }
             update(id, screen: screen) { $0 = copy }
-        } catch { self.error = error.localizedDescription }
+        } catch { reportError(error.localizedDescription) }
     }
     func cancel(_ id: UUID, service: any MiraGenerationService) async {
         guard let job = project(id)?.job else { return }

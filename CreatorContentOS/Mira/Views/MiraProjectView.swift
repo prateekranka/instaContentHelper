@@ -83,7 +83,7 @@ struct MiraProjectView: View {
                     }
                     if !showingShots {
                         Divider()
-                        if project.brief.confirmed {
+                        if case .confirmed = project.briefState {
                             Text("Brand requirements confirmed · Included in the plan when mapped below").font(
                                 .footnote)
                         }
@@ -129,7 +129,7 @@ struct MiraProjectView: View {
             MiraVoiceTextField(
                 title: "Tell Mira", text: binding(\.request), language: store.document.profile.language)
             Text(
-                "These are editable assumptions. Preparation and filming time is separate from the final Reel length."
+                "You can change these. This is time to get ready and film. Set the Reel length below."
             ).font(.footnote)
             Stepper(
                 "Prepare and film: \(project.constraints.filmingMinutes) minutes",
@@ -224,6 +224,8 @@ struct MiraJobView: View {
             switch state {
             case .waitingToStart:
                 Text("Waiting to start…").font(.headline)
+            case .waitingToRetry:
+                ProgressView(MiraAIRequest.retryMessage)
             case .sending, .working:
                 ProgressView("Mira is working")
             case .stopping:

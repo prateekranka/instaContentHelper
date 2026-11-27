@@ -297,7 +297,8 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var script: MiraScript? { scripts.first { $0.id == activeScriptID } }
     var storyboard: MiraStoryboard? { storyboards.first { $0.id == activeStoryboardID } }
     var idea: MiraIdea? { ideas.first { $0.id == selectedIdeaID } }
-    var effectiveBriefRevision: Int { brief.confirmed ? brief.revision : 0 }
+    var briefState: MiraBriefState { MiraBriefState(saved: brief) }
+    var effectiveBriefRevision: Int { briefState.confirmedRecord?.revision ?? 0 }
     var isApproved: Bool { script != nil && approvedScriptID == activeScriptID }
     var canFilm: Bool { storyboard != nil && !storyboardIsStale && isApproved }
     func editorScreen(remembering lastScreen: MiraProjectScreen?) -> MiraProjectScreen {
@@ -429,10 +430,8 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             }
             installStoryboard(board)
         }
-        if var brief = output.brief {
-            brief.confirmed = false
-            brief.revision = self.brief.revision + 1
-            self.brief = brief
+        if let brief = output.brief, let next = briefState.handle(.extracted(brief)) {
+            self.brief = next.record
         }
         touch()
     }

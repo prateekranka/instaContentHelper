@@ -6,6 +6,7 @@ enum MiraTodayCardEvent {
 enum MiraTodayCardState {
     case waiting(previous: MiraOutput?)
     case making(previous: MiraOutput?)
+    case waitingToRetry(previous: MiraOutput?)
     case reconnect(previous: MiraOutput?, reason: String?)
     case failed(previous: MiraOutput?, stopped: Bool)
     case ready(MiraOutput)
@@ -16,6 +17,7 @@ enum MiraTodayCardState {
         case .workChanged(let card, let request, let briefRevision):
             switch request {
             case .waitingToStart: return .waiting(previous: card.output)
+            case .waitingToRetry: return .waitingToRetry(previous: card.output)
             case .sending, .working, .stopping: return .making(previous: card.output)
             case .needsReconnect(let reason): return .reconnect(previous: card.output, reason: reason)
             case .failed, .idle: return .failed(previous: card.output, stopped: false)
@@ -32,7 +34,7 @@ enum MiraTodayCardState {
         case .retry:
             switch self {
             case .failed, .ready, .needsUpdate: return self
-            case .waiting, .making, .reconnect: break
+            case .waiting, .making, .waitingToRetry, .reconnect: break
             }
         }
         return nil
@@ -40,7 +42,7 @@ enum MiraTodayCardState {
 
     var output: MiraOutput? {
         switch self {
-        case .waiting(let output), .making(let output), .reconnect(let output, _),
+        case .waiting(let output), .making(let output), .waitingToRetry(let output), .reconnect(let output, _),
             .failed(let output, _), .needsUpdate(let output): output
         case .ready(let output): output
         }
@@ -48,14 +50,14 @@ enum MiraTodayCardState {
 
     var pending: Bool {
         switch self {
-        case .waiting, .making, .reconnect: true
+        case .waiting, .making, .waitingToRetry, .reconnect: true
         case .failed, .ready, .needsUpdate: false
         }
     }
 
     var nextAction: MiraNextAction {
         switch self {
-        case .waiting: .stop
+        case .waiting, .waitingToRetry: .stop
         case .making: .wait
         case .reconnect: .reconnect
         case .failed: .retry

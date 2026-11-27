@@ -2,6 +2,9 @@ enum MiraNextAction {
     case chooseIdea, writeScript, makeShots, updateShots, approveWords, startFilming
     case continueFilming, reviewPlan, wait, reconnect, stop, retry, makeCard
     case reviewProposal, editWords, retryShots, updateIdea
+    case useMicrophone, openSettings, stopRecording, connectInstagram, refreshInsights
+    case reviewAIConsent, tryOpeningLibrary, updateApp, continueWork
+    case enterBrief, extractRequirements, confirmRequirements, editBrief
 
     var title: String {
         switch self {
@@ -22,6 +25,19 @@ enum MiraNextAction {
         case .editWords: "Send"
         case .retryShots: "Try again"
         case .updateIdea: "Update this idea"
+        case .useMicrophone: "Use microphone"
+        case .openSettings: "Open Settings"
+        case .stopRecording: "Stop recording"
+        case .connectInstagram: "Connect Instagram"
+        case .refreshInsights: "Check again"
+        case .reviewAIConsent: "Review AI permission"
+        case .tryOpeningLibrary: "Try opening saved work again"
+        case .updateApp: "Update Mira"
+        case .continueWork: "Continue"
+        case .enterBrief: "Enter brand requirements"
+        case .extractRequirements: "Extract proposed requirements"
+        case .confirmRequirements: "Confirm these requirements"
+        case .editBrief: "Edit brand requirements"
         }
     }
 }

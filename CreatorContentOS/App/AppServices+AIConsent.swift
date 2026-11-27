@@ -7,11 +7,11 @@ struct AIConsentRequired: LocalizedError {
 extension AppServices {
     func requireAIConsent() throws {
         guard isLiveSupabaseRuntime else { return }
-        refreshAIConsentFlagsFromStore()
-        guard !aiConsentAllowsOutbound else { return }
-
-        if !aiConsentHasDeclined {
-            isAIConsentSheetPresented = true
+        refreshAIConsent()
+        switch aiConsent {
+        case .allowed: return
+        case .notAsked, .outOfDate: isAIConsentSheetPresented = true
+        case .declined: break
         }
         logAIConsentEvent("rejected")
         throw AIConsentRequired()
@@ -30,8 +30,7 @@ extension AppServices {
     }
 
     func setAIConsentSheetPresented(_ presented: Bool) {
-        if !presented, isAIConsentSheetPresented, !aiConsentAllowsOutbound,
-            !aiConsentHasDeclined
+        if !presented, isAIConsentSheetPresented, aiConsent != .allowed, aiConsent != .declined
         {
             saveAIConsentDecision(.declined)
             logAIConsentEvent("declined")
@@ -40,19 +39,12 @@ extension AppServices {
     }
 
     var aiConsentStatusCopy: String {
-        if aiConsentAllowsOutbound {
-            return AIConsentCopy.statusAllowed
+        switch aiConsent {
+        case .allowed: AIConsentCopy.statusAllowed
+        case .declined: AIConsentCopy.statusDeclined
+        case .notAsked: AIConsentCopy.statusUnknown
+        case .outOfDate: "Review needed"
         }
-        if aiConsentHasDeclined {
-            return AIConsentCopy.statusDeclined
-        }
-        return AIConsentCopy.statusUnknown
-    }
-
-    func refreshAIConsentFlagsFromStore() {
-        let record = aiConsentStore.load()
-        aiConsentAllowsOutbound = AIConsentPolicy.allowsOutbound(record)
-        aiConsentHasDeclined = AIConsentPolicy.hasDeclinedCurrent(record)
     }
 
     private func saveAIConsentDecision(_ decision: AIConsentDecision) {
@@ -62,7 +54,7 @@ extension AppServices {
                 decision: decision,
                 decidedAt: SupabaseDateFormatting.isoTimestampString(),
                 destinationsAcknowledged: AIConsentPolicy.destinations))
-        refreshAIConsentFlagsFromStore()
+        refreshAIConsent()
     }
 
     private func logAIConsentEvent(_ action: String) {

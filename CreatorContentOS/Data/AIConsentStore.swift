@@ -16,20 +16,12 @@ enum AIConsentPolicy {
     static let currentVersion = "contenthelper-ai-consent-v1"
     static let destinations = ["deepseek", "openai", "gemini"]
 
-    static func allowsOutbound(
-        _ record: AIConsentRecord?,
-        currentVersion: String = currentVersion
-    ) -> Bool {
-        guard let record else { return false }
-        return record.consentVersion == currentVersion && record.decision == .accepted
+    static func allowsOutbound(_ record: AIConsentRecord?, currentVersion: String = currentVersion) -> Bool {
+        MiraAIConsentState.notAsked.handle(.read(record, currentVersion: currentVersion)) == .allowed
     }
 
-    static func hasDeclinedCurrent(
-        _ record: AIConsentRecord?,
-        currentVersion: String = currentVersion
-    ) -> Bool {
-        guard let record else { return false }
-        return record.consentVersion == currentVersion && record.decision == .declined
+    static func hasDeclinedCurrent(_ record: AIConsentRecord?, currentVersion: String = currentVersion) -> Bool {
+        MiraAIConsentState.notAsked.handle(.read(record, currentVersion: currentVersion)) == .declined
     }
 }
 

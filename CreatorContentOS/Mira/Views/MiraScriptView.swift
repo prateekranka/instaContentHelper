@@ -144,6 +144,9 @@ struct MiraWordsView: View {
                 .accessibilityIdentifier("mira.words.waiting")
             Text("Mira starts this when your other ideas are done.").font(.body)
             stopButton("mira.words.waiting.stop")
+        case .waitingToRetry:
+            Text(MiraAIRequest.retryMessage).font(.title3.weight(.semibold))
+            stopButton("mira.words.retryPhase.stop")
         case .writing(let operation):
             HStack(spacing: 12) {
                 ProgressView()

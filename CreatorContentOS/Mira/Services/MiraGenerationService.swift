@@ -24,14 +24,11 @@ final class MiraDependencies {
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
                 .appendingPathComponent("Library/Application Support", isDirectory: true)
-        let library: String
-        if DebugLaunchFlags.forceFixtureUI, let session = DebugLaunchConfiguration.fixtureSession {
-            library = "Mira-Fixtures-\(session)"
-        } else {
-            library = "Mira"
-        }
+        let fixtureSession = DebugLaunchFlags.forceFixtureUI ? DebugLaunchConfiguration.fixtureSession : nil
+        let library = fixtureSession.map { "Mira-Fixtures-\($0)" } ?? "Mira"
         let repository = MiraFileRepository(
-            directory: support.appendingPathComponent(library, isDirectory: true))
+            directory: support.appendingPathComponent(library, isDirectory: true),
+            seedDamagedFixture: fixtureSession != nil && DebugLaunchConfiguration.isEnabled("MCO_QA_DAMAGED_LIBRARY"))
         return MiraDependencies(
             repository: repository, makeSpeechInput: { MiraSpeechInput() },
             makeLiveGeneration: { MiraSupabaseGenerationService(session: $0) })
@@ -65,12 +62,12 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
         var input: MiraGenerationInput?
         var consentVersion: Int?
     }
-    private struct Response: Decodable { var job: MiraJob }
+    private struct Response: Decodable { var job: MiraJobResponse }
     private struct Failure: Decodable { var error: String? }
-    func start(_ job: MiraJob) async throws -> MiraJob { try await send("start", job: job) }
-    func status(_ job: MiraJob) async throws -> MiraJob { try await send("status", job: job) }
-    func cancel(_ job: MiraJob) async throws -> MiraJob { try await send("cancel", job: job) }
-    private func send(_ action: String, job: MiraJob) async throws -> MiraJob {
+    func start(_ job: MiraJob) async throws -> MiraJobResponse { try await send("start", job: job) }
+    func status(_ job: MiraJob) async throws -> MiraJobResponse { try await send("status", job: job) }
+    func cancel(_ job: MiraJob) async throws -> MiraJobResponse { try await send("cancel", job: job) }
+    private func send(_ action: String, job: MiraJob) async throws -> MiraJobResponse {
         let url = session.projectURL.appendingPathComponent("functions/v1/mira-generation")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

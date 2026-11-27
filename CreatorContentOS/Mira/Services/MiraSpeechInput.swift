@@ -5,63 +5,55 @@ import Observation
 import UIKit
 
 @MainActor protocol MiraSpeechInputService: AnyObject {
-    var recording: Bool { get }
-    var requesting: Bool { get }
+    var state: MiraVoiceInputState { get }
     var transcript: String { get set }
-    var elapsed: Int { get }
-    var error: String? { get }
     func start(locale: String) async
     func stop()
+    func refreshPermissions()
 }
 @MainActor @Observable
 final class MiraSpeechInput: MiraSpeechInputService {
-    var recording = false
-    var requesting = false
+    private(set) var state = MiraVoiceInputState.idle
     var transcript = ""
-    var elapsed = 0
-    var error: String?
     private let engine = AVAudioEngine()
     private var recognition: SFSpeechRecognitionTask?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var timer: Task<Void, Never>?
     private var tapInstalled = false
-    private var attempt = UUID()
+
+    @discardableResult
+    private func transition(_ event: MiraVoiceInputEvent) -> Bool {
+        guard let next = state.handle(event) else { return false }
+        state = next
+        return true
+    }
+
     func start(locale: String) async {
-        guard !recording, !requesting else { return }
         let attempt = UUID()
-        self.attempt = attempt
-        requesting = true
-        defer { requesting = false }
+        guard transition(.start(attempt)) else { return }
         let speech = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
         }
-        guard self.attempt == attempt else { return }
+        guard state == .askingPermission(attempt) else { return }
         let microphone = await AVAudioApplication.requestRecordPermission()
-        guard self.attempt == attempt else { return }
-        guard UIApplication.shared.applicationState == .active else {
-            error =
-                "The microphone did not start. Tap it again or type your request."
+        guard state == .askingPermission(attempt) else { return }
+        guard speech && microphone else {
+            transition(.denied(attempt))
             return
         }
-        guard speech && microphone else {
-            error =
-                "Mira needs permission to hear you. You can turn it on in Settings or type instead."
+        guard UIApplication.shared.applicationState == .active else {
+            transition(.failed(attempt, "The microphone did not start. Try again or type your request."))
             return
         }
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale)),
             recognizer.isAvailable,
             recognizer.supportsOnDeviceRecognition
         else {
-            error =
-                "This phone cannot turn this language into text right now. Try the other language or type instead."
+            transition(.failed(attempt, "Try the other language or type your request."))
             return
         }
         do {
-            stop()
-            let recordingAttempt = self.attempt
             transcript = ""
-            error = nil
-            elapsed = 0
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
             try session.setActive(true)
@@ -80,38 +72,42 @@ final class MiraSpeechInput: MiraSpeechInputService {
                 let finished = result?.isFinal == true
                 let failed = failure != nil
                 Task { @MainActor [weak self] in
-                    guard let self, self.recording, self.attempt == recordingAttempt else { return }
+                    guard let self, case .recording(let current, _) = self.state, current == attempt else { return }
                     if let text { self.transcript = text }
-                    if finished || failed {
-                        self.stop()
-                        if self.transcript.isEmpty {
-                            self.error = "Mira did not catch your words. Try again or type your request."
-                        }
-                    }
+                    if finished || failed { self.stop() }
                 }
             }
             engine.prepare()
             try engine.start()
-            recording = true
+            transition(.recording(attempt))
             timer = Task { [weak self] in
                 for second in 1...60 {
                     do { try await Task.sleep(for: .seconds(1)) } catch { return }
-                    guard let self, self.recording, self.attempt == recordingAttempt else { return }
-                    self.elapsed = second
+                    guard self?.transition(.tick(attempt, second)) == true else { return }
                 }
                 self?.stop()
             }
         } catch {
-            stop()
-            self.error = "The microphone did not start. You can type your request."
+            releaseAudio()
+            transition(.failed(attempt, "The microphone did not start. Try again or type your request."))
         }
     }
+
+    func refreshPermissions() {
+        guard case .denied = state, SFSpeechRecognizer.authorizationStatus() == .authorized,
+            AVAudioApplication.shared.recordPermission == .granted else { return }
+        transition(.permissionsGranted)
+    }
+
     func stop() {
-        attempt = UUID()
-        if recording && transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            error = "Mira did not catch your words. Try again or type your request."
-        }
-        recording = false
+        guard transition(.stop), case .finishing = state else { return }
+        releaseAudio()
+        let reason = transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Mira did not catch your words. Try again or type your request." : nil
+        transition(.finished(reason))
+    }
+
+    private func releaseAudio() {
         timer?.cancel()
         timer = nil
         engine.stop()
