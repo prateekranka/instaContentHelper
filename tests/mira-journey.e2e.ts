@@ -54,6 +54,22 @@ async function sectionControl(screen: Screen, name: string) {
   return screen.getByRole('button', name, { exact: true }).first();
 }
 
+async function menuControl(screen: Screen, name: string) {
+  const popUp = screen.getByRole('pop-up-button', name, { exact: true });
+  if (await popUp.count() > 0) return popUp.first();
+  return screen.getByRole('button', name, { exact: true }).first();
+}
+
+async function fillText(field: Locator, text: string) {
+  try {
+    await field.fill(text);
+  } catch (error) {
+    if (!(error instanceof Error && /could not confirm the typed text/.test(error.message))) throw error;
+    await field.fill(text);
+  }
+  if (text.length > 0) expect(await field.inputValue()).toBe(text);
+}
+
 async function closeKeyboard(screen: Screen) {
   await tapWhenSteady(screen, screen.getByRole('button', 'Done', { exact: true }));
 }
@@ -89,7 +105,7 @@ async function stopLeftoverIdeas(screen: Screen) {
     const busy = screen.getByRole('button', /^Idea \d of 3, (waiting to start|Mira is making it)$/);
     for (let idea = 0; idea < 3 && await busy.count() > 0; idea += 1) {
       await busy.first().tap();
-      await screen.getByRole('pop-up-button', 'More', { exact: true }).tap();
+      await (await menuControl(screen, 'More')).tap();
       await screen.getByRole('button', 'Stop this idea', { exact: true }).tap();
       await expect(screen.getByText('This idea was stopped.', { exact: true, visible: true })).toBeVisible();
     }
@@ -219,7 +235,7 @@ test('Today cards swipe into the matching filming plan and retry one failed card
   for (let step = 0; step < 3; step += 1) await screen.getByTestId('BackButton').tap();
 
   const request = screen.getByTestId('mira.today.request');
-  await request.fill('Demo card failure');
+  await fillText(request, 'Demo card failure');
   await make.tap();
   await expect(page(3)).toBeVisible();
   await page(2).tap();
@@ -308,7 +324,7 @@ test('Today has one question, chips, Continue rules and start options in Profile
   await expect(screen.getByTestId('mira.today.mic')).toBeVisible();
   await expect(screen.getByText('Plan step by step', { exact: true })).not.toBeVisible();
   await expect(screen.getByText('Try Mamta’s demo notebook', { exact: true })).not.toBeVisible();
-  await request.fill('');
+  await fillText(request, '');
   await closeKeyboard(screen);
   await app.screenshot(`d1-today-${look}`);
 
@@ -326,7 +342,7 @@ test('Today has one question, chips, Continue rules and start options in Profile
   await chip('outside').tap();
   expect(await request.inputValue()).toBe('Outside');
   await app.screenshot(`d1-today-chips-${look}`);
-  await request.fill('');
+  await fillText(request, '');
   await closeKeyboard(screen);
 
   await screen.getByRole('button', 'Profile', { exact: true }).tap();
@@ -340,7 +356,7 @@ test('Today has one question, chips, Continue rules and start options in Profile
   await expect(make).toBeVisible();
   await expect(screen.getByText('Untitled Reel', { exact: true })).not.toBeVisible();
 
-  await request.fill('Demo slow cards');
+  await fillText(request, 'Demo slow cards');
   await make.tap();
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
   await expect(screen.getByText('About 1 minute', { exact: true })).toBeVisible();
@@ -365,7 +381,7 @@ async function startTodayCard(screen: Screen, request: string, card: number) {
   await openToday(screen);
   const make = screen.getByTestId('mira.today.make');
   await expect(make).toBeVisible({ timeout: 45_000 });
-  await screen.getByTestId('mira.today.request').fill(request);
+  await fillText(screen.getByTestId('mira.today.request'), request);
   await closeKeyboard(screen);
   await make.tap();
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
@@ -503,7 +519,7 @@ test('S1 B5 Stop on an idea that the server never took ends as stopped', async (
   await launchMira(screen, device, true);
   await startTodayCard(screen, 'Demo stop unknown', 3);
   await expect(screen.getByTestId('mira.today.waiting.3')).toBeVisible({ timeout: 10_000 });
-  await screen.getByRole('pop-up-button', 'More', { exact: true }).tap();
+  await (await menuControl(screen, 'More')).tap();
   await screen.getByRole('button', 'Stop this idea', { exact: true }).tap();
   await expect(screen.getByText('This idea was stopped.', { exact: true, visible: true })).toBeVisible();
   await expect(screen.getByRole('button', 'Try again', { exact: true, visible: true })).toBeVisible();

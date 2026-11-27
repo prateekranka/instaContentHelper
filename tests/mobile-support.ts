@@ -71,6 +71,13 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   const keyboardTop = (await controlBox(keyboard))?.y ?? tabBar.y;
   const viewportBottom = Math.min(tabBar.y - 8, keyboardTop - 8, bottom ?? tabBar.y);
   let visibleBottom = Math.min(viewportBottom, scrollBox.y + scrollBox.height - 2);
+  const safeBottom = Math.min(visibleBottom, (visibleTop + viewportBottom) / 2 - 8);
+  const inSafeArea = (box: Box) => box !== null && box.width > 0 && box.height > 0
+    && box.y >= targetTop && box.y + box.height <= safeBottom;
+  if (inSafeArea(initialBox)) {
+    const box = await stableBox(locator, initialBox);
+    if (inSafeArea(box)) return box;
+  }
   for (const role of ['button', 'link'] as const) {
     for (const box of await floatingBoxes(scope, scrollView, role)) {
       if (box && box.width > 0 && box.height > 0
