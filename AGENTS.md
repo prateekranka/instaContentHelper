@@ -1,5 +1,7 @@
 # Mira repository instructions
 
+See [Mira state machines](docs/state-machines.md) before changing a machine.
+
 ## Owner's testing policy
 
 - Do not write, generate, restore or run unit tests for this app, backend, tracker
