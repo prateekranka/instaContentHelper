@@ -67,8 +67,11 @@ export function phaseEFixture(operation: string, mode: string, input: Record<str
       if (mode.endsWith('-invalid')) return { message: 'Here is the post: https://www.instagram.com/reel/invented/' };
       return input.postLink ? phaseEOutputs.brandNote : { message: 'Hi Morning Oats, thanks for working with me.' };
     case 'dailyNote':
-      if (mode.endsWith('-invalid')) return { dailyNote: { ...phaseEOutputs.dailyNote, noticed: 'You have 999 saves.' } };
-      if (mode.endsWith('-bad-action')) return { dailyNote: { ...phaseEOutputs.dailyNote,
+      if (mode === 'astra-wrong-metric') return { dailyNote: { ...phaseEOutputs.dailyNote.dailyNote, noticed: 'You have 27 followers.' } };
+      if (mode === 'astra-hindi-metrics') return { dailyNote: { noticed: 'आपको २७ सेव और १,२३४ व्यूज़ मिले।',
+        action: { type: 'none' }, buttonText: '' } };
+      if (mode.endsWith('-invalid')) return { dailyNote: { ...phaseEOutputs.dailyNote.dailyNote, noticed: 'You have 999 saves.' } };
+      if (mode.endsWith('-bad-action')) return { dailyNote: { ...phaseEOutputs.dailyNote.dailyNote,
         action: { type: 'openDeal', id: reel.id } } };
       if (!(input.snapshots as unknown[]).length) {
         return { dailyNote: { noticed: 'There is room to plan a Reel today.',

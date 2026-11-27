@@ -308,17 +308,40 @@ function checkBrief(
 }
 
 function numberMentions(text: string) {
-  return (asciiDigits(text).match(/[-−]?\d+(?:,\d{2,3})*(?:\.\d+)?[%％]?/gu) ??
-    [])
-    .map((number) => number.replaceAll(",", ""));
+  return text.matchAll(/[-−]?\d+(?:,\d{2,3})*(?:\.\d+)?[%％]?/gu);
 }
 
-function snapshotNumbers(snapshots: z.infer<typeof snapshotSchema>[]) {
-  const values = new Set<string>();
+const metricNames = {
+  followers: "followers?|फ़ॉलोअर्स?|फॉलोअर्स?|फ़ॉलोवर्स?|फॉलोवर्स?|अनुयायी",
+  reach: "reach|रीच|पहुँच|पहुंच",
+  saves: "saves?|सेव्स?|सेव",
+  views: "views?|व्यूज़|व्यूज|व्यू",
+  likes: "likes?|लाइक्स?|लाइक",
+  comments: "comments?|कमेंट्स?|कमेंट|टिप्पणियाँ",
+  shares: "shares?|शेयर्स?|शेयर",
+};
+type Metric = keyof typeof metricNames;
+const metricLabels = Object.entries(metricNames).map(([metric, names]) => ({
+  metric: metric as Metric,
+  label: new RegExp("^\\s+(?:" + names + ")(?![\\p{L}\\p{M}\\p{N}_])", "iu"),
+}));
+
+function snapshotMetrics(snapshots: z.infer<typeof snapshotSchema>[]) {
+  const values = new Map<Metric, Set<string>>();
+  const add = (metric: Metric, value: number | undefined) => {
+    if (value === undefined) return;
+    const counts = values.get(metric) ?? new Set<string>();
+    counts.add(String(value));
+    values.set(metric, counts);
+  };
   for (const { topPosts = [], ...account } of snapshots) {
-    for (const value of Object.values(account)) values.add(String(value));
-    for (const { caption: _caption, ...metrics } of topPosts) {
-      for (const value of Object.values(metrics)) values.add(String(value));
+    add("followers", account.followers);
+    add("reach", account.reach7d);
+    add("saves", account.saves7d);
+    for (const post of topPosts) {
+      for (const { metric } of metricLabels) {
+        if (metric !== "followers") add(metric, post[metric]);
+      }
     }
   }
   return values;
@@ -337,7 +360,10 @@ export function validatePhaseEOutput(
       if (new Set(pillars).size !== pillars.length) {
         invalidOutput("repeated_brand_pillar");
       }
-      if (numberMentions(JSON.stringify(output.brandDoc)).length) {
+      if (
+        !numberMentions(asciiDigits(JSON.stringify(output.brandDoc))).next()
+          .done
+      ) {
         invalidOutput("brand_doc_numeric_claim");
       }
       return output;
@@ -373,12 +399,20 @@ export function validatePhaseEOutput(
           !input.openDeals.some((deal) => deal.id === action.id)) ||
         (action.type === "none") !== (buttonText === "")
       ) invalidOutput("invalid_daily_action");
-      const values = snapshotNumbers(input.snapshots);
-      if (
-        [...numberMentions(noticed), ...numberMentions(buttonText)].some(
-          (number) => !values.has(number),
-        )
-      ) invalidOutput("daily_note_numeric_claim");
+      const values = snapshotMetrics(input.snapshots);
+      for (const text of [noticed, buttonText]) {
+        const normalized = asciiDigits(text);
+        for (const { 0: number, index } of numberMentions(normalized)) {
+          const match = metricLabels.find(({ label }) =>
+            label.test(normalized.slice(index + number.length))
+          );
+          if (
+            !match || !values.get(match.metric)?.has(number.replaceAll(",", ""))
+          ) {
+            invalidOutput("daily_note_numeric_claim");
+          }
+        }
+      }
       return output;
     }
   }
@@ -394,5 +428,5 @@ export const phaseEPrompts = {
   brandNote:
     "Write a short, polite WhatsApp draft to the brand using only the completed items supplied. Do not say a Reel is live unless a post link is supplied. If the postLink is present, place it verbatim on its own line. Do not add any other link or invented outcome. The creator sends the draft herself.",
   dailyNote:
-    "Write one short Mira noticed sentence and one next action. Snapshots are older first, then newer. Only cite supplied metrics with their exact numbers. Do not calculate new numbers, infer trends, or infer metrics from captions. If there are no metrics, use open work or a simple observation about the available context. For continueReel or openDeal use one ID from the matching list. Use an empty buttonText for none, and a short buttonText for other actions.",
+    "Write one short Mira noticed sentence and one next action. Snapshots are older first, then newer. Every number must be immediately followed by its matching metric name, such as 27 saves or २७ सेव. Use the exact count for that metric from a supplied snapshot. Use followers, reach, saves, views, likes, comments or shares, or their Hindi equivalents. Do not calculate new numbers, infer trends, or infer metrics from captions. If there are no metrics, use open work or a simple observation about the available context. For continueReel or openDeal use one ID from the matching list. Use an empty buttonText for none, and a short buttonText for other actions.",
 } satisfies Record<PhaseEOperation, string>;
