@@ -1,3 +1,4 @@
+import { readCompletion } from "./stream.ts";
 import {
   type PlanIdeaProvider,
   resolvePlanIdeaProviders,
@@ -10,6 +11,7 @@ type JsonGenerationRequest = {
   input: unknown;
   schema: Record<string, unknown>;
   signal: AbortSignal;
+  onText?: (delta: string) => Promise<void>;
 };
 
 export interface MiraGenerationAdapter {
@@ -22,7 +24,8 @@ function completionAdapter(
   fetchFn: typeof fetch,
 ): MiraGenerationAdapter {
   return {
-    async generateJson({ system, input, schema, signal }) {
+    async generateJson({ system, input, schema, signal, onText }) {
+      const stream = provider.provider === "openai";
       const base = provider.provider === "openai"
         ? "https://api.openai.com/v1"
         : (provider.baseURL ?? "https://api.deepseek.com").replace(/\/$/, "");
@@ -35,6 +38,7 @@ function completionAdapter(
         signal,
         body: JSON.stringify({
           model,
+          ...(stream ? { stream: true } : {}),
           messages: [{ role: "system", content: system }, {
             role: "user",
             content: JSON.stringify(input),
@@ -57,12 +61,17 @@ function completionAdapter(
         const detail = await response.json().catch(() => null);
         const reason = [detail?.error?.code, detail?.error?.param]
           .filter((part) => typeof part === "string" && part.length > 0)
-          .map((part) => String(part).replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 60))
+          .map((part) =>
+            String(part).replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 60)
+          )
           .join(" ");
         throw Error(
-          `provider_request_rejected ${response.status}${reason ? ` ${reason}` : ""}`,
+          `provider_request_rejected ${response.status}${
+            reason ? ` ${reason}` : ""
+          }`,
         );
       }
+      if (stream) return await readCompletion(response, onText);
       const body = await response.json();
       const content = body.choices?.[0]?.message?.content;
       if (typeof content !== "string") throw Error("invalid_provider_response");

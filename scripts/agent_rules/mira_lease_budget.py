@@ -7,6 +7,8 @@ POLICY = FUNCTION + "job-policy.ts"
 WORKER = FUNCTION + "index.ts"
 PROVIDER = FUNCTION + "provider.ts"
 ADAPTERS = FUNCTION + "adapters.ts"
+PICTURES = FUNCTION + "shot-pictures.ts"
+PICTURE_MIGRATION = "supabase/migrations/20261127200000_mira_steps_and_shot_pictures.sql"
 MIGRATION = "supabase/migrations/20261127190000_mira_job_state_machine.sql"
 HISTORY = [("725c646", [WORKER, PROVIDER, ADAPTERS])]
 RECONSTRUCTED = "a provider call budget with less than 20 seconds of lease margin"
@@ -23,6 +25,8 @@ def check(repository):
     provider = (repository.root / PROVIDER).read_text()
     adapters = (repository.root / ADAPTERS).read_text()
     migration = (repository.root / MIGRATION).read_text()
+    pictures = (repository.root / PICTURES).read_text()
+    picture_migration = (repository.root / PICTURE_MIGRATION).read_text()
     minimum = number(policy, "MIN_LEASE_SECONDS")
     checks = [
         (POLICY, number(policy, "LEASE_MARGIN_MS") >= 20_000,
@@ -38,13 +42,22 @@ def check(repository):
         (WORKER, all(part in worker for part in [
             "leaseSeconds(operation.data)", "p_lease_seconds: claimLeaseSeconds",
             "const signal = providerDeadline(input.operation, row.lease_until);",
-            "generator(input, env, signal)",
+            "generator(input, env, signal, undefined, onStep)",
         ]), "request the sized lease and check the returned expiry before generation"),
-        (PROVIDER, "generateJson({ system, input, schema, signal })" in provider,
+        (PROVIDER, re.search(r"generateJson\(\{\s*system,\s*input,\s*schema,\s*signal,", provider),
          "pass the worker deadline to the provider adapter"),
-        (ADAPTERS, adapters.count("signal,") == len(re.findall(r"\b(?:fetchFn|fetch)\s*\(", adapters)) > 0
+        (ADAPTERS, len(re.findall(r"\bsignal,\s*body:", adapters)) == len(re.findall(r"\b(?:fetchFn|fetch)\s*\(", adapters)) > 0
          and not re.search(r"\bsignal\s*:|AbortSignal\.timeout", adapters.replace("signal: AbortSignal;", "")),
          "every provider fetch must use the worker signal"),
+        (PICTURES, all(part in pictures for part in [
+            'p_lease_seconds: leaseSeconds("shotPictures")',
+            'providerDeadline("shotPictures", row.lease_until)',
+            'generatePicture(shot, env, signal, fetchFn)',
+        ]) and len(re.findall(r"\bsignal,\s*body:", pictures)) == 1,
+         "guard each picture provider request with the sized lease and pass its deadline to fetch"),
+        (PICTURE_MIGRATION, "shotPictures: 100_000" in policy
+         and "p_lease_seconds < 125 then" in picture_migration,
+         "keep the picture SQL lease floor in sync with the 100-second call limit and its margins"),
         (MIGRATION, minimum == 90 and f"p_lease_seconds < {minimum} then" in migration
          and "public.mira_claim(p_id, 90)" in migration,
          "keep the SQL lease floor in sync with the worker and preserve the legacy 90-second claim"),

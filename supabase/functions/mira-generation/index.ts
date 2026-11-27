@@ -6,9 +6,10 @@ import {
   jsonResponse,
   verifyDeviceSession,
 } from "../_shared/device-auth.ts";
-import { inputSchema } from "./contracts.ts";
+import { inputSchema, type MiraOutput, type TodayStep } from "./contracts.ts";
 import { leaseSeconds, providerDeadline } from "./job-policy.ts";
 import { generate } from "./provider.ts";
+import { pictureCount, shotPictures } from "./shot-pictures.ts";
 const envelope = z.object({
   action: z.enum(["start", "status", "cancel"]),
   id: z.uuid(),
@@ -16,6 +17,7 @@ const envelope = z.object({
   inputRevision: z.number().int().nonnegative().optional(),
   input: inputSchema.optional(),
   consentVersion: z.literal(1).optional(),
+  pictures: z.boolean().optional(),
 }).strict();
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -24,6 +26,7 @@ type Dependencies = {
   admin?: Admin;
   verify?: typeof verifyDeviceSession;
   generate?: typeof generate;
+  pictureFetch?: typeof fetch;
   defer?: (promise: Promise<unknown>) => void;
 };
 export async function handleMira(
@@ -131,6 +134,10 @@ export async function handleMira(
   let result = await scope();
   if (result.error) return jsonResponse({ error: "job_lookup_failed" }, 503);
   if (!result.data) return jsonResponse({ error: "not_found" }, 404);
+  const defer = deps.defer ?? ((work: Promise<unknown>) => {
+    if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(work);
+    else return work;
+  });
   if (body.action === "cancel") {
     const cancelled = await admin.from("mira_generation_jobs").update({
       status: "cancelled",
@@ -142,7 +149,9 @@ export async function handleMira(
     if (cancelled.error) return jsonResponse({ error: "cancel_failed" }, 503);
     result = await scope();
   } else if (["queued", "running"].includes(result.data.status)) {
-    const operation = inputSchema.shape.operation.safeParse(result.data.input?.operation);
+    const operation = inputSchema.shape.operation.safeParse(
+      result.data.input?.operation,
+    );
     const work = runJob(
       admin,
       body.id,
@@ -150,16 +159,39 @@ export async function handleMira(
       env,
       deps.generate ?? generate,
     );
-    if (deps.defer) deps.defer(work);
-    else if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(work);
-    else await work;
+    await defer(work);
   }
-  return jsonResponse({ job: toJob(result.data) });
+  const job = toJob(result.data);
+  const output = job.output as MiraOutput | undefined;
+  let pictures: Awaited<ReturnType<typeof shotPictures>> | undefined;
+  if (
+    body.action === "status" && body.pictures === true &&
+    job.state === "succeeded" &&
+    result.data.picture_count > 0 && output?.storyboard
+  ) {
+    try {
+      pictures = await shotPictures(
+        admin,
+        body.id,
+        output.storyboard.shots,
+        env,
+        defer,
+        deps.pictureFetch,
+      );
+    } catch {
+      console.error(`mira_picture_status_failed ${body.id}`);
+    }
+  }
+  const response = jsonResponse({ job: { ...job, pictures } });
+  response.headers.set("Cache-Control", "no-store");
+  return response;
 }
 function toJob(row: Record<string, unknown>) {
+  const expired = row.status === "running" &&
+    typeof row.lease_until === "string" &&
+    Date.parse(row.lease_until) <= Date.now();
   const phase = (row.status === "queued" && Number(row.attempts) > 0) ||
-      (row.status === "running" && Number(row.attempts) < 3 &&
-        typeof row.lease_until === "string" && Date.parse(row.lease_until) <= Date.now())
+      (expired && Number(row.attempts) < 3)
     ? "waiting_to_retry"
     : row.status;
   return {
@@ -170,6 +202,9 @@ function toJob(row: Record<string, unknown>) {
       ? "working"
       : row.status,
     phase,
+    step: (phase === "running" && !expired) || phase === "succeeded"
+      ? row.step ?? undefined
+      : undefined,
     output: row.output ?? undefined,
     error: row.error ?? undefined,
   };
@@ -197,10 +232,21 @@ async function runJob(
   try {
     const input = inputSchema.parse(row.input);
     const signal = providerDeadline(input.operation, row.lease_until);
-    const output = await generator(input, env, signal);
+    const onStep = async (step: TodayStep) => {
+      const result = await admin.from("mira_generation_jobs").update({
+        step,
+        updated_at: new Date().toISOString(),
+      }).eq("id", id).eq("lease_id", row.lease_id).eq("status", "running")
+        .gt("lease_until", new Date().toISOString());
+      if (result.error) console.error(`mira_step_persist_failed ${id}`);
+    };
+    const output = await generator(input, env, signal, undefined, onStep);
     const result = await admin.from("mira_generation_jobs").update({
       status: "succeeded",
       output,
+      picture_count: input.operation === "todayIdea" && output.storyboard
+        ? pictureCount(env)
+        : null,
       error: null,
       updated_at: new Date().toISOString(),
     }).eq("id", id).eq("lease_id", row.lease_id).eq("status", "running");
@@ -224,13 +270,20 @@ async function runJob(
 }
 function failureReason(error: unknown): string {
   if (!(error instanceof Error)) return "unknown_error";
-  if (error.name === "ZodError" && "issues" in error && Array.isArray(error.issues)) {
-    const issue = error.issues[0] as { path?: unknown[]; code?: unknown } | undefined;
+  if (
+    error.name === "ZodError" && "issues" in error &&
+    Array.isArray(error.issues)
+  ) {
+    const issue = error.issues[0] as
+      | { path?: unknown[]; code?: unknown }
+      | undefined;
     const path = (issue?.path ?? []).map((part) => String(part)).join(".");
-    return `output_check_failed ${String(issue?.code ?? "")} ${path}`.trim().slice(0, 160);
+    return `output_check_failed ${String(issue?.code ?? "")} ${path}`.trim()
+      .slice(0, 160);
   }
   if (error.name === "SyntaxError") return "invalid_json_from_provider";
-  return error.message.replace(/[^a-zA-Z0-9_. -]/g, "").slice(0, 160) || error.name;
+  return error.message.replace(/[^a-zA-Z0-9_. -]/g, "").slice(0, 160) ||
+    error.name;
 }
 declare const EdgeRuntime: undefined | {
   waitUntil(promise: Promise<unknown>): void;

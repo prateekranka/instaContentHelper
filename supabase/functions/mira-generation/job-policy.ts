@@ -14,9 +14,12 @@ export const AI_TIMEOUT_MS = {
   reviseShot: TEXT_TIMEOUT_MS,
   reviseStoryboard: TEXT_TIMEOUT_MS,
   requirements: TEXT_TIMEOUT_MS,
-} satisfies Record<MiraInput["operation"], number>;
+  shotPictures: 100_000,
+} satisfies Record<MiraInput["operation"] | "shotPictures", number>;
 
-export function leaseSeconds(operation?: MiraInput["operation"]): number {
+type AIOperation = keyof typeof AI_TIMEOUT_MS;
+
+export function leaseSeconds(operation?: AIOperation): number {
   const timeoutMs = operation ? AI_TIMEOUT_MS[operation] : TEXT_TIMEOUT_MS;
   return Math.max(
     MIN_LEASE_SECONDS,
@@ -25,7 +28,7 @@ export function leaseSeconds(operation?: MiraInput["operation"]): number {
 }
 
 export function providerDeadline(
-  operation: MiraInput["operation"],
+  operation: AIOperation,
   leaseUntil: string,
 ): AbortSignal {
   const timeoutMs = AI_TIMEOUT_MS[operation];

@@ -134,6 +134,25 @@ const todayIdeaOutputSchema = z.object({
   storyboard: boardSchema.extend({ shots: z.array(shotSchema).min(3).max(5) }),
   conflicts: z.array(nonempty).length(0),
 }).strict();
+export const todaySteps = [
+  {
+    field: "ideas",
+    step: "idea_ready",
+    schema: todayIdeaOutputSchema.shape.ideas,
+  },
+  {
+    field: "script",
+    step: "script_ready",
+    schema: todayIdeaOutputSchema.shape.script,
+  },
+  {
+    field: "storyboard",
+    step: "storyboard_ready",
+    schema: todayIdeaOutputSchema.shape.storyboard,
+  },
+] as const;
+export type TodayStep = typeof todaySteps[number]["step"];
+
 export function providerOutputSchema(operation: MiraInput["operation"]) {
   if (operation === "todayIdea") return todayIdeaOutputSchema;
   return operation === "reviseShot" ? reviseShotOutputSchema : outputSchema;
