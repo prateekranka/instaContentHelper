@@ -8,6 +8,10 @@ const memberID = '10000000-0000-4000-8000-000000000003';
 const tokenHash = await sha256Hex('fixture-device-token');
 type Row = Record<string, unknown>;
 const jobs = new Map<string, Row>();
+const fixtureLeaseMs = new Map([
+  ['lost-expired-claim', -1],
+  ['remaining-lease-short', 74_000],
+]);
 const calls: { url: string; model: string; mode: string }[] = [];
 const tables: Record<string, Row[]> = {
   device_installations: [{ id: 'installation', workspace_id: workspaceID, member_id: memberID, token_hash: tokenHash, revoked_at: null }],
@@ -38,7 +42,7 @@ class Query {
 
 const admin = {
   from(table: string) { return new Query(table); },
-  rpc(name: string, args: Row) {
+  rpc(name: string, args: Row, mode: string) {
     if (name === 'mira_enqueue') {
       const id = String(args.p_id);
       const row = { id, workspace_id: args.p_workspace, creator_id: args.p_creator, member_id: args.p_member,
@@ -48,8 +52,18 @@ const admin = {
     }
     if (name === 'mira_claim') {
       const row = jobs.get(String(args.p_id));
-      if (!row || row.status !== 'queued') return Promise.resolve({ data: [], error: null });
-      Object.assign(row, { status: 'running', lease_id: crypto.randomUUID(), attempts: Number(row.attempts) + 1 });
+      const now = Date.now();
+      const ready = row && Number(row.attempts) < 3 &&
+        (!row.next_attempt_at || Date.parse(String(row.next_attempt_at)) <= now) &&
+        (row.status === 'queued' || (row.status === 'running' && Date.parse(String(row.lease_until)) <= now));
+      if (!ready) return Promise.resolve({ data: [], error: null });
+      Object.assign(row, {
+        status: 'running', lease_id: crypto.randomUUID(), attempts: Number(row.attempts) + 1,
+        lease_until: new Date(now + (fixtureLeaseMs.get(mode) ?? Number(args.p_lease_seconds) * 1000)).toISOString(),
+      });
+      if (mode === 'lost-claim' || mode === 'lost-expired-claim') {
+        return Promise.resolve({ data: [], error: null });
+      }
       return Promise.resolve({ data: [structuredClone(row)], error: null });
     }
     return Promise.resolve({ data: null, error: new Error('unexpected_rpc') });
@@ -124,5 +138,9 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
       ? { candidates: [{ content: { parts: [{ text }] } }] }
       : { choices: [{ message: { content: text } }] });
   };
-  return await handleMira(request, { env, admin, generate: (input, config) => generate(input, config, providerFetch) });
+  return await handleMira(request, {
+    env,
+    admin: { from: admin.from, rpc: (name: string, args: Row) => admin.rpc(name, args, mode) },
+    generate: (input, config, signal) => generate(input, config, signal, providerFetch),
+  });
 });

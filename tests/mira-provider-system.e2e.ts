@@ -42,7 +42,7 @@ beforeAll(async () => {
 afterAll(async () => { if (server && server.exitCode === null) server.kill('SIGTERM'); });
 
 async function call(
-  id: string, action: 'start' | 'status', provider: string,
+  id: string, action: 'start' | 'status' | 'cancel', provider: string,
   mode = 'ok', consent = true, token = true, jobInput: object = input,
 ) {
   const response = await fetch(`${base}/mira-generation`, {
@@ -77,6 +77,7 @@ for (const provider of ['deepseek', 'openai', 'gemini']) {
     const result = await call(id, 'status', provider);
     expect(result.status).toBe(200);
     expect(result.body.job.state).toBe('succeeded');
+    expect(result.body.job.phase).toBe('succeeded');
     expect(result.body.job.output.ideas).toHaveLength(3);
     const seen = await observations();
     const last = seen.calls.at(-1)!;
@@ -91,10 +92,87 @@ test('a provider outage is queued for retry and invalid output fails closed', as
   let seen = await observations();
   expect(seen.jobs.find((job) => job.id === retry)?.status).toBe('queued');
   expect(seen.jobs.find((job) => job.id === retry)?.error).toContain('Retrying is bounded');
+  const retryStatus = await call(retry, 'status', 'gemini');
+  expect(retryStatus.body.job.state).toBe('working');
+  expect(retryStatus.body.job.phase).toBe('waiting_to_retry');
   const invalid = crypto.randomUUID();
   expect((await call(invalid, 'start', 'openai', 'invalid')).status).toBe(200);
   seen = await observations();
   expect(seen.jobs.find((job) => job.id === invalid)?.status).toBe('failed');
+  expect((await call(invalid, 'status', 'openai')).body.job.phase).toBe('failed');
+});
+
+test('job phase distinguishes a new, held, expired, recovered and cancelled claim', async () => {
+  const held = crypto.randomUUID();
+  const start = await call(held, 'start', 'deepseek', 'lost-claim');
+  expect(start.body.job.state).toBe('working');
+  expect(start.body.job.phase).toBe('queued');
+  const active = await call(held, 'status', 'deepseek');
+  expect(active.body.job.state).toBe('working');
+  expect(active.body.job.phase).toBe('running');
+  const cancelled = await call(held, 'cancel', 'deepseek');
+  expect(cancelled.body.job.state).toBe('cancelled');
+  expect(cancelled.body.job.phase).toBe('cancelled');
+
+  const expired = crypto.randomUUID();
+  expect((await call(expired, 'start', 'deepseek', 'lost-expired-claim')).status).toBe(200);
+  const retry = await call(expired, 'status', 'deepseek');
+  expect(retry.body.job.state).toBe('working');
+  expect(retry.body.job.phase).toBe('waiting_to_retry');
+  const recovered = await call(expired, 'status', 'deepseek');
+  expect(recovered.body.job.phase).toBe('succeeded');
+});
+
+test('a claim with too little time left fails without starting the provider', async () => {
+  const id = crypto.randomUUID();
+  const before = (await observations()).calls.length;
+  expect((await call(id, 'start', 'openai', 'remaining-lease-short')).status).toBe(200);
+  const { body } = await call(id, 'status', 'openai');
+  expect(body.job.state).toBe('failed');
+  expect(body.job.phase).toBe('failed');
+  expect(body.job.error).toContain('mira_insufficient_lease_budget');
+  expect((await observations()).calls.length).toBe(before);
+});
+
+test('local PostgREST rejects short claims and forbidden job status changes', async () => {
+  const port = process.env.MIRA_API_E2E_LOCAL_PORT;
+  test.skip(!port, 'Start local Supabase and supply the local database scenario fixtures.');
+  if (!port || !/^\d{1,5}$/.test(port)) throw new Error('Expected a local PostgREST port.');
+  const role = process.env.MIRA_API_E2E_LOCAL_SERVICE_ROLE;
+  if (!role) throw new Error('Local service role is missing.');
+  const local = `http://127.0.0.1:${port}/rest/v1/`;
+  const id = crypto.randomUUID();
+  async function write(path: string, method: string, payload: object) {
+    const response = await fetch(local + path, {
+      method,
+      headers: { apikey: role!, authorization: `Bearer ${role}`, 'content-type': 'application/json',
+        prefer: 'return=representation' },
+      body: JSON.stringify(payload),
+    });
+    return { status: response.status, body: await response.json() };
+  }
+  const row = `mira_generation_jobs?id=eq.${id}`;
+  const enqueue = await write('rpc/mira_enqueue', 'POST', {
+    p_id: id, p_workspace: '10000000-0000-4000-8000-000000000001', p_creator: creatorID,
+    p_member: '10000000-0000-4000-8000-000000000003', p_revision: 1, p_input: input,
+  });
+  expect(enqueue.status).toBe(200);
+  const short = await write('rpc/mira_claim', 'POST', { p_id: id, p_lease_seconds: 89 });
+  expect(short.status).toBe(400);
+  expect(short.body.message).toBe('mira_lease_too_short');
+  const skippedClaim = await write(row, 'PATCH', { status: 'succeeded' });
+  expect(skippedClaim.status).toBe(400);
+  expect(skippedClaim.body.message).toBe('mira_invalid_job_transition');
+  const claim = await write('rpc/mira_claim', 'POST', { p_id: id, p_lease_seconds: 120 });
+  expect(claim.status).toBe(200);
+  expect(claim.body[0].status).toBe('running');
+  expect(claim.body[0].attempts).toBe(1);
+  const saved = await write(row, 'PATCH', { status: 'succeeded' });
+  expect(saved.status).toBe(200);
+  expect(saved.body[0].status).toBe('succeeded');
+  const reopened = await write(row, 'PATCH', { status: 'queued' });
+  expect(reopened.status).toBe(400);
+  expect(reopened.body.message).toBe('mira_invalid_job_transition');
 });
 
 test('a storyboard has filming fields and revising one shot preserves a legacy shot', async () => {
@@ -189,6 +267,7 @@ test('the deployed Mira endpoint returns filming fields for a solo storyboard', 
     return job.state !== 'working' || Boolean(job.error);
   }, { timeout: 50_000, interval: 2_000 }).toBe(true);
   if (job.state !== 'succeeded') throw new Error(job.error ?? `Mira job state: ${job.state}`);
+  expect(job.phase).toBe('succeeded');
   const shots = job.output.storyboard?.shots;
   expect(shots?.length ?? 0).toBeGreaterThan(0);
   for (const shot of shots) {

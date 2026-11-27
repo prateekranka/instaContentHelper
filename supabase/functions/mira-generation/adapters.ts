@@ -9,6 +9,7 @@ type JsonGenerationRequest = {
   system: string;
   input: unknown;
   schema: Record<string, unknown>;
+  signal: AbortSignal;
 };
 
 export interface MiraGenerationAdapter {
@@ -21,7 +22,7 @@ function completionAdapter(
   fetchFn: typeof fetch,
 ): MiraGenerationAdapter {
   return {
-    async generateJson({ system, input, schema }) {
+    async generateJson({ system, input, schema, signal }) {
       const base = provider.provider === "openai"
         ? "https://api.openai.com/v1"
         : (provider.baseURL ?? "https://api.deepseek.com").replace(/\/$/, "");
@@ -31,7 +32,7 @@ function completionAdapter(
           Authorization: `Bearer ${provider.apiKey}`,
           "Content-Type": "application/json",
         },
-        signal: AbortSignal.timeout(55000),
+        signal,
         body: JSON.stringify({
           model,
           messages: [{ role: "system", content: system }, {
@@ -76,7 +77,7 @@ function geminiAdapter(
   fetchFn: typeof fetch,
 ): MiraGenerationAdapter {
   return {
-    async generateJson({ system, input }) {
+    async generateJson({ system, input, signal }) {
       const response = await fetchFn(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
@@ -85,7 +86,7 @@ function geminiAdapter(
             "x-goog-api-key": apiKey,
             "Content-Type": "application/json",
           },
-          signal: AbortSignal.timeout(55000),
+          signal,
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: system }] },
             contents: [{

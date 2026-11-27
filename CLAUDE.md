@@ -32,8 +32,9 @@ Both commands require Python 3 and Git history containing `8ce636a` and its ance
 | Save snapshots asynchronously through the ordered service path. | `TodayCacheStoring` exposes only async saving, without a synchronous fallback. `snapshot_persistence` rejects restoring that fallback or adding synchronous app-flow saves. Use `AppServices.persistDaySnapshot` or `queueDaySnapshot` and `FileTodayCacheStore.saveSnapshotInBackground`. |
 | Scroll controls through the shared helper, including sheet controls. | `scroll_controls` forbids raw `scrollUntilVisible` outside `scrollToControl` and checks its dock boundary calculation. Use `scrollToControl` or `tapVisibleControl` in `tests/pocket-support.ts`. |
 | Preserve accessibility identifier ownership. Keep format and duration discoverable as one exact text value. | `accessibility_identity` rejects missing identifiers and added duplicate owners. The existing screen-catalog assertion for `Story · 10 sec` checks the text-node contract when the owner runs e2e. |
+| Keep each Mira job lease longer than its provider deadline. | `mira_lease_budget` checks the shared timeout and lease policy, the worker and adapter signal wiring, and the SQL lease floor. |
 
-The source checks compare existing patterns with the fixed Step 5 baseline. They do not add exceptions
+The Swift and UI source checks compare existing patterns with the fixed Step 5 baseline. They do not add exceptions
 or permit new exception markers. Existing repeated patterns can stay while additions fail.
 These are source checks, not a Swift type checker or runtime accessibility audit.
 Keep the existing 600 ms filming tap guard. Timing changes require the owner's e2e run.

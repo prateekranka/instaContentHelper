@@ -9,6 +9,7 @@ type Env = { get(name: string): string | undefined };
 export async function generate(
   input: MiraInput,
   env: Env,
+  signal: AbortSignal,
   fetchFn: typeof fetch = fetch,
 ) {
   if (input.operation !== "requirements" && input.brief?.confirmed) {
@@ -47,7 +48,7 @@ Use the requested angle, creator profile, constraints and request. Avoid recentI
       JSON.stringify(schema)
     }`;
   const adapter = resolveMiraGenerationAdapter(env, fetchFn);
-  const result = await adapter.generateJson({ system, input, schema });
+  const result = await adapter.generateJson({ system, input, schema, signal });
   return validateOutput(normalizeOutput(result), input);
 }
 

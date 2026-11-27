@@ -20,7 +20,12 @@ def run_check(root, name=None):
 
 
 def copy_sources(root):
-    for directory, pattern in [("CreatorContentOS", "*.swift"), ("tests", "*.ts")]:
+    for directory, pattern in [
+        ("CreatorContentOS", "*.swift"),
+        ("tests", "*.ts"),
+        ("supabase/functions/mira-generation", "*.ts"),
+        ("supabase/migrations", "*mira*.sql"),
+    ]:
         for source in (REPO / directory).rglob(pattern):
             target = root / source.relative_to(REPO)
             target.parent.mkdir(parents=True, exist_ok=True)

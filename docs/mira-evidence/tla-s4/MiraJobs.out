@@ -1,0 +1,25 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 36 and seed 8038967568541304719 with 1 worker on 10 cores with 3641MB heap and 64MB offheap memory [pid: 64005] (Mac OS X 27.2.1 aarch64, Homebrew 26.0.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /Users/prateekranka/scratch/mira-s4-20261127/docs/mira-evidence/tla-s4/MiraJobs.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/Naturals.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/FiniteSets.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/TLC.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module MiraJobs
+Starting... (2026-11-27 23:57:08)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-27 23:57:08.
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.5E-11
+36503 states generated, 11078 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 115.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 1).
+Finished in 00s at (2026-11-27 23:57:09)
+
+TLC exit code: 0
