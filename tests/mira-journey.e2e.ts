@@ -631,8 +631,14 @@ test('S2 resumes cards, words, filming plan and filming with content clear of th
   await expect(approve).toBeVisible();
   await bottomAboveTabs(app, screen, screen.getByTestId('mira.words.change'), 's2-resume-words');
 
-  await openProjectFromList(screen, 'A quick movement break');
+  await openTab(screen, 'Projects');
+  await backOut(screen);
+  await bottomAboveTabs(app, screen, screen.getByRole('button', 'Delete', { exact: true }).last(), 's2-projects-bottom');
+  const row = screen.getByText('A quick movement break', { exact: true }).first();
+  await scrollToControl(screen, row, 'up');
+  await row.tap();
   await screen.getByTestId('BackButton').tap();
+  await bottomAboveTabs(app, screen, screen.getByRole('button', 'Share current plan', { exact: true }), 's2-script-bottom');
   const shots = await sectionControl(screen, 'Shots');
   await scrollToControl(screen, shots, 'up');
   await tap(screen, shots);
