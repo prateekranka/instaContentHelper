@@ -83,6 +83,11 @@ async function handle(request, response) {
       });
     }
     jobs.get(id).starts += 1;
+    if (body.input.request === 'Demo D2 transport' && card === 1 && jobs.get(id).starts === 1) {
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': '1000' });
+      response.write('{"job":', () => response.destroy());
+      return;
+    }
   }
   const id = body.id.toLowerCase();
   const entry = jobs.get(id);

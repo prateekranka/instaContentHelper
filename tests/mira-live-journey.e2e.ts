@@ -106,7 +106,7 @@ async function selectShots(screen: Screen) {
 
 async function waitForOutput(screen: Screen, output: Locator, message: string, limit = timeout) {
   await expect.poll(async () => {
-    const failure = screen.getByText(/^(Mira could not finish\.|Could not check this idea\.|Allow AI to write ideas first\.)/, { visible: true });
+    const failure = screen.getByText(/^(Mira could not finish\.|Could not check this idea\.|Allow AI to write ideas first\.|The network connection was lost\.)/, { visible: true });
     if (await screen.getByRole('alert', 'Mira', { exact: true }).isVisible() || await failure.isVisible()) {
       return 'Mira reported a generation failure';
     }
@@ -413,8 +413,12 @@ test('5 Projects Plan step by step makes a live filming plan', async ({ app, scr
     await waitForOutput(screen, result, `Wait for the result of ${label}.`, 150_000);
   };
   const moreIdeas = button(screen, 'More ideas');
-  const ideasRequested = recorded().some(entry => entry.scenario === 5 && entry.action === 'Show three ideas' && entry.calls);
-  if (ideasRequested) {
+  const history = recorded().filter(entry => entry.scenario === 5);
+  const alreadyRequested = (action: string) => history.some(entry => entry.action === action && entry.calls);
+  const selectedTitle = history.findLast(entry => entry.action === 'selected step-by-step project')?.title;
+  if (selectedTitle) {
+    await openProject(screen, selectedTitle);
+  } else if (alreadyRequested('Show three ideas')) {
     await fit(screen, field, 'up');
     expect(await field.inputValue()).toBe(prompt);
     await fit(screen, moreIdeas);
@@ -436,16 +440,31 @@ test('5 Projects Plan step by step makes a live filming plan', async ({ app, scr
     await app.screenshot('step-by-step-project-name-keyboard-closed');
     await generate('Show three ideas', moreIdeas);
   }
-  const pick = button(screen, 'Use this idea').first();
-  await fit(screen, pick);
-  await app.screenshot('step-by-step-live-idea');
-  await tapVisibleControl(screen, pick);
+  if (!selectedTitle) {
+    const pick = button(screen, 'Use this idea').first();
+    await fit(screen, pick);
+    await app.screenshot('step-by-step-live-idea');
+    await tapVisibleControl(screen, pick);
+  }
   await fit(screen, projectName, 'up');
   const title = await projectName.inputValue();
   expect(title.trim().length).toBeGreaterThan(0);
   expect(title).not.toBe('Untitled Reel');
-  record({ scenario: 5, action: 'selected step-by-step project', title });
-  await generate('Draft hook, script and caption', screen.getByRole('textbox', 'Hook · spoken opening', { exact: true }));
+  if (selectedTitle) expect(title).toBe(selectedTitle);
+  else record({ scenario: 5, action: 'selected step-by-step project', title });
+  const script = screen.getByRole('textbox', 'Hook · spoken opening', { exact: true });
+  if (alreadyRequested('Draft hook, script and caption')) {
+    if (!await script.count()) {
+      const recheck = button(screen, 'Check again');
+      await fit(screen, recheck);
+      record({ scenario: 5, action: 'Recheck the saved script job', calls: 0 });
+      await tapVisibleControl(screen, recheck);
+      await waitForOutput(screen, script, 'Wait for the saved script job.', 150_000);
+      await app.screenshot('step-by-step-saved-script-recovered');
+    }
+  } else {
+    await generate('Draft hook, script and caption', script);
+  }
   const shots = screen.getByText('Your filming plan', { exact: true });
   await generate('Make shot list', shots, true);
   await fit(screen, shots, 'up');

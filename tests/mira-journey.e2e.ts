@@ -188,6 +188,21 @@ test('D2 previews keep drawn frames and refresh an expired picture URL', async (
   expect((await stats())?.starts).toBe(1);
 });
 
+test('D2 replays a cut start reply with the same job ID', async ({ app, screen, device }) => {
+  const scenario = 'Demo D2 transport';
+  await d2Fixture(scenario, { begin: true });
+  await launchMira(app, screen, device);
+  await startTodayCard(screen, scenario, 1);
+  const starts = async () => (await d2Fixture(scenario)).map(({ card, starts }) => [card, starts]).sort();
+  await expect.poll(starts).toEqual([[1, 2], [2, 1], [3, 1]]);
+  await d2Fixture(scenario, { card: 1, finish: true });
+  await expect(screen.getByTestId('mira.today.makeCard.1')).toBeVisible();
+  await app.screenshot('transport-recovered-card');
+  await d2Fixture(scenario, { finish: true });
+  await expect(screen.getByRole('button', /^Idea [1-3] of 3, ready$/)).toHaveCount(3);
+  expect(await starts()).toEqual([[1, 2], [2, 1], [3, 1]]);
+});
+
 test('demo moves from an idea to a saved filming plan', async ({ app, screen, device }) => {
   await launchMira(app, screen, device, true);
   await openToday(screen);
