@@ -314,17 +314,23 @@ test('Today has one question, chips, Continue rules and start options in Profile
   await openToday(screen);
   const make = screen.getByTestId('mira.today.make');
   const request = screen.getByTestId('mira.today.request');
+  const keyboard = fixtureSessionArguments.length
+    ? screen.getByRole('window', 'Next keyboard', { exact: true })
+    : mobileKeyboard(screen);
+  const dismissKeyboard = async () => {
+    if (await keyboard.isVisible()) await request.press('Enter');
+    await expect(keyboard).not.toBeVisible();
+  };
   await expect(make).toBeVisible({ timeout: 45_000 });
   await expect(screen.getByText('What can you film today?', { exact: true })).toBeVisible();
   await expect(screen.getByTestId('mira.today.mic')).toBeVisible();
   await expect(screen.getByText('Plan step by step', { exact: true })).not.toBeVisible();
   await expect(screen.getByText('Try Mamta’s demo notebook', { exact: true })).not.toBeVisible();
   await fillText(request, '');
-  await closeKeyboard(screen, request);
+  await dismissKeyboard();
   await app.screenshot(`d1-today-${look}`);
 
   const chip = (id: string) => screen.getByTestId(`mira.today.chip.${id}`);
-  const keyboard = mobileKeyboard(screen);
   await request.tap();
   await expect(keyboard).toBeVisible();
   await chip('gym').tap();
@@ -360,7 +366,7 @@ test('Today has one question, chips, Continue rules and start options in Profile
   await fillText(request, 'Demo slow cards');
   await expect(keyboard).toBeVisible();
   await app.screenshot('today-keyboard-open');
-  await closeKeyboard(screen, request);
+  await dismissKeyboard();
   expect(await request.inputValue()).toBe('Demo slow cards');
   await expect(make).toBeVisible();
   await expect(make).toBeEnabled();
@@ -617,7 +623,9 @@ test('S2 resumes cards, words, filming plan and filming with content clear of th
   await launchMira(app, screen, device);
   await expect(screen.getByTestId('mira.today.page.1')).toBeVisible();
   await screen.getByTestId('mira.today.page.1').tap();
-  await bottomAboveTabs(app, screen, screen.getByRole('button', 'Change something', { exact: true, visible: true }), 's2-resume-today-cards');
+  const selectedCard = screen.getByRole('scroll-view', { visible: true }).filter({ has: card }).last();
+  const change = selectedCard.getByRole('button', 'Change something', { exact: true });
+  await bottomAboveTabs(app, screen, change, 's2-resume-today-cards');
   await tap(screen, card);
   const approve = screen.getByTestId('mira.words.approve');
   await launchMira(app, screen, device);
