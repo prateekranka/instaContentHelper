@@ -471,7 +471,12 @@ test('S2 saved live plan scrolls the final shot above the tab bar', async ({ app
   const title = recorded().findLast(entry => entry.action === 'selected step-by-step project')?.title;
   test.skip(!title, 'The live step-by-step project is required.');
   await launch(app, screen, device);
-  await openProject(screen, title!);
+  await root(screen, 'Projects');
+  const savedPlan = screen.getByRole('button').filter({ hasText: title! })
+    .filter({ hasText: /Start filming|Continue filming/ }).first();
+  await tapVisibleControl(screen, savedPlan);
+  if (await text(screen, /^Shot \d+ of \d+$/).isVisible()) await back(screen).tap();
+  await selectShots(screen);
   const summary = screen.getByText(/^About \d+ seconds edited · [1-9]\d* shots?$/);
   await fit(screen, summary, 'up');
   const shotCount = (await summary.textContent()).match(/ · (\d+) shots?$/)?.[1];
@@ -504,7 +509,9 @@ test('S2 saved live plan scrolls the final shot above the tab bar', async ({ app
   const start = button(screen, /^(Start|Continue) filming$/);
   await fit(screen, start, 'up');
   await tapVisibleControl(screen, start);
-  const filming = text(screen, `Shot 1 of ${shotCount}`);
+  const currentShot = text(screen, new RegExp(`^Shot \\d+ of ${shotCount}$`));
+  await expect(currentShot).toBeVisible();
+  const filming = text(screen, (await currentShot.textContent())!);
   await expect(filming).toBeVisible();
   await launch(app, screen, device);
   await expect(filming).toBeVisible();
