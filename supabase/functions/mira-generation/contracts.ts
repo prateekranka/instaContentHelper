@@ -217,6 +217,12 @@ function normalizeDialogue(text: string): string {
     .replace(/\s+/gu, " ").trim();
 }
 
+function scriptDialogue(script: z.infer<typeof scriptSchema>): string {
+  const hook = normalizeDialogue(script.hook);
+  const spoken = normalizeDialogue(script.spoken);
+  return spoken.startsWith(hook) ? spoken : `${hook} ${spoken}`.trim();
+}
+
 export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
   if (isPhaseEInput(input)) return validatePhaseEOutput(value, input);
   const op = input.operation;
@@ -305,7 +311,7 @@ export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
       script!.durationSeconds > input.constraints.reelSeconds + 5
     ) fail("language_or_duration");
     if (
-      (script!.hook + " " + script!.spoken).trim().split(/\s+/u).length /
+      scriptDialogue(script!).split(" ").length /
           script!.durationSeconds > 3.4
     ) fail("speech_density");
   } else if (op === "requirements") {
@@ -359,10 +365,7 @@ export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
     ) fail("shot_identity_or_duration");
     const dialogue = shots.map((shot) => normalizeDialogue(shot.words))
       .filter(Boolean).join(" ");
-    if (
-      dialogue !==
-        normalizeDialogue(`${input.script!.hook} ${input.script!.spoken}`)
-    ) {
+    if (dialogue !== scriptDialogue(input.script!)) {
       fail("shot_words_script_coverage");
     }
     if (

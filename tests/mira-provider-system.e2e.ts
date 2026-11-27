@@ -3,6 +3,7 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { brandDoc, deal, injection, phaseEInputs, phaseEOutputs } from './fixtures/mira-phase-e.ts';
+import recordedToday from './fixtures/mira-recorded-today.json' with { type: 'json' };
 
 let server: ChildProcess;
 let base: string;
@@ -183,7 +184,7 @@ test('local PostgREST rejects short claims and forbidden job status changes', as
 
 test('a storyboard has filming fields and revising one shot preserves a legacy shot', async () => {
   const script = {
-    id: crypto.randomUUID(), hook: 'Here is my breakfast.', spoken: 'Add fruit to the bowl.',
+    id: crypto.randomUUID(), hook: 'Here is my breakfast.', spoken: 'Here is my breakfast.\nAdd fruit to the bowl.',
     caption: 'My breakfast', durationSeconds: 20, language: 'English',
   };
   const storyboardInput = { ...input, operation: 'storyboard', script };
@@ -395,10 +396,11 @@ test('local Storage serves only a signed picture from the authenticated card sta
   const local = localSupabase();
   const anon = process.env.MIRA_API_E2E_LOCAL_ANON;
   if (!anon) throw new Error('Local anon key is missing.');
+  const { token } = await phaseELocalMember();
   const id = crypto.randomUUID();
   const mode = 'd2-local-storage';
-  expect((await call(id, 'start', 'openai', mode, true, true, todayInput)).status).toBe(200);
-  const status = () => call(id, 'status', 'openai', mode, true, true, todayInput, true);
+  expect((await call(id, 'start', 'openai', mode, true, token, todayInput)).status).toBe(200);
+  const status = () => call(id, 'status', 'openai', mode, true, token, todayInput, true);
   const first = await status();
   expect(first.body.job.state).toBe('succeeded');
   expect(first.headers.get('cache-control')).toBe('no-store');
@@ -931,8 +933,22 @@ test('local Phase E pick streams D2 steps and reserves pictures only on opt-in s
   expect(await pictureCalls(mode)).toHaveLength(3);
 });
 
+test('M05 accepts a recorded Today script and storyboard with the hook already in spoken', async () => {
+  const id = crypto.randomUUID();
+  const mode = 'astra-recorded-today';
+  const start = await call(id, 'start', 'openai', mode, true, true, todayInput);
+  expect(start.status).toBe(200);
+  const status = await call(id, 'status', 'openai', mode);
+  expect(status.status).toBe(200);
+  const job = status.body.job;
+  expect({ state: job.state, error: job.error }).toEqual({ state: 'succeeded', error: undefined });
+  expect(job.output.script).toEqual(recordedToday.script);
+  expect(job.output.storyboard).toEqual(recordedToday.storyboard);
+});
+
 test('M05 storyboard dialogue must cover the source script verbatim and in order', async () => {
-  const script = { id: crypto.randomUUID(), hook: '“Here’s” my breakfast.', spoken: 'Add fruit to the bowl.',
+  const script = { id: crypto.randomUUID(), hook: '“Here’s” my breakfast.',
+    spoken: '"Here\'s" my   breakfast.\nAdd fruit to the bowl.',
     caption: 'My breakfast', language: 'English', durationSeconds: 20 };
   const storyboardInput = { ...input, operation: 'storyboard', script };
   async function run(payload: object, mode: string) {
@@ -942,6 +958,8 @@ test('M05 storyboard dialogue must cover the source script verbatim and in order
   }
   const valid = await run(storyboardInput, 'astra-normalized-words');
   expect(valid.state).toBe('succeeded');
+  const legacy = await run({ ...storyboardInput, script: { ...script, spoken: 'Add fruit to the bowl.' } }, 'ok');
+  expect(legacy.state).toBe('succeeded');
   const storyboard = valid.output.storyboard;
   const results = await Promise.all([
     ...['invented', 'missing', 'reordered', 'repeated'].map(kind => run(storyboardInput, `astra-${kind}-words`)),

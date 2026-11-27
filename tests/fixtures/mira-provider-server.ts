@@ -3,6 +3,7 @@ import { handleMira } from '../../supabase/functions/mira-generation/index.ts';
 import { generate } from '../../supabase/functions/mira-generation/provider.ts';
 import { sha256Hex } from '../../supabase/functions/_shared/device-auth.ts';
 import { phaseEFixture } from './mira-phase-e.ts';
+import recordedToday from './mira-recorded-today.json' with { type: 'json' };
 
 const localPort = Deno.env.get('MIRA_API_E2E_LOCAL_PORT');
 const localRole = Deno.env.get('MIRA_API_E2E_LOCAL_SERVICE_ROLE');
@@ -214,8 +215,8 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
   }
   const selected = request.headers.get('x-fixture-provider') ?? 'deepseek';
   const mode = request.headers.get('x-fixture-mode') ?? 'ok';
-  const phaseELocal = mode.startsWith('e-local-');
-  if (phaseELocal && !localAdmin) return new Response(null, { status: 503 });
+  const usesLocalDatabase = mode === 'd2-local-storage' || mode.startsWith('e-local-');
+  if (usesLocalDatabase && !localAdmin) return new Response(null, { status: 503 });
   if (mode === 'e-local-astra-save' && !saveFaults.has(id)) {
     saveFaults.set(id, { stage: false, finish: false });
   }
@@ -223,7 +224,7 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
   const fixtureToken = request.headers.get('x-mco-device-token') ?? '';
   const fixtureMember = /^fixture-member:([a-f0-9-]{36})$/.exec(fixtureToken)?.[1];
   const extraRows: Record<string, Row[]> = {};
-  if (phaseELocal && fixtureMember) {
+  if (usesLocalDatabase && fixtureMember) {
     extraRows.device_installations = [{ id: id + '-fixture', workspace_id: workspaceID, member_id: fixtureMember,
       token_hash: await sha256Hex(fixtureToken), revoked_at: null }];
     extraRows.members = [{ id: fixtureMember, workspace_id: workspaceID, role: 'creator', status: 'active' }];
@@ -252,9 +253,12 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
     const input = JSON.parse(payload.messages?.[1]?.content ?? payload.contents?.[0]?.parts?.[0]?.text ?? '{}');
     let result: unknown = phaseEFixture(input.operation, mode, input) ?? output;
     const oneIdea = ['todayIdea', 'pickIdea'].includes(input.operation);
-    if (oneIdea || ['storyboard', 'reviseStoryboard', 'reviseShot'].includes(input.operation)) {
+    if (mode === 'astra-recorded-today') {
+      const idea = { ...output.ideas[0], title: 'A quick sled routine', hook: recordedToday.script.hook };
+      result = { ideas: [idea], ...recordedToday, conflicts: [] };
+    } else if (oneIdea || ['storyboard', 'reviseStoryboard', 'reviseShot'].includes(input.operation)) {
       const script = oneIdea ? {
-        id: crypto.randomUUID(), hook: 'Here is my breakfast.', spoken: 'Add fruit to the bowl.',
+        id: crypto.randomUUID(), hook: 'Here is my breakfast.', spoken: 'Here is my breakfast.\nAdd fruit to the bowl.',
         caption: 'My breakfast', durationSeconds: 20, language: input.profile.language,
       } : input.script;
       const first = {
@@ -269,7 +273,7 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
       const second = {
         ...first, id: '30000000-0000-4000-8000-000000000002', purpose: 'Show the bowl',
         editedSeconds: 14, frameType: 'closeUp', framing: 'Your hands and the bowl',
-        recordingSeconds: 20, words: script.spoken,
+        recordingSeconds: 20, words: 'Add fruit to the bowl.',
       };
       const shots = input.operation === 'reviseShot'
         ? [{
@@ -360,7 +364,7 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
       ? { candidates: [{ content: { parts: [{ text }] } }] }
       : { choices: [{ message: { content: text } }] });
   };
-  const database = mode === 'd2-local-storage' || phaseELocal ? localAdmin : undefined;
+  const database = usesLocalDatabase ? localAdmin : undefined;
   return await handleMira(request, {
     env,
     admin: {
