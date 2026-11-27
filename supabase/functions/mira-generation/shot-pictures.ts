@@ -1,12 +1,11 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import type { MiraOutput } from "./contracts.ts";
+import type { MiraShot } from "./contracts.ts";
 import { leaseSeconds, providerDeadline } from "./job-policy.ts";
 
 const BUCKET = "mira-shot-pictures";
 const URL_SECONDS = 3600;
 const MAX_BYTES = 2_097_152;
 type Env = { get(name: string): string | undefined };
-type Shot = NonNullable<MiraOutput["storyboard"]>["shots"][number];
 type Picture = {
   job_id: string;
   shot_id: string;
@@ -26,7 +25,7 @@ export function pictureCount(env: Env): number {
 export async function shotPictures(
   admin: SupabaseClient,
   jobID: string,
-  shots: Shot[],
+  shots: MiraShot[],
   env: Env,
   defer: (work: Promise<unknown>) => void | Promise<unknown>,
   fetchFn: typeof fetch = fetch,
@@ -94,7 +93,7 @@ export async function shotPictures(
 async function makePicture(
   admin: SupabaseClient,
   row: Picture,
-  shot: Shot | undefined,
+  shot: MiraShot | undefined,
   env: Env,
   fetchFn: typeof fetch,
 ) {
@@ -138,7 +137,7 @@ async function makePicture(
 }
 
 async function generatePicture(
-  shot: Shot,
+  shot: MiraShot,
   env: Env,
   signal: AbortSignal,
   fetchFn: typeof fetch,

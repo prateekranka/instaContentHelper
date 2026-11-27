@@ -1,4 +1,17 @@
 import { z } from "npm:zod@4.6.7";
+import {
+  brandDocSchema,
+  checklistSchema,
+  hasUnsupportedHealthClaim,
+  hasVerbatimSource,
+  invalidOutput,
+  isPhaseEInput,
+  languageFields,
+  phaseEInputSchemas,
+  type PhaseEOutput,
+  phaseEOutputSchemas,
+  validatePhaseEOutput,
+} from "./phase-e.ts";
 const text = z.string().max(12000);
 const nonempty = z.string().min(1).max(5000);
 const id = z.uuid();
@@ -6,8 +19,7 @@ export const profileSchema = z.object({
   name: text,
   themes: text,
   audience: text,
-  language: z.enum(["English", "Hindi", "Hinglish"]),
-  writingSystem: z.enum(["Devanagari", "Romanised"]),
+  ...languageFields,
   tone: text,
   avoid: text,
   samples: text,
@@ -67,6 +79,7 @@ const savedShotSchema = shotSchema.extend({
   framing: text.optional(),
   frameType: frameTypeSchema.optional(),
 });
+export type MiraShot = z.infer<typeof savedShotSchema>;
 export const requirementSchema = z.object({
   id,
   kind: nonempty,
@@ -90,7 +103,7 @@ export const boardSchema = z.object({
       .strict(),
   ).max(40),
 }).strict();
-export const inputSchema = z.object({
+const legacyInputSchema = z.object({
   operation: z.enum([
     "ideas",
     "todayIdea",
@@ -114,6 +127,33 @@ export const inputSchema = z.object({
   brief: briefSchema.nullish(),
   targetShotID: id.nullish(),
 }).strict();
+const pickIdeaInputSchema = legacyInputSchema.pick({
+  profile: true,
+  constraints: true,
+  request: true,
+  recentIdeas: true,
+  angle: true,
+}).extend({
+  operation: z.literal("pickIdea"),
+  brandDoc: brandDocSchema.optional(),
+  bestPostPatterns: z.array(z.string().trim().min(1).max(240)).max(8)
+    .optional(),
+  dealChecklist: z.object({
+    revision: z.number().int().nonnegative(),
+    items: checklistSchema,
+  }).strict().optional(),
+  avoid: z.array(z.string().trim().min(1).max(240)).max(30),
+}).strict();
+export const inputSchema = z.union([
+  legacyInputSchema,
+  pickIdeaInputSchema,
+  ...Object.values(phaseEInputSchemas),
+]);
+export const operationSchema = z.union([
+  legacyInputSchema.shape.operation,
+  pickIdeaInputSchema.shape.operation,
+  ...Object.values(phaseEInputSchemas).map((schema) => schema.shape.operation),
+]);
 export type MiraInput = z.infer<typeof inputSchema>;
 export const outputSchema = z.object({
   ideas: z.array(ideaSchema).length(3).optional(),
@@ -134,6 +174,9 @@ const todayIdeaOutputSchema = z.object({
   storyboard: boardSchema.extend({ shots: z.array(shotSchema).min(3).max(5) }),
   conflicts: z.array(nonempty).length(0),
 }).strict();
+const pickIdeaOutputSchema = todayIdeaOutputSchema.extend({
+  reason: z.string().trim().min(1).max(240).regex(/^[^\r\n]+$/u),
+});
 export const todaySteps = [
   {
     field: "ideas",
@@ -155,18 +198,35 @@ export type TodayStep = typeof todaySteps[number]["step"];
 
 export function providerOutputSchema(operation: MiraInput["operation"]) {
   if (operation === "todayIdea") return todayIdeaOutputSchema;
+  if (operation === "pickIdea") return pickIdeaOutputSchema;
+  if (operation in phaseEOutputSchemas) {
+    return phaseEOutputSchemas[operation as keyof typeof phaseEOutputSchemas];
+  }
   return operation === "reviseShot" ? reviseShotOutputSchema : outputSchema;
 }
-export type MiraOutput = Omit<z.infer<typeof outputSchema>, "storyboard"> & {
-  storyboard?: NonNullable<MiraInput["storyboard"]>;
+type LegacyOutput = Omit<z.infer<typeof outputSchema>, "storyboard"> & {
+  storyboard?: NonNullable<z.infer<typeof legacyInputSchema>["storyboard"]>;
 };
+export type MiraOutput =
+  | LegacyOutput
+  | z.infer<typeof pickIdeaOutputSchema>
+  | PhaseEOutput;
 export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
+  if (isPhaseEInput(input)) return validatePhaseEOutput(value, input);
   const op = input.operation;
-  if (op === "todayIdea") {
-    const output = todayIdeaOutputSchema.parse(value);
+  if (op === "todayIdea" || op === "pickIdea") {
+    const output =
+      (op === "pickIdea" ? pickIdeaOutputSchema : todayIdeaOutputSchema)
+        .parse(value);
     const idea = output.ideas[0];
+    if (input.operation === "pickIdea" && idea.hook !== output.script.hook) {
+      invalidOutput("pick_script_hook_mismatch");
+    }
+    const avoid = input.operation === "pickIdea"
+      ? [...input.recentIdeas, ...input.avoid]
+      : input.recentIdeas;
     if (
-      input.recentIdeas.some((title) =>
+      avoid.some((title) =>
         title.trim().toLowerCase() === idea.title.trim().toLowerCase()
       )
     ) {
@@ -175,18 +235,43 @@ export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
     if (idea.filmingMinutes > input.constraints.filmingMinutes) {
       throw Error("invalid_output:filming_time");
     }
+    const brief = input.operation !== "pickIdea"
+      ? input.brief
+      : input.dealChecklist && {
+        original: "",
+        requirements: input.dealChecklist.items.map((
+          { id, kind, text, excerpt },
+        ) => ({
+          id,
+          kind,
+          value: text,
+          excerpt,
+        })),
+        unresolved: [],
+        confirmed: true,
+        revision: input.dealChecklist.revision,
+      };
+    const context = {
+      profile: input.profile,
+      constraints: input.constraints,
+      request: input.request,
+      recentIdeas: input.recentIdeas,
+      brief,
+    };
     validateOutput({ script: output.script, conflicts: [] }, {
-      ...input,
+      ...context,
       operation: "script",
     });
     validateOutput({ storyboard: output.storyboard, conflicts: [] }, {
-      ...input,
+      ...context,
       operation: "storyboard",
       script: output.script,
     });
     return output;
   }
-  const output: MiraOutput = providerOutputSchema(op).parse(value);
+  const output: LegacyOutput =
+    (op === "reviseShot" ? reviseShotOutputSchema : outputSchema)
+      .parse(value);
   const fail = (message: string): never => {
     throw new Error("invalid_output:" + message);
   };
@@ -223,10 +308,9 @@ export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
       fail("brief_source");
     }
     for (const r of brief!.requirements) {
-      if (
-        !brief!.original.includes(r.excerpt) ||
-        !brief!.original.includes(r.value)
-      ) fail("invented_excerpt_or_value");
+      if (!hasVerbatimSource(brief!.original, [r.excerpt, r.value])) {
+        fail("invented_excerpt_or_value");
+      }
     }
     if (
       /\bcode\b/iu.test(brief!.original) &&
@@ -237,10 +321,7 @@ export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
         "A code is mentioned but no explicit code was extracted. Confirm it with the brand.",
       );
     }
-    if (
-      /(cure|treat|reverse|guarantee).{0,60}(diabet|cancer|disease|weight|health)/iu
-        .test(brief!.original)
-    ) {
+    if (hasUnsupportedHealthClaim(brief!.original)) {
       brief!.unresolved.push(
         "Unsupported health claim: correct the brief or obtain substantiation before using this claim.",
       );
