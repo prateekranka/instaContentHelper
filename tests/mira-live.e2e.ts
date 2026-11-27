@@ -38,17 +38,30 @@ test('One live Make today’s Reel request returns three cards', async ({ app, s
   await make.tap();
   await app.screenshot('live-request-submitted');
 
+  const permission = screen.getByText(
+    /^(AI (data )?permission|Use AI to write your ideas\?)$|^Allow AI to write ideas first\./,
+    { visible: true },
+  );
   const cardStates = screen.getByRole('button', /^Idea [1-3] of 3, /);
   const alert = screen.getByRole('alert', 'Mira', { exact: true });
   let previous = '';
   let stateNumber = 0;
   const result = async () => {
+    if (await permission.count() > 0) {
+      await app.screenshot('live-ai-permission-required');
+      return 'AI data permission required';
+    }
     const states = await cardStates.allTextContents();
+    const readyCards = states.flatMap(state => {
+      const card = /^Idea ([1-3]) of 3, ready$/.exec(state);
+      return card ? [card[1]] : [];
+    });
     if (states.join('|') !== previous) {
       previous = states.join('|');
-      await app.screenshot(`live-card-state-${++stateNumber}`);
+      const ready = readyCards.length ? `-ready-${readyCards.join('-')}` : '';
+      await app.screenshot(`live-card-state-${++stateNumber}${ready}`);
     }
-    if (states.length === 3 && states.every(state => state.endsWith(', ready'))) return 'ready';
+    if (readyCards.length === 3) return 'ready';
     if (states.some(state => /, (did not load|needs an update)$/.test(state))) return 'card failure';
     if (await alert.isVisible()) return 'app error';
     return 'waiting';
