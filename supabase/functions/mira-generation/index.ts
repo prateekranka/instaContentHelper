@@ -17,6 +17,7 @@ const envelope = z.object({
   inputRevision: z.number().int().nonnegative().optional(),
   input: inputSchema.optional(),
   consentVersion: z.literal(1).optional(),
+  pictures: z.boolean().optional(),
 }).strict();
 // deno-lint-ignore no-explicit-any
 type Admin = any;
@@ -164,7 +165,8 @@ export async function handleMira(
   const output = job.output as MiraOutput | undefined;
   let pictures: Awaited<ReturnType<typeof shotPictures>> | undefined;
   if (
-    body.action !== "cancel" && job.state === "succeeded" &&
+    body.action === "status" && body.pictures === true &&
+    job.state === "succeeded" &&
     result.data.picture_count > 0 && output?.storyboard
   ) {
     try {

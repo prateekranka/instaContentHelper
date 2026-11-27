@@ -136,7 +136,9 @@ const output = { conflicts: [], ideas: [1, 2, 3].map((n) => ({
 
 Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT')) }, async (request) => {
   const url = new URL(request.url);
-  if (url.pathname === '/observations') return Response.json({ calls, jobs: [...jobs.values()], stepWrites });
+  if (url.pathname === '/observations') {
+    return Response.json({ calls, jobs: [...jobs.values()], stepWrites, pictureJobIDs: pictures.map(row => row.job_id) });
+  }
   const id = request.headers.get('x-fixture-job') ?? '';
   if (url.pathname === '/tick') {
     const gate = streamGates.get(id)?.shift();

@@ -44,12 +44,13 @@ afterAll(async () => { if (server && server.exitCode === null) server.kill('SIGT
 async function call(
   id: string, action: 'start' | 'status' | 'cancel', provider: string,
   mode = 'ok', consent = true, token: boolean | string = true, jobInput: object = input,
+  pictures?: boolean,
 ) {
   const response = await fetch(`${base}/mira-generation`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-fixture-provider': provider, 'x-fixture-mode': mode, 'x-fixture-job': id,
       ...(token ? { 'x-mco-device-token': typeof token === 'string' ? token : 'fixture-device-token' } : {}) },
-    body: JSON.stringify({ action, id, creatorID, ...(action === 'start' ? {
+    body: JSON.stringify({ action, id, creatorID, pictures, ...(action === 'start' ? {
       inputRevision: 1, input: jobInput, ...(consent ? { consentVersion: 1 } : {}),
     } : {}) }),
   });
@@ -61,6 +62,7 @@ async function observations() {
     calls: { url: string; model: string; mode: string; payload?: Record<string, unknown> }[];
     stepWrites: { id: string; step: string }[];
     jobs: { id: string; status: string; error?: string }[];
+    pictureJobIDs: string[];
   };
 }
 
@@ -296,11 +298,31 @@ function pictureCalls(mode: string) {
     call.mode === mode && call.url.endsWith('/images/generations')));
 }
 
+test('old-style status never starts pictures for a successful Today card', async () => {
+  const id = crypto.randomUUID();
+  const mode = 'd2-legacy-status';
+  expect((await call(id, 'start', 'openai', mode, true, true, todayInput)).status).toBe(200);
+  const status = (pictures?: boolean) => call(id, 'status', 'openai', mode, true, true, todayInput, pictures);
+  const legacyResponses = [await status(), await status(), await status(false)];
+  expect(await pictureCalls(mode)).toHaveLength(0);
+  expect((await observations()).pictureJobIDs).not.toContain(id);
+  for (const { status, body } of legacyResponses) {
+    expect(status).toBe(200);
+    expect(body.job.state).toBe('succeeded');
+    expect(body.job.step).toBe('storyboard_ready');
+    expect(body.job.output.storyboard.shots).toHaveLength(3);
+    expect(body.job).not.toHaveProperty('pictures');
+  }
+  expect((await status(true)).body.job.pictures).toHaveLength(3);
+  expect(await pictureCalls(mode)).toHaveLength(3);
+  expect((await status()).body.job).not.toHaveProperty('pictures');
+});
+
 test('a successful Today card returns independent picture states and signed URLs', async () => {
   const id = crypto.randomUUID();
   const mode = 'd2-mixed';
   await call(id, 'start', 'openai', mode, true, true, todayInput);
-  const status = async (token: boolean | string = true) => call(id, 'status', 'openai', mode, true, token);
+  const status = (token: boolean | string = true) => call(id, 'status', 'openai', mode, true, token, todayInput, true);
   const [first, second] = await Promise.all([status(), status()]);
   expect(first.body.job.state).toBe('succeeded');
   expect(second.body.job.state).toBe('succeeded');
@@ -335,7 +357,7 @@ test('a retry recovers uploaded pictures after a lost ready update without a sec
   const id = crypto.randomUUID();
   const mode = 'd2-lost-picture-write';
   await call(id, 'start', 'openai', mode, true, true, todayInput);
-  const status = async () => (await call(id, 'status', 'openai', mode)).body.job;
+  const status = async () => (await call(id, 'status', 'openai', mode, true, true, todayInput, true)).body.job;
   const pending = await status();
   expect(pending.pictures.map((picture: { status: string }) => picture.status)).toEqual(['pending', 'pending', 'pending']);
   await fetch(`${base}/expire-pictures`, { method: 'POST', headers: { 'x-fixture-job': id } });
@@ -348,8 +370,8 @@ test('a short remaining picture lease refuses every provider call and preserves 
   const id = crypto.randomUUID();
   const mode = 'd2-short-picture';
   await call(id, 'start', 'openai', mode, true, true, todayInput);
-  await call(id, 'status', 'openai', mode);
-  const { body } = await call(id, 'status', 'openai', mode);
+  await call(id, 'status', 'openai', mode, true, true, todayInput, true);
+  const { body } = await call(id, 'status', 'openai', mode, true, true, todayInput, true);
   expect(body.job.state).toBe('succeeded');
   expect(body.job.pictures.map((picture: { status: string }) => picture.status)).toEqual(['failed', 'failed', 'failed']);
   expect(await pictureCalls(mode)).toHaveLength(0);
@@ -373,7 +395,7 @@ test('local Storage serves only a signed picture from the authenticated card sta
   const id = crypto.randomUUID();
   const mode = 'd2-local-storage';
   expect((await call(id, 'start', 'openai', mode, true, true, todayInput)).status).toBe(200);
-  const status = () => call(id, 'status', 'openai', mode);
+  const status = () => call(id, 'status', 'openai', mode, true, true, todayInput, true);
   const first = await status();
   expect(first.body.job.state).toBe('succeeded');
   expect(first.headers.get('cache-control')).toBe('no-store');

@@ -4,7 +4,18 @@ Branch `claude/mira-d2-server` started at `9809976`, the verified GitHub `main` 
 
 ## App contract
 
-Send the existing authenticated POST to `/functions/v1/mira-generation`. Use the existing device token and Supabase publishable key. Start each Today card with today's usual `todayIdea` input, input revision and consent version 1. Poll that card with this body.
+Send the existing authenticated POST to `/functions/v1/mira-generation`. Use the existing device token and Supabase publishable key. Start each Today card with today's usual `todayIdea` input, input revision and consent version 1. When the app needs pictures, send `"pictures": true` on each status request for the card.
+
+```json
+{
+  "action": "status",
+  "id": "10000000-0000-4000-8000-000000000101",
+  "creatorID": "10000000-0000-4000-8000-000000000002",
+  "pictures": true
+}
+```
+
+Use this status request for text and progress only. Omitting `pictures` or sending `false` skips all picture work and omits `job.pictures`, even if another client opted in for the same card.
 
 ```json
 {
@@ -52,7 +63,7 @@ Working response after the provider completes the script.
 }
 ```
 
-Successful response with one ready picture, one in progress, and one failed picture. The URL below illustrates the signed route with a placeholder token.
+Successful response to `"pictures": true` with one ready picture, one in progress, and one failed picture. The URL below illustrates the signed route with a placeholder token.
 
 ```json
 {
@@ -185,11 +196,11 @@ Successful response with one ready picture, one in progress, and one failed pict
 | `step: "script_ready"` | Mark the idea and words done. Show “Planning shots” in progress. The final script and shot count arrive in `output`. |
 | `step: "storyboard_ready"` | Mark all three parts done. Wait for terminal success before opening the card. |
 | `pictures` missing or no entry for a shot | Use the drawn fallback. Old cards and cards with previews disabled have no list. A temporary picture lookup error can also omit it. |
-| Picture `status: "pending"` | Use the drawn fallback. Continue status requests for this card while the previews are needed. |
-| Picture `status: "ready"` | Match by `shotID` and load the signed URL with GET. If it expires or fails, request status again to refresh it. |
+| Picture `status: "pending"` | Use the drawn fallback. Continue status requests with `"pictures": true` while the previews are needed. |
+| Picture `status: "ready"` | Match by `shotID` and load the signed URL with GET. If it expires or fails, request status with `"pictures": true` again to refresh it. |
 | Picture `status: "failed"` | Use the drawn fallback. The server does not try that picture again. |
 
-Both additions are optional keys on `job`. `id`, `inputRevision`, `input`, `state`, `phase`, `output` and `error` preserve their S4 meanings. `state: "succeeded"` makes the card usable regardless of picture status. Each response reports a snapshot; one response can skip intermediate steps if several parts arrive between polls. A new text claim can start the steps again. Responses use `Cache-Control: no-store`. Signed URLs last one hour from signing. Treat them as temporary credentials.
+Both additions are optional keys on `job`. The server returns available `step` values on legacy and opt-in requests. `id`, `inputRevision`, `input`, `state`, `phase`, `output` and `error` preserve their S4 meanings. `state: "succeeded"` makes the card usable regardless of picture status. Each response reports a snapshot. If several parts arrive between polls, one response can skip intermediate steps. A new text claim can start the steps again. Responses use `Cache-Control: no-store`. Signed URLs last one hour from signing. Treat them as temporary credentials.
 
 ## OpenAI request changes for review
 
@@ -197,18 +208,18 @@ Both additions are optional keys on `job`. `id`, `inputRevision`, `input`, `stat
 | --- | --- |
 | OpenAI Chat Completions returns one JSON response. | The same request adds `stream: true`. The adapter reads content deltas. It requires `finish_reason: "stop"` and `[DONE]` before final JSON and contract validation. |
 | Today returns a card after all text passes validation. | The prompt requests idea, script and storyboard in that order. The scanner checks complete top-level JSON fields against their schemas. It writes only when the furthest completed step advances. Each write matches the active lease. |
-| The server sends no OpenAI image requests for Today. | One text-only Images API request uses the shot’s location, props, camera position, distance, framing and action. The prompt asks for a generic subject. The request contains no photo, Instagram payload, profile fields, script, or spoken lines. |
+| The server sends no OpenAI image requests for Today. | After a client opts in on a status request for a succeeded card, one text-only Images API request per shot uses the shot’s location, props, camera position, distance, framing and action. The prompt asks for a generic subject. The request contains no photo, Instagram payload, profile fields, script, or spoken lines. |
 
 DeepSeek and Gemini keep their non-streaming text paths. A transport cut uses S4 retry and backoff. Invalid output and refused or truncated answers take the validation-failure path. The existing consent says the listed providers help write ideas and make pictures. [Consent source](../../CreatorContentOS/Features/Privacy/AIConsentCopy.swift), [OpenAI streaming reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events/)
 
 ## Pictures, limits and cost
 
-- Operation `shotPictures` uses a separate table with one job per shot. The first non-cancel request that reads a succeeded Today card reserves its previews and starts the jobs in the background. This includes the request that first shows success to an existing app. A card that nobody reads after text finishes starts its previews when a later request reads it.
-- `MIRA_IMAGE_MODEL` defaults to `gpt-image-2.6-flare`. `MIRA_PICTURES_PER_CARD` accepts 0 to 5 and defaults to 5. An invalid count or missing `OPENAI_API_KEY` disables previews for newly completed cards. The server records the count when text finishes. The default covers all three to five shots on each card. With three shots per card, one Today request uses nine pictures.
+- Operation `shotPictures` uses a separate table with one job per shot. The first status request with `"pictures": true` that reads a succeeded, picture-enabled Today card reserves its previews and starts the jobs in the background. The opt-in applies to that request only. Start and cancel requests skip picture work.
+- `MIRA_IMAGE_MODEL` defaults to `gpt-image-2.6-flare`. `MIRA_PICTURES_PER_CARD` accepts 0 to 5 and defaults to 5. An invalid count or missing `OPENAI_API_KEY` disables previews for newly completed cards. The server records the count when text finishes. The default covers all three to five shots on each card. If a client opts in for all three cards with three shots each, one Today run uses nine pictures.
 - Flare uses `quality: "low"`, `complexity: "low"`, `size: "720x1280"`, `output_format: "jpeg"` and `output_compression: 75`. This is the smallest exact 9:16 size that meets the documented pixel minimum and 16-pixel dimension rule. [OpenAI image generation guide](https://developers.openai.com/api/docs/guides/image-generation), [Flare model](https://developers.openai.com/api/docs/models/gpt-image-2.6-flare)
-- Each picture request has a 100-second deadline from `job-policy.ts`, including the response body. The claim grants 125 seconds. The worker requires at least 120 seconds remaining before every call. This gives 20 seconds after the provider deadline and five seconds to receive the claim. A card runs at most five requests in parallel and uploads each JPEG when it arrives. The worker starts from a separate status request after text generation completes. Supabase lists a 150-second free-plan and 400-second paid-plan worker lifetime. A reused worker can have less time remaining, so the next status request also reconciles expired claims. [Supabase Edge limits](https://supabase.com/docs/guides/functions/limits)
-- The primary key and a per-member transaction lock reserve each shot once. The worker uploads to a deterministic path with overwrite disabled. If the upload succeeded and its status write was lost, the next status request after lease expiry checks Storage and returns the saved image without another provider call. An expired reservation with no file becomes failed. Ambiguous failures use the drawn fallback and keep their reservation.
-- A member can reserve 30 pictures per UTC day. The cap includes failed or interrupted attempts and applies across cards and devices. The original three active text jobs and ten text starts per minute still apply. Picture rows use neither text allowance. The private `mira-shot-pictures` bucket accepts JPEGs up to 2 MiB. The service role owns metadata and object writes. Device clients only receive signed URLs after a scoped status request.
+- Each picture request has a 100-second deadline from `job-policy.ts`, including the response body. The claim grants 125 seconds. The worker requires at least 120 seconds remaining before every call. This gives 20 seconds after the provider deadline and five seconds to receive the claim. A card runs at most five requests in parallel and uploads each JPEG when it arrives. The worker starts from an opt-in status request after text generation completes. Supabase lists a 150-second free-plan and 400-second paid-plan worker lifetime. A reused worker can have less time remaining, so the next opt-in status request also reconciles expired claims. [Supabase Edge limits](https://supabase.com/docs/guides/functions/limits)
+- The primary key and a per-member transaction lock reserve each shot once. The worker uploads to a deterministic path with overwrite disabled. If the upload succeeded and its status write was lost, the next opt-in status request after lease expiry checks Storage and returns the saved image without another provider call. An expired reservation with no file becomes failed. Ambiguous failures use the drawn fallback and keep their reservation.
+- A member can reserve 30 pictures per UTC day. The cap includes failed or interrupted attempts and applies across cards and devices. The original three active text jobs and ten text starts per minute still apply. Picture rows use neither text allowance. The private `mira-shot-pictures` bucket accepts JPEGs up to 2 MiB. The service role owns metadata and object writes. Device clients only receive signed URLs after a scoped opt-in status request.
 - The local provider fixture made no billable calls. Actual image quality, latency and per-picture cost are unverified. Public standard Flare rates are USD 5 per million uncached text input tokens and USD 30 per million image output tokens. Measure with actual usage from the approved QA run. The 1–5 cent estimate in the brief has no measured basis in this run. [Flare pricing](https://developers.openai.com/api/docs/models/gpt-image-2.6-flare)
 
 ## Migration and undo SQL
@@ -323,6 +334,14 @@ Supabase and the dedicated Colima profile stopped. The local database and Storag
 
 The public tracker recorded MIRA-032 as Working at `2026-11-27T20:17:48.014Z`. The verification update landed at `2026-11-27T20:27:23.731Z`. The branch remains local. [Mira tracker](https://mira-build-progress-production.up.railway.app)
 
+### Review fix 1 verification
+
+On 2026-11-28 IST, the focused `old-style status` scenario failed on the original server with three fixture image requests. With the fix, legacy polls and `pictures: false` caused zero picture reservations and zero image requests. The card still returned text and `step`. An opt-in poll started all three pictures. A later legacy poll omitted `job.pictures` for the same card.
+
+The full API configuration passed 18 scenarios, including all three local Supabase scenarios. It skipped both hosted scenarios. The run used TesterArmy 0.15.2, Node 22.23.2, Supabase CLI 2.121.0 and the fake provider. All 41 local migrations matched. Both existing SQL checks and `deno task ci:backend` passed with Deno 2.8.1. All seven agent-rule groups passed, and the proof script rejected all 14 historical reproductions.
+
+Use the local commands above to reproduce the full run. For the focused run, add `--grep 'old-style status'` to the TesterArmy command. Reports and logs are in `work/evidence/d2/review-fix-1/20261127T204854Z.DGi2Rr/` under `api/`, `regression-before/` and `regression-after/`. The run made zero paid calls.
+
 ## Live steps for Claude after Bobby approves
 
 1. Review the OpenAI request changes above. Confirm the intended project and the isolated QA workspace. Confirm the QA picture budget before any paid calls.
@@ -355,7 +374,7 @@ The public tracker recorded MIRA-032 as Working at `2026-11-27T20:17:48.014Z`. T
    supabase functions list --project-ref "$MIRA_PROJECT_REF"
    ```
 
-5. Run the existing Today QA scenario only if its pinned endpoint matches the approved project. It starts three cards. The default setting can reserve up to 15 pictures. Set the existing QA credentials in the environment and keep the report private.
+5. Run the existing Today QA scenario only if its pinned endpoint matches the approved project. It starts three cards and polls for text and progress. Set the existing QA credentials in the environment and keep the report private.
 
    ```sh
    mkdir -p work/evidence/d2-live
@@ -365,7 +384,7 @@ The public tracker recorded MIRA-032 as Working at `2026-11-27T20:17:48.014Z`. T
      npx e2e run --config e2e.mira-api.config.ts
    ```
 
-6. Use each recorded card ID to send the status body above with the same QA creator and device token. Continue while any picture is pending. Verify the signed JPEG and reject an unsigned download. The Today report records observed steps and timestamps. Redact signed URLs and credentials from evidence. Review the provider usage and Edge logs for cost, failure rate and lease refusals.
+6. Use each recorded card ID to send the opt-in status body above with the same QA creator and device token. The default setting can reserve up to 15 pictures across the three cards. Continue opt-in polls while any picture is pending. Verify the signed JPEG and reject an unsigned download. The Today report records observed steps and timestamps. Redact signed URLs and credentials from evidence. Review the provider usage and Edge logs for cost, failure rate and lease refusals.
 7. Verify the published GitHub commit links before attaching them to the public tracker.
 
 ## Limits and documentation differences
