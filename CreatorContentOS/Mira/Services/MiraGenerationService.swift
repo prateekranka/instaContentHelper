@@ -54,7 +54,7 @@ final class MiraDependencies {
     static func todayFixture(for request: String) -> MiraSupabaseGenerationService? {
         #if DEBUG
         guard DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil,
-            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures"].contains(request),
+            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures", "Demo D2 transport"].contains(request),
             let endpoint = DebugLaunchConfiguration.value(for: "MCO_QA_D2_ENDPOINT"),
             let url = URL(string: endpoint), url.scheme == "https", url.host != nil
         else { return nil }
@@ -104,7 +104,13 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
             Request(
                 action: action, id: id, creatorID: session.creatorID, inputRevision: start?.inputRevision,
                 input: start?.input, consentVersion: start == nil ? nil : 1, pictures: pictures))
-        let (data, response) = try await urlSession.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await urlSession.data(for: request)
+        } catch let error as URLError where error.code == .networkConnectionLost && action != "cancel" {
+            try Task.checkCancellation()
+            (data, response) = try await urlSession.data(for: request)
+        }
         guard let http = response as? HTTPURLResponse else { throw MiraError.offline }
         guard (200...299).contains(http.statusCode) else {
             let code = (try? JSONDecoder().decode(Failure.self, from: data))?.error

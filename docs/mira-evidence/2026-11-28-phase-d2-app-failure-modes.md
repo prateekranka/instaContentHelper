@@ -15,3 +15,5 @@
 | Build and rules | Simulator and device builds diverge, runtime settings are missing, or the new state introduces a second mutable owner. | Build both targets, check required device bundle settings as yes or no, and run all seven agent-rule groups. |
 
 The first phone run captured a speech crash at 04:38:21 IST. The iOS authorization callback ran on a background queue. A callback inferred to run on the main actor can crash before the denied state updates. The phone retry must tap the mic with the same denied permission, see Open Settings and type. The known denied state must skip the system authorization request.
+
+The first live step-by-step run reproduced the S3 transport failure while getting the script. If a connection drops, replaying a request with a new job ID can create a second job. A single transport retry must reuse the same HTTP request and job ID. A fixture can drop the first reply after accepting the start and count the replay. The live retry must check the saved script job before spending its last text slot on the shot list.
