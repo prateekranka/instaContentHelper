@@ -13,7 +13,7 @@ struct SignInView: View {
                 .foregroundStyle(.secondary)
             signInActions
         }
-        .tint(MiraTheme.olive)
+        .tint(MiraTheme.accent)
     }
 
     private var signInActions: some View {

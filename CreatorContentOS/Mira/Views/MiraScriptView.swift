@@ -187,7 +187,7 @@ struct MiraWordsView: View {
                 .controlSize(.large).disabled(busy).accessibilityIdentifier("mira.words.simpler")
             if changing {
                 TextField("What should change?", text: $note, axis: .vertical).lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder).font(.title3)
+                    .font(.title3).miraFieldBox()
                     .accessibilityIdentifier("mira.words.note")
                 Button("Send") { send(note.trimmingCharacters(in: .whitespacesAndNewlines)) }
                     .buttonStyle(.bordered).controlSize(.large)

@@ -15,7 +15,7 @@ struct MiraProjectView: View {
                 MiraPage {
                     if project.isDemo {
                         Text("Example — not your content").font(.caption).foregroundStyle(
-                            MiraTheme.olive)
+                            MiraTheme.accent)
                     }
                     if project.todayCards?.isEmpty == false {
                         NavigationLink("Today's ideas", value: MiraRoute.todayCards(projectID))
@@ -158,7 +158,7 @@ struct MiraProjectView: View {
             ForEach(Array(displayedIdeas.enumerated()), id: \.element.id) { index, idea in
                 VStack(alignment: .leading, spacing: 12) {
                     if index == 0 {
-                        Text("A simple place to start").font(.caption).foregroundStyle(MiraTheme.olive)
+                        Text("A simple place to start").font(.caption).foregroundStyle(MiraTheme.accent)
                     }
                     Text(idea.title).font(.title2.weight(.semibold))
                     Text(idea.hook).font(.headline)
@@ -279,6 +279,6 @@ struct MiraJobView: View {
                     }
                 }
             }
-        }.padding(16).overlay(RoundedRectangle(cornerRadius: 8).stroke(MiraTheme.olive, lineWidth: 1))
+        }.padding(16).overlay(RoundedRectangle(cornerRadius: 8).stroke(MiraTheme.accent, lineWidth: 1))
     }
 }

@@ -43,6 +43,7 @@ struct MiraConstraints: Codable, Equatable, Sendable {
             location = "Home"
         }
         if lower.contains("kitchen") || lower.contains("रसोई") { location = "Kitchen at home" }
+        if lower.contains("outside") || lower.contains("outdoor") || lower.contains("park") { location = "Outside" }
         if lower.contains("gym") && !lower.contains("cannot") && !lower.contains("can't") {
             location = "Gym"
         }
