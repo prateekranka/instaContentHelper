@@ -30,10 +30,12 @@ enum MiraBriefState {
         var brief = record
         switch event {
         case .textChanged(let text):
+            guard brief.original != text else { return nil }
             brief.original = text
             brief.confirmed = false
         case .detailChanged(let id, let text):
-            guard let index = brief.requirements.firstIndex(where: { $0.id == id }) else { return nil }
+            guard let index = brief.requirements.firstIndex(where: { $0.id == id }),
+                  brief.requirements[index].value != text else { return nil }
             brief.requirements[index].value = text
             brief.confirmed = false
         case .removeRequirement(let id):
