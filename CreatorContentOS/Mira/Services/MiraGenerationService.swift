@@ -24,8 +24,14 @@ final class MiraDependencies {
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
                 .appendingPathComponent("Library/Application Support", isDirectory: true)
+        let library: String
+        if DebugLaunchFlags.forceFixtureUI, let session = DebugLaunchConfiguration.fixtureSession {
+            library = "Mira-Fixtures-\(session)"
+        } else {
+            library = "Mira"
+        }
         let repository = MiraFileRepository(
-            directory: support.appendingPathComponent("Mira", isDirectory: true))
+            directory: support.appendingPathComponent(library, isDirectory: true))
         return MiraDependencies(
             repository: repository, makeSpeechInput: { MiraSpeechInput() },
             makeLiveGeneration: { MiraSupabaseGenerationService(session: $0) })
@@ -35,7 +41,9 @@ final class MiraDependencies {
         for project: MiraProject?, appState: AppState, services: AppServices,
         requiresConsent: Bool = true
     ) throws -> any MiraGenerationService {
-        if project?.isDemo == true { return MiraFixtureGenerationService() }
+        if project?.isDemo == true {
+            return MiraFixtureGenerationService(slowShotUpdate: DebugLaunchConfiguration.fixtureSession != nil)
+        }
         guard case .live(let session) = appState.runtime.mode else {
             throw MiraError.invalid(
                 "Connect your account from Profile to use live generation. You can still write manually and open saved work."

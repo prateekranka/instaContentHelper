@@ -1,10 +1,11 @@
 import { test, type Device } from '@e2e-dev/mobile';
-import { expect, type Locator, type Screen } from 'e2e';
+import { expect, type App, type Locator, type Screen } from 'e2e';
+import { fixtureSessionArguments } from '../e2e.mira.config';
 import { closeKeyboard, mobileKeyboard, scrollToControl, tapVisibleControl } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
 const english = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_APPEARANCE', 'light'];
-const fixtureLaunch = [...english, '-MCO_FORCE_FIXTURE_UI', '1'];
+const fixtureLaunch = [...english, '-MCO_FORCE_FIXTURE_UI', '1', ...fixtureSessionArguments];
 
 async function tap(screen: Screen, locator: Locator) {
   await tapVisibleControl(screen, locator);
@@ -279,6 +280,11 @@ test('Your words gate leads to approved filming and the Done screen', async ({ a
   await expect(newVersion).not.toBeVisible();
 
   await tap(screen, approve);
+  if (fixtureSessionArguments.length) {
+    const updating = screen.getByText('Updating your shots…', { exact: true, visible: true });
+    await expect(updating).toBeVisible();
+    await app.screenshot('s2-words-updating-shots');
+  }
   await expect(title('Shot 1 of 3')).toBeVisible({ timeout: 45_000 });
   await app.screenshot('words-approved-filming');
   for (let shot = 1; shot <= 3; shot += 1) {
@@ -305,7 +311,7 @@ test('Your words gate leads to approved filming and the Done screen', async ({ a
   const instagram = screen.getByTestId('mira.done.instagram');
   await scrollToControl(screen, instagram);
   await expect(instagram).toBeVisible();
-  await app.screenshot('done-screen');
+  await bottomAboveTabs(app, screen, title('Mira does not post. You post in Instagram.'), 'done-screen');
 });
 
 const look = process.env.MIRA_E2E_LOOK ?? 'light';
@@ -585,4 +591,66 @@ test('crash log', async ({ app, screen, device }) => {
   } else {
     await app.screenshot('profile-problem-reports-absent');
   }
+});
+
+async function bottomAboveTabs(app: App, screen: Screen, end: Locator, label: string) {
+  await scrollToControl(screen, end);
+  const tabs = screen.getByRole('tablist', 'Tab Bar', { exact: true, visible: true });
+  const tabBox = await tabs.boundingBox();
+  const box = await end.boundingBox();
+  expect(box!.y).toBeGreaterThan(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(tabBox!.y - 8);
+  await app.screenshot(label);
+}
+
+test('S2 Plan step by step uses plain microphone words and scrolls above the tab bar', async ({ app, screen, device }) => {
+  await launchMira(screen, device);
+  await openToday(screen);
+  await bottomAboveTabs(app, screen, screen.getByTestId('mira.today.make'), 's2-today-bottom');
+  await screen.getByRole('button', 'Profile', { exact: true }).tap();
+  await tap(screen, screen.getByTestId('mira.profile.stepByStep'));
+  const note = screen.getByText('Your voice stays on this phone. Check the words before you send them.', { exact: true });
+  await bottomAboveTabs(app, screen, note, 's2-microphone-note');
+  await bottomAboveTabs(app, screen, screen.getByRole('button', 'Share current plan', { exact: true }), 's2-step-by-step-bottom');
+});
+
+test('S2 resumes cards, words, filming plan and filming with content clear of the tab bar', async ({ app, screen, device }) => {
+  await launchMira(screen, device);
+  await startTodayCard(screen, '', 1);
+  const card = screen.getByTestId('mira.today.makeCard.1');
+  await expect(card).toBeVisible();
+  await launchMira(screen, device);
+  await expect(screen.getByTestId('mira.today.page.1')).toBeVisible();
+  await screen.getByTestId('mira.today.page.1').tap();
+  await bottomAboveTabs(app, screen, screen.getByRole('button', 'Change something', { exact: true, visible: true }), 's2-resume-today-cards');
+  await tap(screen, card);
+  const approve = screen.getByTestId('mira.words.approve');
+  await launchMira(screen, device);
+  await expect(approve).toBeVisible();
+  await bottomAboveTabs(app, screen, screen.getByTestId('mira.words.change'), 's2-resume-words');
+
+  await openProjectFromList(screen, 'A quick movement break');
+  await screen.getByTestId('BackButton').tap();
+  const shots = await sectionControl(screen, 'Shots');
+  await scrollToControl(screen, shots, 'up');
+  await tap(screen, shots);
+  const plan = screen.getByText('Your filming plan', { exact: true });
+  await expect(plan).toBeVisible();
+  await launchMira(screen, device);
+  await expect(plan).toBeVisible();
+  const opening = screen.getByText('Words to say', { exact: true }).first();
+  await bottomAboveTabs(app, screen, opening, 's2-shot-one-text');
+  await bottomAboveTabs(app, screen, screen.getByText('More filming details', { exact: true }).last(), 's2-resume-plan');
+
+  const approval = screen.getByTestId('mira.shots.approve');
+  await scrollToControl(screen, approval, 'up');
+  await tap(screen, approval);
+  await tap(screen, approve);
+  const filming = screen.getByText('Shot 1 of 3', { exact: true });
+  await expect(filming).toBeVisible();
+  await launchMira(screen, device);
+  await expect(filming).toBeVisible();
+  await bottomAboveTabs(app, screen,
+    screen.getByText('Mira does not record or analyse footage. Filmed is progress you report yourself.', { exact: true }),
+    's2-resume-filming');
 });

@@ -4,9 +4,8 @@ import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { scrollToControl, tapVisibleControl } from './mobile-support';
 
-const evidence = resolve('work/evidence/t1b-phone/live-journey-2');
+const evidence = resolve(process.env.MIRA_E2E_OUTPUT ?? 'work/evidence/mira-live-journey');
 const ledgerPath = resolve(evidence, 'live-requests.jsonl');
-const previousLedgerPath = resolve(evidence, '../live-journey/live-requests.jsonl');
 const timeout = 240_000;
 const recorded = (path = ledgerPath) => {
   try {
@@ -26,7 +25,7 @@ function record(entry: Entry) {
 
 async function request(scenario: number, action: string, calls: number, tap: () => Promise<void>) {
   const prior = recorded();
-  expect(prior.reduce((total, entry) => total + (entry.calls ?? 0), 0) + calls).toBeLessThanOrEqual(15);
+  expect(prior.reduce((total, entry) => total + (entry.calls ?? 0), 0) + calls).toBeLessThanOrEqual(12);
   expect(prior.filter(entry => entry.scenario === scenario && entry.action === action && entry.calls)).toHaveLength(0);
   record({ scenario, action, calls });
   await tap();
@@ -84,7 +83,7 @@ async function openProject(screen: Screen, title: string) {
 }
 
 function todayTitle() {
-  const title = [...recorded(previousLedgerPath), ...recorded()].findLast(entry => entry.action === 'selected Today project')?.title;
+  const title = recorded().findLast(entry => entry.action === 'selected Today project')?.title;
   test.skip(!title, 'The Today scenario has no selected live project.');
   return title!;
 }

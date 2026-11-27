@@ -26,5 +26,5 @@ export default {
   assertionTimeout: 15_000,
   cleanupTimeout: 45_000,
   video: 'off',
-  output: resolve('work/evidence/t1b-phone/live-journey-2'),
+  output: process.env.MIRA_E2E_OUTPUT ?? resolve('work/evidence/mira-live-journey'),
 } satisfies E2EConfig;
