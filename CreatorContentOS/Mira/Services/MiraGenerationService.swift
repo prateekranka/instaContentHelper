@@ -58,6 +58,7 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
         var consentVersion: Int?
     }
     private struct Response: Decodable { var job: MiraJob }
+    private struct Failure: Decodable { var error: String? }
     func start(_ job: MiraJob) async throws -> MiraJob { try await send("start", job: job) }
     func status(_ job: MiraJob) async throws -> MiraJob { try await send("status", job: job) }
     func cancel(_ job: MiraJob) async throws -> MiraJob { try await send("cancel", job: job) }
@@ -78,13 +79,18 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
         let (data, response) = try await urlSession.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw MiraError.offline }
         guard (200...299).contains(http.statusCode) else {
+            let code = (try? JSONDecoder().decode(Failure.self, from: data))?.error
             switch http.statusCode {
             case 401, 403:
                 throw MiraError.invalid("Your device access expired. Reconnect your account in Profile.")
+            case 404 where code == "not_found":
+                throw MiraError.notFound
             case 404:
                 throw MiraError.invalid(
                     "The Mira generation endpoint or job is unavailable. Your saved work is safe.")
-            case 409, 429:
+            case 409 where code == "rate_limited", 429:
+                throw MiraError.busy
+            case 409:
                 throw MiraError.invalid(
                     "Mira is busy or this request conflicts with an earlier job. Wait, then reconnect the saved request."
                 )

@@ -17,11 +17,15 @@ struct MiraStoryboardView: View {
                     ).font(.headline)
                     Button("Update shot list", action: onUpdate).buttonStyle(MiraPrimaryStyle())
                         .disabled(project.job?.state == .working)
-                } else {
+                } else if project.isApproved {
                     NavigationLink(value: MiraRoute.shooting(projectID)) {
                         Text(project.startedFilming ? "Continue filming" : "Start filming").frame(
                             maxWidth: .infinity, minHeight: 52)
                     }.buttonStyle(MiraPrimaryStyle())
+                } else {
+                    NavigationLink(value: MiraRoute.words(projectID)) {
+                        Text("Approve your words").frame(maxWidth: .infinity, minHeight: 52)
+                    }.buttonStyle(MiraPrimaryStyle()).accessibilityIdentifier("mira.shots.approve")
                 }
                 ForEach(Array(board.shots.enumerated()), id: \.element.id) { index, shot in
                     VStack(alignment: .leading, spacing: 16) {
@@ -138,9 +142,12 @@ struct MiraShootingView: View {
     var projectID: UUID
     var onAsk: (UUID) -> Void
     var onDone: () -> Void
+    var onWords: () -> Void
     var body: some View {
         MiraPage {
-            if let project = store.project(projectID), let board = project.storyboard,
+            if let project = store.project(projectID), !project.isApproved {
+                MiraApproveFirst(onWords: onWords)
+            } else if let project = store.project(projectID), let board = project.storyboard,
                 !board.shots.isEmpty
             {
                 let index = min(max(0, project.shotIndex), board.shots.count - 1)
@@ -195,14 +202,27 @@ struct MiraShootingView: View {
     }
 }
 
+struct MiraApproveFirst: View {
+    var onWords: () -> Void
+    var body: some View {
+        Text("Your words changed. Approve them first.").font(.title2.bold())
+            .accessibilityIdentifier("mira.approveFirst.message")
+        Button("Approve your words", action: onWords).buttonStyle(MiraPrimaryStyle())
+            .accessibilityIdentifier("mira.approveFirst.words")
+    }
+}
+
 struct MiraDoneView: View {
     var store: MiraStore
     var projectID: UUID
+    var onWords: () -> Void
     @Environment(\.openURL) private var openURL
     @State private var copied = false
     var body: some View {
         MiraPage {
-            if let project = store.project(projectID), let board = project.storyboard,
+            if let project = store.project(projectID), !project.isApproved {
+                MiraApproveFirst(onWords: onWords)
+            } else if let project = store.project(projectID), let board = project.storyboard,
                 !board.shots.isEmpty
             {
                 let count = board.shots.filter { project.filmed.contains($0.id) }.count

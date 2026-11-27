@@ -193,6 +193,7 @@ enum MiraStage: String, Codable, Sendable {
     case choosing = "Choosing an idea"
     case writing = "Writing the script"
     case planning = "Planning shots"
+    case approving = "Words to approve"
     case ready = "Ready to film"
     case filming = "Filming"
     case complete = "Filming complete"
@@ -306,6 +307,8 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var storyboard: MiraStoryboard? { storyboards.first { $0.id == activeStoryboardID } }
     var idea: MiraIdea? { ideas.first { $0.id == selectedIdeaID } }
     var effectiveBriefRevision: Int { brief.confirmed ? brief.revision : 0 }
+    var isApproved: Bool { script != nil && approvedScriptID == activeScriptID }
+    var canFilm: Bool { storyboard != nil && !storyboardIsStale && isApproved }
     var editorScreen: MiraProjectScreen {
         guard idea != nil else { return .ideas }
         if storyboard != nil && (lastScreen == nil || lastScreen == .shots || lastScreen == .shooting) {
@@ -317,14 +320,16 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         guard todayCards?.isEmpty == false else { return resumePath }
         if lastScreen == .words, script != nil { return [.todayCards(id), .words(id)] }
         if lastScreen == .shooting, storyboard != nil, !storyboardIsStale {
-            return [.todayCards(id), .shooting(id)]
+            return [.todayCards(id), isApproved ? .shooting(id) : .words(id)]
         }
         return [.todayCards(id)]
     }
     var resumePath: [MiraRoute] {
         var path: [MiraRoute] = [.project(id)]
         if lastScreen == .words, script != nil { return [.project(id), .words(id)] }
-        if lastScreen == .shooting, storyboard != nil, !storyboardIsStale { path.append(.shooting(id)) }
+        if lastScreen == .shooting, storyboard != nil, !storyboardIsStale {
+            path.append(isApproved ? .shooting(id) : .words(id))
+        }
         return path
     }
     var storyboardIsStale: Bool {
@@ -336,6 +341,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         guard selectedIdeaID != nil else { return .choosing }
         guard script != nil else { return .writing }
         guard let board = storyboard, !storyboardIsStale else { return .planning }
+        guard isApproved else { return .approving }
         if !board.shots.isEmpty
             && board.shots.allSatisfy({ filmed.contains($0.id) && !needsReview.contains($0.id) })
         {
@@ -348,6 +354,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         case .choosing: "Choose an idea"
         case .writing: "Write your script"
         case .planning: storyboard == nil ? "Make your shot list" : "Update shot list"
+        case .approving: "Approve your words"
         case .ready: "Start filming"
         case .filming: "Continue filming"
         case .complete: "Review your filming plan"
@@ -522,9 +529,12 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
 enum MiraError: Error, LocalizedError, Equatable {
     case invalid(String)
     case storage(String)
-    case offline, newerVersion
+    case offline, newerVersion, busy, notFound
     var errorDescription: String? {
         switch self {
+        case .busy:
+            "Mira is busy or this request conflicts with an earlier job. Wait, then reconnect the saved request."
+        case .notFound: "The Mira generation endpoint or job is unavailable. Your saved work is safe."
         case .invalid(let text), .storage(let text): text
         case .offline: "New generation needs a connection. Your saved work is still available."
         case .newerVersion: "This library was saved by a newer Mira version. It has not been changed."
