@@ -391,7 +391,12 @@ final class MiraStore {
         guard generationTasks[job.id] == nil else { return }
         generationTasks[job.id] = Task {
             defer { generationTasks[job.id] = nil }
-            guard await flush(), !Task.isCancelled else { return }
+            guard await flush(), !Task.isCancelled else {
+                if waitingStarts[job.id] != nil, !Task.isCancelled {
+                    wait(id, job: job, cardID: cardID, service: service)
+                }
+                return
+            }
             await perform(id, job: job, cardID: cardID, service: service)
         }
     }
@@ -446,6 +451,7 @@ final class MiraStore {
             }
         } catch {
             guard !Task.isCancelled, currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
+            waitingStarts[job.id] = nil
             if let cardID {
                 update(id) { project in
                     guard let index = project.todayCards?.firstIndex(where: { $0.id == cardID }) else { return }

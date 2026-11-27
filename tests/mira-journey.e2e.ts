@@ -446,10 +446,10 @@ test('S1 B4 a full server shows Waiting to start and sends the idea again by its
   await app.screenshot(`s1-b4-today-open-${look}`);
   await open.tap();
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
-  await screen.getByTestId('mira.today.page.3').tap();
-  await expect(screen.getByText('A small pause in my day', { exact: true, visible: true })).toBeVisible({ timeout: 45_000 });
-  await expect(waiting).not.toBeVisible();
   await expect(screen.getByText('About 1 minute', { exact: true })).not.toBeVisible({ timeout: 45_000 });
+  await screen.getByTestId('mira.today.page.3').tap();
+  await expect(screen.getByText('A small pause in my day', { exact: true, visible: true })).toBeVisible();
+  await expect(waiting).not.toBeVisible();
   await app.screenshot(`s1-b4-all-ready-${look}`);
   await screen.getByTestId('BackButton').tap();
   await expect(screen.getByTestId('mira.today.make')).toBeVisible();

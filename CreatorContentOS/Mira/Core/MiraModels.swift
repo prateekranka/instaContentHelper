@@ -318,6 +318,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     }
     var todayResumePath: [MiraRoute] {
         guard todayCards?.isEmpty == false else { return resumePath }
+        if stage == .approving { return [.todayCards(id), .words(id)] }
         if lastScreen == .words, script != nil { return [.todayCards(id), .words(id)] }
         if lastScreen == .shooting, storyboard != nil, !storyboardIsStale {
             return [.todayCards(id), isApproved ? .shooting(id) : .words(id)]
@@ -326,7 +327,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     }
     var resumePath: [MiraRoute] {
         var path: [MiraRoute] = [.project(id)]
-        if lastScreen == .words, script != nil { return [.project(id), .words(id)] }
+        if stage == .approving || (lastScreen == .words && script != nil) { return [.project(id), .words(id)] }
         if lastScreen == .shooting, storyboard != nil, !storyboardIsStale {
             path.append(isApproved ? .shooting(id) : .words(id))
         }

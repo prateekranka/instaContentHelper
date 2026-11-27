@@ -131,7 +131,11 @@ struct MiraRootView: View {
     private var today: some View {
         MiraTodayHome(
             store: store, request: $todayRequest, onMake: makeToday,
-            onContinue: { open($0, tab: .today) }
+            onContinue: { open($0, tab: .today) },
+            onIdeas: { id in
+                navigation.tab = .today
+                navigation.today = [.todayCards(id)]
+            }
         )
         .navigationTitle("Today").navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
@@ -394,6 +398,7 @@ struct MiraTodayHome: View {
     @Binding var request: String
     let onMake: () -> Void
     let onContinue: (UUID) -> Void
+    let onIdeas: (UUID) -> Void
     @Environment(MiraDependencies.self) private var dependencies
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var focused: Bool
@@ -447,7 +452,7 @@ struct MiraTodayHome: View {
                 Button("See today's ideas") {
                     speech?.stop()
                     focused = false
-                    onContinue(batch.id)
+                    onIdeas(batch.id)
                 }
                 .buttonStyle(MiraPrimaryStyle())
                 .accessibilityIdentifier("mira.today.open")
