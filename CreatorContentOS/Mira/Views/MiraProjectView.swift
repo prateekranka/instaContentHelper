@@ -10,7 +10,7 @@ struct MiraProjectView: View {
     var body: some View {
         Group {
             if let project = store.project(projectID) {
-                let showingShots = project.selectedIdeaID != nil && project.editorScreen == .shots
+                let showingShots = project.selectedIdeaID != nil && store.editorScreen(project) == .shots
                     && project.storyboard != nil
                 MiraPage {
                     if project.isDemo {
@@ -20,7 +20,7 @@ struct MiraProjectView: View {
                     if project.todayCards?.isEmpty == false {
                         NavigationLink("Today's ideas", value: MiraRoute.todayCards(projectID))
                     }
-                    Text(project.stage.rawValue).font(.callout).foregroundStyle(.secondary)
+                    Text(project.stage.title).font(.callout).foregroundStyle(.secondary)
                     MiraTextInput(
                         title: "Project name",
                         text: Binding(
@@ -54,7 +54,7 @@ struct MiraProjectView: View {
                             Picker(
                                 "Project section",
                                 selection: Binding(
-                                    get: { project.editorScreen },
+                                    get: { store.editorScreen(project) },
                                     set: { store.visit(projectID, screen: $0) }
                                 )
                             ) {
@@ -151,7 +151,7 @@ struct MiraProjectView: View {
             MiraField(title: "Available equipment", text: constraint(\.equipment))
             Button(project.ideas.isEmpty ? "Show three ideas" : "More ideas") {
                 onGenerate(projectID, .ideas, project.request, nil, nil)
-            }.buttonStyle(MiraPrimaryStyle()).disabled(project.job?.state == .working)
+            }.buttonStyle(MiraPrimaryStyle()).disabled(store.requestState(project.job).pending)
             Button("Adjust with Ask Mira") { onSheet(.ask(projectID, .ideas, nil)) }
             Button("Add my own idea") { onSheet(.manualIdea(projectID)) }
             let displayedIdeas =
@@ -193,7 +193,7 @@ struct MiraProjectView: View {
             })
     }
     private func shareText(_ p: MiraProject) -> String {
-        var text = "\(p.title)\n\(p.stage.rawValue)\n"
+        var text = "\(p.title)\n\(p.stage.title)\n"
         if let s = p.script {
             text += "\nHook: \(s.hook)\n\nSpoken: \(s.spoken)\n\nCaption: \(s.caption)\n"
         }
@@ -220,22 +220,29 @@ struct MiraJobView: View {
     var onRegenerate: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if job.state == .working {
-                if store.isWaitingToStart(job.id) {
-                    Text("Waiting to start…").font(.headline)
-                } else {
-                    ProgressView("Mira is working")
-                }
-                Text("Your work is saved. You can leave and reconnect this request later.").font(.callout)
-                if !store.hasActiveRequest(project.id) {
-                    Button("Check again") { onReconnect(project.id) }
-                }
-                Button("Cancel generation", role: .cancel) { onCancel(project.id) }
-            }
-            if let error = job.error { Text(error).font(.callout) }
-            if job.state == .failed || job.state == .cancelled {
-                Text(job.state == .cancelled ? "Stopped. Try again?" : "Mira could not finish. Try again?")
+            let state = store.requestState(job)
+            switch state {
+            case .waitingToStart:
+                Text("Waiting to start…").font(.headline)
+            case .sending, .working:
+                ProgressView("Mira is working")
+            case .stopping:
+                ProgressView("Stopping…")
+            case .needsReconnect(let reason):
+                if let reason { Text(reason).font(.callout) }
+                Button("Check again") { onReconnect(project.id) }
+            case .failed(let reason):
+                if let reason { Text(reason).font(.callout) }
+                Text("Mira could not finish. Try again?")
                 Button("Try a new request", action: onRegenerate)
+            case .stopped:
+                Text("Stopped. Try again?")
+                Button("Try a new request", action: onRegenerate)
+            case .idle, .done: EmptyView()
+            }
+            if state.pending, state != .stopping {
+                Text("Your work is saved. You can leave and reconnect this request later.").font(.callout)
+                Button("Cancel generation", role: .cancel) { onCancel(project.id) }
             }
             if let output = job.output {
                 MiraSectionTitle(text: "Mira's new version")

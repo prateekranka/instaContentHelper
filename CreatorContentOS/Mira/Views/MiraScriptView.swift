@@ -47,7 +47,7 @@ struct MiraScriptView: View {
                         onGenerate(projectID, .storyboard, "Use my current reviewed script", nil, nil)
                     }.buttonStyle(MiraPrimaryStyle()).disabled(
                         script.spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || project.job?.state == .working)
+                            || store.requestState(project.job).pending)
                     Text("Make shot list confirms this script revision as its source.").font(.footnote)
                     DisclosureGroup("Script history (\(project.scripts.count) revisions)") {
                         ForEach(project.scripts.reversed()) { version in
@@ -64,7 +64,7 @@ struct MiraScriptView: View {
                     }
                 } else {
                     Button("Draft hook, script and caption") { onGenerate(projectID, .script, "", nil, nil) }
-                        .buttonStyle(MiraPrimaryStyle()).disabled(project.job?.state == .working)
+                        .buttonStyle(MiraPrimaryStyle()).disabled(store.requestState(project.job).pending)
                     Button("Write it myself") {
                         store.writeScriptManually(projectID)
                     }
@@ -83,46 +83,22 @@ struct MiraScriptView: View {
 struct MiraWordsView: View {
     var store: MiraStore
     var projectID: UUID
-    var onGenerate: MiraGenerateAction
-    var onReconnect: (UUID) -> Void
-    var onCancel: (UUID) -> Void
-    var onApproved: () -> Void
-    @State private var changing = false
-    @State private var note = ""
-    @State private var opened = false
-    @State private var stuck = false
+    var onEvent: (MiraWordsEvent) -> Void
     private let simplerRequest =
         "Make the words simpler and shorter. Use everyday words. Keep my meaning and my language."
-    private let shotsRequest =
-        "Update the words to say and the on-screen text in each shot to match my approved words. Keep the same shots, places and framing."
 
     var body: some View {
         Group {
             if let project = store.project(projectID), let script = project.script {
-                page(project, script)
+                page(project, script, state: store.wordsState(project))
             }
         }
         .navigationTitle("Your words").navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            opened = false
-            if let job = store.project(projectID)?.job, job.state == .working,
-                !store.hasActiveRequest(projectID)
-            {
-                onReconnect(projectID)
-            }
-            advance()
-        }
-        .onChange(of: store.project(projectID)?.job) { _, _ in advance() }
+        .onAppear { onEvent(.appeared) }
     }
 
-    private func page(_ project: MiraProject, _ script: MiraScript) -> some View {
-        let job = project.job
-        let working = job?.state == .working
-        let approved = project.approvedScriptID == script.id
-        let needsShots = project.storyboard != nil && project.storyboardIsStale
-        let proposal = proposedScript(job)
-        let busy = working || proposal != nil
-        let applying = job?.input.operation == .reviseStoryboard && job?.state == .succeeded && !stuck
+    private func page(_ project: MiraProject, _ script: MiraScript, state: MiraWordsState) -> some View {
+        let busy = store.requestState(project.job).pending || isProposal(state)
         return MiraPage {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Your opening line").font(.headline)
@@ -134,141 +110,94 @@ struct MiraWordsView: View {
             }
             Text("About \(script.durationSeconds) seconds").font(.body).monospacedDigit()
                 .foregroundStyle(.secondary)
-            if working, let job, store.isWaitingToStart(job.id) {
-                Text("Waiting to start…").font(.title3.weight(.semibold))
-                    .accessibilityIdentifier("mira.words.waiting")
-                Text("Mira starts this when your other ideas are done.").font(.body)
-                Button("Stop") { onCancel(projectID) }.buttonStyle(.bordered).controlSize(.large)
-                    .accessibilityIdentifier("mira.words.waiting.stop")
-            } else if working {
-                HStack(spacing: 12) {
-                    ProgressView()
-                    Text(job?.input.operation == .reviseStoryboard ? "Updating your shots…" : "Mira is writing a new version…")
-                        .font(.title3)
-                }
-                if !store.hasActiveRequest(projectID) {
-                    Text("Mira has not heard back yet.").font(.body)
-                    Button("Check again") { onReconnect(projectID) }.buttonStyle(.bordered)
-                        .controlSize(.large)
-                }
-                Button("Stop") { onCancel(projectID) }.buttonStyle(.bordered).controlSize(.large)
-                    .accessibilityIdentifier("mira.words.stop")
-            } else if let proposal {
-                MiraSectionTitle(text: "Mira's new version")
-                Text(proposal.hook).font(.title.bold())
-                Text(proposal.spoken).font(.title3)
-                Text("About \(proposal.durationSeconds) seconds").font(.body).monospacedDigit()
-                    .foregroundStyle(.secondary)
-                Button("Use this") {
-                    store.applyProposal(projectID)
-                    store.visit(projectID, screen: .words)
-                }.buttonStyle(MiraPrimaryStyle())
-                    .accessibilityIdentifier("mira.words.use")
-                Button("Keep mine") { clearJob() }.buttonStyle(.bordered).controlSize(.large)
-                    .accessibilityIdentifier("mira.words.keep")
-            } else if approved && needsShots && !applying {
-                Text("Mira could not update your shots. Try again?").font(.title3)
-                Button("Try again") { requestShots() }.buttonStyle(MiraPrimaryStyle())
-                    .accessibilityIdentifier("mira.words.shots.retry")
-            } else if let job, failed(job) {
-                Text("Mira could not finish. Try again?").font(.title3)
-                Button("Try again") {
-                    onGenerate(
-                        projectID, job.input.operation, job.input.request, job.input.targetShotID,
-                        job.input.profile.language)
-                }.buttonStyle(MiraPrimaryStyle()).accessibilityIdentifier("mira.words.retry")
-                Button("Keep mine") { clearJob() }.buttonStyle(.bordered).controlSize(.large)
-                    .accessibilityIdentifier("mira.words.failed.keep")
+            requestContent(state)
+            if !project.isApproved {
+                Button("Sounds like me") { onEvent(.approve) }.buttonStyle(MiraPrimaryStyle())
+                    .disabled(busy).accessibilityIdentifier("mira.words.approve")
+            } else if project.storyboard == nil || !project.storyboardIsStale {
+                Button(MiraNextAction.startFilming.title) { onEvent(.startFilming) }.buttonStyle(MiraPrimaryStyle())
+                    .disabled(busy || isOpening(state)).accessibilityIdentifier("mira.words.start")
             }
-            if !(approved && needsShots) {
-                if approved {
-                    Button("Start filming") { open() }.buttonStyle(MiraPrimaryStyle())
-                        .disabled(busy || opened).accessibilityIdentifier("mira.words.start")
-                } else {
-                    Button("Sounds like me") { approve() }.buttonStyle(MiraPrimaryStyle())
-                        .disabled(busy).accessibilityIdentifier("mira.words.approve")
-                }
-            }
-            Button("Make it simpler") { send(simplerRequest) }.buttonStyle(.bordered)
+            Button("Make it simpler") { onEvent(.send(simplerRequest)) }.buttonStyle(.bordered)
                 .controlSize(.large).disabled(busy).accessibilityIdentifier("mira.words.simpler")
-            if changing {
-                MiraTextInput(title: "What should change?", text: $note, axis: .vertical).lineLimit(2...4)
-                    .font(.title3)
-                    .accessibilityIdentifier("mira.words.note")
-                Button("Send") { send(note.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                    .buttonStyle(.bordered).controlSize(.large)
-                    .disabled(busy || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            if case .changing(let note) = state {
+                let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                MiraTextInput(
+                    title: "What should change?", text: Binding(get: { note }, set: { onEvent(.note($0)) }),
+                    axis: .vertical
+                ).lineLimit(2...4).font(.title3).accessibilityIdentifier("mira.words.note")
+                Button(state.nextAction?.title ?? "Send") { onEvent(.send(text)) }
+                    .buttonStyle(.bordered).controlSize(.large).disabled(busy || text.isEmpty)
                     .accessibilityIdentifier("mira.words.send")
-                Button("Cancel") {
-                    changing = false
-                    note = ""
-                }.buttonStyle(.bordered).controlSize(.large)
+                Button("Cancel") { onEvent(.cancelChange) }.buttonStyle(.bordered).controlSize(.large)
             } else {
-                Button("Change it") { changing = true }.buttonStyle(.bordered).controlSize(.large)
+                Button("Change it") { onEvent(.change) }.buttonStyle(.bordered).controlSize(.large)
                     .disabled(busy).accessibilityIdentifier("mira.words.change")
             }
         }
     }
 
-    private func proposedScript(_ job: MiraJob?) -> MiraScript? {
-        guard let job, job.input.operation == .reviseScript, job.state == .succeeded else { return nil }
-        return job.output?.script
-    }
-
-    private func failed(_ job: MiraJob) -> Bool {
-        guard job.input.operation == .reviseScript || job.input.operation == .reviseStoryboard else {
-            return false
+    @ViewBuilder private func requestContent(_ state: MiraWordsState) -> some View {
+        switch state {
+        case .waiting:
+            Text("Waiting to start…").font(.title3.weight(.semibold))
+                .accessibilityIdentifier("mira.words.waiting")
+            Text("Mira starts this when your other ideas are done.").font(.body)
+            stopButton("mira.words.waiting.stop")
+        case .writing(let operation):
+            HStack(spacing: 12) {
+                ProgressView()
+                Text(operation == .reviseStoryboard ? "Updating your shots…" : "Mira is writing a new version…")
+                    .font(.title3)
+                    .accessibilityIdentifier("mira.words.working")
+            }
+            stopButton("mira.words.stop")
+        case .reconnecting:
+            Text("Mira has not heard back yet.").font(.body)
+            Button("Check again") { onEvent(.reconnect) }.buttonStyle(.bordered).controlSize(.large)
+            stopButton("mira.words.stop")
+        case .stopping:
+            ProgressView("Stopping…")
+        case .proposal(let proposal):
+            MiraSectionTitle(text: "Mira's new version")
+            Text(proposal.hook).font(.title.bold())
+            Text(proposal.spoken).font(.title3)
+            Text("About \(proposal.durationSeconds) seconds").font(.body).monospacedDigit()
+                .foregroundStyle(.secondary)
+            Button(MiraNextAction.reviewProposal.title) { onEvent(.useProposal) }.buttonStyle(MiraPrimaryStyle())
+                .accessibilityIdentifier("mira.words.use")
+            keepButton("mira.words.keep")
+        case .needsShots:
+            Text("Mira could not update your shots. Try again?").font(.title3)
+            Button(MiraNextAction.retryShots.title) { onEvent(.retry) }.buttonStyle(MiraPrimaryStyle())
+                .accessibilityIdentifier("mira.words.shots.retry")
+        case .retry:
+            Text("Mira could not finish. Try again?").font(.title3)
+            Button(MiraNextAction.retry.title) { onEvent(.retry) }.buttonStyle(MiraPrimaryStyle())
+                .accessibilityIdentifier("mira.words.retry")
+            keepButton("mira.words.failed.keep")
+        case .reviewing, .ready, .changing, .opening, .applyingShots, .shotUpdateFailed:
+            EmptyView()
         }
-        return job.state == .failed || job.state == .cancelled
     }
 
-    private func clearJob() { store.update(projectID) { $0.job = nil } }
-
-    private func requestShots() {
-        stuck = false
-        onGenerate(projectID, .reviseStoryboard, shotsRequest, nil, nil)
+    private func isOpening(_ state: MiraWordsState) -> Bool {
+        if case .opening = state { return true }
+        return false
     }
 
-    private func send(_ text: String) {
-        guard !text.isEmpty else { return }
-        onGenerate(projectID, .reviseScript, text, nil, nil)
-        if store.project(projectID)?.job?.state == .working {
-            changing = false
-            note = ""
-        }
+    private func isProposal(_ state: MiraWordsState) -> Bool {
+        if case .proposal = state { return true }
+        return false
     }
 
-    private func approve() {
-        guard let project = store.project(projectID), let script = project.script,
-            project.approvedScriptID != script.id, project.job?.state != .working
-        else { return }
-        store.approveWords(projectID)
-        guard let updated = store.project(projectID) else { return }
-        if updated.storyboard != nil && updated.storyboardIsStale {
-            requestShots()
-        } else {
-            open()
-        }
+    private func stopButton(_ id: String) -> some View {
+        Button(MiraNextAction.stop.title) { onEvent(.stop) }.buttonStyle(.bordered).controlSize(.large)
+            .accessibilityIdentifier(id)
     }
 
-    private func open() {
-        guard !opened else { return }
-        opened = true
-        onApproved()
-    }
-
-    private func advance() {
-        guard !opened, let project = store.project(projectID), let script = project.script,
-            project.approvedScriptID == script.id, let job = project.job,
-            job.input.operation == .reviseStoryboard, job.state == .succeeded,
-            job.output?.storyboard != nil
-        else { return }
-        store.applyProposal(projectID)
-        store.visit(projectID, screen: .words)
-        if let updated = store.project(projectID), updated.job == nil, !updated.storyboardIsStale {
-            open()
-        } else {
-            stuck = true
-        }
+    private func keepButton(_ id: String) -> some View {
+        Button("Keep mine") { onEvent(.keepWords) }.buttonStyle(.bordered).controlSize(.large)
+            .accessibilityIdentifier(id)
     }
 }

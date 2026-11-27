@@ -123,7 +123,7 @@ struct MiraAskView: View {
                 )
             }
             if operation != .todayIdea { Button("Explain this plan") { explanation.toggle() } }
-            if store.project(projectID)?.job?.state == .working {
+            if store.requestState(store.project(projectID)?.job).pending {
                 Text(
                     "Mira is working on your earlier request. Reconnect or cancel it from this project first."
                 )
@@ -143,7 +143,7 @@ struct MiraAskView: View {
                 dismiss()
             }.buttonStyle(MiraPrimaryStyle()).disabled(
                 request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || store.project(projectID)?.job?.state == .working)
+                    || store.requestState(store.project(projectID)?.job).pending)
         }.navigationTitle("Ask Mira").toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
         }
@@ -351,7 +351,7 @@ struct MiraManualIdeaView: View {
             MiraField(title: "Opening line", text: $hook)
             MiraField(title: "What viewers see", text: $visual)
             Button("Use my idea") {
-                store.update(projectID) { p in
+                store.update(projectID, screen: .script) { p in
                     let idea = MiraIdea(
                         title: title, hook: hook, visual: visual, fit: "Your own idea",
                         filmingMinutes: p.constraints.filmingMinutes, setup: p.constraints.location)
@@ -388,7 +388,7 @@ struct MiraBriefView: View {
                         projectID, .requirements, "Extract only supplied facts and flag missing fields", nil,
                         nil)
                     dismiss()
-                }.disabled(project.brief.original.isEmpty || project.job?.state == .working)
+                }.disabled(project.brief.original.isEmpty || store.requestState(project.job).pending)
                 Text(
                     "Review the extraction proposal on the project and Apply it, then return here to confirm. No code, deadline, claim or approval is assumed."
                 ).font(.callout)
