@@ -4,7 +4,9 @@ import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { scrollToControl, tapVisibleControl } from './mobile-support';
 
-const evidence = resolve(process.env.MIRA_E2E_OUTPUT ?? 'work/evidence/mira-live-journey');
+const evidence = resolve(
+  process.env.MIRA_E2E_LIVE_LEDGER_DIR ?? process.env.MIRA_E2E_OUTPUT ?? 'work/evidence/mira-live-journey',
+);
 const ledgerPath = resolve(evidence, 'live-requests.jsonl');
 const timeout = 240_000;
 const recorded = (path = ledgerPath) => {
@@ -417,7 +419,7 @@ test('5 Projects Plan step by step makes a live filming plan', async ({ app, scr
   const tabBar = screen.getByRole('tablist', 'Tab Bar', { exact: true });
   const tabBox = await tabBar.boundingBox();
   expect(detailBox!.y + detailBox!.height).toBeLessThanOrEqual(tabBox!.y - 8);
-  await app.screenshot('step-by-step-filming-plan-bottom-after-relaunch');
+  await app.screenshot('step-by-step-first-shot-after-relaunch');
   await fit(screen, projectName, 'up');
   expect(await projectName.inputValue()).toBe(title);
 });
@@ -461,4 +463,54 @@ test('6 Profile changes Look from Dark to Light and shows Problem reports', asyn
   const reportTitle = reports.getByText('Problem reports', { exact: true });
   await fit(screen, reportTitle);
   await app.screenshot('problem-reports');
+});
+
+
+test('S2 saved live plan scrolls the final shot above the tab bar', async ({ app, screen, device }) => {
+  const title = recorded().findLast(entry => entry.action === 'selected step-by-step project')?.title;
+  test.skip(!title, 'The live step-by-step project is required.');
+  await launch(app, screen, device);
+  await openProject(screen, title!);
+  const summary = screen.getByText(/^About \d+ seconds edited · [1-9]\d* shots?$/);
+  await fit(screen, summary, 'up');
+  const shotCount = (await summary.textContent()).match(/ · (\d+) shots?$/)?.[1];
+  expect(shotCount).toBeTruthy();
+  await fit(screen, screen.getByText(`Shot ${shotCount}`, { exact: true }));
+
+  const page = await screen.getByRole('scroll-view', { visible: true }).first().boundingBox();
+  const tabs = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
+  expect(page).not.toBeNull();
+  expect(tabs).not.toBeNull();
+  const x = page!.x + page!.width / 2;
+  const swipe = () => screen.swipe({
+    from: { x, y: tabs!.y - 36 },
+    to: { x, y: page!.y + 70 },
+  });
+  for (let step = 0; step < 4; step += 1) await swipe();
+  const detail = screen.getByText('More filming details', { exact: true, visible: true }).last();
+  await expect(detail).toBeVisible();
+  const bottom = async () => {
+    const box = await detail.boundingBox();
+    return box!.y + box!.height;
+  };
+  const settledBottom = await bottom();
+  await swipe();
+  await expect.poll(bottom).toBeCloseTo(settledBottom, 0);
+  expect(settledBottom).toBeLessThanOrEqual(tabs!.y - 8);
+  await app.screenshot('final-shot-above-tab-bar');
+
+  await launch(app, screen, device);
+  const start = button(screen, /^(Start|Continue) filming$/);
+  await fit(screen, start, 'up');
+  await tapVisibleControl(screen, start);
+  const filming = text(screen, `Shot 1 of ${shotCount}`);
+  await expect(filming).toBeVisible();
+  await launch(app, screen, device);
+  await expect(filming).toBeVisible();
+  const footer = text(screen, 'Mira does not record or analyse footage. Filmed is progress you report yourself.');
+  await fit(screen, footer);
+  const footerBox = await footer.boundingBox();
+  const filmingTabs = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
+  expect(footerBox!.y + footerBox!.height).toBeLessThanOrEqual(filmingTabs!.y - 8);
+  await app.screenshot('filming-bottom-after-relaunch');
 });
