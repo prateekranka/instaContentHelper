@@ -49,7 +49,8 @@ private struct MiraInputFrames: PreferenceKey {
         value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
-private extension EnvironmentValues {
+extension EnvironmentValues {
+    @Entry var miraTabBarClearance: CGFloat = 0
     @Entry var miraInputFocus: FocusState<UUID?>.Binding? = nil
 }
 private enum MiraInputSpace {
@@ -57,6 +58,7 @@ private enum MiraInputSpace {
 }
 struct MiraPage<Content: View>: View {
     @ViewBuilder var content: Content
+    @Environment(\.miraTabBarClearance) private var tabBarClearance
     @FocusState private var focusedInput: UUID?
     @State private var inputFrames: [UUID: CGRect] = [:]
 
@@ -66,6 +68,7 @@ struct MiraPage<Content: View>: View {
                 .padding(24).frame(maxWidth: .infinity)
                 .environment(\.miraInputFocus, $focusedInput)
         }
+        .contentMargins(.bottom, tabBarClearance, for: .scrollContent)
         .background(MiraTheme.paper).foregroundStyle(MiraTheme.ink)
         .contentShape(Rectangle())
         .coordinateSpace(.named(MiraInputSpace.name))

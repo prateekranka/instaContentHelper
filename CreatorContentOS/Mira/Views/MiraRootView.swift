@@ -33,6 +33,7 @@ struct MiraRootView: View {
                             .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
                     }.tabItem { Label("Projects", systemImage: "book.closed") }.tag(MiraTab.projects)
                 }
+                .environment(\.miraTabBarClearance, 64)
             } else {
                 MiraPage {
                     Text("Mira").font(.largeTitle)
@@ -612,6 +613,7 @@ struct MiraTodayCardsView: View {
     let onReconnect: () -> Void
     let onCancel: (UUID) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.miraTabBarClearance) private var tabBarClearance
     @State private var position: Int? = 0
     @State private var hasShownFirstCard = false
 
@@ -630,6 +632,7 @@ struct MiraTodayCardsView: View {
                                 .padding(20)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                            .contentMargins(.bottom, tabBarClearance, for: .scrollContent)
                             .scrollIndicators(.hidden)
                             .background(MiraTheme.surface, in: RoundedRectangle(cornerRadius: 24))
                             .overlay(

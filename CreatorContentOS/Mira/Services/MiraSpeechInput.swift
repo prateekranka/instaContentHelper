@@ -40,12 +40,12 @@ final class MiraSpeechInput: MiraSpeechInputService {
         guard self.attempt == attempt else { return }
         guard UIApplication.shared.applicationState == .active else {
             error =
-                "Recording was interrupted before it started. Tap the microphone when you are ready, or type instead."
+                "The microphone did not start. Tap it again or type your request."
             return
         }
         guard speech && microphone else {
             error =
-                "Microphone or speech permission is off. You can type instead, or enable access in Settings."
+                "Mira needs permission to hear you. You can turn it on in Settings or type instead."
             return
         }
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale)),
@@ -53,7 +53,7 @@ final class MiraSpeechInput: MiraSpeechInputService {
             recognizer.supportsOnDeviceRecognition
         else {
             error =
-                "On-device speech recognition is unavailable for this language. Use text, or try the other recognition language. No audio was sent to Mira's server."
+                "This phone cannot turn this language into text right now. Try the other language or type instead."
             return
         }
         do {
@@ -85,7 +85,7 @@ final class MiraSpeechInput: MiraSpeechInputService {
                     if finished || failed {
                         self.stop()
                         if self.transcript.isEmpty {
-                            self.error = "No speech was recognised. Try again or type your request."
+                            self.error = "Mira did not catch your words. Try again or type your request."
                         }
                     }
                 }
@@ -103,13 +103,13 @@ final class MiraSpeechInput: MiraSpeechInputService {
             }
         } catch {
             stop()
-            self.error = "Recording could not start. Text input is always available."
+            self.error = "The microphone did not start. You can type your request."
         }
     }
     func stop() {
         attempt = UUID()
         if recording && transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            error = "No speech was recognised. Try again or type your request."
+            error = "Mira did not catch your words. Try again or type your request."
         }
         recording = false
         timer?.cancel()
