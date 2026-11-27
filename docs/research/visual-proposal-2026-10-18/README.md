@@ -1,8 +1,8 @@
 # ContentHelper visual proposal
 
-![Revised proposed screens](contenthelper-creator-flow-concept-v3.png)
+![Revised proposed screens](https://raw.githubusercontent.com/prateekranka/instaContentHelper/1f104dde99f169068c98924b89b88dc310a74ee6/docs/research/visual-proposal-2026-10-18/contenthelper-creator-flow-concept-v3.png)
 
-Current revision: black primary buttons aligned across all four screens, retaining the earlier removals. [Alignment notes and exact edit prompt](v3-aligned-primary-buttons.md). [Previous removal notes](v2-yellow-marked-removals.md). [Marked reference](contenthelper-yellow-feedback.jpg). [Original board](contenthelper-creator-flow-concept.png).
+Current revision: black primary buttons aligned across all four screens, retaining the earlier removals. [Alignment notes and exact edit prompt](v3-aligned-primary-buttons.md). [Previous removal notes](v2-yellow-marked-removals.md). [Marked reference](contenthelper-yellow-feedback.jpg). [Original board](https://github.com/prateekranka/instaContentHelper/blob/1f104dde99f169068c98924b89b88dc310a74ee6/docs/research/visual-proposal-2026-10-18/contenthelper-creator-flow-concept.png).
 
 Generated concept board with sample content: quick choices, Today, a focused script refinement, and resumed filming.
 

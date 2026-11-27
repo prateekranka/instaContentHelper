@@ -1,6 +1,6 @@
 # Micro-Creator Co-Pilot market context
 
-Source: [Nikhil Ranka's research, dated October 17, 2026](micro-creator-co-pilot-market-research-2026-10-17.pdf). Imported and read in full on October 18, 2026. The PDF was preserved without modification.
+Source: [Nikhil Ranka's research, dated October 17, 2026](https://github.com/prateekranka/instaContentHelper/blob/1f104dde99f169068c98924b89b88dc310a74ee6/docs/research/micro-creator-co-pilot-market-research-2026-10-17.pdf). Imported and read in full on October 18, 2026. The PDF was preserved without modification.
 
 Status: market research input and working product interpretation. This document does not change accepted launch scope or establish validated market fit. No external source checks were performed during this import.
 

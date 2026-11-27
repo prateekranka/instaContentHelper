@@ -22,8 +22,8 @@ All times below are UTC. These results describe the tracker only.
   It checked desktop and 375-pixel phone layouts, three columns, task details and
   history, mobile column switching, no horizontal overflow, retained stale data after
   an aborted refresh, and recovery on the next successful refresh.
-- The hosted [desktop screenshot](tracker-public-desktop.png) and
-  [phone screenshot](tracker-public-mobile.png) were visually inspected. They show
+- The hosted [desktop screenshot](https://github.com/prateekranka/instaContentHelper/blob/1f104dde99f169068c98924b89b88dc310a74ee6/docs/mira-evidence/tracker-public-desktop.png) and
+  [phone screenshot](https://github.com/prateekranka/instaContentHelper/blob/1f104dde99f169068c98924b89b88dc310a74ee6/docs/mira-evidence/tracker-public-mobile.png) were visually inspected. They show
   the board before its deployment card was completed. They are not native app images.
 - TypeScript checking passed after updating `@fastify/static` to 10.1.7.
   `npm audit --omit=dev` reported zero known production dependency vulnerabilities.

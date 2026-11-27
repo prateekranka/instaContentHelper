@@ -20,7 +20,7 @@ ContentHelper is a native iPhone app built with SwiftUI. Its Xcode target and sc
 
 ## Historical creator design and handover
 
-The earlier Creator Loop design is preserved in [the complete Claude handover](docs/claude-handover.md) and [the complete screen review PDF](output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf). The PDF contains all 40 screen concepts on 10 pages. [Download the actual PDF](https://raw.githubusercontent.com/prateekranka/instaContentHelper/main/output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf) if the browser preview is unavailable.
+The earlier Creator Loop design is preserved in [the complete Claude handover](docs/claude-handover.md) and [the complete screen review PDF](https://github.com/prateekranka/instaContentHelper/blob/1f104dde99f169068c98924b89b88dc310a74ee6/output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf). The PDF contains all 40 screen concepts on 10 pages. [Download the actual PDF](https://raw.githubusercontent.com/prateekranka/instaContentHelper/1f104dde99f169068c98924b89b88dc310a74ee6/output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf) if the browser preview is unavailable.
 
 The [design index](docs/design/creator-ios-v1-2026-10-18/README.md) includes all 10 final PNG boards. Read the [flow and state specification](docs/design/creator-ios-v1-2026-10-18/flow-and-state-spec.md) for the accepted behavior: Today / Plan / You, several pieces per date, approval of reviewed versions, later edits, and monochrome UI with color media. These documents describe the retired client direction. They are historical references, not current Mira navigation or runtime proof.
 
@@ -31,6 +31,8 @@ Mira opens Today and Projects, with Profile in the toolbar. Projects contain ide
 Read [the Mira implementation plan](docs/mira-implementation-plan.md) and [the Mira handoff](docs/mira-handoff.md), noting their dated verification records.
 
 ## iPhone development
+
+Install [Git LFS](https://git-lfs.com/) before cloning. For an existing checkout, run `git lfs install` once and `git lfs pull` after updating your branch.
 
 Use a Mac with Xcode and the iOS 26 SDK or later. The deployment target is iOS 26.0. The project is checked in, so open it directly:
 
@@ -104,4 +106,6 @@ This source update does not deploy Supabase functions, change the database, or p
 
 ## Prototypes
 
-`prototypes/today-ui` contains the earlier Pocket shell. `prototypes/creator-directions-2026-10-02` contains the later interface directions and its own preview instructions. These prototypes are separate from the native app.
+`prototypes/today-ui` contains the earlier Pocket shell. The [October interface prototypes](https://github.com/prateekranka/instaContentHelper/tree/1f104dde99f169068c98924b89b88dc310a74ee6/prototypes/creator-directions-2026-10-02) and their preview instructions are available at the pre-cleanup revision.
+
+The pre-cleanup revision also preserves the [creator screen originals and prompts](https://github.com/prateekranka/instaContentHelper/tree/1f104dde99f169068c98924b89b88dc310a74ee6/docs/design/creator-ios-v1-2026-10-18), [QA baseline](https://github.com/prateekranka/instaContentHelper/tree/1f104dde99f169068c98924b89b88dc310a74ee6/qa-baseline), and [historical QA captures](https://github.com/prateekranka/instaContentHelper/tree/1f104dde99f169068c98924b89b88dc310a74ee6/artifacts). The current Mira evidence remains in [docs/mira-evidence](docs/mira-evidence/).
