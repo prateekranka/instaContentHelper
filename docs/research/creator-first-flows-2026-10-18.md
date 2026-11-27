@@ -16,7 +16,7 @@ The product should carry the creator through a connected sequence:
 
 Keep Today / Plan / You. Make the content package the object that connects the journey: its brief, script, shot list, caption, versions, date, and completion state stay together. The creator should not need to move text between disconnected AI tools.
 
-The supplied market research argues for personal creative direction for self-managed micro creators, with Mamta as the first fitness pilot. That supports early attention to language, identity, filming effort, and confidence. The market gap, willingness to pay, and effectiveness of AI creative direction remain hypotheses. [Supplied research](micro-creator-co-pilot-market-research-2026-10-17.pdf), [research interpretation](market-context-2026-10-17.md).
+The supplied market research argues for personal creative direction for self-managed micro creators, with Mamta as the first fitness pilot. That supports early attention to language, identity, filming effort, and confidence. The market gap, willingness to pay, and effectiveness of AI creative direction remain hypotheses. [Supplied research](https://github.com/prateekranka/instaContentHelper/blob/1f104dde99f169068c98924b89b88dc310a74ee6/docs/research/micro-creator-co-pilot-market-research-2026-10-17.pdf), [research interpretation](market-context-2026-10-17.md).
 
 ## What this keeps and what it proposes
 

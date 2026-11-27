@@ -17,7 +17,7 @@
 
 ## Layout proof and limits
 
-[Static measurements](static-measurements.json) record source dimensions, SHA-256 hashes and approximate primary-button bands. The detector samples neutral dark fill in each phone's lower area. It is useful for spotting footer drift; it is not a component measurement or a touch-target test. It does not detect the disabled gray TikTok button.
+[Static measurements](https://github.com/prateekranka/instaContentHelper/blob/1f104dde99f169068c98924b89b88dc310a74ee6/docs/design/creator-ios-v1-2026-10-18/static-measurements.json) record source dimensions, SHA-256 hashes and approximate primary-button bands. The detector samples neutral dark fill in each phone's lower area. It is useful for spotting footer drift; it is not a component measurement or a touch-target test. It does not detect the disabled gray TikTok button.
 
 The daily creation, calendar, connections, daily approval and preferences boards align their primary-button top edges within 0–1 raster pixel. The onboarding, editing/history, filming and past-work boards retain approximately 6–17 pixels of footer drift after refinement. These images must not be called pixel-exact layout specifications. The common safe-area footer contract in the flow specification is authoritative for editable native implementation.
 

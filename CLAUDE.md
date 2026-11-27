@@ -1,22 +1,13 @@
-# ContentHelper / creatorOS
+# ContentHelper / Mira
 
-For creator-loop work, read [the approved redesign plan](docs/design/creator-loop-redesign.md) first.
-Use its lifecycle and ownership rules for how saved work is stored and synced.
-The product rules below still win: several independent pieces per date remains the plan,
-even though the redesign stores one package per date today.
-Use [the complete Claude handover](docs/claude-handover.md) for background.
+Mira is the current native app. Start with the [README](README.md), [Mira implementation plan](docs/mira-implementation-plan.md), and [Mira handoff](docs/mira-handoff.md). Check [the latest Today and ideas evidence](docs/mira-evidence/2026-11-27-phase-d1.md) before working on those screens. For current source and verification status, check the files and revision for the task.
 
-## Start with the screens
-
-- Open the [complete screen review PDF](output/pdf/contenthelper-creator-ios-screens-2026-10-18.pdf). It has 10 pages and 40 screen concepts.
-- Visually read every page. This PDF contains images; text extraction alone does not show the designs.
-- If the PDF viewer cannot open it, inspect all 10 final PNG boards in [the design index](docs/design/creator-ios-v1-2026-10-18/README.md). Files ending in `-initial.png` are earlier drafts.
-- Read the [flow and state specification](docs/design/creator-ios-v1-2026-10-18/flow-and-state-spec.md). Its behavior and layout rules take priority over approximate raster details.
+Earlier Creator Loop lifecycle and data ownership decisions are covered in [the redesign plan](docs/design/creator-loop-redesign.md) and [the flow and state specification](docs/design/creator-ios-v1-2026-10-18/flow-and-state-spec.md). The historical [design index](docs/design/creator-ios-v1-2026-10-18/README.md) links to the original PDF and boards.
 
 ## Working rules
 
 - Keep the native SwiftUI iPhone app, scheme `CreatorContentOS`, and product `ContentHelper.app`.
-- Keep Today / Plan / You, several independent pieces per date, and editable approved versions. These latest decisions replace older one-package-per-day rules.
+- Follow the current Mira navigation and project notebook. Preserve independent pieces and editable approved versions when maintaining the earlier data contracts.
 - Preserve existing work, saved revisions, media, filming progress, and platform posting records.
 - App-owned UI is black, white, and neutral gray. Generated previews and uploaded media keep their color.
 - Treat the new screens and social integrations as proposals until implemented and verified.

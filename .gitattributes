@@ -1,1 +1,6 @@
 *.pdf binary
+
+CreatorContentOS/Resources/Assets.xcassets/AppIcon.appiconset/Icon-1024.png filter=lfs diff=lfs merge=lfs -text
+docs/mira-evidence/phase-d1-screens/*.png filter=lfs diff=lfs merge=lfs -text
+docs/mira-evidence/phase-d1-screens/d1-today-light.png !filter !diff !merge -text
+docs/mira-evidence/phase-d1-screens/d1-today-dark.png !filter !diff !merge -text
