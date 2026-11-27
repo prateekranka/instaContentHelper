@@ -10,7 +10,7 @@ export default {
     engine: mobile({
       platform: 'ios',
       device: 'Bobby’s',
-      session: 'mira-live-journey',
+      session: 'mira-live-journey-2',
       snapshot: 'full',
       videoTouches: false,
     }),
@@ -26,5 +26,5 @@ export default {
   assertionTimeout: 15_000,
   cleanupTimeout: 45_000,
   video: 'off',
-  output: resolve('work/evidence/t1b-phone/live-journey'),
+  output: resolve('work/evidence/t1b-phone/live-journey-2'),
 } satisfies E2EConfig;

@@ -4,12 +4,13 @@ import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { scrollToControl, tapVisibleControl } from './mobile-support';
 
-const evidence = resolve('work/evidence/t1b-phone/live-journey');
+const evidence = resolve('work/evidence/t1b-phone/live-journey-2');
 const ledgerPath = resolve(evidence, 'live-requests.jsonl');
+const previousLedgerPath = resolve(evidence, '../live-journey/live-requests.jsonl');
 const timeout = 240_000;
-const recorded = () => {
+const recorded = (path = ledgerPath) => {
   try {
-    return readFileSync(ledgerPath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as Entry);
+    return readFileSync(path, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as Entry);
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return [];
     throw error;
@@ -25,8 +26,8 @@ function record(entry: Entry) {
 
 async function request(scenario: number, action: string, calls: number, tap: () => Promise<void>) {
   const prior = recorded();
-  expect(prior.reduce((total, entry) => total + (entry.calls ?? 0), 0) + calls).toBeLessThanOrEqual(40);
-  expect(prior.filter(entry => entry.action === action && entry.calls)).toHaveLength(0);
+  expect(prior.reduce((total, entry) => total + (entry.calls ?? 0), 0) + calls).toBeLessThanOrEqual(15);
+  expect(prior.filter(entry => entry.scenario === scenario && entry.action === action && entry.calls)).toHaveLength(0);
   record({ scenario, action, calls });
   await tap();
   record({ scenario, action: `${action} tap returned` });
@@ -83,7 +84,7 @@ async function openProject(screen: Screen, title: string) {
 }
 
 function todayTitle() {
-  const title = recorded().findLast(entry => entry.action === 'selected Today project')?.title;
+  const title = [...recorded(previousLedgerPath), ...recorded()].findLast(entry => entry.action === 'selected Today project')?.title;
   test.skip(!title, 'The Today scenario has no selected live project.');
   return title!;
 }
@@ -109,8 +110,7 @@ async function waitForOutput(screen: Screen, output: Locator, message: string, l
   await expect(output).toHaveCount(1);
 }
 
-test('1 Today brings back three live cards and opens the chosen filming plan', async ({ app, screen, device }) => {
-  await launch(app, screen, device);
+async function todayKeyboard(app: App, screen: Screen) {
   await root(screen, 'Today');
   const field = screen.getByTestId('mira.today.request');
   const make = screen.getByTestId('mira.today.make');
@@ -129,11 +129,15 @@ test('1 Today brings back three live cards and opens the chosen filming plan', a
   await field.press('Enter');
   await expect(keyboard).not.toBeVisible();
   expect(await field.inputValue()).toBe(prompt);
+  await app.screenshot('keyboard-closed');
   const gym = screen.getByTestId('mira.today.chip.gym');
   const ten = screen.getByTestId('mira.today.chip.10min');
   await expect(gym).toBeSelected();
-  if (!await screen.getByRole('button', '10 min', { exact: true, selected: true }).isVisible()) await ten.tap();
+  await field.tap();
+  await expect(keyboard).toBeVisible();
+  await tapVisibleControl(screen, ten);
   await expect(ten).toBeSelected();
+  await expect(keyboard).not.toBeVisible();
   expect(await field.inputValue()).toBe(`${prompt}, 10 minutes`);
   await expect(make).toBeEnabled();
   const makeBox = await make.boundingBox();
@@ -141,8 +145,18 @@ test('1 Today brings back three live cards and opens the chosen filming plan', a
   const tabBox = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
   expect(makeBox!.y).toBeGreaterThanOrEqual(pageBox!.y);
   expect(makeBox!.y + makeBox!.height).toBeLessThanOrEqual(Math.min(pageBox!.y + pageBox!.height, tabBox!.y));
-  await app.screenshot('keyboard-closed');
+  await app.screenshot('today-chip-after-keyboard');
+  return make;
+}
 
+test('1 Today keyboard only keeps the request and the Make button reachable', async ({ app, screen, device }) => {
+  await launch(app, screen, device);
+  await todayKeyboard(app, screen);
+});
+
+test('1 Today brings back three live cards and opens the chosen filming plan', async ({ app, screen, device }) => {
+  await launch(app, screen, device);
+  const make = await todayKeyboard(app, screen);
   const deadline = Date.now() + timeout;
   await request(1, "Make today's Reel", 3, () => make.tap());
   const ready = screen.getByRole('button', /^Idea [1-3] of 3, ready$/);
@@ -276,8 +290,9 @@ test('4 Make it simpler returns one live revision', async ({ app, screen, device
   await launch(app, screen, device);
   await openProject(screen, title);
   const simpler = screen.getByTestId('mira.words.simpler');
-  while (!await simpler.count() && await back(screen).isVisible()) await back(screen).tap();
-  if (!await simpler.count()) {
+  const opening = screen.getByText('Your opening line', { exact: true });
+  while (!await opening.count() && await back(screen).isVisible()) await back(screen).tap();
+  if (!await opening.count()) {
     await openProject(screen, title);
     await selectShots(screen);
     const shotGate = screen.getByTestId('mira.shots.approve');
@@ -288,52 +303,138 @@ test('4 Make it simpler returns one live revision', async ({ app, screen, device
     await tapVisibleControl(screen, shotGate);
   }
   const proposal = screen.getByText("Mira's new version", { exact: true });
-  if (!recorded().some(entry => entry.action === 'Make it simpler' && entry.calls)) {
+  const use = screen.getByTestId('mira.words.use');
+  const requested = recorded().some(entry => entry.scenario === 4 && entry.action === 'Make it simpler' && entry.calls);
+  const words = screen.getByRole('scroll-view', { visible: true }).first().getByRole('text');
+  const wordsAfter = async (heading: string, count: number) => {
+    const lines = await words.allTextContents();
+    const index = lines.indexOf(heading);
+    expect(index).toBeGreaterThanOrEqual(0);
+    const copy = lines.slice(index + 1, index + 1 + count);
+    expect(copy).toHaveLength(count);
+    for (const line of copy) expect(line.trim().length).toBeGreaterThan(0);
+    return copy;
+  };
+  await fit(screen, opening, 'up');
+  if (!requested && await proposal.count()) {
+    await tapVisibleControl(screen, use);
+    await fit(screen, opening, 'up');
+    await expect(proposal).toHaveCount(0);
+  }
+  const oldOpening = await wordsAfter('Your opening line', 1);
+  const oldSpoken = await wordsAfter('What you say', 1);
+  if (!requested) {
     await fit(screen, simpler);
     await request(4, 'Make it simpler', 1, () => tapVisibleControl(screen, simpler));
   }
+  await fit(screen, opening, 'up');
   await waitForOutput(screen, proposal, 'Wait for the simpler live revision.');
   await fit(screen, proposal);
-  record({ scenario: 4, action: 'simpler revision displayed', title });
+  const [newOpening, newSpoken] = await wordsAfter("Mira's new version", 2);
+  expect([newOpening, newSpoken]).not.toEqual([...oldOpening, ...oldSpoken]);
   await app.screenshot('change-result');
+  await tapVisibleControl(screen, use);
+  await fit(screen, opening, 'up');
+  await expect(proposal).toHaveCount(0);
+  expect(await wordsAfter('Your opening line', 1)).toEqual([newOpening]);
+  expect(await wordsAfter('What you say', 1)).toEqual([newSpoken]);
+  record({ scenario: 4, action: 'simpler revision applied', title });
+  await app.screenshot('change-applied');
 });
 
-test('5 Projects Plan step by step makes a live filming plan', async ({ app, screen, device }) => {
-  await launch(app, screen, device);
+async function startStepByStep(screen: Screen) {
   await root(screen, 'Projects');
   await button(screen, 'Profile').tap();
   await tapVisibleControl(screen, screen.getByTestId('mira.profile.stepByStep'));
   await expect(text(screen, 'Choosing an idea')).toBeVisible();
-  const field = screen.getByRole('textbox', 'Tell Mira', { exact: true });
-  await fit(screen, field);
-  await field.fill('At home, show the first step of making my morning chai.');
-  const keyboard = keyboardWindow(screen);
-  if (await keyboard.isVisible()) await text(screen, 'What do you have time for?').tap();
-  await expect(keyboard).not.toBeVisible();
+}
 
-  const generate = async (label: string, result: Locator) => {
+async function closeWithDone(app: App, screen: Screen, field: Locator, value: string, label: string) {
+  const keyboard = keyboardWindow(screen);
+  await expect(keyboard).toBeVisible();
+  await app.screenshot(`${label}-open`);
+  await field.press('Enter');
+  await expect(keyboard).not.toBeVisible();
+  expect(await field.inputValue()).toBe(value);
+  await app.screenshot(`${label}-closed`);
+}
+
+test('5 Projects Plan step by step makes a live filming plan', async ({ app, screen, device }) => {
+  await launch(app, screen, device);
+  const field = screen.getByRole('textbox', 'Tell Mira', { exact: true });
+  const prompt = 'At home, show the first step of making my morning chai.';
+  const projectName = screen.getByRole('textbox', 'Project name', { exact: true });
+  const generate = async (label: string, result: Locator, returnToProject = false) => {
     const action = button(screen, label);
     await fit(screen, action);
     await request(5, label, 1, () => tapVisibleControl(screen, action));
+    if (returnToProject) await fit(screen, projectName, 'up');
     await waitForOutput(screen, result, `Wait for the result of ${label}.`, 150_000);
   };
+  const moreIdeas = button(screen, 'More ideas');
+  const ideasRequested = recorded().some(entry => entry.scenario === 5 && entry.action === 'Show three ideas' && entry.calls);
+  if (ideasRequested) {
+    await fit(screen, field, 'up');
+    expect(await field.inputValue()).toBe(prompt);
+    await fit(screen, moreIdeas);
+  } else {
+    await startStepByStep(screen);
+    await fit(screen, field);
+    await field.fill(prompt);
+    await closeWithDone(app, screen, field, prompt, 'step-by-step-tell-mira-keyboard');
+    const initialTitle = await projectName.inputValue();
+    await projectName.tap();
+    const keyboard = keyboardWindow(screen);
+    await expect(keyboard).toBeVisible();
+    await app.screenshot('step-by-step-project-name-keyboard-open');
+    const heading = await text(screen, 'What do you have time for?').boundingBox();
+    expect(heading).not.toBeNull();
+    await screen.tapAt({ x: heading!.x + heading!.width / 2, y: heading!.y + heading!.height / 2 });
+    await expect(keyboard).not.toBeVisible();
+    expect(await projectName.inputValue()).toBe(initialTitle);
+    await app.screenshot('step-by-step-project-name-keyboard-closed');
+    await generate('Show three ideas', moreIdeas);
+  }
   const pick = button(screen, 'Use this idea').first();
-  await generate('Show three ideas', button(screen, 'More ideas'));
-  await expect(button(screen, 'Use this idea')).toHaveCount(3);
+  await fit(screen, pick);
+  await app.screenshot('step-by-step-live-idea');
   await tapVisibleControl(screen, pick);
-  const projectName = screen.getByRole('textbox', 'Project name', { exact: true });
+  await fit(screen, projectName, 'up');
   const title = await projectName.inputValue();
   expect(title.trim().length).toBeGreaterThan(0);
   expect(title).not.toBe('Untitled Reel');
   record({ scenario: 5, action: 'selected step-by-step project', title });
-  const makeShots = button(screen, 'Make shot list');
   await generate('Draft hook, script and caption', screen.getByRole('textbox', 'Hook · spoken opening', { exact: true }));
   const shots = screen.getByText('Your filming plan', { exact: true });
-  await generate('Make shot list', shots);
+  await generate('Make shot list', shots, true);
   await fit(screen, shots, 'up');
   await expect(screen.getByText(/^About \d+ seconds edited · [1-9]\d* shots?$/)).toHaveCount(1);
-  expect(await projectName.inputValue()).toBe(title);
   await app.screenshot('step-by-step-filming-plan');
+  await fit(screen, projectName, 'up');
+  expect(await projectName.inputValue()).toBe(title);
+});
+
+test('Keyboard Profile closes with Done without editing the saved name', async ({ app, screen, device }) => {
+  await launch(app, screen, device);
+  await root(screen, 'Today');
+  await button(screen, 'Profile').tap();
+  const field = screen.getByRole('textbox', 'Your name', { exact: true });
+  await fit(screen, field);
+  const value = await field.inputValue();
+  await field.tap();
+  await closeWithDone(app, screen, field, value, 'profile-name-keyboard');
+});
+
+test('Keyboard manual idea closes with Done and keeps the title', async ({ app, screen, device }) => {
+  await launch(app, screen, device);
+  await startStepByStep(screen);
+  await tapVisibleControl(screen, button(screen, 'Add my own idea'));
+  const field = screen.getByRole('textbox', 'Idea title', { exact: true });
+  const title = 'Morning chai';
+  await field.fill(title);
+  await closeWithDone(app, screen, field, title, 'manual-idea-keyboard');
+  await fit(screen, button(screen, 'Use my idea'));
+  await button(screen, 'Cancel').tap();
 });
 
 test('6 Profile changes Look from Dark to Light and shows Problem reports', async ({ app, screen, device }) => {
