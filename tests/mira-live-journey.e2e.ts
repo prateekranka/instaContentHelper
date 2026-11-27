@@ -409,6 +409,15 @@ test('5 Projects Plan step by step makes a live filming plan', async ({ app, scr
   await fit(screen, shots, 'up');
   await expect(screen.getByText(/^About \d+ seconds edited · [1-9]\d* shots?$/)).toHaveCount(1);
   await app.screenshot('step-by-step-filming-plan');
+  await launch(app, screen, device);
+  await fit(screen, shots, 'up');
+  const lastDetail = screen.getByText('More filming details', { exact: true }).last();
+  await fit(screen, lastDetail);
+  const detailBox = await lastDetail.boundingBox();
+  const tabBar = screen.getByRole('tablist', 'Tab Bar', { exact: true });
+  const tabBox = await tabBar.boundingBox();
+  expect(detailBox!.y + detailBox!.height).toBeLessThanOrEqual(tabBox!.y - 8);
+  await app.screenshot('step-by-step-filming-plan-bottom-after-relaunch');
   await fit(screen, projectName, 'up');
   expect(await projectName.inputValue()).toBe(title);
 });
