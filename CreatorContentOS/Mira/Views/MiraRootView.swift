@@ -7,10 +7,12 @@ struct MiraRootView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.scenePhase) private var scenePhase
     let dependencies: MiraDependencies
+    let colorSchemePreference: ColorScheme?
     private var store: MiraStore { dependencies.store }
     @State private var navigation = MiraNavigation()
     @State private var sheet: MiraSheet?
     @State private var todayRequest = ""
+    @State private var todayNeedsAIConsent = false
     var body: some View {
         Group {
             if store.loaded {
@@ -86,7 +88,9 @@ struct MiraRootView: View {
                 case .brief(let id): MiraBriefView(store: store, projectID: id, onGenerate: generate)
                 case .manualIdea(let id): MiraManualIdeaView(store: store, projectID: id)
                 }
-            }.tint(MiraTheme.accent)
+            }
+            .tint(MiraTheme.accent)
+            .preferredColorScheme(colorSchemePreference)
         }
         .modifier(MiraConsentPresenter())
         .alert(
@@ -130,7 +134,10 @@ struct MiraRootView: View {
     }
     private var today: some View {
         MiraTodayHome(
-            store: store, request: $todayRequest, onMake: makeToday,
+            store: store, request: $todayRequest,
+            needsAIConsent: todayNeedsAIConsent && services.isLiveSupabaseRuntime && services.aiConsentHasDeclined,
+            onMake: makeToday,
+            onReviewAIConsent: { services.setAIConsentSheetPresented(true) },
             onContinue: { open($0, tab: .today) },
             onIdeas: { id in
                 navigation.tab = .today
@@ -142,6 +149,7 @@ struct MiraRootView: View {
     }
 
     private func makeToday() {
+        todayNeedsAIConsent = false
         do {
             let demo = DebugLaunchFlags.forceFixtureUI
             let generation: any MiraGenerationService = demo
@@ -154,7 +162,11 @@ struct MiraRootView: View {
                 demo: demo, service: generation)
             todayRequest = ""
             open(id, tab: .today)
-        } catch { store.error = error.localizedDescription }
+        } catch is AIConsentRequired {
+            todayNeedsAIConsent = true
+        } catch {
+            store.error = error.localizedDescription
+        }
     }
     private func open(_ id: UUID, tab: MiraTab) {
         guard let project = store.project(id) else { return }
@@ -319,21 +331,26 @@ struct MiraProjectsView: View {
                 Divider()
             }
         }.navigationTitle("Projects")
-            .alert(
-                "Rename project",
-                isPresented: Binding(
-                    get: { renaming != nil }, set: { if !$0 { renaming = nil } }
-                )
-            ) {
-                TextField("Project name", text: $newName)
-                Button("Save name") {
-                    let title = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if let id = renaming, !title.isEmpty {
-                        store.rename(id, to: title)
+            .sheet(isPresented: Binding(
+                get: { renaming != nil }, set: { if !$0 { renaming = nil } }
+            )) {
+                NavigationStack {
+                    MiraPage {
+                        MiraTextInput(title: "Project name", text: $newName)
+                        Button("Save name") {
+                            let title = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if let id = renaming, !title.isEmpty { store.rename(id, to: title) }
+                            renaming = nil
+                        }.buttonStyle(MiraPrimaryStyle())
+                            .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    renaming = nil
-                }.disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Button("Cancel", role: .cancel) { renaming = nil }
+                    .navigationTitle("Rename project").navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { renaming = nil }
+                        }
+                    }
+                }
             }
             .confirmationDialog(
                 "Delete this project and its saved revisions?",
@@ -396,12 +413,13 @@ struct MiraChipFlow: Layout {
 struct MiraTodayHome: View {
     let store: MiraStore
     @Binding var request: String
+    let needsAIConsent: Bool
     let onMake: () -> Void
+    let onReviewAIConsent: () -> Void
     let onContinue: (UUID) -> Void
     let onIdeas: (UUID) -> Void
     @Environment(MiraDependencies.self) private var dependencies
     @Environment(\.scenePhase) private var scenePhase
-    @FocusState private var focused: Bool
     @State private var speech: (any MiraSpeechInputService)?
     @State private var spokenBase = ""
     private static let places: [(id: String, label: String, phrase: String)] = [
@@ -420,12 +438,10 @@ struct MiraTodayHome: View {
             }
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
-                    TextField(
-                        "For example: at the gym, sled push", text: $request, axis: .vertical
+                    MiraTextInput(
+                        title: "For example: at the gym, sled push", text: $request, axis: .vertical
                     )
                     .lineLimit(2...4).font(.title3)
-                    .focused($focused)
-                    .miraFieldBox()
                     .accessibilityLabel("What can you film today?")
                     .accessibilityIdentifier("mira.today.request")
                     microphone
@@ -451,7 +467,6 @@ struct MiraTodayHome: View {
                 Text("Mira is still making today's ideas.").font(.title3)
                 Button("See today's ideas") {
                     speech?.stop()
-                    focused = false
                     onIdeas(batch.id)
                 }
                 .buttonStyle(MiraPrimaryStyle())
@@ -459,12 +474,19 @@ struct MiraTodayHome: View {
             } else {
                 Button("Make today's Reel") {
                     speech?.stop()
-                    focused = false
                     onMake()
                 }
                 .buttonStyle(MiraPrimaryStyle())
                 .disabled(speech?.recording == true)
                 .accessibilityIdentifier("mira.today.make")
+            }
+            if needsAIConsent {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Allow AI to write ideas first.")
+                        .accessibilityIdentifier("mira.today.aiPermissionNeeded")
+                    Button("Review AI permission", action: onReviewAIConsent)
+                        .buttonStyle(.bordered).controlSize(.large)
+                }
             }
             if let project = store.document.continuationProject, project.id != workingBatch?.id {
                 Button {
@@ -492,17 +514,8 @@ struct MiraTodayHome: View {
                 .accessibilityIdentifier("mira.today.continue")
             }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focused = false }.font(.headline)
-            }
-        }
         .onAppear { if speech == nil { speech = dependencies.makeSpeechInput() } }
-        .onDisappear {
-            speech?.stop()
-            focused = false
-        }
+        .onDisappear { speech?.stop() }
         .onChange(of: scenePhase) { _, phase in if phase != .active { speech?.stop() } }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in
             speech?.stop()
@@ -531,7 +544,6 @@ struct MiraTodayHome: View {
             if speech.recording {
                 speech.stop()
             } else {
-                focused = false
                 spokenBase = request
                 let locale = store.document.profile.language == .english ? "en-IN" : "hi-IN"
                 Task { await speech.start(locale: locale) }

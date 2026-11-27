@@ -9,11 +9,14 @@ export async function tapVisibleControl(screen: Screen, locator: Locator) {
   await screen.tapAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
 }
 
-export async function tapWhenSteady(screen: Screen, locator: Locator) {
-  await expect(locator).toBeVisible();
-  await expect(locator).toBeEnabled();
-  const box = await stableBox(locator);
-  await screen.tapAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+export function mobileKeyboard(screen: Screen) {
+  return screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
+}
+
+export async function closeKeyboard(screen: Screen, field: Locator) {
+  const keyboard = mobileKeyboard(screen);
+  if (await keyboard.isVisible()) await field.press('Enter');
+  await expect(keyboard).not.toBeVisible();
 }
 
 async function floatingBoxes(screen: Screen, scrollView: Locator, role: 'button' | 'link') {
@@ -67,7 +70,7 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
     ?? { x: scrollBox.x, y: scrollBox.y + scrollBox.height, width: scrollBox.width, height: 0 };
   const visibleTop = Math.max(8, scrollBox.y + 2);
   const targetTop = Math.max(8, scrollBox.y - 0.5);
-  const keyboard = screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
+  const keyboard = mobileKeyboard(screen);
   const keyboardTop = (await controlBox(keyboard))?.y ?? tabBar.y;
   const viewportBottom = Math.min(tabBar.y - 8, keyboardTop - 8, bottom ?? tabBar.y);
   let visibleBottom = Math.min(viewportBottom, scrollBox.y + scrollBox.height - 2);

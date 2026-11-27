@@ -1,9 +1,9 @@
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type Locator, type Screen } from 'e2e';
-import { scrollToControl, tapVisibleControl, tapWhenSteady } from './mobile-support';
+import { closeKeyboard, mobileKeyboard, scrollToControl, tapVisibleControl } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
-const english = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US'];
+const english = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_APPEARANCE', 'light'];
 const fixtureLaunch = [...english, '-MCO_FORCE_FIXTURE_UI', '1'];
 
 async function tap(screen: Screen, locator: Locator) {
@@ -68,10 +68,6 @@ async function fillText(field: Locator, text: string) {
     await field.fill(text);
   }
   if (text.length > 0) expect(await field.inputValue()).toBe(text);
-}
-
-async function closeKeyboard(screen: Screen) {
-  await tapWhenSteady(screen, screen.getByRole('button', 'Done', { exact: true }));
 }
 
 async function dismissSystemVerification(screen: Screen) {
@@ -325,11 +321,15 @@ test('Today has one question, chips, Continue rules and start options in Profile
   await expect(screen.getByText('Plan step by step', { exact: true })).not.toBeVisible();
   await expect(screen.getByText('Try Mamta’s demo notebook', { exact: true })).not.toBeVisible();
   await fillText(request, '');
-  await closeKeyboard(screen);
+  await closeKeyboard(screen, request);
   await app.screenshot(`d1-today-${look}`);
 
   const chip = (id: string) => screen.getByTestId(`mira.today.chip.${id}`);
+  const keyboard = mobileKeyboard(screen);
+  await request.tap();
+  await expect(keyboard).toBeVisible();
   await chip('gym').tap();
+  await expect(keyboard).not.toBeVisible();
   expect(await request.inputValue()).toBe('At the gym');
   await chip('home').tap();
   expect(await request.inputValue()).toBe('At home');
@@ -343,7 +343,9 @@ test('Today has one question, chips, Continue rules and start options in Profile
   expect(await request.inputValue()).toBe('Outside');
   await app.screenshot(`d1-today-chips-${look}`);
   await fillText(request, '');
-  await closeKeyboard(screen);
+  await expect(keyboard).toBeVisible();
+  await screen.getByText(/^Good (morning|afternoon|evening)[,.]/, { visible: true }).tap();
+  await expect(keyboard).not.toBeVisible();
 
   await screen.getByRole('button', 'Profile', { exact: true }).tap();
   const stepByStep = screen.getByTestId('mira.profile.stepByStep');
@@ -357,6 +359,18 @@ test('Today has one question, chips, Continue rules and start options in Profile
   await expect(screen.getByText('Untitled Reel', { exact: true })).not.toBeVisible();
 
   await fillText(request, 'Demo slow cards');
+  await expect(keyboard).toBeVisible();
+  await app.screenshot('today-keyboard-open');
+  await closeKeyboard(screen, request);
+  expect(await request.inputValue()).toBe('Demo slow cards');
+  await expect(make).toBeVisible();
+  await expect(make).toBeEnabled();
+  const makeBox = await make.boundingBox();
+  const pageBox = await screen.getByRole('scroll-view', { visible: true }).first().boundingBox();
+  const tabBox = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
+  expect(makeBox.y).toBeGreaterThanOrEqual(pageBox.y);
+  expect(makeBox.y + makeBox.height).toBeLessThanOrEqual(Math.min(pageBox.y + pageBox.height, tabBox.y));
+  await app.screenshot('today-keyboard-closed');
   await make.tap();
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
   await expect(screen.getByText('About 1 minute', { exact: true })).toBeVisible();
@@ -381,8 +395,9 @@ async function startTodayCard(screen: Screen, request: string, card: number) {
   await openToday(screen);
   const make = screen.getByTestId('mira.today.make');
   await expect(make).toBeVisible({ timeout: 45_000 });
-  await fillText(screen.getByTestId('mira.today.request'), request);
-  await closeKeyboard(screen);
+  const field = screen.getByTestId('mira.today.request');
+  await fillText(field, request);
+  await closeKeyboard(screen, field);
   await make.tap();
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
   await screen.getByTestId(`mira.today.page.${card}`).tap();
@@ -529,4 +544,45 @@ test('S1 B5 Stop on an idea that the server never took ends as stopped', async (
   await expect(screen.getByText('A quick movement break', { exact: true, visible: true })).toBeVisible();
   await screen.getByTestId('BackButton').tap();
   await expect(screen.getByTestId('mira.today.make')).toBeVisible();
+});
+
+test('Profile Look setting', async ({ app, screen, device }) => {
+  await launchMira(screen, device, true);
+  await backOut(screen);
+  await screen.getByRole('button', 'Profile', { exact: true }).tap();
+  const setting = screen.getByTestId('mira.profile.look');
+  await expect(setting).toBeVisible();
+  for (const appearance of ['Dark', 'Light']) {
+    const choice = setting.getByRole('button', appearance, { exact: true });
+    await choice.tap();
+    await expect(choice).toBeSelected();
+    await app.screenshot(`profile-look-${appearance.toLowerCase()}`);
+  }
+});
+
+test('crash log', async ({ app, screen, device }) => {
+  if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
+  await device.openApp(bundleId, {
+    relaunch: true,
+    launchArguments: [...fixtureLaunch, '-MCO_DEBUG_CRASH', '1'],
+  });
+  await expect.poll(() => appIsRunning(screen), {
+    timeout: 20_000,
+    interval: 1_000,
+    message: 'Mira should stop running after the deliberate debug crash.',
+  }).toBe(false);
+
+  await launchMira(screen, device);
+  await backOut(screen);
+  await screen.getByRole('button', 'Profile', { exact: true }).tap();
+  const connect = screen.getByText('Connect account', { exact: true });
+  await scrollToControl(screen, connect);
+  const reports = screen.getByTestId('mira.profile.problemReports');
+  if (await reports.count() > 0) {
+    await scrollToControl(screen, reports);
+    await expect(reports.getByText('Problem reports', { exact: true })).toBeVisible();
+    await app.screenshot('profile-problem-reports-visible');
+  } else {
+    await app.screenshot('profile-problem-reports-absent');
+  }
 });
