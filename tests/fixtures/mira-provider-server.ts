@@ -6,9 +6,43 @@ import { phaseEFixture } from './mira-phase-e.ts';
 
 const localPort = Deno.env.get('MIRA_API_E2E_LOCAL_PORT');
 const localRole = Deno.env.get('MIRA_API_E2E_LOCAL_SERVICE_ROLE');
+const saveFaults = new Map<string, { stage: boolean; finish: boolean }>();
+const lateUploads = new Map<string, (() => void)[]>();
+const heldUploads = new Set<string>();
+const localFetch: typeof fetch = async (input, init) => {
+  const request = new Request(input, init);
+  const url = new URL(request.url);
+  if (request.method === 'PATCH' && url.pathname.endsWith('/mira_generation_jobs')) {
+    const id = url.searchParams.get('id')?.slice(3) ?? '';
+    const fault = saveFaults.get(id);
+    if (fault) {
+      const changes = await request.clone().json();
+      const kind = changes.status === 'succeeded' ? 'finish' : 'output' in changes ? 'stage' : undefined;
+      if (kind && !fault[kind]) {
+        fault[kind] = true;
+        return Response.json({ message: 'fixture_write_unavailable' }, { status: 503 });
+      }
+    }
+  }
+  if (request.method === 'POST' && url.pathname.includes('/object/mira-shot-pictures/')) {
+    const id = url.pathname.split('/').at(-2) ?? '';
+    const gates = lateUploads.get(id);
+    if (gates) {
+      heldUploads.add(id);
+      await new Promise<void>(resolve => gates.push(resolve));
+    }
+  }
+  if (request.method === 'PATCH' && url.pathname.endsWith('/mira_shot_pictures') &&
+      lateUploads.has(url.searchParams.get('job_id')?.slice(3) ?? '') &&
+      (await request.clone().json()).status === 'ready') {
+    return Response.json({ message: 'fixture_ready_update_unavailable' }, { status: 503 });
+  }
+  return fetch(request);
+};
 const localAdmin = localPort && /^\d{1,5}$/.test(localPort) && localRole
   ? createClient(`http://127.0.0.1:${localPort}`, localRole, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: localFetch },
   }) : undefined;
 const workspaceID = '10000000-0000-4000-8000-000000000001';
 const creatorID = '10000000-0000-4000-8000-000000000002';
@@ -18,6 +52,7 @@ const otherTokenHash = await sha256Hex('fixture-other-member');
 const tokenHash = await sha256Hex('fixture-device-token');
 type Row = Record<string, unknown>;
 const jobs = new Map<string, Row>();
+const cancellations = new Set<string>();
 const pictures: Row[] = [];
 const savedPictures = new Set<string>();
 const streamGates = new Map<string, (() => void)[]>();
@@ -85,13 +120,32 @@ const admin = {
   rpc(name: string, args: Row, mode: string) {
     if (name === 'mira_enqueue') {
       const id = String(args.p_id);
+      const key = [args.p_id, args.p_workspace, args.p_creator, args.p_member].join(':');
+      if (cancellations.has(key)) {
+        return Promise.resolve({ data: null, error: new Error('job_cancelled_before_start') });
+      }
       const row = { id, workspace_id: args.p_workspace, creator_id: args.p_creator, member_id: args.p_member,
-        input_revision: args.p_revision, input: args.p_input, status: 'queued', attempts: 0 };
+        input_revision: args.p_revision, input: args.p_input, status: 'queued', attempts: 0,
+        provider_started: false, output: null };
       jobs.set(id, row);
       return Promise.resolve({ data: row, error: null });
     }
+    if (name === 'mira_cancel') {
+      const job = jobs.get(String(args.p_id));
+      if (!job || job.workspace_id !== args.p_workspace || job.creator_id !== args.p_creator ||
+          job.member_id !== args.p_member) {
+        cancellations.add([args.p_id, args.p_workspace, args.p_creator, args.p_member].join(':'));
+        return Promise.resolve({ data: null, error: null });
+      }
+      if (job.status === 'queued' || job.status === 'running') job.status = 'cancelled';
+      return Promise.resolve({ data: structuredClone(job), error: null });
+    }
     if (name === 'mira_claim') {
       const row = jobs.get(String(args.p_id));
+      if (row?.status === 'running' && row.output != null) {
+        Object.assign(row, { status: 'succeeded', error: null });
+        return Promise.resolve({ data: [], error: null });
+      }
       const now = Date.now();
       const ready = row && Number(row.attempts) < 3 &&
         (!row.next_attempt_at || Date.parse(String(row.next_attempt_at)) <= now) &&
@@ -114,7 +168,7 @@ const admin = {
         const shots = (job.output as { storyboard: { shots: { id: string }[] } }).storyboard.shots;
         rows = shots.slice(0, Number(job.picture_count)).map((shot) => ({
           job_id: job.id, shot_id: shot.id, object_path: `${job.id}/${shot.id}.jpg`,
-          status: 'generating', lease_id: args.p_lease_id,
+          status: 'generating', lease_id: args.p_lease_id, started_at: null,
           lease_until: new Date(now + (mode === 'd2-short-picture' ? 119_000 : Number(args.p_lease_seconds) * 1000)).toISOString(),
         }));
         pictures.push(...rows);
@@ -125,6 +179,12 @@ const admin = {
         }
       }
       return Promise.resolve({ data: structuredClone(rows), error: null });
+    }
+    if (name === 'mira_start_shot_picture') {
+      const row = pictures.find(row => row.job_id === args.p_job_id && row.shot_id === args.p_shot_id &&
+        row.lease_id === args.p_lease_id && row.status === 'generating' && !row.started_at);
+      if (row) row.started_at = new Date().toISOString();
+      return Promise.resolve({ data: Boolean(row), error: null });
     }
     return Promise.resolve({ data: null, error: new Error('unexpected_rpc') });
   },
@@ -138,11 +198,12 @@ const output = { conflicts: [], ideas: [1, 2, 3].map((n) => ({
 Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT')) }, async (request) => {
   const url = new URL(request.url);
   if (url.pathname === '/observations') {
-    return Response.json({ calls, jobs: [...jobs.values()], stepWrites, pictureJobIDs: pictures.map(row => row.job_id) });
+    return Response.json({ calls, jobs: [...jobs.values()], stepWrites, pictureJobIDs: pictures.map(row => row.job_id),
+      saveFaults: Object.fromEntries(saveFaults), heldUploads: [...heldUploads] });
   }
   const id = request.headers.get('x-fixture-job') ?? '';
   if (url.pathname === '/tick') {
-    const gate = streamGates.get(id)?.shift();
+    const gate = (streamGates.get(id) ?? lateUploads.get(id))?.shift();
     if (!gate) return new Response(null, { status: 409 });
     gate();
     return new Response(null, { status: 204 });
@@ -155,6 +216,10 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
   const mode = request.headers.get('x-fixture-mode') ?? 'ok';
   const phaseELocal = mode.startsWith('e-local-');
   if (phaseELocal && !localAdmin) return new Response(null, { status: 503 });
+  if (mode === 'e-local-astra-save' && !saveFaults.has(id)) {
+    saveFaults.set(id, { stage: false, finish: false });
+  }
+  if (mode === 'e-local-astra-late-upload' && !lateUploads.has(id)) lateUploads.set(id, []);
   const fixtureToken = request.headers.get('x-mco-device-token') ?? '';
   const fixtureMember = /^fixture-member:([a-f0-9-]{36})$/.exec(fixtureToken)?.[1];
   const extraRows: Record<string, Row[]> = {};
@@ -166,7 +231,9 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
   const values: Record<string, string> = {
     SUPABASE_URL: 'https://fixture.invalid', SUPABASE_SERVICE_ROLE_KEY: 'fixture-server-key',
     MIRA_AI_PROVIDER: selected, MIRA_MODEL: 'fixture-model',
-    MIRA_PICTURES_PER_CARD: (mode.startsWith('d2-') && !['d2-stream', 'd2-cut'].includes(mode)) || mode === 'e-local-pick-stream' ? '5' : '0',
+    MIRA_PICTURES_PER_CARD: mode === 'e-local-astra-late-upload' ? '1' :
+      (mode.startsWith('d2-') && !['d2-stream', 'd2-cut'].includes(mode)) ||
+      ['e-local-pick-stream', 'e-local-astra-uppercase'].includes(mode) ? '5' : '0',
     OPENAI_API_KEY: 'fixture-openai-key', DEEPSEEK_API_KEY: 'fixture-deepseek-key', GEMINI_API_KEY: 'fixture-gemini-key',
   };
   const env = { get: (name: string) => values[name] };
@@ -185,22 +252,24 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
     const input = JSON.parse(payload.messages?.[1]?.content ?? payload.contents?.[0]?.parts?.[0]?.text ?? '{}');
     let result: unknown = phaseEFixture(input.operation, mode, input) ?? output;
     const oneIdea = ['todayIdea', 'pickIdea'].includes(input.operation);
-    if (oneIdea || ['storyboard', 'reviseShot'].includes(input.operation)) {
+    if (oneIdea || ['storyboard', 'reviseStoryboard', 'reviseShot'].includes(input.operation)) {
       const script = oneIdea ? {
         id: crypto.randomUUID(), hook: 'Here is my breakfast.', spoken: 'Add fruit to the bowl.',
         caption: 'My breakfast', durationSeconds: 20, language: input.profile.language,
       } : input.script;
       const first = {
-        id: '30000000-0000-4000-8000-000000000001', purpose: 'Introduce the routine',
+        id: mode === 'e-local-astra-uppercase' ? '3ABC0000-0000-4000-8000-000000000001' :
+          '30000000-0000-4000-8000-000000000001', purpose: 'Introduce the routine',
         editedSeconds: 6, recordingSeconds: 12, location: 'Home', props: 'Phone and books',
         placement: 'Prop the phone against books on the table.',
         distance: mode === 'blank-distance' ? '  ' : 'One arm’s length', framing: 'Head and shoulders', frameType: 'headShoulders',
-        action: 'Sit at the table.', words: 'Here is my breakfast.', voiceover: false,
+        action: 'Sit at the table.', words: script.hook, voiceover: false,
         onScreenText: 'My breakfast', simplerAlternative: 'Stay seated.',
       };
       const second = {
         ...first, id: '30000000-0000-4000-8000-000000000002', purpose: 'Show the bowl',
-        editedSeconds: 14, frameType: 'closeUp', framing: 'Your hands and the bowl', recordingSeconds: 20,
+        editedSeconds: 14, frameType: 'closeUp', framing: 'Your hands and the bowl',
+        recordingSeconds: 20, words: script.spoken,
       };
       const shots = input.operation === 'reviseShot'
         ? [{
@@ -209,6 +278,12 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
         }]
         : [first, second];
       if (mode === 'missing-frame') Reflect.deleteProperty(shots[0], 'frameType');
+      if (mode === 'astra-invented-words') first.words = 'Add sugar to the bowl.';
+      if (mode === 'astra-invented-words' && input.operation === 'reviseShot') shots[0].words = first.words;
+      if (mode === 'astra-missing-words') second.words = '';
+      if (mode === 'astra-reordered-words') [first.words, second.words] = [second.words, first.words];
+      if (mode === 'astra-repeated-words') second.words = first.words + ' ' + second.words;
+      if (mode === 'astra-normalized-words') first.words = '  "Here’s" \n\t my breakfast. ';
       result = {
         conflicts: [],
         storyboard: {
@@ -216,7 +291,7 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
         },
       };
       if (oneIdea) {
-        const third = { ...first, id: crypto.randomUUID(), purpose: 'Finish the idea', editedSeconds: 4 };
+        const third = { ...first, id: crypto.randomUUID(), purpose: 'Finish the idea', editedSeconds: 4, words: '' };
         const idea = { ...output.ideas[0], title: input.angle ?? 'A bowl of dahi', hook: script.hook,
           visual: 'Show a bowl of dahi 🥣 with "script": braces { and commas, and a slash \\.' };
         const board = {
@@ -296,7 +371,7 @@ Deno.serve({ hostname: '127.0.0.1', port: Number(Deno.env.get('MIRA_FIXTURE_PORT
     },
     generate: (input, config, signal, _fetch, onStep) => generate(input, config, signal, providerFetch, onStep),
     pictureFetch: providerFetch,
-    ...(['d2-stream', 'd2-cut', 'e-local-pick-stream'].includes(mode) ? {
+    ...(['d2-stream', 'd2-cut', 'e-local-pick-stream', 'e-local-astra-late-upload'].includes(mode) ? {
       defer: (work: Promise<unknown>) => { void work.catch(() => {}); },
     } : {}),
   });

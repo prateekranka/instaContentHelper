@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'e2e';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { brandDoc, deal, injection, phaseEInputs, phaseEOutputs } from './fixtures/mira-phase-e.ts';
@@ -64,6 +64,8 @@ async function observations() {
     stepWrites: { id: string; step: string }[];
     jobs: { id: string; status: string; error?: string }[];
     pictureJobIDs: string[];
+    saveFaults: Record<string, { stage: boolean; finish: boolean }>;
+    heldUploads: string[];
   };
 }
 
@@ -171,7 +173,7 @@ test('local PostgREST rejects short claims and forbidden job status changes', as
   expect(claim.status).toBe(200);
   expect(claim.body[0].status).toBe('running');
   expect(claim.body[0].attempts).toBe(1);
-  const saved = await write(row, 'PATCH', { status: 'succeeded' });
+  const saved = await write(row, 'PATCH', { status: 'succeeded', output: { conflicts: [] } });
   expect(saved.status).toBe(200);
   expect(saved.body[0].status).toBe('succeeded');
   const reopened = await write(row, 'PATCH', { status: 'queued' });
@@ -927,4 +929,167 @@ test('local Phase E pick streams D2 steps and reserves pictures only on opt-in s
   expect(pictured.pictures.map((picture: { status: string }) => picture.status)).toEqual(['ready', 'ready', 'ready']);
   expect((await status()).pictures).toBeUndefined();
   expect(await pictureCalls(mode)).toHaveLength(3);
+});
+
+test('M05 storyboard dialogue must cover the source script verbatim and in order', async () => {
+  const script = { id: crypto.randomUUID(), hook: '“Here’s” my breakfast.', spoken: 'Add fruit to the bowl.',
+    caption: 'My breakfast', language: 'English', durationSeconds: 20 };
+  const storyboardInput = { ...input, operation: 'storyboard', script };
+  async function run(payload: object, mode: string) {
+    const id = crypto.randomUUID();
+    expect((await call(id, 'start', 'openai', mode, true, true, payload)).status).toBe(200);
+    return (await call(id, 'status', 'openai', mode)).body.job;
+  }
+  const valid = await run(storyboardInput, 'astra-normalized-words');
+  expect(valid.state).toBe('succeeded');
+  const storyboard = valid.output.storyboard;
+  const results = await Promise.all([
+    ...['invented', 'missing', 'reordered', 'repeated'].map(kind => run(storyboardInput, `astra-${kind}-words`)),
+    run({ ...storyboardInput, operation: 'reviseStoryboard' }, 'astra-invented-words'),
+    run({ ...storyboardInput, operation: 'reviseShot', storyboard, targetShotID: storyboard.shots[0].id }, 'astra-invented-words'),
+    run(todayInput, 'astra-invented-words'),
+    run(pickInput, 'astra-invented-words'),
+  ]);
+  expect(results.map(job => job.state)).toEqual(Array(8).fill('failed'));
+  expect(results.every(job => job.error.includes('shot_words_script_coverage') && job.output === undefined)).toBe(true);
+});
+
+test('M07 stopping before admission blocks a later paid start only in that scope', async () => {
+  const owner = await phaseELocalMember();
+  const other = await phaseELocalMember();
+  const id = crypto.randomUUID();
+  const mode = 'e-local-astra-stop';
+  const stop = () => call(id, 'cancel', 'openai', mode, true, owner.token);
+  expect((await stop()).status).toBe(404);
+  expect((await stop()).status).toBe(404);
+  const late = await call(id, 'start', 'openai', mode, true, owner.token, phaseEInputs.brandDoc);
+  expect(late.status).toBe(409);
+  expect((await observations()).calls.filter(entry => entry.mode === mode)).toHaveLength(0);
+  expect(await owner.usage('brandDoc')).toEqual([]);
+  expect((await call(id, 'start', 'openai', mode, true, other.token, phaseEInputs.brandDoc)).status).toBe(200);
+  expect((await call(id, 'status', 'openai', mode, true, other.token)).body.job.state).toBe('succeeded');
+  expect(await other.usage('brandDoc')).toEqual([{ calls: 1 }]);
+});
+
+test('M08 result save and finish failures reuse one provider result and one cap attempt', async () => {
+  const local = await phaseELocalMember();
+  const id = crypto.randomUUID();
+  const mode = 'e-local-astra-save';
+  expect((await call(id, 'start', 'openai', mode, true, local.token, phaseEInputs.brandDoc)).status).toBe(200);
+  const status = () => call(id, 'status', 'openai', mode, true, local.token);
+  const pending = await status();
+  expect(pending.body.job.state).toBe('working');
+  expect(pending.body.job.output).toBeUndefined();
+  await expect.poll(async () => (await status()).body.job.state, { timeout: 9_000, interval: 200 }).toBe('succeeded');
+  expect((await status()).body.job.output).toEqual(phaseEOutputs.brandDoc);
+  const observed = await observations();
+  expect(observed.calls.filter(entry => entry.mode === mode).length).toBe(1);
+  expect(observed.saveFaults[id]).toEqual({ stage: true, finish: true });
+  expect(await local.usage('brandDoc')).toEqual([{ calls: 1 }]);
+  const row = await local.rest(`mira_generation_jobs?id=eq.${id}&select=attempts`);
+  expect(row.body).toEqual([{ attempts: 1 }]);
+});
+
+test('M09 direct claims and terminal writes must supply a valid lease and payload', async () => {
+  const local = await phaseELocalMember();
+  const id = crypto.randomUUID();
+  expect((await local.enqueue(id, input)).status).toBe(200);
+  const update = (payload: object) => local.rest(`mira_generation_jobs?id=eq.${id}`, 'PATCH', payload);
+  const short = await update({ status: 'running', attempts: 1, lease_id: crypto.randomUUID(),
+    lease_until: new Date(Date.now() + 10_000).toISOString() });
+  expect(short.body.message).toBe('mira_invalid_job_transition');
+  expect((await local.rest('rpc/mira_claim', 'POST', { p_id: id, p_lease_seconds: 90 })).body[0].attempts).toBe(1);
+  expect((await update({ status: 'succeeded', output: null })).body.message).toBe('mira_invalid_job_transition');
+  expect((await update({ status: 'failed', error: null })).body.message).toBe('mira_invalid_job_transition');
+  expect((await update({ status: 'failed', error: 'fixture_error' })).status).toBe(200);
+});
+
+test('M10 uppercase shot IDs remain associated with the correct signed pictures', async () => {
+  const local = await phaseELocalMember();
+  const mode = 'e-local-astra-uppercase';
+  const id = crypto.randomUUID();
+  expect((await call(id, 'start', 'openai', mode, true, local.token, pickInput)).status).toBe(200);
+  const status = () => call(id, 'status', 'openai', mode, true, local.token, pickInput, true);
+  const initial = (await status()).body.job;
+  const finished = (await status()).body.job;
+  expect(initial.output.storyboard.shots[0].id).toBe('3ABC0000-0000-4000-8000-000000000001');
+  expect(finished.pictures.map((picture: { shotID: string }) => picture.shotID.toLowerCase()))
+    .toEqual(initial.output.storyboard.shots.map((shot: { id: string }) => shot.id.toLowerCase()));
+  expect(finished.pictures.map((picture: { status: string }) => picture.status)).toEqual(['ready', 'ready', 'ready']);
+  expect(await pictureCalls(mode)).toHaveLength(3);
+});
+
+test('M10 expired and failed reservations release capacity before any picture call', async () => {
+  const local = await phaseELocalMember();
+  const claim = async (id: string) => {
+    const args = { p_job_id: id, p_lease_id: crypto.randomUUID(), p_lease_seconds: 125 };
+    const tracked = await local.rest('rpc/mira_claim_shot_pictures', 'POST', { ...args, p_track_dispatch: true });
+    return tracked.body?.code === 'PGRST202' ? local.rest('rpc/mira_claim_shot_pictures', 'POST', args) : tracked;
+  };
+  const cards = [];
+  for (let card = 0; card < 7; card++) {
+    const id = crypto.randomUUID();
+    cards.push(id);
+    expect((await local.enqueue(id, todayInput)).status).toBe(200);
+    expect((await local.rest('rpc/mira_claim', 'POST', { p_id: id, p_lease_seconds: 90 })).status).toBe(200);
+    expect((await local.rest(`mira_generation_jobs?id=eq.${id}`, 'PATCH', {
+      status: 'succeeded', picture_count: 5,
+      output: { storyboard: { shots: Array.from({ length: 5 }, () => ({ id: crypto.randomUUID() })) } },
+    })).status).toBe(200);
+  }
+  for (const id of cards.slice(0, 6)) {
+    expect((await claim(id)).body.map((row: { status: string }) => row.status)).toEqual(Array(5).fill('generating'));
+  }
+  const first = `mira_shot_pictures?job_id=eq.${cards[0]}`;
+  expect((await local.rest(first + '&position=eq.1', 'PATCH', { status: 'failed' })).status).toBe(200);
+  expect((await local.rest(first + '&position=eq.2', 'PATCH', { lease_until: new Date(0).toISOString() })).status).toBe(200);
+  expect((await claim(cards[6])).body.map((row: { status: string }) => row.status))
+    .toEqual(['generating', 'generating', 'failed', 'failed', 'failed']);
+});
+
+test('M11 status recovers a late uploaded picture after showing failed, with one paid call', async () => {
+  const local = await phaseELocalMember();
+  const mode = 'e-local-astra-late-upload';
+  const id = crypto.randomUUID();
+  expect((await call(id, 'start', 'openai', mode, true, local.token, pickInput)).status).toBe(200);
+  const finished = await until(async () => (await call(id, 'status', 'openai', mode, true, local.token)).body.job,
+    job => job.state === 'succeeded');
+  expect(finished.state).toBe('succeeded');
+  const status = async () => (await call(id, 'status', 'openai', mode, true, local.token, pickInput, true)).body.job.pictures[0];
+  expect((await status()).status).toBe('pending');
+  await until(observations, observed => observed.heldUploads.includes(id));
+  const row = `mira_shot_pictures?job_id=eq.${id}`;
+  expect((await local.rest(row, 'PATCH', { lease_until: new Date(0).toISOString() })).status).toBe(200);
+  expect((await status()).status).toBe('failed');
+  await tick(id);
+  const object = `${id}/${(await status()).shotID}.jpg`;
+  const storage = localSupabase();
+  const uploaded = await until(() => fetch(`${storage.url}/storage/v1/object/mira-shot-pictures/${object}`, {
+    headers: storage.headers,
+  }).then(async response => response.ok && new Uint8Array(await response.arrayBuffer())[0] === 0xff), found => found);
+  expect(uploaded).toBe(true);
+  const recovered = await status();
+  expect(recovered.status).toBe('ready');
+  expect((await fetch(recovered.url)).status).toBe(200);
+  expect(await pictureCalls(mode)).toHaveLength(1);
+});
+
+test('M12 Daily Note checks each number against the metric named beside it', async () => {
+  const latest = { saves7d: 27, topPosts: [{ caption: 'A fruit bowl', views: 1234 }] };
+  const run = async (mode: string, extra: object) => {
+    const id = crypto.randomUUID();
+    const payload = { ...phaseEInputs.dailyNote, snapshots: [latest], ...extra };
+    expect((await call(id, 'start', 'openai', mode, true, true, payload)).status).toBe(200);
+    return (await call(id, 'status', 'openai', mode)).body.job;
+  };
+  const wrong = await run('astra-wrong-metric', {});
+  expect(wrong.state).toBe('failed');
+  expect(wrong.error).toContain('daily_note_numeric_claim');
+  expect(wrong.output).toBeUndefined();
+  expect((await run('astra-hindi-metrics', { language: 'Hindi', writingSystem: 'Devanagari' })).state).toBe('succeeded');
+});
+
+test('M20 the lease rule rejects a weakened floor in the newest Mira claim migration', () => {
+  const proof = execFileSync('python3', ['scripts/prove-agent-rules.py', '--class', 'mira_lease_budget'], { encoding: 'utf8' });
+  expect(proof).toContain('PROVED mira_lease_budget: a weakened lease floor in the newest Mira claim migration; exit=1');
 });

@@ -23,15 +23,14 @@ try:
     finally:
         log.terminate()
         log.wait(timeout=5)
-    migrations = [
-        '20261026170000_mira_generation_jobs.sql',
-        '20261119012500_mira_three_active_jobs.sql',
-        '20261127190000_mira_job_state_machine.sql',
-        '20261127200000_mira_steps_and_shot_pictures.sql',
-    ]
+    migrations = sorted((root / 'supabase/migrations').glob('*mira*.sql'))
+    if not migrations:
+        raise RuntimeError('No Mira migrations found')
     for migration in migrations:
-        subprocess.run(docker + ['cp', str(root/'supabase/migrations'/migration), f'{name}:/{migration}'], check=True)
-    with (root/'supabase/functions/mira-generation/jobs_test.sql').open('rb') as stream:
-        subprocess.run(docker + ['exec', '-i', name, 'psql', '-U', 'postgres'], stdin=stream, check=True, timeout=40)
+        print(f'Checking {migration.name}', flush=True)
+    suite = (root / 'supabase/functions/mira-generation/jobs_test.sql').read_text()
+    suite = suite.replace(r'\i /mira-migrations.sql', '\n'.join(path.read_text() for path in migrations))
+    subprocess.run(docker + ['exec', '-i', name, 'psql', '-U', 'postgres'], input=suite,
+                   text=True, check=True, timeout=40)
 finally:
     subprocess.run(docker + ['rm', '--force', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
