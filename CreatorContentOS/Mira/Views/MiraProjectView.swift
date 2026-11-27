@@ -21,8 +21,8 @@ struct MiraProjectView: View {
                         NavigationLink("Today's ideas", value: MiraRoute.todayCards(projectID))
                     }
                     Text(project.stage.rawValue).font(.callout).foregroundStyle(.secondary)
-                    TextField(
-                        "Project name",
+                    MiraTextInput(
+                        title: "Project name",
                         text: Binding(
                             get: { store.project(projectID)?.title ?? "" },
                             set: { value in
@@ -30,7 +30,8 @@ struct MiraProjectView: View {
                                     $0.title = value
                                     $0.updatedAt = Date()
                                 }
-                            })
+                            }),
+                        boxed: false
                     ).font(.system(.title, design: .serif)).accessibilityLabel("Project name")
                     if let job = project.job {
                         MiraJobView(

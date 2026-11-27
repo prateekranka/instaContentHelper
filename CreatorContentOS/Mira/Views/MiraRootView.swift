@@ -331,21 +331,26 @@ struct MiraProjectsView: View {
                 Divider()
             }
         }.navigationTitle("Projects")
-            .alert(
-                "Rename project",
-                isPresented: Binding(
-                    get: { renaming != nil }, set: { if !$0 { renaming = nil } }
-                )
-            ) {
-                TextField("Project name", text: $newName)
-                Button("Save name") {
-                    let title = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if let id = renaming, !title.isEmpty {
-                        store.rename(id, to: title)
+            .sheet(isPresented: Binding(
+                get: { renaming != nil }, set: { if !$0 { renaming = nil } }
+            )) {
+                NavigationStack {
+                    MiraPage {
+                        MiraTextInput(title: "Project name", text: $newName)
+                        Button("Save name") {
+                            let title = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if let id = renaming, !title.isEmpty { store.rename(id, to: title) }
+                            renaming = nil
+                        }.buttonStyle(MiraPrimaryStyle())
+                            .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
-                    renaming = nil
-                }.disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Button("Cancel", role: .cancel) { renaming = nil }
+                    .navigationTitle("Rename project").navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { renaming = nil }
+                        }
+                    }
+                }
             }
             .confirmationDialog(
                 "Delete this project and its saved revisions?",
@@ -415,8 +420,6 @@ struct MiraTodayHome: View {
     let onIdeas: (UUID) -> Void
     @Environment(MiraDependencies.self) private var dependencies
     @Environment(\.scenePhase) private var scenePhase
-    @FocusState private var focused: Bool
-    @State private var requestFrame = CGRect.null
     @State private var speech: (any MiraSpeechInputService)?
     @State private var spokenBase = ""
     private static let places: [(id: String, label: String, phrase: String)] = [
@@ -435,17 +438,10 @@ struct MiraTodayHome: View {
             }
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
-                    TextField(
-                        "For example: at the gym, sled push", text: requestInput, axis: .vertical
+                    MiraTextInput(
+                        title: "For example: at the gym, sled push", text: $request, axis: .vertical
                     )
                     .lineLimit(2...4).font(.title3)
-                    .submitLabel(.done)
-                    .onSubmit { focused = false }
-                    .focused($focused)
-                    .miraFieldBox()
-                    .onGeometryChange(for: CGRect.self) { geometry in
-                        geometry.frame(in: .named("mira.today.page"))
-                    } action: { requestFrame = $0 }
                     .accessibilityLabel("What can you film today?")
                     .accessibilityIdentifier("mira.today.request")
                     microphone
@@ -471,7 +467,6 @@ struct MiraTodayHome: View {
                 Text("Mira is still making today's ideas.").font(.title3)
                 Button("See today's ideas") {
                     speech?.stop()
-                    focused = false
                     onIdeas(batch.id)
                 }
                 .buttonStyle(MiraPrimaryStyle())
@@ -479,7 +474,6 @@ struct MiraTodayHome: View {
             } else {
                 Button("Make today's Reel") {
                     speech?.stop()
-                    focused = false
                     onMake()
                 }
                 .buttonStyle(MiraPrimaryStyle())
@@ -520,18 +514,8 @@ struct MiraTodayHome: View {
                 .accessibilityIdentifier("mira.today.continue")
             }
         }
-        .contentShape(Rectangle())
-        .coordinateSpace(.named("mira.today.page"))
-        .simultaneousGesture(
-            SpatialTapGesture(coordinateSpace: .named("mira.today.page")).onEnded { tap in
-                if !requestFrame.contains(tap.location) { focused = false }
-            },
-            isEnabled: focused)
         .onAppear { if speech == nil { speech = dependencies.makeSpeechInput() } }
-        .onDisappear {
-            speech?.stop()
-            focused = false
-        }
+        .onDisappear { speech?.stop() }
         .onChange(of: scenePhase) { _, phase in if phase != .active { speech?.stop() } }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in
             speech?.stop()
@@ -540,19 +524,6 @@ struct MiraTodayHome: View {
             guard speech?.recording == true else { return }
             request = joined(spokenBase, spoken)
         }
-    }
-
-    private var requestInput: Binding<String> {
-        Binding(get: { request }, set: { value in
-            if focused, value.contains("\n") {
-                let insertions = value.difference(from: request).insertions
-                if insertions.count == 1, case .insert(_, "\n", _)? = insertions.first {
-                    focused = false
-                    return
-                }
-            }
-            request = value
-        })
     }
 
     private var workingBatch: MiraProject? {
@@ -573,7 +544,6 @@ struct MiraTodayHome: View {
             if speech.recording {
                 speech.stop()
             } else {
-                focused = false
                 spokenBase = request
                 let locale = store.document.profile.language == .english ? "en-IN" : "hi-IN"
                 Task { await speech.start(locale: locale) }

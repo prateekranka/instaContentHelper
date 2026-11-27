@@ -42,14 +42,82 @@ struct MiraFieldBox: ViewModifier {
 extension View {
     func miraFieldBox() -> some View { modifier(MiraFieldBox()) }
 }
+private struct MiraInputFrames: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+private extension EnvironmentValues {
+    @Entry var miraInputFocus: FocusState<UUID?>.Binding? = nil
+}
+private enum MiraInputSpace {
+    static let name = "mira.page.inputs"
+}
 struct MiraPage<Content: View>: View {
     @ViewBuilder var content: Content
+    @FocusState private var focusedInput: UUID?
+    @State private var inputFrames: [UUID: CGRect] = [:]
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) { content }.frame(maxWidth: 680, alignment: .leading)
                 .padding(24).frame(maxWidth: .infinity)
+                .environment(\.miraInputFocus, $focusedInput)
         }
         .background(MiraTheme.paper).foregroundStyle(MiraTheme.ink)
+        .contentShape(Rectangle())
+        .coordinateSpace(.named(MiraInputSpace.name))
+        .onPreferenceChange(MiraInputFrames.self) { inputFrames = $0 }
+        .simultaneousGesture(
+            SpatialTapGesture(coordinateSpace: .named(MiraInputSpace.name)).onEnded { tap in
+                if !inputFrames.values.contains(where: { $0.contains(tap.location) }) {
+                    focusedInput = nil
+                }
+            },
+            isEnabled: focusedInput != nil)
+    }
+}
+struct MiraTextInput: View {
+    let title: String
+    @Binding var text: String
+    var axis: Axis = .horizontal
+    var boxed = true
+    @Environment(\.miraInputFocus) private var pageFocus
+    @FocusState private var localFocus: UUID?
+    @State private var id = UUID()
+
+    private var focus: FocusState<UUID?>.Binding { pageFocus ?? $localFocus }
+
+    var body: some View {
+        Group {
+            if boxed { field.miraFieldBox() } else { field }
+        }
+        .background {
+            GeometryReader { geometry in
+                Color.clear.preference(
+                    key: MiraInputFrames.self, value: [id: geometry.frame(in: .named(MiraInputSpace.name))])
+            }.allowsHitTesting(false)
+        }
+    }
+
+    private var field: some View {
+        TextField(title, text: Binding(get: { text }, set: update), axis: axis)
+            .submitLabel(.done)
+            .focused(focus, equals: id)
+            .onSubmit { focus.wrappedValue = nil }
+    }
+
+    private func update(_ value: String) {
+        if axis == .vertical, focus.wrappedValue == id, value.contains("\n") {
+            let insertions = value.difference(from: text).insertions
+            if insertions.count == 1, case .insert(_, "\n", _)? = insertions.first {
+                focus.wrappedValue = nil
+                return
+            }
+        }
+        text = value
     }
 }
 struct MiraField: View {
@@ -58,8 +126,7 @@ struct MiraField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.headline)
-            TextField(title, text: $text, axis: .vertical).lineLimit(2...10)
-                .miraFieldBox()
+            MiraTextInput(title: title, text: $text, axis: .vertical).lineLimit(2...10)
                 .accessibilityLabel(title)
         }
     }
