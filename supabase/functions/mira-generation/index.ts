@@ -7,6 +7,7 @@ import {
   verifyDeviceSession,
 } from "../_shared/device-auth.ts";
 import { inputSchema } from "./contracts.ts";
+import { leaseSeconds, providerDeadline } from "./job-policy.ts";
 import { generate } from "./provider.ts";
 const envelope = z.object({
   action: z.enum(["start", "status", "cancel"]),
@@ -141,7 +142,14 @@ export async function handleMira(
     if (cancelled.error) return jsonResponse({ error: "cancel_failed" }, 503);
     result = await scope();
   } else if (["queued", "running"].includes(result.data.status)) {
-    const work = runJob(admin, body.id, env, deps.generate ?? generate);
+    const operation = inputSchema.shape.operation.safeParse(result.data.input?.operation);
+    const work = runJob(
+      admin,
+      body.id,
+      leaseSeconds(operation.data),
+      env,
+      deps.generate ?? generate,
+    );
     if (deps.defer) deps.defer(work);
     else if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(work);
     else await work;
@@ -149,6 +157,11 @@ export async function handleMira(
   return jsonResponse({ job: toJob(result.data) });
 }
 function toJob(row: Record<string, unknown>) {
+  const phase = (row.status === "queued" && Number(row.attempts) > 0) ||
+      (row.status === "running" && Number(row.attempts) < 3 &&
+        typeof row.lease_until === "string" && Date.parse(row.lease_until) <= Date.now())
+    ? "waiting_to_retry"
+    : row.status;
   return {
     id: row.id,
     inputRevision: row.input_revision,
@@ -156,6 +169,7 @@ function toJob(row: Record<string, unknown>) {
     state: row.status === "queued" || row.status === "running"
       ? "working"
       : row.status,
+    phase,
     output: row.output ?? undefined,
     error: row.error ?? undefined,
   };
@@ -163,15 +177,27 @@ function toJob(row: Record<string, unknown>) {
 async function runJob(
   admin: Admin,
   id: string,
+  claimLeaseSeconds: number,
   env: { get(name: string): string | undefined },
   generator: typeof generate,
 ) {
-  const claim = await admin.rpc("mira_claim", { p_id: id });
+  const claim = await admin.rpc("mira_claim", {
+    p_id: id,
+    p_lease_seconds: claimLeaseSeconds,
+  });
+  if (claim.error) {
+    const reason = claim.error.message === "mira_lease_too_short"
+      ? "mira_lease_too_short"
+      : "mira_claim_failed";
+    console.error(`${reason} ${id}`);
+    return;
+  }
   const row = claim.data?.[0];
-  if (claim.error || !row) return;
+  if (!row) return;
   try {
-    const input = inputSchema.parse(row.input),
-      output = await generator(input, env);
+    const input = inputSchema.parse(row.input);
+    const signal = providerDeadline(input.operation, row.lease_until);
+    const output = await generator(input, env, signal);
     const result = await admin.from("mira_generation_jobs").update({
       status: "succeeded",
       output,
