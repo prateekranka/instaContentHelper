@@ -12,6 +12,7 @@ struct MiraRootView: View {
     @State private var navigation = MiraNavigation()
     @State private var sheet: MiraSheet?
     @State private var todayRequest = ""
+    @State private var todayNeedsAIConsent = false
     var body: some View {
         Group {
             if store.loaded {
@@ -133,7 +134,10 @@ struct MiraRootView: View {
     }
     private var today: some View {
         MiraTodayHome(
-            store: store, request: $todayRequest, onMake: makeToday,
+            store: store, request: $todayRequest,
+            needsAIConsent: todayNeedsAIConsent && services.isLiveSupabaseRuntime && services.aiConsentHasDeclined,
+            onMake: makeToday,
+            onReviewAIConsent: { services.setAIConsentSheetPresented(true) },
             onContinue: { open($0, tab: .today) },
             onIdeas: { id in
                 navigation.tab = .today
@@ -145,6 +149,7 @@ struct MiraRootView: View {
     }
 
     private func makeToday() {
+        todayNeedsAIConsent = false
         do {
             let demo = DebugLaunchFlags.forceFixtureUI
             let generation: any MiraGenerationService = demo
@@ -157,7 +162,11 @@ struct MiraRootView: View {
                 demo: demo, service: generation)
             todayRequest = ""
             open(id, tab: .today)
-        } catch { store.error = error.localizedDescription }
+        } catch is AIConsentRequired {
+            todayNeedsAIConsent = true
+        } catch {
+            store.error = error.localizedDescription
+        }
     }
     private func open(_ id: UUID, tab: MiraTab) {
         guard let project = store.project(id) else { return }
@@ -399,7 +408,9 @@ struct MiraChipFlow: Layout {
 struct MiraTodayHome: View {
     let store: MiraStore
     @Binding var request: String
+    let needsAIConsent: Bool
     let onMake: () -> Void
+    let onReviewAIConsent: () -> Void
     let onContinue: (UUID) -> Void
     let onIdeas: (UUID) -> Void
     @Environment(MiraDependencies.self) private var dependencies
@@ -468,6 +479,14 @@ struct MiraTodayHome: View {
                 .buttonStyle(MiraPrimaryStyle())
                 .disabled(speech?.recording == true)
                 .accessibilityIdentifier("mira.today.make")
+            }
+            if needsAIConsent {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Allow AI to write ideas first.")
+                        .accessibilityIdentifier("mira.today.aiPermissionNeeded")
+                    Button("Review AI permission", action: onReviewAIConsent)
+                        .buttonStyle(.bordered).controlSize(.large)
+                }
             }
             if let project = store.document.continuationProject, project.id != workingBatch?.id {
                 Button {

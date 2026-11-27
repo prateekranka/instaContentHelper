@@ -36,9 +36,14 @@ struct AppRuntime {
             mode: .live(session),
             services: AppServices(
                 isLiveSupabaseRuntime: true,
-                aiConsentStore: UserDefaultsAIConsentStore(
-                    workspaceID: session.workspaceID,
-                    creatorID: session.creatorID)))
+                aiConsentStore: liveConsentStore(session: session)))
+    }
+
+    private static func liveConsentStore(session: PairedDeviceSession) -> any AIConsentStoring {
+        #if DEBUG
+        if let override = LaunchAIConsentStore() { return override }
+        #endif
+        return UserDefaultsAIConsentStore(workspaceID: session.workspaceID, creatorID: session.creatorID)
     }
 
     static func makeAuthenticationShellRuntime(
@@ -50,6 +55,31 @@ struct AppRuntime {
         return fixtures()
     }
 }
+
+#if DEBUG
+private struct LaunchAIConsentStore: AIConsentStoring {
+    private let record: AIConsentRecord?
+
+    init?() {
+        switch DebugLaunchConfiguration.value(for: "MCO_AI_CONSENT_OVERRIDE") {
+        case "unknown":
+            record = nil
+        case "declined":
+            record = AIConsentRecord(
+                consentVersion: AIConsentPolicy.currentVersion,
+                decision: .declined,
+                decidedAt: SupabaseDateFormatting.isoTimestampString(),
+                destinationsAcknowledged: AIConsentPolicy.destinations)
+        default:
+            return nil
+        }
+    }
+
+    func load() -> AIConsentRecord? { record }
+    func save(_ record: AIConsentRecord) {}
+    func clear() {}
+}
+#endif
 
 private extension PairedDeviceSession {
     static func debugEnvironmentSession(

@@ -1,5 +1,9 @@
 import Foundation
 
+struct AIConsentRequired: LocalizedError {
+    var errorDescription: String? { AIConsentCopy.blockedMessage }
+}
+
 extension AppServices {
     func requireAIConsent() throws {
         guard isLiveSupabaseRuntime else { return }
@@ -10,7 +14,7 @@ extension AppServices {
             isAIConsentSheetPresented = true
         }
         logAIConsentEvent("rejected")
-        throw MiraError.invalid(AIConsentCopy.blockedMessage)
+        throw AIConsentRequired()
     }
 
     func acceptAIConsent() {
