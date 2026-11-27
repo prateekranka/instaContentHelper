@@ -9,8 +9,8 @@ Each run stores its TLC output and traces under `work/tla-results` by default.
 | Module | Checks |
 | --- | --- |
 | `MiraReel` | Approval before filming, correct stage and work labels, Stop, and the next step for Your words. |
-| `MiraJobs` | Allowed job and progress transitions, lease budget, no overlapping calls, and no lost result. `MiraJobs-Refusal.cfg` checks safe refusal of a short lease. |
-| `MiraShotPictures` | Reservation cap, one call per shot, an object for every ready picture, and separate text slots. |
+| `MiraJobs` | Allowed transitions, lease budget, Stop before admission, and result staging without another attempt. `MiraJobs-Refusal.cfg` checks safe refusal of a short lease. |
+| `MiraShotPictures` | Reservation cap, release before dispatch, one call per shot, late upload recovery, and separate text slots. |
 | `MiraTodayLimit` | Three active jobs at most, honest work labels, and eventual completion without a manual reconnect. |
 
 Configs in this folder must pass. Configs under `negative/` disable a guard.
