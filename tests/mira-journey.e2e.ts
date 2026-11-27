@@ -149,6 +149,7 @@ test('D2 legacy reply without a step keeps the simple wait screen', async ({ app
   await app.screenshot('wait-legacy');
   await d2Fixture(scenario, { finish: true });
   await expect(screen.getByRole('button', /^Idea [1-3] of 3, ready$/)).toHaveCount(3);
+  await screen.getByTestId('mira.today.page.1').tap();
   await expect(screen.getByTestId('mira.today.makeCard.1')).toBeVisible();
 });
 
@@ -159,7 +160,7 @@ test('D2 previews keep drawn frames and refresh an expired picture URL', async (
   await startTodayCard(screen, scenario, 1);
   await expect.poll(async () => (await d2Fixture(scenario)).length).toBe(3);
   await d2Fixture(scenario, { card: 1, previews: 'pending' });
-  await d2Fixture(scenario, { finish: true });
+  await d2Fixture(scenario, { card: 1, finish: true });
   const stats = async () => (await d2Fixture(scenario)).find(item => item.card === 1);
   await expect.poll(async () => (await stats())?.optedIn ?? 0).toBeGreaterThan(0);
   await expect(screen.getByTestId('mira.today.makeCard.1')).toBeVisible();
@@ -174,12 +175,17 @@ test('D2 previews keep drawn frames and refresh an expired picture URL', async (
   expect(counts?.expiredGets ?? 0).toBeGreaterThan(0);
   expect(counts?.refreshes ?? 0).toBeGreaterThan(0);
   expect(counts?.freshGets ?? 0).toBeGreaterThan(0);
-  expect((await d2Fixture(scenario)).map(({ starts, prematureOptIns }) => [starts, prematureOptIns]))
+  expect((await d2Fixture(scenario, { finish: true })).map(({ starts, prematureOptIns }) => [starts, prematureOptIns]))
     .toEqual([[1, 0], [1, 0], [1, 0]]);
   await tap(screen, screen.getByTestId('mira.today.makeCard.1'));
   await tap(screen, screen.getByTestId('mira.words.approve'));
   await expect(d2Picture(screen, 'AI picture', 1)).toBeVisible();
   await app.screenshot('fixture-filming-ai-picture');
+  await launchMira(app, screen, device);
+  await expect(screen.getByText('Shot 1 of 3', { exact: true })).toBeVisible();
+  await expect(d2Picture(screen, 'AI picture', 1)).toBeVisible({ timeout: 45_000 });
+  await app.screenshot('fixture-reopened-filming-ai-picture');
+  expect((await stats())?.starts).toBe(1);
 });
 
 test('demo moves from an idea to a saved filming plan', async ({ app, screen, device }) => {

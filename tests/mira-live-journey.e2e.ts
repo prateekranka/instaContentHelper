@@ -224,8 +224,11 @@ test('1 Today brings back three live cards and opens the chosen filming plan', {
     await app.screenshot(`card-${card}`);
   }
 
-  const chosen = titles[2];
-  await tapVisibleControl(screen, screen.getByTestId('mira.today.makeCard.3'));
+  const chosenIndex = pictureCounts[2] > 0 ? 2 : pictureCounts.findIndex(count => count > 0);
+  expect(chosenIndex).toBeGreaterThanOrEqual(0);
+  const chosen = titles[chosenIndex];
+  await screen.getByTestId(`mira.today.page.${chosenIndex + 1}`).tap();
+  await tapVisibleControl(screen, screen.getByTestId(`mira.today.makeCard.${chosenIndex + 1}`));
   record({ scenario: 1, action: 'selected Today project', title: chosen, calls: 0 });
   await fit(screen, approve(screen));
   await openProject(screen, chosen);
@@ -236,7 +239,7 @@ test('1 Today brings back three live cards and opens the chosen filming plan', {
   await selectShots(screen);
   await fit(screen, text(screen, 'Your filming plan'));
   await app.screenshot('chosen-plan');
-  const firstPicture = screen.getByRole('image', 'AI picture for shot 1', { exact: true });
+  const firstPicture = screen.getByRole('image', aiPictures).first();
   await fit(screen, firstPicture);
   await app.screenshot('chosen-plan-ai-picture');
   expect(pictureCounts.every(count => count > 0)).toBe(true);
