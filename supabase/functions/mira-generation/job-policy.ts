@@ -14,6 +14,12 @@ export const AI_TIMEOUT_MS = {
   reviseShot: TEXT_TIMEOUT_MS,
   reviseStoryboard: TEXT_TIMEOUT_MS,
   requirements: TEXT_TIMEOUT_MS,
+  brandDoc: 40_000,
+  pickIdea: TEXT_TIMEOUT_MS,
+  dealBrief: 40_000,
+  briefCheck: 40_000,
+  brandNote: 25_000,
+  dailyNote: 25_000,
   shotPictures: 100_000,
 } satisfies Record<MiraInput["operation"] | "shotPictures", number>;
 

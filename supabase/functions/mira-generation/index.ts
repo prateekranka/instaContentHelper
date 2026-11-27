@@ -6,8 +6,14 @@ import {
   jsonResponse,
   verifyDeviceSession,
 } from "../_shared/device-auth.ts";
-import { inputSchema, type MiraOutput, type TodayStep } from "./contracts.ts";
+import {
+  inputSchema,
+  type MiraOutput,
+  operationSchema,
+  type TodayStep,
+} from "./contracts.ts";
 import { leaseSeconds, providerDeadline } from "./job-policy.ts";
+import { isPhaseEInput } from "./phase-e.ts";
 import { generate } from "./provider.ts";
 import { pictureCount, shotPictures } from "./shot-pictures.ts";
 const envelope = z.object({
@@ -67,8 +73,9 @@ export async function handleMira(
     return jsonResponse({ error: "creator_lookup_failed" }, 503);
   }
   if (!creator.data) return jsonResponse({ error: "not_found" }, 404);
+  let jobID = body.id;
   const scope = () =>
-    admin.from("mira_generation_jobs").select("*").eq("id", body.id).eq(
+    admin.from("mira_generation_jobs").select("*").eq("id", jobID).eq(
       "workspace_id",
       session.workspaceID,
     ).eq("creator_id", body.creatorID).eq("member_id", session.memberID)
@@ -78,42 +85,45 @@ export async function handleMira(
       !body.input || body.inputRevision === undefined ||
       body.consentVersion !== 1
     ) return jsonResponse({ error: "input_and_consent_required" }, 400);
-    if (body.input.operation === "todayIdea" && !body.input.angle?.trim()) {
-      return jsonResponse({ error: "angle_required" }, 400);
+    const startInput = body.input;
+    if (!isPhaseEInput(startInput) && startInput.operation !== "pickIdea") {
+      if (startInput.operation === "todayIdea" && !startInput.angle?.trim()) {
+        return jsonResponse({ error: "angle_required" }, 400);
+      }
+      if (
+        startInput.operation !== "requirements" && startInput.brief &&
+        !startInput.brief.confirmed
+      ) return jsonResponse({ error: "brief_confirmation_required" }, 400);
+      if (
+        ["storyboard", "reviseShot", "reviseStoryboard"].includes(
+          startInput.operation,
+        ) && !startInput.script
+      ) return jsonResponse({ error: "script_required" }, 400);
+      if (startInput.operation === "reviseScript" && !startInput.script) {
+        return jsonResponse({ error: "script_required" }, 400);
+      }
+      if (startInput.operation === "script" && !startInput.idea) {
+        return jsonResponse({ error: "idea_required" }, 400);
+      }
+      if (
+        startInput.operation === "requirements" &&
+        !startInput.brief?.original.trim()
+      ) return jsonResponse({ error: "brief_source_required" }, 400);
+      if (
+        startInput.operation === "reviseShot" && (
+          startInput.storyboard?.sourceScriptID !== startInput.script?.id ||
+          startInput.storyboard?.requirementsRevision !==
+            (startInput.brief?.revision ?? 0)
+        )
+      ) return jsonResponse({ error: "stale_shot_list" }, 409);
+      if (
+        startInput.operation === "reviseShot" &&
+        (!startInput.targetShotID ||
+          !startInput.storyboard?.shots.some((x) =>
+            x.id === startInput.targetShotID
+          ))
+      ) return jsonResponse({ error: "invalid_target" }, 400);
     }
-    if (
-      body.input.operation !== "requirements" && body.input.brief &&
-      !body.input.brief.confirmed
-    ) return jsonResponse({ error: "brief_confirmation_required" }, 400);
-    if (
-      ["storyboard", "reviseShot", "reviseStoryboard"].includes(
-        body.input.operation,
-      ) && !body.input.script
-    ) return jsonResponse({ error: "script_required" }, 400);
-    if (body.input.operation === "reviseScript" && !body.input.script) {
-      return jsonResponse({ error: "script_required" }, 400);
-    }
-    if (body.input.operation === "script" && !body.input.idea) {
-      return jsonResponse({ error: "idea_required" }, 400);
-    }
-    if (
-      body.input.operation === "requirements" &&
-      !body.input.brief?.original.trim()
-    ) return jsonResponse({ error: "brief_source_required" }, 400);
-    if (
-      body.input.operation === "reviseShot" && (
-        body.input.storyboard?.sourceScriptID !== body.input.script?.id ||
-        body.input.storyboard?.requirementsRevision !==
-          (body.input.brief?.revision ?? 0)
-      )
-    ) return jsonResponse({ error: "stale_shot_list" }, 409);
-    if (
-      body.input.operation === "reviseShot" &&
-      (!body.input.targetShotID ||
-        !body.input.storyboard?.shots.some((x) =>
-          x.id === body.input!.targetShotID
-        ))
-    ) return jsonResponse({ error: "invalid_target" }, 400);
     const result = await admin.rpc("mira_enqueue", {
       p_id: body.id,
       p_workspace: session.workspaceID,
@@ -123,6 +133,13 @@ export async function handleMira(
       p_input: body.input,
     });
     if (result.error) {
+      const reason = result.error.message;
+      if (reason === "operation_daily_cap_reached") {
+        return jsonResponse({ error: reason }, 429);
+      }
+      if (reason === "daily_note_scope_conflict") {
+        return jsonResponse({ error: reason }, 409);
+      }
       return jsonResponse({
         error: result.error.message?.includes("rate_limited") ||
             result.error.message?.includes("active_jobs")
@@ -130,6 +147,7 @@ export async function handleMira(
           : "job_conflict",
       }, 409);
     }
+    if (body.input.operation === "dailyNote") jobID = result.data.id;
   }
   let result = await scope();
   if (result.error) return jsonResponse({ error: "job_lookup_failed" }, 503);
@@ -149,12 +167,12 @@ export async function handleMira(
     if (cancelled.error) return jsonResponse({ error: "cancel_failed" }, 503);
     result = await scope();
   } else if (["queued", "running"].includes(result.data.status)) {
-    const operation = inputSchema.shape.operation.safeParse(
+    const operation = operationSchema.safeParse(
       result.data.input?.operation,
     );
     const work = runJob(
       admin,
-      body.id,
+      jobID,
       leaseSeconds(operation.data),
       env,
       deps.generate ?? generate,
@@ -167,7 +185,8 @@ export async function handleMira(
   if (
     body.action === "status" && body.pictures === true &&
     job.state === "succeeded" &&
-    result.data.picture_count > 0 && output?.storyboard
+    result.data.picture_count > 0 && output && "storyboard" in output &&
+    output.storyboard
   ) {
     try {
       pictures = await shotPictures(
@@ -191,7 +210,12 @@ function toJob(row: Record<string, unknown>) {
     typeof row.lease_until === "string" &&
     Date.parse(row.lease_until) <= Date.now();
   const phase = (row.status === "queued" && Number(row.attempts) > 0) ||
-      (expired && Number(row.attempts) < 3)
+      (expired && Number(row.attempts) < (
+            (row.input as { operation?: string } | null)?.operation ===
+                "dailyNote"
+              ? 1
+              : 3
+          ))
     ? "waiting_to_retry"
     : row.status;
   return {
@@ -244,9 +268,11 @@ async function runJob(
     const result = await admin.from("mira_generation_jobs").update({
       status: "succeeded",
       output,
-      picture_count: input.operation === "todayIdea" && output.storyboard
-        ? pictureCount(env)
-        : null,
+      picture_count:
+        (input.operation === "todayIdea" || input.operation === "pickIdea") &&
+          "storyboard" in output && output.storyboard
+          ? pictureCount(env)
+          : null,
       error: null,
       updated_at: new Date().toISOString(),
     }).eq("id", id).eq("lease_id", row.lease_id).eq("status", "running");
@@ -256,12 +282,16 @@ async function runJob(
       (error.message === "transient_provider_error" ||
         error.name === "TimeoutError" ||
         error.message === "result_persist_failed");
+    const retry = transient && row.input.operation !== "dailyNote" &&
+      row.attempts < 3;
     const reason = failureReason(error);
     console.error(`mira_job_failed ${id} ${reason}`);
     await admin.from("mira_generation_jobs").update({
-      status: transient && row.attempts < 3 ? "queued" : "failed",
+      status: retry ? "queued" : "failed",
       error: transient
-        ? "Generation interrupted. Retrying is bounded; a prior provider request may have completed."
+        ? row.input.operation === "dailyNote"
+          ? "Daily note interrupted. Try again tomorrow."
+          : "Generation interrupted. Retrying is bounded; a prior provider request may have completed."
         : `Generation failed validation or provider configuration. Your saved work is unchanged. (${reason})`,
       next_attempt_at: new Date(Date.now() + row.attempts * 5000).toISOString(),
       updated_at: new Date().toISOString(),
