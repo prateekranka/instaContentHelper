@@ -30,7 +30,7 @@ async function waitForApp(screen: Screen) {
 
 async function launchMira(screen: Screen, device: Device, install = false) {
   if (install && process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
-  await launchMira(screen, device);
+  await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch });
   if (!await waitForApp(screen)) {
     await device.openApp(bundleId, { launchArguments: fixtureLaunch });
     expect(await waitForApp(screen)).toBe(true);
