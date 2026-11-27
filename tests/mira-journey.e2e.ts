@@ -3,7 +3,7 @@ import { expect, type Locator, type Screen } from 'e2e';
 import { scrollToControl, tapVisibleControl, tapWhenSteady } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
-const english = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US'];
+const english = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_APPEARANCE', 'light'];
 const fixtureLaunch = [...english, '-MCO_FORCE_FIXTURE_UI', '1'];
 
 async function tap(screen: Screen, locator: Locator) {
@@ -357,6 +357,9 @@ test('Today has one question, chips, Continue rules and start options in Profile
   await expect(screen.getByText('Untitled Reel', { exact: true })).not.toBeVisible();
 
   await fillText(request, 'Demo slow cards');
+  await app.screenshot('today-keyboard-open');
+  await closeKeyboard(screen);
+  await expect(screen.getByRole('button', 'Done', { exact: true })).not.toBeVisible();
   await make.tap();
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
   await expect(screen.getByText('About 1 minute', { exact: true })).toBeVisible();
@@ -529,4 +532,45 @@ test('S1 B5 Stop on an idea that the server never took ends as stopped', async (
   await expect(screen.getByText('A quick movement break', { exact: true, visible: true })).toBeVisible();
   await screen.getByTestId('BackButton').tap();
   await expect(screen.getByTestId('mira.today.make')).toBeVisible();
+});
+
+test('Profile Look setting', async ({ app, screen, device }) => {
+  await launchMira(screen, device, true);
+  await backOut(screen);
+  await screen.getByRole('button', 'Profile', { exact: true }).tap();
+  const setting = screen.getByTestId('mira.profile.look');
+  await expect(setting).toBeVisible();
+  for (const appearance of ['Dark', 'Light']) {
+    const choice = setting.getByRole('button', appearance, { exact: true });
+    await choice.tap();
+    await expect(choice).toBeSelected();
+    await app.screenshot(`profile-look-${appearance.toLowerCase()}`);
+  }
+});
+
+test('crash log', async ({ app, screen, device }) => {
+  if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
+  await device.openApp(bundleId, {
+    relaunch: true,
+    launchArguments: [...fixtureLaunch, '-MCO_DEBUG_CRASH', '1'],
+  });
+  await expect.poll(() => appIsRunning(screen), {
+    timeout: 20_000,
+    interval: 1_000,
+    message: 'Mira should stop running after the deliberate debug crash.',
+  }).toBe(false);
+
+  await launchMira(screen, device);
+  await backOut(screen);
+  await screen.getByRole('button', 'Profile', { exact: true }).tap();
+  const connect = screen.getByText('Connect account', { exact: true });
+  await scrollToControl(screen, connect);
+  const reports = screen.getByTestId('mira.profile.problemReports');
+  if (await reports.count() > 0) {
+    await scrollToControl(screen, reports);
+    await expect(reports.getByText('Problem reports', { exact: true })).toBeVisible();
+    await app.screenshot('profile-problem-reports-visible');
+  } else {
+    await app.screenshot('profile-problem-reports-absent');
+  }
 });

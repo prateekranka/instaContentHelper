@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
 const install = process.env.MIRA_E2E_INSTALL === '1';
+export const launchArguments = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_APPEARANCE', 'light'];
 
 export default {
   tests: 'tests/mira-journey.e2e.ts',
@@ -19,7 +20,7 @@ export default {
     app: {
       bundleId,
       ...(install ? { appPath: process.env.MIRA_E2E_APP } : {}),
-      launchArguments: ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_FORCE_FIXTURE_UI', '1'],
+      launchArguments: [...launchArguments, '-MCO_FORCE_FIXTURE_UI', '1'],
     },
   }],
   workers: 1,
