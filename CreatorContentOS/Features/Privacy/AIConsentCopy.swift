@@ -6,7 +6,7 @@ enum AIConsentCopy {
     static let sheetTitle = "Use AI to write your ideas?"
 
     static let purposeAndDestinations = """
-    Shares your creator profile, day briefs, scripts, and storyboard notes with DeepSeek, OpenAI, and Google Gemini to write ideas and create images.
+    Mira shares your creator profile, briefs, scripts, and shot notes with DeepSeek, OpenAI, and Google Gemini. They help write ideas and make pictures.
     """
 
     static let allowTitle = "Allow"

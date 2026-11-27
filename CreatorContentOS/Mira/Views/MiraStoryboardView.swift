@@ -16,7 +16,7 @@ struct MiraStoryboardView: View {
                         "This shot list is out of date. Your earlier plan and filming history are preserved."
                     ).font(.headline)
                     Button("Update shot list", action: onUpdate).buttonStyle(MiraPrimaryStyle())
-                        .disabled(project.job?.state == .working)
+                        .disabled(store.requestState(project.job).pending)
                 } else if project.isApproved {
                     NavigationLink(value: MiraRoute.shooting(projectID)) {
                         Text(project.startedFilming ? "Continue filming" : "Start filming").frame(

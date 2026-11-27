@@ -14,9 +14,9 @@ struct MiraVoiceTextField: View {
         VStack(alignment: .leading, spacing: 12) {
             MiraField(title: title, text: $text)
             if let speech {
-                Picker("Speech recognition language", selection: $locale) {
-                    Text("Hindi recognition").tag("hi-IN")
-                    Text("English recognition").tag("en-IN")
+                Picker("Language you speak", selection: $locale) {
+                    Text("Hindi").tag("hi-IN")
+                    Text("English").tag("en-IN")
                 }.disabled(speech.recording)
                 Button {
                     if speech.recording { speech.stop() } else { Task { await speech.start(locale: locale) } }
@@ -31,12 +31,12 @@ struct MiraVoiceTextField: View {
                 }
                 if !speech.transcript.isEmpty {
                     MiraField(
-                        title: "Review transcript",
+                        title: "Check your words",
                         text: Binding(
                             get: { speech.transcript }, set: { speech.transcript = $0 }
                         )
                     ).disabled(speech.recording)
-                    Button("Use reviewed transcript") {
+                    Button("Use these words") {
                         text = speech.transcript
                         speech.transcript = ""
                     }.disabled(speech.recording)
@@ -51,7 +51,7 @@ struct MiraVoiceTextField: View {
                 }
             }
             Text(
-                "Audio stays in on-device recognition memory. Review the transcript before submitting. Hinglish accuracy can vary; Hindi and English recognition are separate choices."
+                "Your voice stays on this phone. Check the words before you send them."
             ).font(.footnote).foregroundStyle(.secondary)
         }.onAppear {
             if speech == nil { speech = dependencies.makeSpeechInput() }
@@ -123,7 +123,7 @@ struct MiraAskView: View {
                 )
             }
             if operation != .todayIdea { Button("Explain this plan") { explanation.toggle() } }
-            if store.project(projectID)?.job?.state == .working {
+            if store.requestState(store.project(projectID)?.job).pending {
                 Text(
                     "Mira is working on your earlier request. Reconnect or cancel it from this project first."
                 )
@@ -143,7 +143,7 @@ struct MiraAskView: View {
                 dismiss()
             }.buttonStyle(MiraPrimaryStyle()).disabled(
                 request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || store.project(projectID)?.job?.state == .working)
+                    || store.requestState(store.project(projectID)?.job).pending)
         }.navigationTitle("Ask Mira").toolbar {
             ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
         }
@@ -263,7 +263,7 @@ struct MiraProfileView: View {
                 ).font(.callout)
             }
             Text(
-                "Live requests send profile text, the selected project content, and confirmed brief context to the existing Supabase AI service. Recordings are not uploaded."
+                "Mira sends text from your profile and project to its AI partners. It also sends brand notes you confirm. Your voice stays on this phone."
             ).font(.footnote)
             if !problemReports.files.isEmpty {
                 Divider()
@@ -351,7 +351,7 @@ struct MiraManualIdeaView: View {
             MiraField(title: "Opening line", text: $hook)
             MiraField(title: "What viewers see", text: $visual)
             Button("Use my idea") {
-                store.update(projectID) { p in
+                store.update(projectID, screen: .script) { p in
                     let idea = MiraIdea(
                         title: title, hook: hook, visual: visual, fit: "Your own idea",
                         filmingMinutes: p.constraints.filmingMinutes, setup: p.constraints.location)
@@ -388,7 +388,7 @@ struct MiraBriefView: View {
                         projectID, .requirements, "Extract only supplied facts and flag missing fields", nil,
                         nil)
                     dismiss()
-                }.disabled(project.brief.original.isEmpty || project.job?.state == .working)
+                }.disabled(project.brief.original.isEmpty || store.requestState(project.job).pending)
                 Text(
                     "Review the extraction proposal on the project and Apply it, then return here to confirm. No code, deadline, claim or approval is assumed."
                 ).font(.callout)
@@ -473,7 +473,7 @@ struct MiraConsentReviewView: View {
                 AIConsentCopy.purposeAndDestinations.replacingOccurrences(of: "ContentHelper", with: "Mira")
             )
             Text(
-                "Saved local work and manual editing stay available if you decline. On-device microphone audio is not uploaded."
+                "If you say no, you can still open and edit your work. Your voice stays on this phone."
             )
             Button("Allow AI partners") {
                 services.acceptAIConsent()

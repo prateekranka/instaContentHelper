@@ -189,15 +189,6 @@ struct MiraStoryboard: Codable, Equatable, Identifiable, Sendable {
     var shots: [MiraShot]
     var mappings: [MiraRequirementMapping]
 }
-enum MiraStage: String, Codable, Sendable {
-    case choosing = "Choosing an idea"
-    case writing = "Writing the script"
-    case planning = "Planning shots"
-    case approving = "Words to approve"
-    case ready = "Ready to film"
-    case filming = "Filming"
-    case complete = "Filming complete"
-}
 enum MiraOperation: String, Codable, Sendable {
     case ideas, todayIdea, script, storyboard, reviseScript, reviseShot, reviseStoryboard, requirements
 }
@@ -309,25 +300,26 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var effectiveBriefRevision: Int { brief.confirmed ? brief.revision : 0 }
     var isApproved: Bool { script != nil && approvedScriptID == activeScriptID }
     var canFilm: Bool { storyboard != nil && !storyboardIsStale && isApproved }
-    var editorScreen: MiraProjectScreen {
+    func editorScreen(remembering lastScreen: MiraProjectScreen?) -> MiraProjectScreen {
         guard idea != nil else { return .ideas }
         if storyboard != nil && (lastScreen == nil || lastScreen == .shots || lastScreen == .shooting) {
             return .shots
         }
         return .script
     }
-    var todayResumePath: [MiraRoute] {
-        guard todayCards?.isEmpty == false else { return resumePath }
-        if stage == .approving { return [.todayCards(id), .words(id)] }
+    func todayResumePath(remembering lastScreen: MiraProjectScreen?) -> [MiraRoute] {
+        guard todayCards?.isEmpty == false else { return resumePath(remembering: lastScreen) }
+        if case .approving = stage { return [.todayCards(id), .words(id)] }
         if lastScreen == .words, script != nil { return [.todayCards(id), .words(id)] }
         if lastScreen == .shooting, storyboard != nil, !storyboardIsStale {
             return [.todayCards(id), isApproved ? .shooting(id) : .words(id)]
         }
         return [.todayCards(id)]
     }
-    var resumePath: [MiraRoute] {
+    func resumePath(remembering lastScreen: MiraProjectScreen?) -> [MiraRoute] {
         var path: [MiraRoute] = [.project(id)]
-        if stage == .approving || (lastScreen == .words && script != nil) { return [.project(id), .words(id)] }
+        if case .approving = stage { return [.project(id), .words(id)] }
+        if lastScreen == .words, script != nil { return [.project(id), .words(id)] }
         if lastScreen == .shooting, storyboard != nil, !storyboardIsStale {
             path.append(isApproved ? .shooting(id) : .words(id))
         }
@@ -338,29 +330,8 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         return board.sourceScriptID != activeScriptID
             || board.requirementsRevision != effectiveBriefRevision
     }
-    var stage: MiraStage {
-        guard selectedIdeaID != nil else { return .choosing }
-        guard script != nil else { return .writing }
-        guard let board = storyboard, !storyboardIsStale else { return .planning }
-        guard isApproved else { return .approving }
-        if !board.shots.isEmpty
-            && board.shots.allSatisfy({ filmed.contains($0.id) && !needsReview.contains($0.id) })
-        {
-            return .complete
-        }
-        return startedFilming ? .filming : .ready
-    }
-    var nextAction: String {
-        switch stage {
-        case .choosing: "Choose an idea"
-        case .writing: "Write your script"
-        case .planning: storyboard == nil ? "Make your shot list" : "Update shot list"
-        case .approving: "Approve your words"
-        case .ready: "Start filming"
-        case .filming: "Continue filming"
-        case .complete: "Review your filming plan"
-        }
-    }
+    var stage: MiraReelProgress { MiraReelProgress.choosing.handle(.workChanged(self)) }
+    var nextAction: String { stage.nextAction.title }
     mutating func touch() {
         updatedAt = Date()
         inputRevision += 1
@@ -390,7 +361,6 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             startedFilming = false
         }
         selectedIdeaID = idea.id
-        lastScreen = .script
         title = idea.title
         touch()
     }
@@ -449,7 +419,6 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             scripts.append(script)
             activeScriptID = script.id
             approvedScriptID = nil
-            lastScreen = .script
         }
         if let board = output.storyboard {
             guard let current = script, board.sourceScriptID == current.id,
@@ -486,7 +455,6 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         installStoryboard(board)
         shotIndex = 0
         startedFilming = false
-        lastScreen = .words
         touch()
         return true
     }
@@ -524,7 +492,6 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         filmed = preserved
         needsReview = review
         shotIndex = min(shotIndex, max(0, board.shots.count - 1))
-        lastScreen = .shots
     }
 }
 enum MiraError: Error, LocalizedError, Equatable {

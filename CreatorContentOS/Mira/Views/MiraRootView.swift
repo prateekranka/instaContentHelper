@@ -9,18 +9,23 @@ struct MiraRootView: View {
     let dependencies: MiraDependencies
     let colorSchemePreference: ColorScheme?
     private var store: MiraStore { dependencies.store }
-    @State private var navigation = MiraNavigation()
     @State private var sheet: MiraSheet?
     @State private var todayRequest = ""
     @State private var todayNeedsAIConsent = false
     var body: some View {
         Group {
             if store.loaded {
-                TabView(selection: $navigation.tab) {
-                    NavigationStack(path: $navigation.today) {
+                TabView(selection: Binding(
+                    get: { store.location.tab }, set: { store.navigate(.selectTab($0)) }
+                )) {
+                    NavigationStack(path: Binding(
+                        get: { store.location.path(.today) }, set: { store.navigate(.setPath(.today, $0)) }
+                    )) {
                         today.navigationDestination(for: MiraRoute.self, destination: destination)
                     }.tabItem { Label("Today", systemImage: "sun.max") }.tag(MiraTab.today)
-                    NavigationStack(path: $navigation.projects) {
+                    NavigationStack(path: Binding(
+                        get: { store.location.path(.projects) }, set: { store.navigate(.setPath(.projects, $0)) }
+                    )) {
                         MiraProjectsView(store: store, onOpen: { open($0, tab: .projects) }, onDelete: delete)
                             .navigationDestination(
                                 for: MiraRoute.self, destination: destination
@@ -28,6 +33,7 @@ struct MiraRootView: View {
                             .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
                     }.tabItem { Label("Projects", systemImage: "book.closed") }.tag(MiraTab.projects)
                 }
+                .environment(\.miraTabBarClearance, 64)
             } else {
                 MiraPage {
                     Text("Mira").font(.largeTitle)
@@ -110,26 +116,19 @@ struct MiraRootView: View {
                 .accessibilityAddTraits(.updatesFrequently)
             }
         }
-        .task {
-            await store.load()
-            if store.loaded { navigation = store.document.restoredNavigation() }
-        }
-        .onChange(of: navigation) { _, value in store.rememberNavigation(value) }
-        .onChange(of: store.loaded) { _, loaded in
-            if loaded { navigation = store.document.restoredNavigation() }
-        }
-        .onChange(of: store.document.projects.map(\.id)) { _, _ in
-            let ids = Set(store.document.projects.map(\.id))
-            navigation.today.removeAll { !ids.contains($0.projectID) }
-            navigation.projects.removeAll { !ids.contains($0.projectID) }
-        }
+        .task { await store.load() }
         .onChange(of: scenePhase) { _, phase in if phase != .active { Task { await store.flush() } } }
     }
-    private var profileButton: some View {
-        Button {
+    @ViewBuilder private var profileButton: some View {
+        let button = Button {
             sheet = .profile
         } label: {
             Label("Profile", systemImage: "person.crop.circle")
+        }
+        if DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil {
+            button.accessibilityIdentifier("mira.fixture.profile")
+        } else {
+            button
         }
     }
     private var today: some View {
@@ -140,8 +139,7 @@ struct MiraRootView: View {
             onReviewAIConsent: { services.setAIConsentSheetPresented(true) },
             onContinue: { open($0, tab: .today) },
             onIdeas: { id in
-                navigation.tab = .today
-                navigation.today = [.todayCards(id)]
+                store.navigate(.open(.today, [.todayCards(id)]))
             }
         )
         .navigationTitle("Today").navigationBarTitleDisplayMode(.inline)
@@ -169,13 +167,7 @@ struct MiraRootView: View {
         }
     }
     private func open(_ id: UUID, tab: MiraTab) {
-        guard let project = store.project(id) else { return }
-        navigation.tab = tab
-        if tab == .today {
-            navigation.today = project.todayResumePath
-        } else {
-            navigation.projects = project.resumePath
-        }
+        store.open(id, tab: tab)
     }
     @ViewBuilder private func destination(_ route: MiraRoute) -> some View {
         switch route {
@@ -208,20 +200,19 @@ struct MiraRootView: View {
                 onDone: { push(.done(id)) }, onWords: { showWords(id) })
         case .words(let id):
             MiraWordsView(
-                store: store, projectID: id, onGenerate: generate, onReconnect: reconnect,
-                onCancel: cancel, onApproved: { push(.shooting(id)) })
+                store: store, projectID: id,
+                onEvent: { event in
+                    store.sendWords(id, event, service: { try service(id, requiresConsent: $0) })
+                })
         case .done(let id):
             MiraDoneView(store: store, projectID: id, onWords: { showWords(id) })
         }
     }
     private func push(_ route: MiraRoute) {
-        if navigation.tab == .today { navigation.today.append(route) } else { navigation.projects.append(route) }
+        store.navigate(.push(MiraLocation(route)))
     }
     private func showWords(_ id: UUID) {
-        var path = navigation.tab == .today ? navigation.today : navigation.projects
-        while let last = path.last, last == .shooting(id) || last == .done(id) { path.removeLast() }
-        if path.last != .words(id) { path.append(.words(id)) }
-        if navigation.tab == .today { navigation.today = path } else { navigation.projects = path }
+        store.navigate(.showWords(id))
     }
     private func service(_ id: UUID?, requiresConsent: Bool = true) throws -> any MiraGenerationService {
         try dependencies.generationService(
@@ -264,7 +255,7 @@ struct MiraRootView: View {
             store.error = "Stop the saved card requests from Today before deleting this project."
             return
         }
-        if store.project(id)?.job?.state != .working {
+        if !store.requestState(store.project(id)?.job).pending {
             store.delete(id)
             return
         }
@@ -272,7 +263,7 @@ struct MiraRootView: View {
             let value = try service(id, requiresConsent: false)
             Task {
                 await store.cancel(id, service: value)
-                if store.project(id)?.job?.state != .working {
+                if !store.requestState(store.project(id)?.job).pending {
                     store.delete(id)
                 } else {
                     store.error =
@@ -312,7 +303,7 @@ struct MiraProjectsView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(project.title).font(.headline)
-                            Text("\(project.stage.rawValue) · \(project.nextAction)").font(.callout)
+                            Text("\(project.stage.title) · \(project.nextAction)").font(.callout)
                         }
                     }
                     if project.isDemo { Text("Demo example").font(.caption) }
@@ -488,7 +479,8 @@ struct MiraTodayHome: View {
                         .buttonStyle(.bordered).controlSize(.large)
                 }
             }
-            if let project = store.document.continuationProject, project.id != workingBatch?.id {
+            if let project = store.document.continuationProject(resuming: store.location.lastProject),
+                project.id != workingBatch?.id {
                 Button {
                     onContinue(project.id)
                 } label: {
@@ -627,6 +619,7 @@ struct MiraTodayCardsView: View {
     let onReconnect: () -> Void
     let onCancel: (UUID) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.miraTabBarClearance) private var tabBarClearance
     @State private var position: Int? = 0
     @State private var hasShownFirstCard = false
 
@@ -634,7 +627,7 @@ struct MiraTodayCardsView: View {
         if let project = store.project(projectID), let cards = project.todayCards, !cards.isEmpty {
             let current = min(max(position ?? 0, 0), cards.count - 1)
             VStack(spacing: 12) {
-                pager(cards, current: current)
+                pager(cards, in: project, current: current)
                 ScrollView(.horizontal) {
                     HStack(spacing: 12) {
                         ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
@@ -645,6 +638,7 @@ struct MiraTodayCardsView: View {
                                 .padding(20)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
+                            .contentMargins(.bottom, tabBarClearance, for: .scrollContent)
                             .scrollIndicators(.hidden)
                             .background(MiraTheme.surface, in: RoundedRectangle(cornerRadius: 24))
                             .overlay(
@@ -671,11 +665,11 @@ struct MiraTodayCardsView: View {
                     Menu("More") {
                         let card = cards[current]
                         if card.output?.script != nil { Button("Read script") { onScript(card.id) } }
-                        if card.job.state != .working { Button("Ask Mira") { onChange(card.id) } }
+                        if !store.cardState(card, in: project).pending { Button("Ask Mira") { onChange(card.id) } }
                         Button("Brand requirements", action: onBrief)
                         Button("Add my own idea", action: onManual)
                         NavigationLink("More ideas", value: MiraRoute.project(projectID))
-                        if card.job.state == .working {
+                        if store.cardState(card, in: project).pending {
                             Button("Reconnect", action: onReconnect)
                             Button("Stop this idea") { onCancel(card.id) }
                         }
@@ -686,7 +680,7 @@ struct MiraTodayCardsView: View {
             .onChange(of: cards.map(\.ready), initial: true) { _, ready in
                 guard !hasShownFirstCard, let first = ready.firstIndex(of: true) else { return }
                 hasShownFirstCard = true
-                if cards[current].job.state == .working { go(to: first) }
+                if store.cardState(cards[current], in: project).pending { go(to: first) }
             }
         }
     }
@@ -695,22 +689,22 @@ struct MiraTodayCardsView: View {
         withAnimation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1)) { position = index }
     }
 
-    private func status(_ card: MiraTodayCard) -> (symbol: String, word: String) {
-        switch card.job.state {
-        case .succeeded where card.ready: ("checkmark.circle.fill", "ready")
-        case .working where store.isWaitingToStart(card.job.id): ("clock", "waiting to start")
-        case .working: ("hourglass", "Mira is making it")
-        case .failed, .cancelled, .idle: ("exclamationmark.circle", "did not load")
-        case .succeeded: ("checkmark.circle", "needs an update")
+    private func status(_ state: MiraTodayCardState) -> (symbol: String, word: String) {
+        switch state {
+        case .ready: ("checkmark.circle.fill", "ready")
+        case .waiting: ("clock", "waiting to start")
+        case .making, .reconnect: ("hourglass", "Mira is making it")
+        case .failed: ("exclamationmark.circle", "did not load")
+        case .needsUpdate: ("checkmark.circle", "needs an update")
         }
     }
 
-    private func pager(_ cards: [MiraTodayCard], current: Int) -> some View {
+    private func pager(_ cards: [MiraTodayCard], in project: MiraProject, current: Int) -> some View {
         VStack(spacing: 8) {
             MiraChipFlow(spacing: 8) {
                 ForEach(cards.indices, id: \.self) { index in
                     let selected = current == index
-                    let state = status(cards[index])
+                    let state = status(store.cardState(cards[index], in: project))
                     Button {
                         go(to: index)
                     } label: {
@@ -730,7 +724,10 @@ struct MiraTodayCardsView: View {
             }
             HStack(spacing: 6) {
                 Text("\(current + 1) of \(cards.count)").monospacedDigit()
-                if cards.contains(where: { $0.job.state == .working && !store.isWaitingToStart($0.job.id) }) {
+                if cards.contains(where: {
+                    if case .making = store.cardState($0, in: project) { return true }
+                    return false
+                }) {
                     Text("·").accessibilityHidden(true)
                     Text("About 1 minute")
                 }
@@ -743,7 +740,8 @@ struct MiraTodayCardsView: View {
     @ViewBuilder private func cardContent(
         _ card: MiraTodayCard, project: MiraProject, index: Int, count: Int
     ) -> some View {
-        if let output = card.output, let idea = output.ideas?.first, let board = output.storyboard,
+        let state = store.cardState(card, in: project)
+        if let output = state.output, let idea = output.ideas?.first, let board = output.storyboard,
             let script = output.script {
             Text(idea.title).font(.title.bold()).accessibilityAddTraits(.isHeader)
             Text(idea.hook).font(.title3)
@@ -756,35 +754,31 @@ struct MiraTodayCardsView: View {
                 Label(board.shots.first?.location ?? card.job.input.constraints.location, systemImage: "location")
                 Label("\(script.durationSeconds) sec Reel", systemImage: "play.rectangle")
             }.font(.body).monospacedDigit()
-            if card.ready && board.requirementsRevision == project.effectiveBriefRevision {
-                Button("Make this one") { onMake(card.id) }.buttonStyle(MiraPrimaryStyle())
+            if case .ready = state {
+                Button(state.nextAction.title) { onMake(card.id) }.buttonStyle(MiraPrimaryStyle())
                     .accessibilityIdentifier("mira.today.makeCard.\(index + 1)")
             }
-        } else if card.job.state == .working && card.job.error == nil && !store.isWaitingToStart(card.job.id) {
+        } else if case .making = state {
             placeholder(index: index, count: count)
         }
-        switch card.job.state {
-        case .working:
-            if store.isWaitingToStart(card.job.id) {
-                Text("Waiting to start…").font(.title2.weight(.semibold))
-                    .accessibilityIdentifier("mira.today.waiting.\(index + 1)")
-                Text("Mira starts this idea when another one is done.").font(.title3)
-            } else if let error = card.job.error {
-                Text(error).font(.title3)
-                Button("Reconnect", action: onReconnect).buttonStyle(MiraPrimaryStyle())
-            } else if card.output != nil {
-                Text("Mira is making a new version. About 1 minute.").font(.title3)
-            }
-        case .failed, .cancelled, .idle:
-            Text(card.job.state == .cancelled ? "This idea was stopped." : "This idea did not load.")
-                .font(.title3)
-            Button("Try again") { onRetry(card.id) }.buttonStyle(MiraPrimaryStyle())
-        case .succeeded:
-            if card.output?.storyboard?.requirementsRevision != project.effectiveBriefRevision {
-                Button("Update this idea") { onRetry(card.id) }.buttonStyle(MiraPrimaryStyle())
-            }
-            Button("Change something") { onChange(card.id) }
-                .buttonStyle(.bordered).controlSize(.large)
+        switch state {
+        case .waiting:
+            Text("Waiting to start…").font(.title2.weight(.semibold))
+                .accessibilityIdentifier("mira.today.waiting.\(index + 1)")
+            Text("Mira starts this idea when another one is done.").font(.title3)
+        case .reconnect(_, let reason):
+            Text(reason ?? "Reconnect to check this idea.").font(.title3)
+            Button(state.nextAction.title, action: onReconnect).buttonStyle(MiraPrimaryStyle())
+        case .making(let previous):
+            if previous != nil { Text("Mira is making a new version. About 1 minute.").font(.title3) }
+        case .failed(_, let stopped):
+            Text(stopped ? "This idea was stopped." : "This idea did not load.").font(.title3)
+            Button(state.nextAction.title) { onRetry(card.id) }.buttonStyle(MiraPrimaryStyle())
+        case .needsUpdate:
+            Button(state.nextAction.title) { onRetry(card.id) }.buttonStyle(MiraPrimaryStyle())
+            Button("Change something") { onChange(card.id) }.buttonStyle(.bordered).controlSize(.large)
+        case .ready:
+            Button("Change something") { onChange(card.id) }.buttonStyle(.bordered).controlSize(.large)
         }
     }
 

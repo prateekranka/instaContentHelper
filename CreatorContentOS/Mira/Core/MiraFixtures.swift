@@ -257,6 +257,7 @@ struct MiraFixtureGenerationService: MiraGenerationService {
     private static let refusals = MiraFixtureRefusals()
     var failTodayCard = false
     var slowTodayCards = false
+    var slowShotUpdate = false
     func start(_ job: MiraJob) async throws -> MiraJob {
         try Task.checkCancellation()
         var result = job
@@ -269,6 +270,7 @@ struct MiraFixtureGenerationService: MiraGenerationService {
             if request == Self.busyRequest && !last { return result }
         }
         if slowTodayCards, job.input.operation == .todayIdea { return result }
+        if slowShotUpdate, job.input.operation == .reviseStoryboard { return result }
         if failTodayCard, job.input.operation == .todayIdea, job.input.angle?.hasPrefix("A food") == true {
             result.state = .failed
             return result
@@ -279,6 +281,10 @@ struct MiraFixtureGenerationService: MiraGenerationService {
         return result
     }
     func status(_ job: MiraJob) async throws -> MiraJob {
+        if slowShotUpdate, job.input.operation == .reviseStoryboard {
+            try await Task.sleep(for: .seconds(18))
+            return try await MiraFixtureGenerationService().start(job)
+        }
         if job.input.request == Self.busyRequest, job.input.operation == .todayIdea {
             try await Task.sleep(for: .seconds(job.input.angle?.hasPrefix("A short") == true ? 12 : 24))
             var result = job
