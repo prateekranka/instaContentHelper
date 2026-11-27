@@ -263,7 +263,7 @@ struct MiraProfileView: View {
                 ).font(.callout)
             }
             Text(
-                "Live requests send profile text, the selected project content, and confirmed brief context to the existing Supabase AI service. Recordings are not uploaded."
+                "Mira sends text from your profile and project to its AI partners. It also sends brand notes you confirm. Your voice stays on this phone."
             ).font(.footnote)
             if !problemReports.files.isEmpty {
                 Divider()

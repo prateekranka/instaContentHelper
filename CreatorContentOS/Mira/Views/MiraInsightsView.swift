@@ -22,7 +22,7 @@ struct MiraInsightsView: View {
             case .connectedPersonal:
                 info("Insights need a Professional account", "Switch your Instagram to a Creator or Business account to see your numbers here.")
             case .permissionNeeded:
-                info("Permission needed", "Allow insights access when connecting Instagram to see your numbers.")
+                info("Permission needed", "Let Mira read your numbers when you connect Instagram.")
             case .noData:
                 info("Not available yet", "No insights yet. Check back after your next post goes live.")
             case .ready(let report):
