@@ -25,7 +25,7 @@ beforeAll(async () => {
     });
   });
   base = `http://127.0.0.1:${port}`;
-  server = spawn('deno', ['run', '--allow-net=127.0.0.1', '--allow-env=MIRA_FIXTURE_PORT',
+  server = spawn('deno', ['run', '--allow-net=127.0.0.1', '--allow-env=MIRA_FIXTURE_PORT,MIRA_API_E2E_LOCAL_PORT,MIRA_API_E2E_LOCAL_SERVICE_ROLE',
     'tests/fixtures/mira-provider-server.ts'], {
     env: { ...process.env, MIRA_FIXTURE_PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -43,22 +43,23 @@ afterAll(async () => { if (server && server.exitCode === null) server.kill('SIGT
 
 async function call(
   id: string, action: 'start' | 'status' | 'cancel', provider: string,
-  mode = 'ok', consent = true, token = true, jobInput: object = input,
+  mode = 'ok', consent = true, token: boolean | string = true, jobInput: object = input,
 ) {
   const response = await fetch(`${base}/mira-generation`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-fixture-provider': provider, 'x-fixture-mode': mode,
-      ...(token ? { 'x-mco-device-token': 'fixture-device-token' } : {}) },
+    headers: { 'content-type': 'application/json', 'x-fixture-provider': provider, 'x-fixture-mode': mode, 'x-fixture-job': id,
+      ...(token ? { 'x-mco-device-token': typeof token === 'string' ? token : 'fixture-device-token' } : {}) },
     body: JSON.stringify({ action, id, creatorID, ...(action === 'start' ? {
       inputRevision: 1, input: jobInput, ...(consent ? { consentVersion: 1 } : {}),
     } : {}) }),
   });
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: await response.json(), headers: response.headers };
 }
 
 async function observations() {
   return await (await fetch(`${base}/observations`)).json() as {
-    calls: { url: string; model: string; mode: string }[];
+    calls: { url: string; model: string; mode: string; payload?: Record<string, unknown> }[];
+    stepWrites: { id: string; step: string }[];
     jobs: { id: string; status: string; error?: string }[];
   };
 }
@@ -219,6 +220,235 @@ test('a storyboard has filming fields and revising one shot preserves a legacy s
   expect(shots[0].distance).toBe('Two big steps');
   expect(shots[0].framing).toBe('Waist up');
   expect(JSON.stringify(shots[1])).toBe(JSON.stringify(legacyShot));
+});
+
+const todayInput = { ...input, operation: 'todayIdea', angle: 'Show my usual breakfast',
+  profile: { ...input.profile, name: 'PRIVATE_PROFILE_MARKER' },
+  request: 'PRIVATE_REQUEST_MARKER' };
+
+async function until<T>(read: () => Promise<T>, ready: (value: T) => boolean): Promise<T> {
+  const deadline = Date.now() + 5_000;
+  let value = await read();
+  while (!ready(value) && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 25));
+    value = await read();
+  }
+  return value;
+}
+
+async function tick(id: string) {
+  const result = await until(
+    () => fetch(`${base}/tick`, { method: 'POST', headers: { 'x-fixture-job': id } }),
+    response => response.status === 204,
+  );
+  expect(result.status).toBe(204);
+}
+
+test('the Today response advances on completed streamed sections and keeps its legacy fields', async () => {
+  const id = crypto.randomUUID();
+  const mode = 'd2-stream';
+  const { body } = await call(id, 'start', 'openai', mode, true, true, todayInput);
+  expect(body.job.id).toBe(id);
+  expect(body.job.inputRevision).toBe(1);
+  expect(body.job.input).toEqual(todayInput);
+  expect(body.job.state).toBe('working');
+  expect(body.job.phase).toBe('queued');
+  expect(body.job.step).toBeUndefined();
+  const status = async () => (await call(id, 'status', 'openai', mode)).body.job;
+  for (const step of ['idea_ready', 'script_ready', 'storyboard_ready']) {
+    await tick(id);
+    const job = await until(status, result => result.step === step);
+    expect(job.step).toBe(step);
+    expect(job.state).toBe('working');
+    expect(job.phase).toBe('running');
+    expect(job.output).toBeUndefined();
+  }
+  await tick(id);
+  const job = await until(status, result => result.state === 'succeeded');
+  expect(job.phase).toBe('succeeded');
+  expect(job.step).toBe('storyboard_ready');
+  expect(job.output.ideas[0].visual).toContain('🥣');
+  expect(job.output.storyboard.shots).toHaveLength(3);
+  expect(job.error).toBeUndefined();
+  expect(job.pictures).toBeUndefined();
+  expect((await observations()).stepWrites.filter(write => write.id === id).map(write => write.step))
+    .toEqual(['idea_ready', 'script_ready', 'storyboard_ready']);
+});
+
+test('a cut Today stream keeps partial text out of output and returns the existing retry phase', async () => {
+  const id = crypto.randomUUID();
+  const mode = 'd2-cut';
+  await call(id, 'start', 'openai', mode, true, true, todayInput);
+  await tick(id);
+  const status = async () => (await call(id, 'status', 'openai', mode)).body.job;
+  expect((await until(status, job => job.step === 'idea_ready')).step).toBe('idea_ready');
+  await tick(id);
+  const job = await until(status, result => result.phase === 'waiting_to_retry');
+  expect(job.state).toBe('working');
+  expect(job.phase).toBe('waiting_to_retry');
+  expect(job.step).toBeUndefined();
+  expect(job.output).toBeUndefined();
+  expect(job.pictures).toBeUndefined();
+});
+
+function pictureCalls(mode: string) {
+  return observations().then(result => result.calls.filter(call =>
+    call.mode === mode && call.url.endsWith('/images/generations')));
+}
+
+test('a successful Today card returns independent picture states and signed URLs', async () => {
+  const id = crypto.randomUUID();
+  const mode = 'd2-mixed';
+  await call(id, 'start', 'openai', mode, true, true, todayInput);
+  const status = async (token: boolean | string = true) => call(id, 'status', 'openai', mode, true, token);
+  const [first, second] = await Promise.all([status(), status()]);
+  expect(first.body.job.state).toBe('succeeded');
+  expect(second.body.job.state).toBe('succeeded');
+  expect(first.body.job.pictures).toHaveLength(3);
+  const { body } = await status();
+  const pictures = body.job.pictures;
+  expect(body.job.phase).toBe('succeeded');
+  expect(pictures.map((picture: { shotID: string }) => picture.shotID))
+    .toEqual(body.job.output.storyboard.shots.map((shot: { id: string }) => shot.id));
+  expect(pictures.map((picture: { status: string }) => picture.status)).toEqual(['ready', 'failed', 'ready']);
+  expect(pictures[0].url).toContain('/storage/v1/object/sign/mira-shot-pictures/');
+  expect(new URL(pictures[0].url).searchParams.get('ttl')).toBe('3600');
+  expect(Object.keys(pictures[0]).sort()).toEqual(['shotID', 'status', 'url']);
+  expect(pictures[1].url).toBeUndefined();
+  expect((await status(false)).status).toBe(401);
+  expect((await status('fixture-other-member')).status).toBe(404);
+  const requests = await pictureCalls(mode);
+  expect(requests).toHaveLength(3);
+  for (const { payload } of requests) {
+    expect(payload?.model).toBe('gpt-image-2.6-flare');
+    expect(payload?.size).toBe('720x1280');
+    expect(payload?.n).toBe(1);
+    expect(payload?.prompt).toContain('Location: Home');
+    expect(payload?.prompt).not.toContain('PRIVATE_');
+    expect(payload?.prompt).not.toContain('Here is my breakfast');
+    expect(Object.keys(payload!).sort()).toEqual(['complexity', 'model', 'n', 'output_compression',
+      'output_format', 'prompt', 'quality', 'size']);
+  }
+});
+
+test('a retry recovers uploaded pictures after a lost ready update without a second provider call', async () => {
+  const id = crypto.randomUUID();
+  const mode = 'd2-lost-picture-write';
+  await call(id, 'start', 'openai', mode, true, true, todayInput);
+  const status = async () => (await call(id, 'status', 'openai', mode)).body.job;
+  const pending = await status();
+  expect(pending.pictures.map((picture: { status: string }) => picture.status)).toEqual(['pending', 'pending', 'pending']);
+  await fetch(`${base}/expire-pictures`, { method: 'POST', headers: { 'x-fixture-job': id } });
+  const recovered = await status();
+  expect(recovered.pictures.map((picture: { status: string }) => picture.status)).toEqual(['ready', 'ready', 'ready']);
+  expect((await pictureCalls(mode))).toHaveLength(3);
+});
+
+test('a short remaining picture lease refuses every provider call and preserves the card', async () => {
+  const id = crypto.randomUUID();
+  const mode = 'd2-short-picture';
+  await call(id, 'start', 'openai', mode, true, true, todayInput);
+  await call(id, 'status', 'openai', mode);
+  const { body } = await call(id, 'status', 'openai', mode);
+  expect(body.job.state).toBe('succeeded');
+  expect(body.job.pictures.map((picture: { status: string }) => picture.status)).toEqual(['failed', 'failed', 'failed']);
+  expect(await pictureCalls(mode)).toHaveLength(0);
+});
+
+function localSupabase() {
+  const port = process.env.MIRA_API_E2E_LOCAL_PORT;
+  test.skip(!port, 'Start local Supabase and supply the local database scenario fixtures.');
+  const role = process.env.MIRA_API_E2E_LOCAL_SERVICE_ROLE;
+  if (!port || !/^\d{1,5}$/.test(port) || !role) throw new Error('Local Supabase is missing.');
+  return {
+    url: `http://127.0.0.1:${port}`,
+    headers: { apikey: role, authorization: `Bearer ${role}` },
+  };
+}
+
+test('local Storage serves only a signed picture from the authenticated card status', async () => {
+  const local = localSupabase();
+  const anon = process.env.MIRA_API_E2E_LOCAL_ANON;
+  if (!anon) throw new Error('Local anon key is missing.');
+  const id = crypto.randomUUID();
+  const mode = 'd2-local-storage';
+  expect((await call(id, 'start', 'openai', mode, true, true, todayInput)).status).toBe(200);
+  const status = () => call(id, 'status', 'openai', mode);
+  const first = await status();
+  expect(first.body.job.state).toBe('succeeded');
+  expect(first.headers.get('cache-control')).toBe('no-store');
+  expect(first.body.job.pictures.map((entry: { status: string }) => entry.status))
+    .toEqual(['pending', 'pending', 'pending']);
+  const result = await status();
+  const entries = result.body.job.pictures;
+  expect(entries.map((entry: { status: string }) => entry.status)).toEqual(['ready', 'failed', 'ready']);
+  expect(entries[1].url).toBeUndefined();
+  expect((await pictureCalls(mode))).toHaveLength(3);
+  const signed = new URL(entries[0].url);
+  expect(signed.origin === local.url && signed.pathname.includes('/object/sign/') &&
+    signed.searchParams.has('token')).toBe(true);
+  const image = await fetch(signed);
+  expect(image.status).toBe(200);
+  expect(image.headers.get('content-type')).toContain('image/jpeg');
+  expect(new Uint8Array(await image.arrayBuffer())[0]).toBe(0xff);
+  const anonymous = { apikey: anon, authorization: `Bearer ${anon}` };
+  const object = signed.pathname.replace('/object/sign/', '/object/');
+  const [direct, publicObject, sign, upload] = await Promise.all([
+    fetch(local.url + object, { headers: anonymous }),
+    fetch(local.url + object.replace('/object/', '/object/public/'), { headers: anonymous }),
+    fetch(local.url + signed.pathname, { method: 'POST', headers: { ...anonymous, 'content-type': 'application/json' },
+      body: JSON.stringify({ expiresIn: 3600 }) }),
+    fetch(local.url + object + '.unauthorized.jpg', { method: 'POST',
+      headers: { ...anonymous, 'content-type': 'image/jpeg' }, body: new Uint8Array([0xff, 0xd8, 0xff, 0xd9]) }),
+  ]);
+  expect([direct, publicObject, sign, upload].every(response => !response.ok)).toBe(true);
+
+  const lostUpdate = await fetch(`${local.url}/rest/v1/mira_shot_pictures?job_id=eq.${id}&shot_id=eq.${entries[0].shotID}`, {
+    method: 'PATCH', headers: { ...local.headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ status: 'generating', lease_until: new Date(0).toISOString() }),
+  });
+  expect(lostUpdate.status).toBe(204);
+  expect((await status()).body.job.pictures[0].status).toBe('ready');
+  expect((await pictureCalls(mode))).toHaveLength(3);
+});
+
+test('local PostgREST reserves at most 30 pictures across concurrent cards without using text slots', async () => {
+  const local = localSupabase();
+  async function write(path: string, method: string, payload: object) {
+    const response = await fetch(`${local.url}/rest/v1/${path}`, {
+      method, headers: { ...local.headers, 'content-type': 'application/json', prefer: 'return=representation' },
+      body: JSON.stringify(payload),
+    });
+    return { status: response.status, body: await response.json() };
+  }
+  const member = crypto.randomUUID();
+  const workspace = '10000000-0000-4000-8000-000000000001';
+  expect((await write('members', 'POST', {
+    id: member, workspace_id: workspace, display_name: 'D2 cap fixture', role: 'creator',
+  })).status).toBe(201);
+  const enqueue = (id: string, jobInput: object) => write('rpc/mira_enqueue', 'POST', {
+    p_id: id, p_workspace: workspace, p_creator: creatorID, p_member: member, p_revision: 1, p_input: jobInput,
+  });
+  const cards: string[] = [];
+  for (let card = 0; card < 7; card++) {
+    const id = crypto.randomUUID();
+    cards.push(id);
+    expect((await enqueue(id, todayInput)).status).toBe(200);
+    expect((await write('rpc/mira_claim', 'POST', { p_id: id, p_lease_seconds: 90 })).status).toBe(200);
+    expect((await write(`mira_generation_jobs?id=eq.${id}`, 'PATCH', {
+      status: 'succeeded', picture_count: 5, created_at: new Date(Date.now() - 120_000).toISOString(),
+      output: { storyboard: { shots: Array.from({ length: 5 }, () => ({ id: crypto.randomUUID() })) } },
+    })).status).toBe(200);
+  }
+  const jobs = await Promise.all(cards.map(p_job_id =>
+    write('rpc/mira_claim_shot_pictures', 'POST', { p_job_id, p_lease_id: crypto.randomUUID(), p_lease_seconds: 125 })));
+  expect(jobs.every(job => job.status === 200)).toBe(true);
+  const rows = jobs.flatMap(job => job.body);
+  expect(rows.filter(row => row.status === 'generating' && row.reserved_at)).toHaveLength(30);
+  expect(rows.filter(row => row.status === 'failed' && row.reserved_at === null)).toHaveLength(5);
+  for (let slot = 0; slot < 3; slot++) expect((await enqueue(crypto.randomUUID(), input)).status).toBe(200);
+  const fourth = await enqueue(crypto.randomUUID(), input);
+  expect(fourth.body.message).toBe('too_many_active_jobs');
 });
 
 test('the deployed Mira endpoint returns filming fields for a solo storyboard', async () => {

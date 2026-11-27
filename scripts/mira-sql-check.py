@@ -27,6 +27,7 @@ try:
         '20261026170000_mira_generation_jobs.sql',
         '20261119012500_mira_three_active_jobs.sql',
         '20261127190000_mira_job_state_machine.sql',
+        '20261127200000_mira_steps_and_shot_pictures.sql',
     ]
     for migration in migrations:
         subprocess.run(docker + ['cp', str(root/'supabase/migrations'/migration), f'{name}:/{migration}'], check=True)

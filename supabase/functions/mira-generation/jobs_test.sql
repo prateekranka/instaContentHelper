@@ -4,12 +4,18 @@
 create role anon;
 create role authenticated;
 create role service_role bypassrls;
+create schema storage;
+create table storage.buckets(id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
+create table storage.objects(bucket_id text, name text);
+alter table storage.objects enable row level security;
 create table public.workspaces(id uuid primary key, name text not null);
 create table public.creators(id uuid primary key, workspace_id uuid references public.workspaces, display_name text not null);
 create table public.members(id uuid primary key, workspace_id uuid references public.workspaces, display_name text not null, role text not null);
+grant insert on public.members to service_role;
 \i /20261026170000_mira_generation_jobs.sql
 \i /20261119012500_mira_three_active_jobs.sql
 \i /20261127190000_mira_job_state_machine.sql
+\i /20261127200000_mira_steps_and_shot_pictures.sql
 \endif
 
 insert into public.workspaces(id, name) values
@@ -100,6 +106,70 @@ begin
   update public.mira_generation_jobs set status = 'cancelled' where id = cancelled_id;
   assert not exists (select from public.mira_claim(cancelled_id)), 'cancelled job restarted';
 end $$;
+do $$
+declare
+  member uuid := gen_random_uuid();
+  workspace uuid := '10000000-0000-4000-8000-000000000001';
+  creator uuid := '10000000-0000-4000-8000-000000000002';
+  job uuid := gen_random_uuid();
+  lease uuid := gen_random_uuid();
+  shot_output jsonb;
+  ignored uuid;
+begin
+  insert into public.members(id, workspace_id, display_name, role)
+    values (member, workspace, 'Mira D2 SQL fixture', 'creator');
+  perform public.mira_enqueue(job, workspace, creator, member, 1, '{"operation":"todayIdea"}');
+  perform public.mira_claim(job);
+  update public.mira_generation_jobs set step = 'idea_ready', updated_at = clock_timestamp() where id = job;
+  update public.mira_generation_jobs set step = 'script_ready', updated_at = clock_timestamp() where id = job;
+  begin
+    update public.mira_generation_jobs set step = 'idea_ready' where id = job;
+    raise exception 'progress went backwards';
+  exception when check_violation then
+    if sqlerrm <> 'mira_invalid_job_transition' then raise; end if;
+  end;
+  begin
+    update public.mira_generation_jobs set step = 'storyboard_ready', picture_count = 5 where id = job;
+    raise exception 'progress write changed the picture count';
+  exception when check_violation then
+    if sqlerrm <> 'mira_invalid_job_transition' then raise; end if;
+  end;
+  update public.mira_generation_jobs set status = 'queued' where id = job;
+  perform public.mira_claim(job);
+  assert (select step is null from public.mira_generation_jobs where id = job),
+    'the new claim did not reset progress';
+  update public.mira_generation_jobs set status = 'cancelled' where id = job;
+
+  begin
+    perform public.mira_claim_shot_pictures(gen_random_uuid(), gen_random_uuid(), 124);
+    raise exception 'short picture lease accepted';
+  exception when invalid_parameter_value then
+    if sqlerrm <> 'mira_picture_lease_too_short' then raise; end if;
+  end;
+
+  for i in 1..7 loop
+    job := gen_random_uuid();
+    select jsonb_build_object('storyboard', jsonb_build_object('shots', jsonb_agg(jsonb_build_object('id', gen_random_uuid()))))
+      into shot_output from generate_series(1, 5);
+    perform public.mira_enqueue(job, workspace, creator, member, 1, '{"operation":"todayIdea"}');
+    perform public.mira_claim(job);
+    update public.mira_generation_jobs
+      set status = 'succeeded', output = shot_output, picture_count = 5 where id = job;
+    assert (select count(*) from public.mira_claim_shot_pictures(job, lease, 125)
+      where status = 'generating' and lease_id = lease) = case when i <= 6 then 5 else 0 end,
+      'picture reservation exceeded the cap or failed below it';
+    assert not exists (select from public.mira_claim_shot_pictures(job, gen_random_uuid(), 125)
+      where lease_id is distinct from lease and status = 'generating'), 'duplicate claim acquired picture work';
+  end loop;
+
+  assert (select count(*) from public.mira_shot_pictures where member_id = member and lease_id = lease) = 30,
+    'wrong number of reserved pictures';
+  assert (select count(*) from public.mira_shot_pictures where job_id = job and status = 'failed' and reserved_at is null) = 5,
+    'jobs over the cap did not get fallback status';
+  select (public.mira_enqueue(gen_random_uuid(), workspace, creator, member, 1, '{"operation":"ideas"}')).id into ignored;
+  assert ignored is not null, 'picture work blocked a text job';
+end $$;
+
 reset role;
 set local role anon;
 do $$
@@ -115,10 +185,20 @@ begin
   exception when insufficient_privilege then null;
   end;
   begin
+    perform public.mira_claim_shot_pictures(gen_random_uuid(), gen_random_uuid(), 125);
+    raise exception 'anonymous caller obtained a picture claim';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform count(*) from public.mira_shot_pictures;
+    raise exception 'anonymous caller read picture metadata';
+  exception when insufficient_privilege then null;
+  end;
+  begin
     perform count(*) from public.mira_generation_jobs;
     raise exception 'anonymous caller read private jobs';
   exception when insufficient_privilege then null;
   end;
 end $$;
 rollback;
-select 'PASS: idempotency, both claim signatures, lease floor, retry backoff, transition guard, cancellation and grants' as verification;
+select 'PASS: idempotency, both claim signatures, lease floor, retry backoff, transition guard, cancellation, picture reservations, UTC daily cap and grants' as verification;
