@@ -1,0 +1,428 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 89 and seed -8997659045506561723 with 1 worker on 10 cores with 3641MB heap and 64MB offheap memory [pid: 64192] (Mac OS X 27.2.1 aarch64, Homebrew 26.0.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /Users/prateekranka/scratch/mira-s4-20261127/docs/mira-evidence/tla-s4/MiraJobs.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/Naturals.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/FiniteSets.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/TLC.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module MiraJobs
+Starting... (2026-11-27 23:57:10)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-27 23:57:10.
+Error: Invariant NoLostResult is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ started = FALSE
+/\ attempts = 0
+/\ retryLeft = 0
+/\ status = "queued"
+/\ calls = <<0, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 0
+
+State 2: <Claim line 22, col 5 to line 29, col 49 of module MiraJobs>
+/\ started = FALSE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<0, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 40
+
+State 3: <Start line 32, col 5 to line 40, col 63 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<55, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 40
+
+State 4: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<54, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 39
+
+State 5: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<53, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 38
+
+State 6: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<52, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 37
+
+State 7: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<51, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 36
+
+State 8: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<50, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 35
+
+State 9: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<49, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 34
+
+State 10: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<48, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 33
+
+State 11: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<47, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 32
+
+State 12: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<46, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 31
+
+State 13: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<45, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 30
+
+State 14: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<44, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 29
+
+State 15: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<43, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 28
+
+State 16: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<42, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 27
+
+State 17: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<41, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 26
+
+State 18: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<40, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 25
+
+State 19: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<39, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 24
+
+State 20: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<38, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 23
+
+State 21: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<37, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 22
+
+State 22: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<36, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 21
+
+State 23: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<35, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 20
+
+State 24: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<34, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 19
+
+State 25: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<33, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 18
+
+State 26: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<32, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 17
+
+State 27: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<31, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 16
+
+State 28: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<30, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 15
+
+State 29: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<29, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 14
+
+State 30: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<28, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 13
+
+State 31: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<27, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 12
+
+State 32: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<26, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 11
+
+State 33: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<25, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 10
+
+State 34: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<24, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 9
+
+State 35: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<23, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 8
+
+State 36: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<22, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 7
+
+State 37: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<21, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 6
+
+State 38: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<20, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 5
+
+State 39: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<19, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 4
+
+State 40: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<18, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 3
+
+State 41: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<17, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 2
+
+State 42: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<16, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 1
+
+State 43: <Tick line 74, col 5 to line 78, col 58 of module MiraJobs>
+/\ started = TRUE
+/\ attempts = 1
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<15, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 0
+
+State 44: <Claim line 22, col 5 to line 29, col 49 of module MiraJobs>
+/\ started = FALSE
+/\ attempts = 2
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<15, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 40
+
+State 45: <Finish line 43, col 5 to line 47, col 60 of module MiraJobs>
+/\ started = FALSE
+/\ attempts = 2
+/\ retryLeft = 0
+/\ status = "running"
+/\ calls = <<0, 0, 0>>
+/\ lostResult = TRUE
+/\ leaseLeft = 40
+
+19379 states generated, 5509 distinct states found, 284 states left on queue.
+The depth of the complete state graph search is 45.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 2).
+Finished in 00s at (2026-11-27 23:57:10)
+
+TLC exit code: 12

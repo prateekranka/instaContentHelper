@@ -1,0 +1,40 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 105 and seed -527260079681644382 with 1 worker on 10 cores with 3641MB heap and 64MB offheap memory [pid: 64212] (Mac OS X 27.2.1 aarch64, Homebrew 26.0.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /Users/prateekranka/scratch/mira-s4-20261127/docs/mira-evidence/tla-s4/MiraJobs.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/Naturals.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/FiniteSets.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/TLC.tla
+Parsing file /private/var/folders/m7/7b9v0v0d67d4mc_kfvt7hmlw0000gn/T/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module MiraJobs
+Starting... (2026-11-27 23:57:11)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-27 23:57:11.
+Error: Action property AllowedTransitions is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ started = FALSE
+/\ attempts = 0
+/\ retryLeft = 0
+/\ status = "queued"
+/\ calls = <<0, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 0
+
+State 2: <TryForbiddenUpdate line 67, col 5 to line 70, col 79 of module MiraJobs>
+/\ started = FALSE
+/\ attempts = 0
+/\ retryLeft = 0
+/\ status = "succeeded"
+/\ calls = <<0, 0, 0>>
+/\ lostResult = FALSE
+/\ leaseLeft = 0
+
+5 states generated, 5 distinct states found, 3 states left on queue.
+The depth of the complete state graph search is 2.
+Finished in 00s at (2026-11-27 23:57:11)
+
+TLC exit code: 13
