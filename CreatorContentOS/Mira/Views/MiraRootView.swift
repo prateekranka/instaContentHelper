@@ -416,6 +416,7 @@ struct MiraTodayHome: View {
     @Environment(MiraDependencies.self) private var dependencies
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var focused: Bool
+    @State private var requestFrame = CGRect.null
     @State private var speech: (any MiraSpeechInputService)?
     @State private var spokenBase = ""
     private static let places: [(id: String, label: String, phrase: String)] = [
@@ -435,11 +436,16 @@ struct MiraTodayHome: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
                     TextField(
-                        "For example: at the gym, sled push", text: $request, axis: .vertical
+                        "For example: at the gym, sled push", text: requestInput, axis: .vertical
                     )
                     .lineLimit(2...4).font(.title3)
+                    .submitLabel(.done)
+                    .onSubmit { focused = false }
                     .focused($focused)
                     .miraFieldBox()
+                    .onGeometryChange(for: CGRect.self) { geometry in
+                        geometry.frame(in: .named("mira.today.page"))
+                    } action: { requestFrame = $0 }
                     .accessibilityLabel("What can you film today?")
                     .accessibilityIdentifier("mira.today.request")
                     microphone
@@ -514,12 +520,13 @@ struct MiraTodayHome: View {
                 .accessibilityIdentifier("mira.today.continue")
             }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focused = false }.font(.headline)
-            }
-        }
+        .contentShape(Rectangle())
+        .coordinateSpace(.named("mira.today.page"))
+        .simultaneousGesture(
+            SpatialTapGesture(coordinateSpace: .named("mira.today.page")).onEnded { tap in
+                if !requestFrame.contains(tap.location) { focused = false }
+            },
+            isEnabled: focused)
         .onAppear { if speech == nil { speech = dependencies.makeSpeechInput() } }
         .onDisappear {
             speech?.stop()
@@ -533,6 +540,19 @@ struct MiraTodayHome: View {
             guard speech?.recording == true else { return }
             request = joined(spokenBase, spoken)
         }
+    }
+
+    private var requestInput: Binding<String> {
+        Binding(get: { request }, set: { value in
+            if focused, value.contains("\n") {
+                let insertions = value.difference(from: request).insertions
+                if insertions.count == 1, case .insert(_, "\n", _)? = insertions.first {
+                    focused = false
+                    return
+                }
+            }
+            request = value
+        })
     }
 
     private var workingBatch: MiraProject? {
