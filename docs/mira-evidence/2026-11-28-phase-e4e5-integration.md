@@ -149,3 +149,23 @@ The E5 live action can reopen a Reel with a saved Today batch. If the picture
 budget for that path is unknown, record **not run (picture limit not provable)**
 before opening the live case. The new Instagram Insights function stays
 undeployed.
+
+## Fix2 iPhone result for PR #49
+
+**RESULT BLOCKED**
+
+The ordered phone sequence stopped at an app fault in PR #48. Mira ignored the E2 Not now Debug launch override and showed the Instagram results permission prompt. The protocol bars a phone run on PR #49 after this app fault.
+
+| Scenario | Result | Start IST | Duration | Evidence path |
+| --- | --- | --- | --- | --- |
+| Keep before install, in-place install and Keep after install | Not run | — | — | `pr48-sample-e2-not-now/report.json` |
+| Sample, read-only consent, live and Keep after tests | Not run | — | — | `pr48-instagram-override-source.txt` |
+
+The latest integrated test and app source at `dbd39a6` passed all eight agent-rule groups and all 19 historical checks. The state-machine document matched all 137 Swift states. Xcode 27.2 passed both the generic simulator and signed device builds. The six GitHub checks passed at that head.
+
+Live AI counts were **0 text requests and 0 pictures**. The phone had zero claims. The fixture stopped and the Tailscale routes matched the original list.
+
+### Fix2 checks still open
+
+- PR #49 phone behavior and account preservation.
+- E4 and E5 live behavior. The Instagram Insights function change stays undeployed.
