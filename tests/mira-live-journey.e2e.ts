@@ -2,14 +2,14 @@ import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type App, type Locator, type Screen } from 'e2e';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { scrollToControl, tapVisibleControl } from './mobile-support';
+import { mobileKeyboard, scrollToControl, tapVisibleControl } from './mobile-support';
 
 const evidence = resolve(
   process.env.MIRA_E2E_LIVE_LEDGER_DIR ?? process.env.MIRA_E2E_OUTPUT ?? 'work/evidence/mira-live-journey',
 );
 const ledgerPath = resolve(evidence, 'live-requests.jsonl');
 const timeout = 240_000;
-const pictureLimit = 9;
+const pictureLimit = process.env.MIRA_E2E_LIVE_PICTURE_LIMIT === '15' ? 15 : 9;
 const maxPicturesPerCard = 5;
 const pictureLimitReason = 'not run (picture limit not provable)';
 const recorded = (path = ledgerPath) => {
@@ -134,13 +134,15 @@ async function todayKeyboard(app: App, screen: Screen) {
   await root(screen, 'Home');
   const field = screen.getByTestId('mira.today.request');
   const make = screen.getByTestId('mira.today.make');
-  const keyboard = keyboardWindow(screen);
+  const keyboard = mobileKeyboard(screen);
   await expect(make).toBeVisible();
   const prompt = 'At the gym, sled push';
   await field.fill(prompt);
   await expect(keyboard).toBeVisible();
   const keyboardBox = await keyboard.boundingBox();
   expect(keyboardBox).not.toBeNull();
+  const openMakeBox = await make.boundingBox();
+  expect(openMakeBox.y + openMakeBox.height).toBeLessThanOrEqual(keyboardBox.y);
   for (const done of await button(screen, 'Done').all()) {
     const box = await done.boundingBox();
     expect(box!.y).toBeGreaterThanOrEqual(keyboardBox!.y);
