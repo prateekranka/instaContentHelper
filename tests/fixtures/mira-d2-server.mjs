@@ -11,13 +11,15 @@ function output(input, card) {
   const { location, filmingMinutes } = input.constraints;
   const title = ['A quiet breakfast', 'A table by the window', 'A short walk'][card - 1];
   const script = {
-    id: randomUUID(), hook: 'This is how I start the day.', spoken: 'Here is one thing I do every morning.',
+    id: randomUUID(), hook: 'Here’s how I start the day.',
+    spoken: 'Here’s how I start the day.\nHere is one thing I do every morning.',
     caption: 'My morning routine.', durationSeconds: 15, language,
   };
-  const shots = ['Set the bowl down', 'Add the fruit', 'Show the bowl'].map(action => ({
+  const words = ["Here's how I start the day.", 'Here is one thing I do every morning.', ''];
+  const shots = ['Set the bowl down', 'Add the fruit', 'Show the bowl'].map((action, index) => ({
     id: randomUUID(), purpose: action, editedSeconds: 5, recordingSeconds: 7, location,
     props: 'Bowl and fruit', placement: 'Put the phone on the table.', distance: 'One arm away',
-    framing: 'Hands and bowl', frameType: 'closeUp', action, words: action, voiceover: false,
+    framing: 'Hands and bowl', frameType: 'closeUp', action, words: words[index], voiceover: false,
     onScreenText: '', simplerAlternative: 'Keep the phone still.',
   }));
   return {

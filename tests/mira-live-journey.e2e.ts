@@ -605,3 +605,28 @@ test('S2 Projects list scrolls its final row above the tab bar', async ({ app, s
   expect(settledPosition).toBeLessThanOrEqual(tabs!.y - 8);
   await app.screenshot('projects-final-row-above-tab-bar');
 });
+
+test('Astra live smoke opens filming from approved Today words within three requests', async ({ app, screen, device }) => {
+  expect(process.env.MIRA_E2E_LIVE_REQUEST_LIMIT).toBe('3');
+  await launch(app, screen, device);
+  const make = await todayKeyboard(app, screen);
+  await request(28, 'Make one Today batch', 3, () => make.tap());
+  await expect(screen.getByRole('button', /^Idea [1-3] of 3, ready$/).first()).toBeVisible({ timeout });
+  let card = 0;
+  for (const index of [1, 2, 3]) {
+    const ready = button(screen, `Idea ${index} of 3, ready`);
+    if (!await ready.count()) continue;
+    await ready.tap();
+    card = index;
+    break;
+  }
+  expect(card).toBeGreaterThan(0);
+  await app.screenshot('live-today-card');
+  await tapVisibleControl(screen, screen.getByTestId(`mira.today.makeCard.${card}`));
+  await expect(text(screen, 'What you say')).toBeVisible();
+  await app.screenshot('live-your-words');
+  await tapVisibleControl(screen, approve(screen));
+  await expect(text(screen, /^Shot 1 of [3-5]$/)).toBeVisible({ timeout: 45_000 });
+  await expect(text(screen, 'Mira needs to update the shots')).not.toBeAttached();
+  await app.screenshot('live-approved-shots-filming');
+});
