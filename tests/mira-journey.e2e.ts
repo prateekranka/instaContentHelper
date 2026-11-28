@@ -676,7 +676,7 @@ test('S1 B1 the Projects shot list asks her to approve the words before filming'
   await scrollToControl(screen, shotsSection, 'up');
   await tap(screen, shotsSection);
   const approveLink = screen.getByTestId('mira.shots.approve');
-  await scrollToControl(screen, approveLink, 'up');
+  await scrollToControl(screen, approveLink, 'either');
   await expect(approveLink).toBeVisible();
   await expect(screen.getByRole('button', 'Start filming', { exact: true })).not.toBeVisible();
   await app.screenshot(`s1-b1-shots-approve-${look}`);

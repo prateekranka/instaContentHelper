@@ -362,7 +362,8 @@ test('3 S1 B1–B3 gate the shot list, open filming and Continue', async ({ app,
 
   await tab(screen, 'My Brand');
   const shotGate = screen.getByTestId('mira.shots.approve');
-  await fit(screen, shotGate, 'up');
+  await scrollToControl(screen, shotGate, 'either');
+  await expect(shotGate).toBeVisible();
   await expect(filming).not.toBeVisible();
   await app.screenshot('b1-shot-list-approval');
   await tapVisibleControl(screen, shotGate);
