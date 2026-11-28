@@ -12,10 +12,7 @@ create table public.workspaces(id uuid primary key, name text not null);
 create table public.creators(id uuid primary key, workspace_id uuid references public.workspaces, display_name text not null);
 create table public.members(id uuid primary key, workspace_id uuid references public.workspaces, display_name text not null, role text not null);
 grant insert on public.members to service_role;
-\i /20261026170000_mira_generation_jobs.sql
-\i /20261119012500_mira_three_active_jobs.sql
-\i /20261127190000_mira_job_state_machine.sql
-\i /20261127200000_mira_steps_and_shot_pictures.sql
+\i /mira-migrations.sql
 \endif
 
 insert into public.workspaces(id, name) values
@@ -61,7 +58,7 @@ begin
   end;
 
   select * into strict claimed from public.mira_claim(job.id);
-  assert claimed.attempts = 1 and claimed.lease_until - claimed.updated_at between interval '89 seconds' and interval '90 seconds',
+  assert claimed.attempts = 1 and claimed.lease_until - claimed.updated_at between interval '90 seconds' and interval '91 seconds',
     'legacy claim did not grant a 90-second lease';
   assert not exists (select from public.mira_claim(job.id, 120)), 'concurrent claim acquired an active lease';
   begin
@@ -75,7 +72,7 @@ begin
   update public.mira_generation_jobs set status = 'queued', next_attempt_at = clock_timestamp() + interval '1 minute'
     where id = job.id;
   assert not exists (select from public.mira_claim(job.id, 120)), 'retry bypassed backoff';
-  update public.mira_generation_jobs set status = 'failed' where id = job.id;
+  update public.mira_generation_jobs set status = 'failed', error = 'fixture_failure' where id = job.id;
   begin
     update public.mira_generation_jobs set status = 'queued' where id = job.id;
     raise exception 'terminal job was reopened';

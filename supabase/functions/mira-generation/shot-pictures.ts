@@ -38,14 +38,16 @@ export async function shotPictures(
   if (
     !rows.length ||
     rows.some((row) =>
-      row.status === "generating" &&
-      row.lease_until && Date.parse(row.lease_until) <= Date.now()
+      (row.status === "generating" &&
+        row.lease_until && Date.parse(row.lease_until) <= Date.now()) ||
+      (row.status === "failed" && row.lease_id)
     )
   ) {
     const claim = await admin.rpc("mira_claim_shot_pictures", {
       p_job_id: jobID,
       p_lease_id: leaseID,
       p_lease_seconds: leaseSeconds("shotPictures"),
+      p_track_dispatch: true,
     });
     if (claim.error) throw Error("picture_claim_failed");
     rows = claim.data;
@@ -60,7 +62,9 @@ export async function shotPictures(
         makePicture(
           admin,
           row,
-          shots.find((shot) => shot.id === row.shot_id),
+          shots.find((shot) =>
+            shot.id.toLowerCase() === row.shot_id.toLowerCase()
+          ),
           env,
           fetchFn,
         )
@@ -100,7 +104,11 @@ async function makePicture(
   const setStatus = async (status: "ready" | "failed") => {
     const result = await admin.from("mira_shot_pictures").update({ status })
       .eq("job_id", row.job_id).eq("shot_id", row.shot_id)
-      .eq("lease_id", row.lease_id).eq("status", "generating");
+      .eq("lease_id", row.lease_id)
+      .in(
+        "status",
+        status === "ready" ? ["generating", "failed"] : ["generating"],
+      );
     if (result.error) {
       console.error(`mira_picture_persist_failed ${row.job_id}`);
     }
@@ -109,6 +117,17 @@ async function makePicture(
   try {
     if (!shot || !row.lease_until) throw Error("picture_input_missing");
     const signal = providerDeadline("shotPictures", row.lease_until);
+    if (!env.get("OPENAI_API_KEY")?.trim()) {
+      throw Error("picture_provider_not_configured");
+    }
+    const started = await admin.rpc("mira_start_shot_picture", {
+      p_job_id: row.job_id,
+      p_shot_id: row.shot_id,
+      p_lease_id: row.lease_id,
+    });
+    if (started.error) throw Error("picture_dispatch_save_failed");
+    if (!started.data) return;
+    signal.throwIfAborted();
     image = await generatePicture(shot, env, signal, fetchFn);
   } catch (error) {
     const reason = error instanceof Error &&

@@ -1,0 +1,69 @@
+{
+  "script": {
+    "caption": "Keys in the same pocket. Bag off the lane. Then push.",
+    "durationSeconds": 30,
+    "hook": "Before I push the sled, I empty my pockets.",
+    "id": "c71f4299-2f26-4ad2-ad8f-b9f50a87c356",
+    "language": "English",
+    "spoken": "Before I push the sled, I empty my pockets.\nKeys go in the zipped pocket of my bag. Same spot every time, so I know where to look later.\nThen I leave the bag off the lane and get on with the push."
+  },
+  "storyboard": {
+    "id": "35b018ca-dd4c-4ed6-93dd-5a4e94539f39",
+    "mappings": [],
+    "requirementsRevision": 0,
+    "shots": [
+      {
+        "action": "Pull your keys out and hold them up for a beat.",
+        "distance": "About 1 metre away",
+        "editedSeconds": 7,
+        "frameType": "halfBody",
+        "framing": "Show your waist and hands.",
+        "id": "db725b01-20e0-4ec7-ab03-171a14a93a07",
+        "location": "Gym bench beside the sled lane",
+        "onScreenText": "Pockets first",
+        "placement": "Brace the phone against your bag on the bench, clear of the lane.",
+        "props": "Phone, gym bag, keys",
+        "purpose": "Introduce the habit.",
+        "recordingSeconds": 12,
+        "simplerAlternative": "Skip the hold and cut as the keys come out.",
+        "voiceover": true,
+        "words": "Before I push the sled, I empty my pockets."
+      },
+      {
+        "action": "Drop the keys into the pocket and zip it shut.",
+        "distance": "About 30 cm from the zip",
+        "editedSeconds": 11,
+        "frameType": "closeUp",
+        "framing": "Fill the frame with your hands and the pocket.",
+        "id": "aab1c3cf-f115-42e4-b704-72fea81dcc72",
+        "location": "Same gym bench",
+        "onScreenText": "Same pocket every time",
+        "placement": "Brace the phone against one end of the bag and aim it along the bench at the zip.",
+        "props": "Phone, gym bag, keys",
+        "purpose": "Show where the keys go.",
+        "recordingSeconds": 16,
+        "simplerAlternative": "Keep the first camera angle and zip the pocket in view.",
+        "voiceover": true,
+        "words": "Keys go in the zipped pocket of my bag. Same spot every time, so I know where to look later."
+      },
+      {
+        "action": "Walk to the sled, grip the handles and push through the frame.",
+        "distance": "About 3 metres from the sled",
+        "editedSeconds": 12,
+        "frameType": "side",
+        "framing": "Show yourself and the sled from the side.",
+        "id": "0af399c3-db6e-43c4-a87b-65a3a7987770",
+        "location": "Sled lane",
+        "onScreenText": "",
+        "placement": "Brace the phone against the bag on the bench outside the lane and aim it across the start.",
+        "props": "Phone, gym bag, sled",
+        "purpose": "Finish with the sled push.",
+        "recordingSeconds": 20,
+        "simplerAlternative": "Keep the phone still and show just the start of the push.",
+        "voiceover": true,
+        "words": "Then I leave the bag off the lane and get on with the push."
+      }
+    ],
+    "sourceScriptID": "c71f4299-2f26-4ad2-ad8f-b9f50a87c356"
+  }
+}

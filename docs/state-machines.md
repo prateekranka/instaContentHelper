@@ -376,36 +376,42 @@ In any state, a changed text, a changed existing detail, removal, extraction, or
 
 ## Server text job
 
-[Status schema](../supabase/migrations/20261026170000_mira_generation_jobs.sql) · [Current transition rules](../supabase/migrations/20261128030000_mira_phase_e_jobs.sql) · [Worker and API mapping](../supabase/functions/mira-generation/index.ts) · [Model](../specs/tla/MiraJobs.tla)
+[Status schema](../supabase/migrations/20261026170000_mira_generation_jobs.sql) · [Current transition rules](../supabase/migrations/20261128040000_mira_astra_server_fixes.sql) · [Worker and API mapping](../supabase/functions/mira-generation/index.ts) · [Model](../specs/tla/MiraJobs.tla)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> queued: request accepted
+    [*] --> absent
+    absent --> queued: request accepted
+    absent --> stoppedBeforeStart: stop records job ID and scope
     queued --> running: claim
     queued --> failed: expires
     queued --> cancelled: stop
-    running --> running: progress or new claim after expiry
+    running --> running: dispatch, progress, save output or reclaim before dispatch
     running --> queued: retry later
-    running --> succeeded: valid result saved
+    running --> succeeded: finish with saved output
     running --> failed: failure or expiry
     running --> cancelled: stop
 ```
 
-A lease gives a worker time to finish. A new claim needs a due job, fewer than three attempts, and a new lease. An unexpired claim can report progress in order from idea to script to shot list for `todayIdea` or `pickIdea`. A new claim resets progress. Daily Note gets one claim on the same UTC day and cannot return to the queue.
+A lease gives a worker time to finish. A new claim needs a due job, fewer than three attempts, and a lease of at least 90 seconds. An unexpired claim can report progress in order from idea to script to shot list for `todayIdea` or `pickIdea`. A new claim resets progress. Daily Note gets one claim on the same UTC day and cannot return to the queue.
 
-The API maps queued and running rows to working requests. It reports `waiting_to_retry` during backoff or after a claim expires with more attempts available. The Swift request and screen machines choose the visible next step.
+Stop before admission records the job ID, workspace, creator, and member. The API retains the existing 404 for this Stop and refuses a later start in that scope.
+
+The worker records dispatch before calling the provider. It saves validated output before completing the job. A later claim completes saved output without spending an attempt. If the lease expires after dispatch and the database has no saved output, the job fails. A failed job requires an error.
+
+The API maps queued and running rows to working requests. It exposes output after success. It reports `waiting_to_retry` during backoff or after an undispatched claim expires with attempts available. The Swift request and screen machines choose the visible next step.
 
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |
 | `queued` | Claim when due. Expire. Stop. | `running`. `failed`. `cancelled`. | Wait for the claim |
-| `running` | Report progress. Claim again after lease expiry. Retry a temporary error. Save result. Fail or expire. Stop. | `running`. `running`. `queued`. `succeeded`. `failed`. `cancelled`. | Wait for the result or retry |
+| `running` | Dispatch, report progress or save output. Reclaim after expiry before dispatch. Retry a temporary provider error. Finish with saved output. Fail or expire. Stop. | `running`. `running`. `queued`. `succeeded`. `failed`. `cancelled`. | Wait for the result or retry |
 | `succeeded` | — | — | Open or review the result |
 | `failed` | — | — | Try again if the screen offers it |
 | `cancelled` | — | — | Try again if the screen offers it |
 
 ## Server picture job
 
-[Status schema](../supabase/migrations/20261127200000_mira_steps_and_shot_pictures.sql) · [Current claim rules](../supabase/migrations/20261128030000_mira_phase_e_jobs.sql) · [Worker](../supabase/functions/mira-generation/shot-pictures.ts) · [Model](../specs/tla/MiraShotPictures.tla)
+[Status schema](../supabase/migrations/20261127200000_mira_steps_and_shot_pictures.sql) · [Current claim rules](../supabase/migrations/20261128040000_mira_astra_server_fixes.sql) · [Worker](../supabase/functions/mira-generation/shot-pictures.ts) · [Model](../specs/tla/MiraShotPictures.tla)
 
 ```mermaid
 stateDiagram-v2
@@ -414,17 +420,18 @@ stateDiagram-v2
     unreserved --> failed: opt in after cap reached
     generating --> ready: upload saved or found after expiry
     generating --> failed: call failed or no saved file after expiry
+    failed --> ready: upload finishes or status finds the file
     ready --> ready: sign another link
 ```
 
-The first request for pictures on a completed, enabled card can reserve each shot once. A member can reserve up to 30 pictures per UTC day. Picture jobs use separate slots from text jobs. Text stays usable while pictures finish.
+The first request for pictures on a completed, enabled card can reserve each shot UUID once. UUID comparisons ignore case. The cap is 30 per member and reservation UTC day. A reservation holds a slot until dispatch, failure, or expiry. Failure or expiry before dispatch releases the slot. Picture jobs use separate slots from text jobs. Text stays usable while pictures finish.
 
 | State | Allowed events | Next state | Next step in the picture contract |
 | --- | --- | --- | --- |
 | `unreserved` (no row) | Request pictures on an eligible card | `generating` if a slot is free. Otherwise `failed`. | Use the shot plan |
 | `generating` | Save upload. Call fails. Check expired claim. | `ready`. `failed`. `ready` if a saved file exists, else `failed`. | Use the drawing while the preview is pending |
 | `ready` | Read or refresh link | `ready` | View the picture when the link is available |
-| `failed` | — | — | Use the drawing |
+| `failed` | The same upload finishes or status finds its object | `ready` | Use the drawing until the picture is ready |
 
 The picture API returns `pending` during generation or when it cannot sign a ready picture's link. The table describes the API contract. The client must opt in to show the previews.
 

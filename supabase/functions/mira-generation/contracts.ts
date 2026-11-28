@@ -211,6 +211,18 @@ export type MiraOutput =
   | LegacyOutput
   | z.infer<typeof pickIdeaOutputSchema>
   | PhaseEOutput;
+
+function normalizeDialogue(text: string): string {
+  return text.replace(/[‘’]/gu, "'").replace(/[“”]/gu, '"')
+    .replace(/\s+/gu, " ").trim();
+}
+
+function scriptDialogue(script: z.infer<typeof scriptSchema>): string {
+  const hook = normalizeDialogue(script.hook);
+  const spoken = normalizeDialogue(script.spoken);
+  return spoken.startsWith(hook) ? spoken : `${hook} ${spoken}`.trim();
+}
+
 export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
   if (isPhaseEInput(input)) return validatePhaseEOutput(value, input);
   const op = input.operation;
@@ -299,7 +311,7 @@ export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
       script!.durationSeconds > input.constraints.reelSeconds + 5
     ) fail("language_or_duration");
     if (
-      (script!.hook + " " + script!.spoken).trim().split(/\s+/u).length /
+      scriptDialogue(script!).split(" ").length /
           script!.durationSeconds > 3.4
     ) fail("speech_density");
   } else if (op === "requirements") {
@@ -337,19 +349,25 @@ export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
     if (op === "reviseShot") {
       const previous = input.storyboard;
       const revised = board!.shots[0];
-      if (!previous?.shots.some((shot) => shot.id === input.targetShotID)) {
+      const target = input.targetShotID?.toLowerCase();
+      if (!previous?.shots.some((shot) => shot.id.toLowerCase() === target)) {
         fail("invalid_shot_target");
       }
-      if (revised.id !== input.targetShotID) fail("wrong_shot_target");
+      if (revised.id.toLowerCase() !== target) fail("wrong_shot_target");
       board!.shots = previous!.shots.map((shot) =>
-        shot.id === input.targetShotID ? revised : shot
+        shot.id.toLowerCase() === target ? { ...revised, id: shot.id } : shot
       );
     }
     const shots = board!.shots;
     if (
-      new Set(shots.map((x) => x.id)).size !== shots.length ||
+      new Set(shots.map((x) => x.id.toLowerCase())).size !== shots.length ||
       shots.some((x) => x.recordingSeconds < x.editedSeconds)
     ) fail("shot_identity_or_duration");
+    const dialogue = shots.map((shot) => normalizeDialogue(shot.words))
+      .filter(Boolean).join(" ");
+    if (dialogue !== scriptDialogue(input.script!)) {
+      fail("shot_words_script_coverage");
+    }
     if (
       Math.abs(
           shots.reduce((a, x) => a + x.editedSeconds, 0) -
@@ -362,7 +380,9 @@ export function validateOutput(value: unknown, input: MiraInput): MiraOutput {
     for (const m of board!.mappings) {
       if (
         !requirements.some((x) => x.id === m.requirementID) ||
-        m.shotIDs.some((id) => !shots.some((x) => x.id === id))
+        m.shotIDs.some((id) =>
+          !shots.some((x) => x.id.toLowerCase() === id.toLowerCase())
+        )
       ) fail("unknown_mapping");
       if (
         m.scriptExcerpt &&

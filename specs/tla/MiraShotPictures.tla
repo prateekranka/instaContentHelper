@@ -1,10 +1,10 @@
 -------------------------- MODULE MiraShotPictures --------------------------
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Shots, Cap, TextLimit, LeaseSeconds, TimeoutSeconds, MarginSeconds
+CONSTANTS Shots, Cap, TextLimit, LeaseSeconds, TimeoutSeconds, MarginSeconds, EnforceLateRecovery
 
-VARIABLES state, dispatches, objects, reserved, textActive
-vars == <<state, dispatches, objects, reserved, textActive>>
+VARIABLES state, dispatches, objects, reserved, textActive, checked
+vars == <<state, dispatches, objects, reserved, textActive, checked>>
 
 Init ==
     /\ state = [s \in Shots |-> "new"]
@@ -12,6 +12,7 @@ Init ==
     /\ objects = {}
     /\ reserved = {}
     /\ textActive = 0
+    /\ checked = {}
 
 Reserve(s) ==
     /\ state[s] = "new"
@@ -20,36 +21,43 @@ Reserve(s) ==
             /\ state' = [state EXCEPT ![s] = "claimed"]
        ELSE /\ UNCHANGED reserved
             /\ state' = [state EXCEPT ![s] = "failed"]
-    /\ UNCHANGED <<dispatches, objects, textActive>>
+    /\ UNCHANGED <<dispatches, objects, textActive, checked>>
 
 Dispatch(s, remaining) ==
     /\ state[s] = "claimed"
     /\ IF remaining >= TimeoutSeconds + MarginSeconds
        THEN /\ dispatches' = [dispatches EXCEPT ![s] = @ + 1]
             /\ state' = [state EXCEPT ![s] = "running"]
+            /\ UNCHANGED reserved
        ELSE /\ UNCHANGED dispatches
             /\ state' = [state EXCEPT ![s] = "failed"]
-    /\ UNCHANGED <<objects, reserved, textActive>>
+            /\ reserved' = reserved \ {s}
+    /\ UNCHANGED <<objects, textActive, checked>>
 
 Upload(s) ==
-    /\ state[s] = "running" /\ s \notin objects
+    /\ state[s] \in {"running", "failed"} /\ dispatches[s] > 0 /\ s \notin objects
     /\ objects' = objects \cup {s}
-    /\ UNCHANGED <<state, dispatches, reserved, textActive>>
+    /\ UNCHANGED <<state, dispatches, reserved, textActive, checked>>
 
 Resolve(s) ==
     /\ state[s] \in {"claimed", "running"}
-    /\ state' = [state EXCEPT ![s] = IF s \in objects THEN "ready" ELSE "failed"]
-    /\ UNCHANGED <<dispatches, objects, reserved, textActive>>
+       \/ (state[s] = "failed" /\ s \in objects /\ s \notin checked)
+    /\ state' = [state EXCEPT ![s] =
+        IF s \in objects /\ (state[s] # "failed" \/ EnforceLateRecovery)
+        THEN "ready" ELSE "failed"]
+    /\ checked' = IF s \in objects THEN checked \cup {s} ELSE checked
+    /\ reserved' = IF dispatches[s] = 0 THEN reserved \ {s} ELSE reserved
+    /\ UNCHANGED <<dispatches, objects, textActive>>
 
 AdmitText ==
     /\ textActive < TextLimit
     /\ textActive' = textActive + 1
-    /\ UNCHANGED <<state, dispatches, objects, reserved>>
+    /\ UNCHANGED <<state, dispatches, objects, reserved, checked>>
 
 CompleteText ==
     /\ textActive > 0
     /\ textActive' = textActive - 1
-    /\ UNCHANGED <<state, dispatches, objects, reserved>>
+    /\ UNCHANGED <<state, dispatches, objects, reserved, checked>>
 
 Next ==
     \/ AdmitText \/ CompleteText
@@ -63,5 +71,6 @@ ReservationsBounded == Cardinality(reserved) <= Cap
 DispatchOnce == \A s \in Shots : dispatches[s] <= 1
 DispatchNeedsReservation == \A s \in Shots : dispatches[s] > 0 => s \in reserved
 ReadyHasObject == \A s \in Shots : state[s] = "ready" => s \in objects
+CheckedObjectIsReady == \A s \in checked : state[s] = "ready"
 TextSlotsIndependent == (textActive <= TextLimit) /\ (textActive < TextLimit => ENABLED AdmitText)
 =============================================================================

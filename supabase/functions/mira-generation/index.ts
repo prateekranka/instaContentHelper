@@ -8,6 +8,7 @@ import {
 } from "../_shared/device-auth.ts";
 import {
   inputSchema,
+  type MiraInput,
   type MiraOutput,
   operationSchema,
   type TodayStep,
@@ -120,7 +121,7 @@ export async function handleMira(
         startInput.operation === "reviseShot" &&
         (!startInput.targetShotID ||
           !startInput.storyboard?.shots.some((x) =>
-            x.id === startInput.targetShotID
+            x.id.toLowerCase() === startInput.targetShotID?.toLowerCase()
           ))
       ) return jsonResponse({ error: "invalid_target" }, 400);
     }
@@ -149,24 +150,27 @@ export async function handleMira(
     }
     if (body.input.operation === "dailyNote") jobID = result.data.id;
   }
-  let result = await scope();
+  const result = body.action === "cancel"
+    ? await admin.rpc("mira_cancel", {
+      p_id: body.id,
+      p_workspace: session.workspaceID,
+      p_creator: body.creatorID,
+      p_member: session.memberID,
+    })
+    : await scope();
+  if (result.error && body.action === "cancel") {
+    return jsonResponse({ error: "cancel_failed" }, 503);
+  }
   if (result.error) return jsonResponse({ error: "job_lookup_failed" }, 503);
-  if (!result.data) return jsonResponse({ error: "not_found" }, 404);
+  if (!result.data?.id) return jsonResponse({ error: "not_found" }, 404);
   const defer = deps.defer ?? ((work: Promise<unknown>) => {
     if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(work);
     else return work;
   });
-  if (body.action === "cancel") {
-    const cancelled = await admin.from("mira_generation_jobs").update({
-      status: "cancelled",
-      updated_at: new Date().toISOString(),
-    }).eq("id", body.id).eq("member_id", session.memberID).in("status", [
-      "queued",
-      "running",
-    ]).select("*").maybeSingle();
-    if (cancelled.error) return jsonResponse({ error: "cancel_failed" }, 503);
-    result = await scope();
-  } else if (["queued", "running"].includes(result.data.status)) {
+  if (
+    body.action !== "cancel" &&
+    ["queued", "running"].includes(result.data.status)
+  ) {
     const operation = operationSchema.safeParse(
       result.data.input?.operation,
     );
@@ -212,7 +216,7 @@ function toJob(row: Record<string, unknown>) {
   const operation = (row.input as { operation?: string } | null)?.operation;
   const maxAttempts = operation === "dailyNote" ? 1 : 3;
   const phase = (row.status === "queued" && Number(row.attempts) > 0) ||
-      (expired && Number(row.attempts) < maxAttempts)
+      (expired && !row.provider_started && Number(row.attempts) < maxAttempts)
     ? "waiting_to_retry"
     : row.status;
   return {
@@ -226,7 +230,7 @@ function toJob(row: Record<string, unknown>) {
     step: (phase === "running" && !expired) || phase === "succeeded"
       ? row.step ?? undefined
       : undefined,
-    output: row.output ?? undefined,
+    output: row.status === "succeeded" ? row.output ?? undefined : undefined,
     error: row.error ?? undefined,
   };
 }
@@ -250,49 +254,70 @@ async function runJob(
   }
   const row = claim.data?.[0];
   if (!row) return;
+  const update = (changes: Record<string, unknown>) =>
+    admin.from("mira_generation_jobs").update({
+      ...changes,
+      updated_at: new Date().toISOString(),
+    }).eq("id", id).eq("lease_id", row.lease_id).eq("status", "running");
+  let output: MiraOutput;
+  let input: MiraInput;
   try {
-    const input = inputSchema.parse(row.input);
+    input = inputSchema.parse(row.input);
     const signal = providerDeadline(input.operation, row.lease_until);
+    const started = await update({ provider_started: true })
+      .gt("lease_until", new Date().toISOString()).select("id").maybeSingle();
+    if (started.error) {
+      console.error(`mira_dispatch_save_failed ${id}`);
+      return;
+    }
+    if (!started.data) return;
+    signal.throwIfAborted();
     const onStep = async (step: TodayStep) => {
-      const result = await admin.from("mira_generation_jobs").update({
-        step,
-        updated_at: new Date().toISOString(),
-      }).eq("id", id).eq("lease_id", row.lease_id).eq("status", "running")
+      const result = await update({ step })
         .gt("lease_until", new Date().toISOString());
       if (result.error) console.error(`mira_step_persist_failed ${id}`);
     };
-    const output = await generator(input, env, signal, undefined, onStep);
-    const result = await admin.from("mira_generation_jobs").update({
-      status: "succeeded",
-      output,
-      picture_count:
-        (input.operation === "todayIdea" || input.operation === "pickIdea") &&
-          "storyboard" in output && output.storyboard
-          ? pictureCount(env)
-          : null,
-      error: null,
-      updated_at: new Date().toISOString(),
-    }).eq("id", id).eq("lease_id", row.lease_id).eq("status", "running");
-    if (result.error) throw Error("result_persist_failed");
+    output = await generator(input, env, signal, undefined, onStep);
   } catch (error) {
     const transient = error instanceof Error &&
       (error.message === "transient_provider_error" ||
-        error.name === "TimeoutError" ||
-        error.message === "result_persist_failed");
+        error.name === "TimeoutError");
     const retry = transient && row.input.operation !== "dailyNote" &&
       row.attempts < 3;
     const reason = failureReason(error);
     console.error(`mira_job_failed ${id} ${reason}`);
-    await admin.from("mira_generation_jobs").update({
+    await update({
       status: retry ? "queued" : "failed",
+      ...(retry ? { provider_started: false } : {}),
       error: transient
         ? row.input.operation === "dailyNote"
           ? "Daily note interrupted. Try again tomorrow."
           : "Generation interrupted. Retrying is bounded; a prior provider request may have completed."
         : `Generation failed validation or provider configuration. Your saved work is unchanged. (${reason})`,
       next_attempt_at: new Date(Date.now() + row.attempts * 5000).toISOString(),
-      updated_at: new Date().toISOString(),
-    }).eq("id", id).eq("lease_id", row.lease_id).eq("status", "running");
+    });
+    return;
+  }
+  const count =
+    (input.operation === "todayIdea" || input.operation === "pickIdea") &&
+      "storyboard" in output && output.storyboard
+      ? pictureCount(env)
+      : null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const saved = await update({ output, picture_count: count }).is(
+      "output",
+      null,
+    )
+      .select("id").maybeSingle();
+    if (saved.error) {
+      console.error(`mira_result_save_failed ${id}`);
+      continue;
+    }
+    if (saved.data) {
+      const finished = await update({ status: "succeeded", error: null });
+      if (finished.error) console.error(`mira_result_finish_failed ${id}`);
+    }
+    return;
   }
 }
 function failureReason(error: unknown): string {
