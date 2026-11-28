@@ -295,32 +295,11 @@ async function checkHomeInsights(app: App, screen: Screen) {
   await app.screenshot('e1-live-home-insights');
 }
 
-test('Smoke checks Home insights and previews three live ideas from one job', {
-  timeout: 600_000, tags: ['@home', '@insights', '@reel', '@phone-smoke', '@phone-only'],
+test('Smoke checks Home insights', {
+  timeout: 600_000, tags: ['@home', '@insights', '@phone-smoke', '@phone-only'],
 }, async ({ app, screen, device }) => {
-  expect(process.env.MIRA_E2E_ALLOW_LIVE_DRAFT).toBe('1');
-  expect(process.env.MIRA_E2E_LIVE_REQUEST_LIMIT).toBe('6');
-  expect(process.env.MIRA_E2E_LIVE_PICTURE_LIMIT).toBe('15');
-  expect(recorded()).toHaveLength(0);
   await launch(app, screen, device);
   await checkHomeInsights(app, screen);
-  await startStepByStep(screen);
-  const field = screen.getByRole('textbox', 'Tell Mira', { exact: true });
-  const prompt = 'At home, show the first step of making morning chai.';
-  await fit(screen, field);
-  await field.fill(prompt);
-  await closeWithDone(app, screen, field, prompt, 'smoke-live-prompt');
-  const generate = button(screen, 'Show three ideas').first();
-  await fit(screen, generate);
-  await expect(generate).toBeEnabled();
-  record({ scenario: 42, action: 'Reserve pictures for an ideas-only job', pictureSlots: 0 });
-  await request(42, 'Reserve up to three provider attempts for one ideas job', 3, () => generate.tap());
-  const choices = button(screen, 'Use this idea');
-  await waitForOutput(screen, choices.first(), 'Wait for live ideas.', 300_000);
-  await expect(choices).toHaveCount(3);
-  await fit(screen, choices.first());
-  await app.screenshot('smoke-live-ideas');
-  record({ scenario: 42, action: 'Three unselected ideas observed', pictures: 0 });
 });
 
 async function captureE1Plan(app: App, screen: Screen) {

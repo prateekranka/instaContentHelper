@@ -65,10 +65,10 @@ scripts/mira-phone-setup.sh --dry-run
 scripts/mira-phone-smoke.sh --dry-run --app work/DerivedData-device/Build/Products/Debug-iphoneos/ContentHelper.app
 ```
 
-Plan step by step saves a Reel draft before it sends live AI requests. Get the owner's approval to create that draft before passing `--allow-live-draft`. Without approval, the script stops before phone setup. The live check leaves saved Reels alone and previews ideas without selecting one.
+Export the existing isolated live QA credentials from a private environment file. The script needs `MCO_LIVE_CREATOR_ID`, `MCO_LIVE_DEVICE_TOKEN` and `MCO_SUPABASE_PUBLISHABLE_KEY` before phone setup. The smoke round uses the QA API for generation so it can leave the phone's Reel library intact.
 
 ```sh
-scripts/mira-phone-smoke.sh --allow-live-draft --app work/DerivedData-device/Build/Products/Debug-iphoneos/ContentHelper.app
+scripts/mira-phone-smoke.sh --app work/DerivedData-device/Build/Products/Debug-iphoneos/ContentHelper.app
 ```
 
 The phone steps run in this order:
@@ -77,13 +77,13 @@ The phone steps run in this order:
 2. Run Keep. Confirm AI permission shows Allowed and Instagram shows the connected account and a live follower count.
 3. Install over the verified Mira bundle. Keep its app data.
 4. Run Keep again.
-5. Find How you're doing by name. Run Show three ideas once and preview the three choices.
+5. Find How you're doing by name on the phone. Start one ideas-only job in the live QA workspace and check that it returns three distinct ideas.
 6. Open and close the real Profile keyboard. Compare the field value before and after.
 7. Open the share sheet for a saved Reel and cancel it.
 8. If E4 exists, open and cancel Photos. Join sample clips in a separate fixture library.
 9. Run Keep after the tests.
 
-Before dispatch, the live test reserves three text attempts for one ideas job, including server retries. That operation cannot request pictures. The round caps are six text requests and 15 pictures. The ledger records the reservation before the tap and records the result afterward. Only a provider-side ledger can confirm the exact number of calls charged.
+Before dispatch, the live test reserves three text attempts for one ideas job, including server retries. The request disables pictures. The test checks for zero pictures and never creates or edits a Reel. The ledger records the reservation before dispatch and the result afterward. Only the provider ledger can confirm the exact number of calls charged.
 
 Use `times.tsv`, `live-counts.json` and the TesterArmy reports under the printed evidence path to review results. A failed step stops the round. Resolve the specific blocker before a new run. Review the last live ledger before authorizing a new dispatch.
 

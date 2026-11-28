@@ -180,10 +180,9 @@ test('E1 tabs share the Ask Mira bar and My Brand keeps archived Reels reachable
   await expect(archived).toBeChecked();
   await expect(screen.getByText('Untitled Reel', { exact: true })).toBeVisible();
   await tap(screen, screen.getByText('Untitled Reel', { exact: true }));
-  const reel = screen.getByRole('other', 'My Brand', { exact: true }).filter({
-    has: screen.getByTestId('Your Reel'),
-  });
-  await expect(reel.getByPlaceholder('Ask Mira about this Reel', { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByTestId('Your Reel')).toBeVisible();
+  await expect(screen.getByPlaceholder('Ask Mira about this Reel', { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByTestId('mira.ask.bar', { visible: true })).toHaveCount(1);
   await app.screenshot('e1-archived-reel-ask');
 });
 
@@ -192,7 +191,7 @@ test('E1 resumes Words, reads the one-page shot list, and goes to the saved shot
   await chooseTodayCard(screen, 1, 'A quick movement break');
   const step = screen.getByTestId('mira.task.step');
   await expect(step).toHaveText('2 / 6');
-  await sendAsk(screen, 'Use simpler words for the opening');
+  await sendAsk(screen, 'Use simpler words for the opening', 'Ask Mira to change the words');
   const note = screen.getByTestId('mira.words.note');
   await scrollToControl(screen, note);
   await expectFieldValue(note, 'Use simpler words for the opening');
@@ -630,8 +629,10 @@ async function expandAllReels(screen: Screen) {
   await expect(archived).toBeAttached();
 }
 
-async function sendAsk(screen: Screen, request: string) {
-  const bar = screen.getByTestId('mira.ask.bar');
+async function sendAsk(screen: Screen, request: string, placeholder?: string) {
+  const bar = placeholder
+    ? screen.getByPlaceholder(placeholder, { exact: true, visible: true })
+    : screen.getByTestId('mira.ask.bar');
   await fillText(bar, request);
   const send = screen.getByRole('button', 'Send to Mira', { exact: true });
   await expect(send).toBeVisible();
