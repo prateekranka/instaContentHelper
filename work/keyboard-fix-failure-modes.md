@@ -31,3 +31,14 @@
 | Ask Mira bar on Home, My Brand, Deals, Your Reel, Today’s ideas, Your words, the filming screen and the Done screen | Send to Mira |
 
 The speech transcript field uses the same form and the existing Use these words control. Profile and the project name in the Reel editor keep their existing save behavior.
+
+## PR #48 additions
+
+| Screen | Main action for text entry |
+| --- | --- |
+| My Brand interview | Next or Make my brand doc |
+| My Brand document editor | Confirm |
+| Deals, Paste a brief | Read this brief or Retry |
+| Legacy idea request sheet | Make |
+
+The interview retains Back and Cancel. The editor retains validation and its saved document identifiers. The Paste control and the brief length limit stay in the scroll area.

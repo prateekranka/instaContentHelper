@@ -642,14 +642,8 @@ struct MiraMyBrandView: View {
     @State private var renaming: UUID?
     @State private var newName = ""
     var body: some View {
-        MiraPage {
-            MiraBrandView(store: store, onStart: onStartBrand, onGenerate: onGenerateBrand)
-            if case .idle = store.brandInterview {
-                switch store.brandDocumentState {
-                case .reviewing: EmptyView()
-                case .empty, .confirmed: librarySections
-                }
-            }
+        MiraBrandView(store: store, onStart: onStartBrand, onGenerate: onGenerateBrand) {
+            librarySections
         }.navigationTitle("My Brand").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: Binding(
                 get: { renaming != nil }, set: { if !$0 { renaming = nil } }

@@ -1,10 +1,11 @@
 import AVFoundation
 import SwiftUI
 
-struct MiraBrandView: View {
+struct MiraBrandView<Library: View>: View {
     let store: MiraStore
     let onStart: () -> Void
     let onGenerate: () -> Void
+    @ViewBuilder var library: Library
 
     var body: some View {
         switch store.brandInterview {
@@ -13,24 +14,33 @@ struct MiraBrandView: View {
                 answers: answers, language: store.document.profile.language, onEdit: { store.sendBrandInterview(.edit($0)) },
                 onBack: { store.sendBrandInterview(.back) }, onNext: {
                     if answers.isLast { onGenerate() } else { store.sendBrandInterview(.next) }
-                }, next: store.brandInterview.nextAction)
+                }, onCancel: { store.sendBrandInterview(.reset) }, next: store.brandInterview.nextAction)
             .id(answers.index)
-            cancelInterview
         case .generating:
-            ProgressView("Making your brand doc").accessibilityIdentifier("mira.brand.wait")
+            MiraPage { ProgressView("Making your brand doc").accessibilityIdentifier("mira.brand.wait") }
         case .failed(_, _, let message):
-            Text(message)
-            Button(store.brandInterview.nextAction.title, action: onGenerate).buttonStyle(MiraPrimaryStyle())
-            Button("Back to your answers") { store.sendBrandInterview(.back) }
-            cancelInterview
+            MiraPage {
+                Text(message)
+                Button(store.brandInterview.nextAction.title, action: onGenerate).buttonStyle(MiraPrimaryStyle())
+                Button("Back to your answers") { store.sendBrandInterview(.back) }
+                Button("Cancel interview") { store.sendBrandInterview(.reset) }.font(.subheadline)
+            }
         case .idle:
-            document
+            MiraPage {
+                document
+                switch store.brandDocumentState {
+                case .reviewing: EmptyView()
+                case .empty, .confirmed: library
+                }
+            }.miraBottomAction {
+                if case .reviewing(let draft) = store.brandDocumentState {
+                    Button(store.brandDocumentState.nextAction.title) { store.sendBrandDocument(.confirm) }
+                        .buttonStyle(MiraPrimaryStyle())
+                        .disabled(!draft.normalized().isValid)
+                        .accessibilityIdentifier("mira.brand.confirm")
+                }
+            }
         }
-    }
-
-    private var cancelInterview: some View {
-        Button("Cancel interview") { store.sendBrandInterview(.reset) }
-            .font(.subheadline)
     }
 
     @ViewBuilder private var document: some View {
@@ -46,10 +56,6 @@ struct MiraBrandView: View {
         case .reviewing(let draft):
             MiraSectionTitle(text: "Your brand doc")
             editor(draft)
-            Button(store.brandDocumentState.nextAction.title) { store.sendBrandDocument(.confirm) }
-                .buttonStyle(MiraPrimaryStyle())
-                .disabled(!draft.normalized().isValid)
-                .accessibilityIdentifier("mira.brand.confirm")
             Button("Cancel") { store.sendBrandDocument(.read(store.document.brandDoc)) }
         case .confirmed(let saved):
             MiraSectionTitle(text: "Your brand doc")
@@ -141,6 +147,7 @@ private struct MiraBrandQuestion: View {
     let onEdit: (String) -> Void
     let onBack: () -> Void
     let onNext: () -> Void
+    let onCancel: () -> Void
     let next: MiraNextAction
     @Environment(MiraDependencies.self) private var dependencies
     @Environment(\.scenePhase) private var scenePhase
@@ -148,49 +155,53 @@ private struct MiraBrandQuestion: View {
     @State private var typedBase = ""
 
     var body: some View {
-        Text("Question \(answers.index + 1) of \(MiraInterviewAnswers.questions.count)")
-            .font(.subheadline)
-            .accessibilityIdentifier("mira.brand.questionNumber")
-        Text(MiraInterviewAnswers.questions[answers.index])
-            .font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
-            .accessibilityIdentifier("mira.brand.question")
-        HStack(alignment: .top, spacing: 12) {
-            MiraTextInput(title: "Your answer", text: Binding(get: { answers.answer }, set: { onEdit($0) }), axis: .vertical)
-                .lineLimit(3...7).font(.title3).accessibilityIdentifier("mira.brand.answer")
-            if let speech {
-                MiraVoiceButton(speech: speech, locale: language == .english ? "en-IN" : "hi-IN", compact: true) {
-                    typedBase = answers.answer
+        MiraPage {
+            Text("Question \(answers.index + 1) of \(MiraInterviewAnswers.questions.count)")
+                .font(.subheadline)
+                .accessibilityIdentifier("mira.brand.questionNumber")
+            Text(MiraInterviewAnswers.questions[answers.index])
+                .font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("mira.brand.question")
+            HStack(alignment: .top, spacing: 12) {
+                MiraTextInput(title: "Your answer", text: Binding(get: { answers.answer }, set: { onEdit($0) }), axis: .vertical)
+                    .lineLimit(3...7).font(.title3).accessibilityIdentifier("mira.brand.answer")
+                if let speech {
+                    MiraVoiceButton(speech: speech, locale: language == .english ? "en-IN" : "hi-IN", compact: true) {
+                        typedBase = answers.answer
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("mira.brand.mic")
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("mira.brand.mic")
             }
-        }
-        .onAppear { if speech == nil { speech = dependencies.makeSpeechInput() } }
-        .onDisappear { speech?.stop() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { speech?.refreshPermissions() }
-            else { speech?.stop() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in
-            speech?.stop()
-        }
-        .onChange(of: speech?.transcript ?? "") { _, spoken in
-            guard !spoken.isEmpty else { return }
-            onEdit([typedBase, spoken].filter { !$0.isEmpty }.joined(separator: " "))
-        }
-        if let message = speech?.state.message { Text(message).accessibilityAddTraits(.updatesFrequently) }
-        Button(next.title) {
-            speech?.stop()
-            onNext()
-        }
-        .buttonStyle(MiraPrimaryStyle())
-        .disabled(!answers.canAdvance || speech?.state.isRecording == true)
-        .accessibilityIdentifier("mira.brand.next")
-        if answers.index > 0 {
-            Button("Back") {
+            .onAppear { if speech == nil { speech = dependencies.makeSpeechInput() } }
+            .onDisappear { speech?.stop() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { speech?.refreshPermissions() }
+                else { speech?.stop() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in
                 speech?.stop()
-                onBack()
-            }.accessibilityIdentifier("mira.brand.back")
+            }
+            .onChange(of: speech?.transcript ?? "") { _, spoken in
+                guard !spoken.isEmpty else { return }
+                onEdit([typedBase, spoken].filter { !$0.isEmpty }.joined(separator: " "))
+            }
+            if let message = speech?.state.message { Text(message).accessibilityAddTraits(.updatesFrequently) }
+            if answers.index > 0 {
+                Button("Back") {
+                    speech?.stop()
+                    onBack()
+                }.accessibilityIdentifier("mira.brand.back")
+            }
+            Button("Cancel interview", action: onCancel).font(.subheadline)
+        }.miraBottomAction {
+            Button(next.title) {
+                speech?.stop()
+                onNext()
+            }
+            .buttonStyle(MiraPrimaryStyle())
+            .disabled(!answers.canAdvance || speech?.state.isRecording == true)
+            .accessibilityIdentifier("mira.brand.next")
         }
     }
 }
