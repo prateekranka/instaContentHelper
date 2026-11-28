@@ -27,29 +27,29 @@ struct MiraRootView: View {
                         store: store,
                         onStepByStep: {
                             sheet = nil
-                            open(store.newProject(), tab: .projects)
+                            open(store.newProject(), tab: .myBrand)
                         },
                         onDemo: {
                             sheet = nil
-                            open(store.addDemo(), tab: .today)
+                            open(store.addDemo(), tab: .home)
                         })
-                case .ask(let id, let operation, let target):
+                case .ask(let id, let operation, let target, let request):
                     MiraAskView(
                         store: store, projectID: id, operation: operation, target: target,
-                        onGenerate: generate)
+                        onGenerate: generate, initialRequest: request)
                 case .adjustIdea(let id, let ideaID):
                     MiraAskView(
                         store: store, projectID: id, operation: .ideas,
                         onGenerate: generate,
                         contextIdea: store.project(id)?.ideas.first { $0.id == ideaID })
-                case .askToday(let id, let cardID):
+                case .askToday(let id, let cardID, let request):
                     if let card = store.project(id)?.todayCards?.first(where: { $0.id == cardID }) {
                         MiraAskView(
                             store: store, projectID: id, operation: .todayIdea,
                             onGenerate: { _, _, request, _, language in
                                 let context = card.output?.ideas?.first.map { "Change this idea: \($0.title). " } ?? ""
                                 retryCard(id, cardID: cardID, request: context + request, language: language)
-                            }, contextIdea: card.output?.ideas?.first)
+                            }, contextIdea: card.output?.ideas?.first, initialRequest: request)
                     }
                 case .todayScript(let id, let cardID):
                     if let script = store.project(id)?.todayCards?.first(where: { $0.id == cardID })?.output?.script {
@@ -62,6 +62,12 @@ struct MiraRootView: View {
                             Text(script.caption)
                         }.navigationTitle("Script")
                             .toolbar { Button("Close") { sheet = nil } }
+                    }
+                case .dealDraft(let text):
+                    MiraDealDraftView(text: text) { request in
+                        let id = store.newProject(briefText: request)
+                        open(id, tab: .myBrand)
+                        sheet = nil
                     }
                 case .brief(let id): MiraBriefView(store: store, projectID: id, onGenerate: generate)
                 case .manualIdea(let id): MiraManualIdeaView(store: store, projectID: id)
@@ -114,31 +120,53 @@ struct MiraRootView: View {
     }
 
     private var libraryTabs: some View {
-        let selection = Binding<MiraTab>(
+        let selection = Binding<MiraMainTab>(
             get: { store.location.tab }, set: { store.navigate(.selectTab($0)) })
         return TabView(selection: selection) {
-            todayStack.tabItem { Label("Today", systemImage: "sun.max") }.tag(MiraTab.today)
-            projectsStack.tabItem { Label("Projects", systemImage: "book.closed") }.tag(MiraTab.projects)
+            NavigationStack(path: tabPath(.home)) {
+                home.navigationDestination(for: MiraRoute.self, destination: destination)
+            }.tabItem { Label("Home", systemImage: "house") }.tag(MiraMainTab.home)
+            NavigationStack {
+                MiraPage {
+                    MiraSectionTitle(text: "Share a brand brief to Mira")
+                    Text("No deals yet. Paste a brief below to save it with a Reel.")
+                }
+                .navigationTitle("Deals").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    askBar("Paste a brand brief", send: { sheet = .dealDraft($0) })
+                }
+            }.tabItem { Label("Deals", systemImage: "briefcase") }.tag(MiraMainTab.deals)
+            NavigationStack(path: tabPath(.myBrand)) {
+                MiraMyBrandView(
+                    store: store, onProfile: { sheet = .profile }, onBrief: { sheet = .brief($0) },
+                    onOpen: { open($0, tab: .myBrand) }, onDelete: delete)
+                .navigationDestination(for: MiraRoute.self, destination: destination)
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    askBar("Ask Mira for a Reel idea", send: { startFromAsk($0) })
+                }
+            }.tabItem { Label("My Brand", systemImage: "person.crop.rectangle") }.tag(MiraMainTab.myBrand)
         }
         .environment(\.miraTabBarClearance, 64)
     }
 
-    private var todayStack: some View {
-        NavigationStack(path: tabPath(.today)) {
-            today.navigationDestination(for: MiraRoute.self, destination: destination)
-        }
-    }
-
-    private var projectsStack: some View {
-        NavigationStack(path: tabPath(.projects)) {
-            MiraProjectsView(store: store, onOpen: { open($0, tab: .projects) }, onDelete: delete)
-                .navigationDestination(for: MiraRoute.self, destination: destination)
-                .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
-        }
-    }
-
-    private func tabPath(_ tab: MiraTab) -> Binding<[MiraRoute]> {
+    private func tabPath(_ tab: MiraMainTab) -> Binding<[MiraRoute]> {
         Binding(get: { store.location.path(tab) }, set: { store.navigate(.setPath(tab, $0)) })
+    }
+
+    private func askBar(_ placeholder: String, enabled: Bool = true, send: @escaping (String) -> Void) -> some View {
+        MiraAskBar(placeholder: placeholder, language: store.document.profile.language, enabled: enabled, onSend: send)
+    }
+
+    private func startFromAsk(_ text: String) {
+        store.navigate(.open(.home, []))
+        todayRequest = text
+        if let batch = store.document.projects.first(where: { !$0.archived && $0.hasWorkingCards }) {
+            store.navigate(.open(.home, [.todayCards(batch.id)]))
+        } else {
+            makeToday()
+        }
     }
 
     @ViewBuilder private var profileButton: some View {
@@ -153,19 +181,19 @@ struct MiraRootView: View {
             button
         }
     }
-    private var today: some View {
+    private var home: some View {
         MiraTodayHome(
             store: store, request: $todayRequest,
             blockedConsent: todayNeedsAIConsent && services.isLiveSupabaseRuntime ? services.aiConsent : nil,
             onMake: makeToday,
             onReviewAIConsent: { services.setAIConsentSheetPresented(true) },
-            onContinue: { open($0, tab: .today) },
-            onIdeas: { id in
-                store.navigate(.open(.today, [.todayCards(id)]))
-            }
+            onContinue: { store.continueReel($0) }
         )
-        .navigationTitle("Today").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Home").navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            askBar("Ask Mira for a Reel idea", send: { startFromAsk($0) })
+        }
     }
 
     private func makeToday() {
@@ -178,7 +206,7 @@ struct MiraRootView: View {
                 : try service(nil)
             let id = store.startToday(request: request, demo: demo, service: generation)
             todayRequest = ""
-            open(id, tab: .today)
+            open(id, tab: .home)
         } catch is AIConsentRequired {
             todayNeedsAIConsent = true
         } catch {
@@ -190,7 +218,7 @@ struct MiraRootView: View {
         return MiraFixtureGenerationService(
             failTodayCard: request == "Demo card failure", slowTodayCards: request == "Demo slow cards")
     }
-    private func open(_ id: UUID, tab: MiraTab) {
+    private func open(_ id: UUID, tab: MiraMainTab) {
         store.open(id, tab: tab)
     }
     @ViewBuilder private func destination(_ route: MiraRoute) -> some View {
@@ -200,6 +228,11 @@ struct MiraRootView: View {
                 store: store, projectID: id, onSheet: { sheet = $0 }, onGenerate: generate,
                 onReconnect: reconnect, onCancel: cancel)
                 .task(id: store.project(id)?.storyboard?.id) { watchPictures(id) }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if let project = store.project(id) {
+                        editorAskBar(project)
+                    }
+                }
         case .todayCards(let id):
             MiraTodayCardsView(
                 store: store, projectID: id,
@@ -207,7 +240,7 @@ struct MiraRootView: View {
                     if store.makeTodayCard(id, cardID: cardID) { push(.words(id)) }
                 },
                 onRetry: { retryCard(id, cardID: $0) },
-                onChange: { sheet = .askToday(id, $0) },
+                onChange: { card, request in sheet = .askToday(id, card, note: request) },
                 onScript: { sheet = .todayScript(id, $0) },
                 onBrief: { sheet = .brief(id) },
                 onManual: { sheet = .manualIdea(id) },
@@ -224,16 +257,58 @@ struct MiraRootView: View {
                 store: store, projectID: id, onAsk: { shot in sheet = .ask(id, .reviseShot, shot) },
                 onDone: { push(.done(id)) }, onWords: { showWords(id) })
                 .task(id: store.project(id)?.storyboard?.id) { watchPictures(id) }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if let project = store.project(id), let board = project.storyboard, !board.shots.isEmpty {
+                        let index = min(max(0, project.shotIndex), board.shots.count - 1)
+                        let shot = board.shots[index]
+                        askBar("Ask Mira to change a shot") { sheet = .ask(id, .reviseShot, shot.id, note: $0) }
+                            .id(shot.id)
+                    }
+                }
         case .words(let id):
             MiraWordsView(
                 store: store, projectID: id,
                 onEvent: { event in
                     store.sendWords(id, event, service: { try service(id, requiresConsent: $0) })
                 })
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    let state = store.project(id).map { store.wordsState($0) }
+                    askBar("Ask Mira to change the words", enabled: state?.handle(.change) != nil
+                           || state?.handle(.note("")) != nil) { text in
+                        store.sendWords(id, .change, service: { try service(id, requiresConsent: $0) })
+                        store.sendWords(id, .note(text), service: { try service(id, requiresConsent: $0) })
+                    }
+                }
         case .done(let id):
             MiraDoneView(store: store, projectID: id, onWords: { showWords(id) })
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    askBar("Ask Mira to change the plan") { sheet = .ask(id, .reviseStoryboard, nil, note: $0) }
+                }
         }
     }
+    private func editorAskBar(_ project: MiraProject) -> some View {
+        let section = store.editorScreen(project)
+        let placeholder = section == .shots ? "Ask Mira to change a shot"
+            : project.script == nil ? "Ask Mira about this Reel" : "Ask Mira to change the words"
+        return askBar(placeholder) { request in
+            switch section {
+            case .shots:
+                sheet = .ask(project.id, .reviseStoryboard, nil, note: request)
+            default:
+                if project.script != nil {
+                    sheet = .ask(project.id, .reviseScript, nil, note: request)
+                } else if project.selectedIdeaID != nil {
+                    sheet = .ask(project.id, .script, nil, note: request)
+                } else {
+                    store.update(project.id) {
+                        $0.request = request
+                        $0.touch()
+                    }
+                }
+            }
+        }.id(section)
+    }
+
     private func push(_ route: MiraRoute) {
         store.navigate(.push(MiraLocation(route)))
     }
@@ -286,7 +361,7 @@ struct MiraRootView: View {
     }
     private func delete(_ id: UUID) {
         guard store.project(id)?.hasWorkingCards != true else {
-            store.reportError("Stop the saved card requests from Today before deleting this project.")
+            store.reportError("Stop the saved idea requests before deleting this project.")
             return
         }
         if !store.requestState(store.project(id)?.job).pending {
@@ -309,52 +384,48 @@ struct MiraRootView: View {
 
 typealias MiraGenerateAction = (UUID, MiraOperation, String, UUID?, MiraLanguage?) -> Void
 
-struct MiraProjectsView: View {
+struct MiraMyBrandView: View {
     var store: MiraStore
+    var onProfile: () -> Void
+    var onBrief: (UUID) -> Void
     var onOpen: (UUID) -> Void
     var onDelete: (UUID) -> Void
+    @State private var showReels = false
     @State private var archived = false
     @State private var deletion: UUID?
     @State private var renaming: UUID?
     @State private var newName = ""
     var body: some View {
         MiraPage {
-            Toggle("Show archived projects", isOn: $archived)
-            let projects = store.document.projects.filter { $0.archived == archived }.sorted {
-                $0.updatedAt > $1.updatedAt
-            }
-            if projects.isEmpty {
-                Text(
-                    archived
-                        ? "No archived projects." : "Your projects will be here. Start an idea from Today."
-                ).foregroundStyle(.secondary)
-            }
-            ForEach(projects) { project in
-                VStack(alignment: .leading, spacing: 12) {
-                    Button {
-                        onOpen(project.id)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(project.title).font(.headline)
-                            Text("\(project.stage.title) · \(project.nextAction)").font(.callout)
-                        }
-                    }
-                    if project.isDemo { Text("Demo example").font(.caption) }
-                    HStack(spacing: 12) {
-                        Button("Rename") {
-                            newName = project.title
-                            renaming = project.id
-                        }
-                        Button(archived ? "Unarchive" : "Archive") {
-                            store.toggleArchive(project.id)
-                        }
-                        Spacer()
-                        Button("Delete", role: .destructive) { deletion = project.id }
-                    }.buttonStyle(.bordered)
+            let profile = store.document.profile
+            DisclosureGroup("Creator profile") {
+                VStack(alignment: .leading, spacing: 10) {
+                    profileDetail("Name", profile.name)
+                    profileDetail("Themes", profile.themes)
+                    profileDetail("Audience", profile.audience)
+                    profileDetail("Language", profile.language.rawValue)
+                    profileDetail("Tone", profile.tone)
+                    profileDetail("Avoid", profile.avoid)
+                    profileDetail("Examples", profile.samples)
+                    Button("Edit creator profile", action: onProfile)
+                }.padding(.vertical, 8)
+            }.font(.headline)
+            DisclosureGroup("Brand brief") {
+                let briefs = store.document.projects.filter { !$0.brief.original.isEmpty }
+                    .sorted { $0.updatedAt > $1.updatedAt }
+                if briefs.isEmpty {
+                    Text("No saved brand briefs.")
                 }
-                Divider()
-            }
-        }.navigationTitle("Projects")
+                ForEach(briefs) { project in
+                    Button(project.title) { onBrief(project.id) }
+                        .padding(.vertical, 6)
+                }
+            }.font(.headline)
+            DisclosureGroup("All Reels", isExpanded: $showReels) {
+                VStack(alignment: .leading, spacing: 18) { reels }
+                    .padding(.vertical, 12)
+            }.font(.headline)
+        }.navigationTitle("My Brand").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: Binding(
                 get: { renaming != nil }, set: { if !$0 { renaming = nil } }
             )) {
@@ -387,6 +458,50 @@ struct MiraProjectsView: View {
                 }
             }
     }
+    @ViewBuilder private func profileDetail(_ label: String, _ value: String) -> some View {
+        if !value.isEmpty {
+            LabeledContent(label, value: value).font(.body)
+        }
+    }
+
+    @ViewBuilder private var reels: some View {
+        Toggle("Show archived projects", isOn: $archived)
+        let projects = store.document.projects.filter { $0.archived == archived }.sorted {
+            $0.updatedAt > $1.updatedAt
+        }
+        if projects.isEmpty {
+            Text(
+                archived
+                    ? "No archived projects." : "Your projects will be here. Start an idea from Home."
+            ).foregroundStyle(.secondary)
+        }
+        ForEach(projects) { project in
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    onOpen(project.id)
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(project.title).font(.headline)
+                        Text("\(project.stage.title) · \(project.nextAction)").font(.callout)
+                    }
+                }
+                if project.isDemo { Text("Demo example").font(.caption) }
+                HStack(spacing: 12) {
+                    Button("Rename") {
+                        newName = project.title
+                        renaming = project.id
+                    }
+                    Button(archived ? "Unarchive" : "Archive") {
+                        store.toggleArchive(project.id)
+                    }
+                    Spacer()
+                    Button("Delete", role: .destructive) { deletion = project.id }
+                }.buttonStyle(.bordered)
+            }
+            Divider()
+        }
+    }
+
 }
 
 
@@ -441,7 +556,6 @@ struct MiraTodayHome: View {
     let onMake: () -> Void
     let onReviewAIConsent: () -> Void
     let onContinue: (UUID) -> Void
-    let onIdeas: (UUID) -> Void
     @Environment(MiraDependencies.self) private var dependencies
     @Environment(\.scenePhase) private var scenePhase
     @State private var speech: (any MiraSpeechInputService)?
@@ -455,81 +569,31 @@ struct MiraTodayHome: View {
 
     var body: some View {
         MiraPage {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(greeting).font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
-                Text("What can you film today?").font(.title2.weight(.semibold))
-                    .accessibilityHidden(true)
-            }
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    MiraTextInput(
-                        title: "For example: at the gym, sled push", text: $request, axis: .vertical
-                    )
-                    .lineLimit(2...4).font(.title3)
-                    .accessibilityLabel("What can you film today?")
-                    .accessibilityIdentifier("mira.today.request")
-                    microphone
-                }
-                if let message = speech?.state.message {
-                    Text(message).font(.subheadline).monospacedDigit()
-                        .accessibilityAddTraits(.updatesFrequently)
-                }
-                MiraChipFlow(spacing: 8) {
-                    ForEach(Self.places, id: \.id) { chip($0, group: Self.places) }
-                    ForEach(Self.times, id: \.id) { chip($0, group: Self.times) }
-                }
-            }
-            if let batch = workingBatch {
-                Text("Mira is still making today's ideas.").font(.title3)
-                Button("See today's ideas") {
-                    speech?.stop()
-                    onIdeas(batch.id)
-                }
-                .buttonStyle(MiraPrimaryStyle())
-                .accessibilityIdentifier("mira.today.open")
-            } else {
-                Button("Make today's Reel") {
-                    speech?.stop()
-                    onMake()
-                }
-                .buttonStyle(MiraPrimaryStyle())
-                .disabled(speech?.state.isRecording == true)
-                .accessibilityIdentifier("mira.today.make")
-            }
-            if let blockedConsent, blockedConsent == .declined || blockedConsent == .outOfDate {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(blockedConsent == .outOfDate ? "Review AI permission again to write ideas." : "Allow AI to write ideas first.")
-                        .accessibilityIdentifier("mira.today.aiPermissionNeeded")
-                    Button(blockedConsent.nextAction.title, action: onReviewAIConsent)
-                        .buttonStyle(.bordered).controlSize(.large)
-                }
-            }
-            if let project = store.document.continuationProject(resuming: store.location.lastProject),
-                project.id != workingBatch?.id {
-                Button {
-                    onContinue(project.id)
-                } label: {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Continue").font(.subheadline).foregroundStyle(MiraTheme.secondaryInk)
-                            Text(project.idea?.title ?? project.title).font(.headline)
-                                .multilineTextAlignment(.leading)
-                            Text(project.nextAction).font(.subheadline)
-                                .foregroundStyle(MiraTheme.secondaryInk)
-                        }
-                        Spacer(minLength: 8)
-                        Image(systemName: "chevron.right").font(.subheadline.weight(.semibold))
-                            .accessibilityHidden(true)
+            switch store.homeFeed {
+            case .empty:
+                Text("Nothing planned today.").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+                MiraFeedCard {
+                    MiraSectionTitle(text: "Nothing planned today. Want an idea?")
+                    ideaRequest
+                }.accessibilityIdentifier("mira.home.idea")
+            case .continuing(let reels):
+                Text(reels.count == 1 ? "You have one Reel in progress." : "You have \(reels.count) Reels in progress.")
+                    .font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+                ForEach(reels) { reel in
+                    MiraFeedCard {
+                        Text("Continue").font(.subheadline).foregroundStyle(MiraTheme.secondaryInk)
+                        MiraSectionTitle(text: reel.title)
+                        ProgressView(value: Double(reel.completedSteps), total: Double(MiraTaskStep.total))
+                            .accessibilityLabel("Reel progress")
+                            .accessibilityValue("\(reel.completedSteps) of \(MiraTaskStep.total) steps complete")
+                        Button(reel.nextAction.title) { onContinue(reel.id) }
+                            .buttonStyle(MiraPrimaryStyle())
+                            .accessibilityIdentifier("mira.today.continue")
                     }
-                    .foregroundStyle(MiraTheme.ink)
-                    .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(MiraTheme.surface, in: RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MiraTheme.edge, lineWidth: 1))
-                    .contentShape(RoundedRectangle(cornerRadius: 16))
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("mira.today.continue")
             }
+            consentRecovery
+            MiraInsightsView(compact: true)
         }
         .onAppear { if speech == nil { speech = dependencies.makeSpeechInput() } }
         .onDisappear { speech?.stop() }
@@ -549,15 +613,44 @@ struct MiraTodayHome: View {
         }
     }
 
-    private var workingBatch: MiraProject? {
-        store.document.projects.first { !$0.archived && $0.hasWorkingCards }
+    @ViewBuilder private var ideaRequest: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                MiraTextInput(
+                    title: "For example: at the gym, sled push", text: $request, axis: .vertical
+                )
+                .lineLimit(2...4).font(.title3)
+                .accessibilityLabel("What can you film today?")
+                .accessibilityIdentifier("mira.today.request")
+                microphone
+            }
+            if let message = speech?.state.message {
+                Text(message).font(.subheadline).monospacedDigit()
+                    .accessibilityAddTraits(.updatesFrequently)
+            }
+            MiraChipFlow(spacing: 8) {
+                ForEach(Self.places, id: \.id) { chip($0, group: Self.places) }
+                ForEach(Self.times, id: \.id) { chip($0, group: Self.times) }
+            }
+        }
+        Button(MiraNextAction.makeToday.title) {
+            speech?.stop()
+            onMake()
+        }
+        .buttonStyle(MiraPrimaryStyle())
+        .disabled(speech?.state.isRecording == true)
+        .accessibilityIdentifier("mira.today.make")
     }
 
-    private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        let part = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
-        let name = store.document.profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? "\(part)." : "\(part), \(name)."
+    @ViewBuilder private var consentRecovery: some View {
+        if let blockedConsent, blockedConsent == .declined || blockedConsent == .outOfDate {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(blockedConsent == .outOfDate ? "Review AI permission again to write ideas." : "Allow AI to write ideas first.")
+                    .accessibilityIdentifier("mira.today.aiPermissionNeeded")
+                Button(blockedConsent.nextAction.title, action: onReviewAIConsent)
+                    .buttonStyle(.bordered).controlSize(.large)
+            }
+        }
     }
 
     @ViewBuilder private var microphone: some View {
@@ -628,7 +721,7 @@ struct MiraTodayCardsView: View {
     let projectID: UUID
     let onMake: (UUID) -> Void
     let onRetry: (UUID) -> Void
-    let onChange: (UUID) -> Void
+    let onChange: (UUID, String) -> Void
     let onScript: (UUID) -> Void
     let onBrief: () -> Void
     let onManual: () -> Void
@@ -644,6 +737,8 @@ struct MiraTodayCardsView: View {
         if let project = store.project(projectID), let cards = project.todayCards, !cards.isEmpty {
             let current = min(max(position ?? 0, 0), cards.count - 1)
             VStack(spacing: 12) {
+                MiraTaskHeading(step: store.taskStep(.todayCards(projectID), in: project))
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
                 pager(cards, in: project, current: current)
                 ScrollView(.horizontal) {
                     HStack(spacing: 12) {
@@ -682,7 +777,6 @@ struct MiraTodayCardsView: View {
                     Menu("More") {
                         let card = cards[current]
                         if card.output?.script != nil { Button("Read script") { onScript(card.id) } }
-                        if !store.cardState(card, in: project).pending { Button("Ask Mira") { onChange(card.id) } }
                         Button("Brand requirements", action: onBrief)
                         Button("Add my own idea", action: onManual)
                         NavigationLink("More ideas", value: MiraRoute.project(projectID))
@@ -692,6 +786,14 @@ struct MiraTodayCardsView: View {
                         }
                     }
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                let card = cards[current]
+                MiraAskBar(
+                    placeholder: "Ask Mira to change this idea", language: store.document.profile.language,
+                    enabled: !store.cardState(card, in: project).pending,
+                    onSend: { onChange(card.id, $0) })
+                .id(card.id)
             }
             .sensoryFeedback(.success, trigger: firstIdeaHaptic)
             .onChange(of: cards.contains { store.cardState($0, in: project).ideaReady }) { _, ready in
@@ -799,9 +901,9 @@ struct MiraTodayCardsView: View {
             Button(state.nextAction.title) { onRetry(card.id) }.buttonStyle(MiraPrimaryStyle())
         case .needsUpdate:
             Button(state.nextAction.title) { onRetry(card.id) }.buttonStyle(MiraPrimaryStyle())
-            Button("Change something") { onChange(card.id) }.buttonStyle(.bordered).controlSize(.large)
+            Button("Change something") { onChange(card.id, "") }.buttonStyle(.bordered).controlSize(.large)
         case .ready:
-            Button("Change something") { onChange(card.id) }.buttonStyle(.bordered).controlSize(.large)
+            Button("Change something") { onChange(card.id, "") }.buttonStyle(.bordered).controlSize(.large)
         }
     }
 

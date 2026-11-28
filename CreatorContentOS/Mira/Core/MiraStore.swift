@@ -119,13 +119,47 @@ final class MiraStore {
         save()
     }
 
-    func open(_ id: UUID, tab: MiraTab) {
+    func open(_ id: UUID, tab: MiraMainTab) {
         guard let project = project(id) else { return }
         let previous = location.rememberedScreen(id)
-        let path = tab == .today
+        let path = tab == .home
             ? project.todayResumePath(remembering: previous)
             : project.resumePath(remembering: previous)
         navigate(.open(tab, path))
+    }
+
+    var homeFeed: MiraHomeFeed {
+        MiraHomeFeed.empty.handle(.workChanged(document.projects, resume: location.lastProject))
+    }
+
+    func continueReel(_ id: UUID) {
+        guard let project = project(id), homeFeed.contains(id) else { return }
+        let editor: [MiraRoute] = [.project(id)]
+        let hasCards = project.todayCards?.isEmpty == false
+        let path: [MiraRoute]
+        switch project.stage {
+        case .choosing:
+            path = hasCards ? [.todayCards(id)] : editor
+        case .writing:
+            path = editor
+        case .planning(let hasShots):
+            location = location.handle(.remember(id, hasShots ? .shots : .script, makeCurrent: true))
+            path = editor
+        case .approving:
+            path = (hasCards ? [.todayCards(id)] : editor) + [.words(id)]
+        case .ready:
+            location = location.handle(.remember(id, .shots, makeCurrent: true))
+            path = editor
+        case .filming:
+            path = editor + [.shooting(id)]
+        case .complete:
+            return
+        }
+        navigate(.open(.home, path))
+    }
+
+    func taskStep(_ location: MiraLocation, in project: MiraProject) -> MiraTaskStep {
+        MiraTaskStep.idea.handle(.opened(location, editorSection: editorScreen(project), approved: project.isApproved))
     }
 
     func editorScreen(_ project: MiraProject) -> MiraProjectScreen {
@@ -139,7 +173,7 @@ final class MiraStore {
 
     private func encodeLocation() {
         document.navigation = MiraNavigation(
-            tab: location.tab, today: location.path(.today), projects: location.path(.projects))
+            tab: location.savedTab, today: location.path(.home), projects: location.path(.myBrand))
         for index in document.projects.indices {
             let screen = location.rememberedScreen(document.projects[index].id)
             if document.projects[index].lastScreen != screen {
@@ -217,7 +251,7 @@ final class MiraStore {
                 if project.storyboard != nil, project.storyboardIsStale {
                     sendWords(id, .retry, service: service)
                 } else {
-                    sendWords(id, .startFilming, service: service)
+                    sendWords(id, .reviewPlan, service: service)
                 }
             case .generate(let operation, let text, let target, let language):
                 generate(id, operation: operation, request: text, target: target, language: language,
@@ -225,9 +259,9 @@ final class MiraStore {
                 if requestState(self.project(id)?.job).pending, let (settled, _) = next.handle(.requestStarted) {
                     wordsStates[id] = settled
                 }
-            case .openFilming:
+            case .openPlan:
                 guard project.isApproved else { wordsStates[id] = current; return }
-                navigate(.push(.filming(id)))
+                navigate(.showPlan(id))
             case .applyWords:
                 applyProposal(id, keepWordsScreen: true)
             case .clearProposal:
@@ -252,7 +286,7 @@ final class MiraStore {
         if let updated = self.project(id), updated.job == nil, !updated.storyboardIsStale,
             let (opening, _) = next.handle(.shotsApplied) {
             wordsStates[id] = opening
-            navigate(.push(.filming(id)))
+            navigate(.showPlan(id))
         } else if let (failed, _) = next.handle(.shotsRejected) {
             wordsStates[id] = failed
         }
@@ -335,8 +369,11 @@ final class MiraStore {
             return false
         }
     }
-    func newProject() -> UUID {
-        let project = MiraProject()
+    func newProject(briefText: String = "") -> UUID {
+        var project = MiraProject()
+        if let brief = project.briefState.handle(.textChanged(briefText)), !briefText.isEmpty {
+            project.brief = brief.record
+        }
         document.projects.insert(project, at: 0)
         location = location.handle(.remember(project.id, nil, makeCurrent: true))
         save()

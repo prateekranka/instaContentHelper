@@ -13,6 +13,7 @@ struct MiraProjectView: View {
                 let showingShots = project.selectedIdeaID != nil && store.editorScreen(project) == .shots
                     && project.storyboard != nil
                 MiraPage {
+                    MiraTaskHeading(step: store.taskStep(.editor(projectID), in: project))
                     if project.isDemo {
                         Text("Example — not your content").font(.caption).foregroundStyle(
                             MiraTheme.accent)
@@ -96,9 +97,6 @@ struct MiraProjectView: View {
                     if showingShots {
                         ToolbarItem(placement: .topBarTrailing) {
                             Menu {
-                                Button("Ask Mira about this plan") {
-                                    onSheet(.ask(projectID, .reviseStoryboard, nil))
-                                }
                                 projectActions(project)
                                 Button("Choose another idea") { store.chooseAnotherIdea(projectID) }
                             } label: {

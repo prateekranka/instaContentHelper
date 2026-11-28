@@ -8,9 +8,40 @@ struct MiraInsightsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.webAuthenticationSession) private var webAuth
 
+    var compact = false
     @State private var state = MiraInsightsState.unopened
 
     var body: some View {
+        Group {
+            if compact {
+                if let report = homeReport, !report.headline.isEmpty {
+                    MiraFeedCard {
+                        MiraSectionTitle(text: "How you're doing")
+                        if report.source != .api {
+                            Text(report.source == .sample ? "Sample data" : "Manually entered").font(.caption)
+                        }
+                        ForEach(report.headline) { metric in
+                            LabeledContent(metric.label, value: metric.value)
+                        }
+                    }
+                }
+            } else {
+                fullPage
+            }
+        }
+        .task(id: liveSession?.deviceInstallationID) { await load() }
+    }
+
+    private var homeReport: InstagramInsightsReport? {
+        switch state {
+        case .loaded(.ready(let report)), .loadFailed(_, .ready(let report)):
+            return report
+        default:
+            return nil
+        }
+    }
+
+    private var fullPage: some View {
         MiraPage {
             MiraSectionTitle(text: "How you're doing")
             switch state {
@@ -31,7 +62,6 @@ struct MiraInsightsView: View {
         }
         .navigationTitle("How you're doing")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
     }
 
     @ViewBuilder private func content(_ result: InstagramInsightsState) -> some View {
@@ -141,7 +171,8 @@ struct MiraInsightsView: View {
         guard transition(.load(attempt)) else { return }
 #if DEBUG
         if DebugLaunchFlags.forceFixtureUI {
-            transition(.loaded(attempt, InstagramInsightsFixture.state(for: DebugLaunchFlags.insightsScenario)))
+            let scenario = DebugLaunchFlags.insightsScenario ?? (compact ? "notconnected" : nil)
+            transition(.loaded(attempt, InstagramInsightsFixture.state(for: scenario)))
             return
         }
 #endif

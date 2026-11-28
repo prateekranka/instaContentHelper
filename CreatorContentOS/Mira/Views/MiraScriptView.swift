@@ -100,6 +100,7 @@ struct MiraWordsView: View {
     private func page(_ project: MiraProject, _ script: MiraScript, state: MiraWordsState) -> some View {
         let busy = store.requestState(project.job).pending || isProposal(state)
         return MiraPage {
+            MiraTaskHeading(step: store.taskStep(.words(projectID), in: project))
             VStack(alignment: .leading, spacing: 8) {
                 Text("Your opening line").font(.headline)
                 Text(script.hook).font(.title.bold())
@@ -115,7 +116,7 @@ struct MiraWordsView: View {
                 Button("Sounds like me") { onEvent(.approve) }.buttonStyle(MiraPrimaryStyle())
                     .disabled(busy).accessibilityIdentifier("mira.words.approve")
             } else if project.storyboard == nil || !project.storyboardIsStale {
-                Button(MiraNextAction.startFilming.title) { onEvent(.startFilming) }.buttonStyle(MiraPrimaryStyle())
+                Button(MiraNextAction.reviewPlan.title) { onEvent(.reviewPlan) }.buttonStyle(MiraPrimaryStyle())
                     .disabled(busy || isOpening(state)).accessibilityIdentifier("mira.words.start")
             }
             Button("Make it simpler") { onEvent(.send(simplerRequest)) }.buttonStyle(.bordered)

@@ -1,13 +1,13 @@
 import Foundation
 
 enum MiraWordsEvent {
-    case appeared, change, note(String), cancelChange, send(String), approve, startFilming
+    case appeared, change, note(String), cancelChange, send(String), approve, reviewPlan
     case useProposal, keepWords, retry, reconnect, stop, received, requestStarted
     case shotsApplied, shotsRejected
 }
 
 enum MiraWordsEffect {
-    case reconnect, stop, applyWords, clearProposal, approve, openFilming, applyShots(MiraJob)
+    case reconnect, stop, applyWords, clearProposal, approve, openPlan, applyShots(MiraJob)
     case generate(MiraOperation, String, UUID?, MiraLanguage?)
 }
 
@@ -69,8 +69,8 @@ enum MiraWordsState {
             (.needsShots, .send(let text)), (.retry, .send(let text)):
             text.isEmpty ? nil : (self, .generate(.reviseScript, text, nil, nil))
         case (.reviewing, .approve), (.retry, .approve), (.changing, .approve): (.reviewing, .approve)
-        case (.ready, .startFilming), (.retry, .startFilming), (.changing, .startFilming):
-            (.opening, .openFilming)
+        case (.ready, .reviewPlan), (.retry, .reviewPlan), (.changing, .reviewPlan):
+            (.opening, .openPlan)
         case (.proposal, .useProposal): (.reviewing, .applyWords)
         case (.proposal, .keepWords), (.retry, .keepWords): (.reviewing, .clearProposal)
         case (.retry(let job), .retry):
@@ -80,7 +80,7 @@ enum MiraWordsState {
         case (.reconnecting, .reconnect): (self, .reconnect)
         case (.reconnecting, .stop), (.waiting, .stop), (.waitingToRetry, .stop), (.writing, .stop): (self, .stop)
         case (.applyingShots(let job), .received): (self, .applyShots(job))
-        case (.applyingShots, .shotsApplied): (.opening, .openFilming)
+        case (.applyingShots, .shotsApplied): (.opening, .openPlan)
         case (.applyingShots(let job), .shotsRejected): (.shotUpdateFailed(job.id), nil)
         default: nil
         }
@@ -95,7 +95,7 @@ enum MiraWordsState {
         case .proposal: .reviewProposal
         case .retry: .retry
         case .needsShots: .retryShots
-        case .ready: .startFilming
+        case .ready: .reviewPlan
         case .opening, .stopping, .applyingShots: .wait
         case .shotUpdateFailed: .retryShots
         }

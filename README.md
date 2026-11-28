@@ -26,7 +26,7 @@ The [design index](docs/design/creator-ios-v1-2026-10-18/README.md) includes all
 
 ## Existing native implementation
 
-Mira opens Today and Projects, with Profile in the toolbar. Projects contain ideas, script and shot-list revisions, filming progress, and reviewed AI proposals. Profile provides Apple sign-in, AI permission, and Instagram insights. Local projects remain usable without sign-in.
+Mira opens Home, Deals and My Brand, with Profile in the toolbar. Home shows unfinished Reels and an idea request. All Reels in My Brand gives access to saved ideas, script and shot-list revisions, filming progress, and reviewed AI proposals. Profile provides Apple sign-in, AI permission, and Instagram insights. Local projects remain usable without sign-in.
 
 Read [the Mira implementation plan](docs/mira-implementation-plan.md) and [the Mira handoff](docs/mira-handoff.md), noting their dated verification records.
 

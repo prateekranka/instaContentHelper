@@ -114,12 +114,12 @@ Approve ==
        THEN /\ RequestShotsAfter /\ stuck' = FALSE
             /\ UNCHANGED <<screen, opened, started>>
        ELSE /\ job' = job /\ stuck' = stuck
-            /\ ~opened /\ opened' = TRUE /\ screen' = "shooting" /\ started' = TRUE
+            /\ ~opened /\ opened' = TRUE /\ screen' = "shots" /\ UNCHANGED started
     /\ UNCHANGED <<script, nextRev, boardSrc, boardBrief, briefRev, filmed, stopStuck>>
 
-StartFromWords ==
+ReviewPlanFromWords ==
     /\ screen = "words" /\ IsApproved /\ ~NeedsShots /\ ~Busy /\ ~opened /\ boardSrc # 0
-    /\ opened' = TRUE /\ screen' = "shooting" /\ started' = TRUE
+    /\ opened' = TRUE /\ screen' = "shots" /\ UNCHANGED started
     /\ UNCHANGED <<script, nextRev, approved, boardSrc, boardBrief, briefRev, filmed,
                    job, inputRev, stuck, undo, stopStuck>>
 
@@ -138,7 +138,7 @@ Advance ==
             /\ boardSrc' = script /\ boardBrief' = briefRev
             /\ filmed' = IF filmed = "none" THEN "none" ELSE "some"
             /\ job' = NoJob
-            /\ opened' = TRUE /\ screen' = "shooting" /\ started' = TRUE
+            /\ opened' = TRUE /\ screen' = "shots" /\ UNCHANGED started
             /\ stuck' = stuck
        ELSE /\ stuck' = TRUE
             /\ UNCHANGED <<boardSrc, boardBrief, filmed, job, opened, screen, started, undo, inputRev>>
@@ -205,7 +205,7 @@ Relaunch ==
     /\ opened' = FALSE /\ stuck' = FALSE
     /\ screen' = IF screen \in {"shooting", "done"} /\ ShootingScreenGuarded /\ ~IsApproved THEN "words"
                  ELSE IF screen = "shooting" /\ boardSrc # 0 /\ ~Stale THEN "shooting"
-                 ELSE IF screen = "words" THEN "words" ELSE "project"
+                 ELSE IF screen \in {"words", "shots"} THEN screen ELSE "project"
     /\ UNCHANGED <<script, nextRev, approved, boardSrc, boardBrief, briefRev, started, filmed,
                    job, inputRev, undo, stopStuck>>
 
@@ -219,12 +219,12 @@ TabBack ==
 
 Step ==
     \/ AskRevise \/ ServerFinish \/ Reconnect \/ SendAgain \/ Stop \/ UseThis \/ KeepMine
-    \/ Approve \/ StartFromWords \/ RetryShots \/ Advance
+    \/ Approve \/ ReviewPlanFromWords \/ RetryShots \/ Advance
     \/ Navigate \/ ShotListFilm \/ ShotListApprove \/ FilmShot \/ Finish
     \/ EditScript \/ ChangeBrief \/ Undo \/ Relaunch
 
 Next ==
-    \/ Step /\ inStack' = (inStack \/ (screen' = "shooting" /\ screen = "words"))
+    \/ Step /\ inStack' = (inStack \/ (screen' = "shooting" /\ screen = "shots"))
     \/ TabBack /\ inStack' = inStack
 
 Spec == Init /\ [][Next]_vars

@@ -5,6 +5,7 @@ enum MiraNextAction {
     case useMicrophone, openSettings, stopRecording, connectInstagram, refreshInsights
     case reviewAIConsent, tryOpeningLibrary, updateApp, continueWork
     case enterBrief, extractRequirements, confirmRequirements, editBrief
+    case makeToday, readShotList, prepareClips
 
     var title: String {
         switch self {
@@ -38,6 +39,9 @@ enum MiraNextAction {
         case .extractRequirements: "Extract proposed requirements"
         case .confirmRequirements: "Confirm these requirements"
         case .editBrief: "Edit brand requirements"
+        case .makeToday: "Make today's Reel"
+        case .readShotList: "Got it, I'll go shoot"
+        case .prepareClips: "Open Instagram"
         }
     }
 }
@@ -84,7 +88,7 @@ enum MiraReelProgress: Equatable {
         case .writing: .writeScript
         case .planning(let hasShots): hasShots ? .updateShots : .makeShots
         case .approving: .approveWords
-        case .ready: .startFilming
+        case .ready: .reviewPlan
         case .filming: .continueFilming
         case .complete: .reviewPlan
         }

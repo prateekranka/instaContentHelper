@@ -59,6 +59,7 @@ struct MiraVoiceButton: View {
     let speech: any MiraSpeechInputService
     let locale: String
     var compact = false
+    var diameter: CGFloat = 60
     var onStart: () -> Void = {}
 
     var body: some View {
@@ -80,7 +81,7 @@ struct MiraVoiceButton: View {
             if compact {
                 Image(systemName: icon)
                     .font(.title2.weight(.semibold))
-                    .frame(width: 60, height: 60)
+                    .frame(width: diameter, height: diameter)
                     .foregroundStyle(MiraTheme.paper)
                     .background(MiraTheme.accent, in: Circle())
             } else {
@@ -98,6 +99,7 @@ struct MiraAskView: View {
     var target: UUID?
     var onGenerate: MiraGenerateAction
     var contextIdea: MiraIdea?
+    var initialRequest = ""
     @Environment(\.dismiss) private var dismiss
     @State private var request = ""
     @State private var language: MiraLanguage = .english
@@ -174,6 +176,7 @@ struct MiraAskView: View {
             ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
         }
         .onAppear {
+            if request.isEmpty { request = initialRequest }
             if operation != .todayIdea, let idea = contextIdea, request.isEmpty {
                 request =
                     "Adjust this idea: \(idea.title). Hook: \(idea.hook). Viewers see: \(idea.visual). My change: "
@@ -188,6 +191,7 @@ struct MiraAskView: View {
         case .ideas: "Ideas for this Reel"
         case .todayIdea: "Change this idea"
         case .reviseScript: "Revise this script"
+        case .script: "Draft words for this Reel"
         case .reviseShot: "Make this shot easier"
         case .reviseStoryboard: "Revise this filming plan"
         default: "This project"
@@ -261,7 +265,7 @@ struct MiraProfileView: View {
             Button(action: onStepByStep) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Plan step by step").font(.headline)
-                    Text("Opens in the Projects tab. You choose each part yourself.").font(.subheadline)
+                    Text("Opens from My Brand. You choose each part yourself.").font(.subheadline)
                 }.frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
             }
             .buttonStyle(.bordered).controlSize(.large)
@@ -501,5 +505,98 @@ struct MiraConsentPresenter: ViewModifier {
         ) {
             NavigationStack { MiraConsentReviewView() }
         }
+    }
+}
+
+struct MiraAskBar: View {
+    let placeholder: String
+    let language: MiraLanguage
+    var enabled = true
+    let onSend: (String) -> Void
+    @Environment(MiraDependencies.self) private var dependencies
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var speech: (any MiraSpeechInputService)?
+    @State private var text = ""
+    @State private var spokenBase = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let message = speech?.state.message {
+                Text(message).font(.footnote).accessibilityAddTraits(.updatesFrequently)
+            }
+            HStack(spacing: 8) {
+                TextField(placeholder, text: $text)
+                    .focused($focused)
+                    .submitLabel(.go)
+                    .onSubmit { send() }
+                    .miraFieldBox()
+                    .accessibilityIdentifier("mira.ask.bar")
+                if let speech {
+                    MiraVoiceButton(
+                        speech: speech, locale: language == .english ? "en-IN" : "hi-IN",
+                        compact: true, diameter: 44
+                    ) {
+                        focused = false
+                        spokenBase = text
+                    }.buttonStyle(.plain)
+                }
+                if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button {
+                        send()
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title2).frame(width: 44, height: 44)
+                    }.accessibilityLabel("Send to Mira")
+                        .disabled(speech?.state.isRecording == true)
+                }
+            }
+        }
+        .disabled(!enabled)
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .frame(maxWidth: 680).frame(maxWidth: .infinity)
+        .background(MiraTheme.paper)
+        .overlay(alignment: .top) { Divider() }
+        .onAppear { if speech == nil { speech = dependencies.makeSpeechInput() } }
+        .onDisappear { speech?.stop() }
+        .onChange(of: speech?.transcript ?? "") { _, transcript in
+            guard !transcript.isEmpty else { return }
+            text = spokenBase.isEmpty ? transcript : "\(spokenBase) \(transcript)"
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                speech?.refreshPermissions()
+            } else {
+                speech?.stop()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) {
+            _ in speech?.stop()
+        }
+    }
+
+    private func send() {
+        let request = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard enabled, !request.isEmpty, speech?.state.isRecording != true else { return }
+        focused = false
+        text = ""
+        onSend(request)
+    }
+}
+
+struct MiraDealDraftView: View {
+    @State var text: String
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        MiraPage {
+            MiraField(title: "Original brand requirements", text: $text)
+            let request = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            Button("Save as a Reel brief") { onSave(request) }
+                .buttonStyle(MiraPrimaryStyle()).disabled(request.isEmpty)
+        }
+        .navigationTitle("Brand brief")
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
     }
 }

@@ -142,22 +142,52 @@ struct MiraSectionTitle: View {
 }
 enum MiraSheet: Identifiable {
     case profile
-    case ask(UUID, MiraOperation, UUID?)
-    case askToday(UUID, UUID)
+    case ask(UUID, MiraOperation, UUID?, note: String = "")
+    case askToday(UUID, UUID, note: String = "")
     case todayScript(UUID, UUID)
     case adjustIdea(UUID, UUID)
+    case dealDraft(String)
     case brief(UUID)
     case manualIdea(UUID)
     var id: String {
         switch self {
         case .profile: "profile"
-        case .ask(let id, let operation, let target):
+        case .ask(let id, let operation, let target, _):
             "ask-\(id)-\(operation)-\(String(describing:target))"
-        case .askToday(let id, let card): "ask-today-\(id)-\(card)"
+        case .askToday(let id, let card, _): "ask-today-\(id)-\(card)"
         case .todayScript(let id, let card): "today-script-\(id)-\(card)"
         case .adjustIdea(let id, let idea): "adjust-\(id)-\(idea)"
+        case .dealDraft: "deal-draft"
         case .brief(let id): "brief-\(id)"
         case .manualIdea(let id): "idea-\(id)"
+        }
+    }
+}
+
+struct MiraFeedCard<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) { content }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(MiraTheme.surface, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(MiraTheme.edge, lineWidth: 1))
+    }
+}
+
+struct MiraTaskHeading: View {
+    let step: MiraTaskStep
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("\(step.number) / \(MiraTaskStep.total)")
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(MiraTheme.secondaryInk)
+                .accessibilityIdentifier("mira.task.step")
+            Text(step.title)
+                .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
         }
     }
 }

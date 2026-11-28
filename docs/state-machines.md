@@ -45,7 +45,7 @@ In every state, `workChanged` reads the project and follows the first matching r
 | `writing` | Saved work changes | First match above | Write your script |
 | `planning` | Saved work changes | First match above | Make your shot list if missing. Update shot list if old. |
 | `approving` | Saved work changes | First match above | Approve your words |
-| `ready` | Saved work changes | First match above | Start filming |
+| `ready` | Saved work changes | First match above | Review your filming plan |
 | `filming` | Saved work changes | First match above | Continue filming |
 | `complete` | Saved work changes | First match above | Review your filming plan |
 
@@ -216,9 +216,9 @@ stateDiagram-v2
     retry --> reviewing: approve, retry or keep
     needsShots --> reviewing: retry
     proposal --> reviewing: use or keep
-    ready --> opening: start filming
-    changing --> opening: start filming
-    retry --> opening: start filming
+    ready --> opening: review the shot list
+    changing --> opening: review the shot list
+    retry --> opening: review the shot list
     applyingShots --> opening: shots applied
     applyingShots --> shotUpdateFailed: shots rejected
     shotUpdateFailed --> needsShots: read same rejected job
@@ -230,7 +230,7 @@ On every read, the current request can set the view state. The screen keeps an o
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |
 | `reviewing` | Change. Send. Approve. | `changing`. `reviewing`. `reviewing`, then read project. | Approve your words |
-| `changing` | Edit note or send. Cancel or approve. Start filming. | `changing`. `reviewing`. `opening`. | Send |
+| `changing` | Edit note or send. Cancel or approve. Review the shot list. | `changing`. `reviewing`. `opening`. | Send |
 | `opening` | Screen opens | `reviewing` | Wait |
 | `shotUpdateFailed` | Read the same rejected job | `needsShots` | Try again |
 | `waiting` | Stop | `waiting`, then read request | Stop |
@@ -239,12 +239,12 @@ On every read, the current request can set the view state. The screen keeps an o
 | `reconnecting` | Check again or stop | `reconnecting`, then read request | Check again |
 | `stopping` | Read stop result | Read request and project | Wait |
 | `proposal` | Use new words or keep current words | `reviewing` | Use this |
-| `retry` | Change. Send. Approve, retry or keep. Start filming. | `changing`. `retry`. `reviewing`. `opening`. | Try again |
+| `retry` | Change. Send. Approve, retry or keep. Review the shot list. | `changing`. `retry`. `reviewing`. `opening`. | Try again |
 | `needsShots` | Change. Send. Retry. | `changing`. `needsShots`. `reviewing`. | Try again |
 | `applyingShots` | Receive result. Apply shots. Reject shots. | `applyingShots`. `opening`. `shotUpdateFailed`. | Wait |
-| `ready` | Change. Send. Start filming. | `changing`. `ready`. `opening`. | Start filming |
+| `ready` | Change. Send. Review the shot list. | `changing`. `ready`. `opening`. | Review your filming plan |
 
-The store checks approval before it opens filming. If the check fails, it restores the prior words state.
+The store checks approval before it opens the shot list from words. If the check fails, it restores the prior words state.
 
 ## `MiraLocationState`
 
@@ -254,20 +254,26 @@ The store checks approval before it opens filming. If the check fails, it restor
 stateDiagram-v2
     [*] --> savedTab
     state savedTab <<choice>>
-    savedTab --> today
-    savedTab --> projects
-    today --> projects: select or open Projects
-    projects --> today: select or open Today
-    today --> today: update path or history
-    projects --> projects: update path or history
+    savedTab --> home: saved Today
+    savedTab --> myBrand: saved Projects
+    home --> myBrand: select or open My Brand
+    myBrand --> home: select or open Home
+    home --> deals: select Deals
+    myBrand --> deals: select Deals
+    deals --> home: select or open Home
+    deals --> myBrand: select or open My Brand
 ```
 
-Either tab accepts `selectTab`, `open`, `setPath`, `push`, `showWords`, `remember`, and `remove`. The last five keep the active tab. `showWords` replaces the trailing filming or Done screens for that Reel. `remove` clears that Reel from both tab paths and its saved section.
+All tabs accept `selectTab`, `open`, `setPath`, `push`, `showWords`, `showPlan`, `remember`, and `remove`.
+Only selection and open change the active tab. Show Plan opens the editor at Shots after Words.
+Show Words replaces trailing filming or Done destinations. Remove clears the Reel from all tab paths.
+Home and My Brand use the existing `today` and `projects` saved paths and tab values. Deals restores the last selected saved tab on relaunch.
 
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |
-| `today` | Select or open a tab. Update path or history. | Selected tab. `today`. | Use the current destination below |
-| `projects` | Select or open a tab. Update path or history. | Selected tab. `projects`. | Use the current destination below |
+| `home` | Select or open a tab. Update path or history. | Selected tab or `home` | Use the current destination |
+| `deals` | Select or open a tab. Update path or history. | Selected tab or `deals` | Share a brand brief to Mira |
+| `myBrand` | Select or open a tab. Update path or history. | Selected tab or `myBrand` | All Reels |
 
 ### `MiraLocation`
 
@@ -292,6 +298,51 @@ The last route on the active tab gives the current destination. Changing the pat
 | `words` | Change active path | Last route or no destination | Approve your words |
 | `filming` | Change active path | Last route or no destination | Continue filming |
 | `done` | Change active path | Last route or no destination | — |
+
+## `MiraHomeFeed`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraHomeFeed.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> empty
+    empty --> continuing: unfinished Reel with work
+    continuing --> empty: no unfinished Reels with work
+    continuing --> continuing: work changed
+```
+
+The store projects the feed from the library and the last opened Reel. It excludes archived and filmed Reels and empty projects.
+The most recently opened unfinished Reel appears first. The other Reels use their last update time.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `empty` | Work changed | Read the library | Make today's Reel |
+| `continuing` | Work changed | Read the library | Each Reel uses the next step from Reel progress |
+
+## `MiraTaskStep`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraTaskStep.swift)
+
+```mermaid
+stateDiagram-v2
+    state "Read current location" as route
+    [*] --> route
+    route --> idea
+    route --> words
+    route --> shotList
+    route --> shoot
+    route --> upload
+```
+
+The location and current editor section choose the visible step. The approval gate still controls filming. Step 5 shows the existing Done screen and names upload and post as later work.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `idea` | Read open location | Step for that location | Choose an idea |
+| `words` | Read open location | Step for that location | Use the words state or script editor |
+| `shotList` | Read open location | Step for that location | Review the list and go shoot when permitted |
+| `shoot` | Read open location | Step for that location | Mark the current shot filmed |
+| `upload` | Read open location | Step for that location | Open Instagram from Done |
 
 ## `MiraVoiceInputState`
 

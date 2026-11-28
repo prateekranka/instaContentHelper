@@ -15,18 +15,18 @@ struct MiraStoryboardView: View {
                 Text(
                     "About \(board.shots.reduce(0){$0+$1.editedSeconds}) seconds edited · \(board.shots.count) shots"
                 ).font(.headline)
+                let locations = details(board.shots.map(\.location))
+                let props = details(board.shots.map(\.props))
+                MiraShotRow(title: "Where", icon: "location", value: locations.isEmpty ? project.constraints.location : locations)
+                MiraShotRow(title: "What to bring", icon: "bag", value: props.isEmpty ? project.constraints.equipment : props)
+                MiraShotRow(title: "Audio", icon: "mic", value: audio(board.shots))
                 if project.storyboardIsStale {
                     Text(
                         "This shot list is out of date. Your earlier plan and filming history are preserved."
                     ).font(.headline)
                     Button("Update shot list", action: onUpdate).buttonStyle(MiraPrimaryStyle())
                         .disabled(store.requestState(project.job).pending)
-                } else if project.isApproved {
-                    NavigationLink(value: MiraRoute.shooting(projectID)) {
-                        Text(project.startedFilming ? "Continue filming" : "Start filming").frame(
-                            maxWidth: .infinity, minHeight: 52)
-                    }.buttonStyle(MiraPrimaryStyle())
-                } else {
+                } else if !project.isApproved {
                     NavigationLink(value: MiraRoute.words(projectID)) {
                         Text("Approve your words").frame(maxWidth: .infinity, minHeight: 52)
                     }.buttonStyle(MiraPrimaryStyle()).accessibilityIdentifier("mira.shots.approve")
@@ -58,18 +58,15 @@ struct MiraStoryboardView: View {
                             Text("Record these words separately.").font(.title3)
                         }
                         MiraShotRow(title: "On-screen text", icon: "textformat", value: shot.onScreenText)
-                        DisclosureGroup("More filming details") {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Where: \(shot.location)")
-                                if !shot.props.isEmpty { Text("What you need: \(shot.props)") }
-                                Text("Record for about \(shot.recordingSeconds) seconds.")
-                                Text(shot.action)
-                                if !shot.simplerAlternative.isEmpty {
-                                    Text("Simpler option: \(shot.simplerAlternative)")
-                                }
-                            }.font(.title3).padding(.top, 12)
+                        MiraShotRow(title: "Where", icon: "location", value: shot.location)
+                        if !shot.props.isEmpty {
+                            MiraShotRow(title: "What you need", icon: "bag", value: shot.props)
                         }
-                        .font(.headline)
+                        Text("Record for about \(shot.recordingSeconds) seconds.")
+                        Text(shot.action)
+                        if !shot.simplerAlternative.isEmpty {
+                            Text("Simpler option: \(shot.simplerAlternative)")
+                        }
                     }
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -94,8 +91,29 @@ struct MiraStoryboardView: View {
                 } else if case .confirmed = project.briefState {
                     Text("Brand requirements confirmed").font(.headline)
                 }
+                if project.canFilm {
+                    NavigationLink(value: MiraRoute.shooting(projectID)) {
+                        Text(project.startedFilming ? MiraNextAction.continueFilming.title : MiraNextAction.readShotList.title)
+                    }.buttonStyle(MiraPrimaryStyle())
+                        .accessibilityIdentifier("mira.shots.film")
+                }
             }
         }
+    }
+
+    private func details(_ values: [String]) -> String {
+        var seen: Set<String> = []
+        return values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+            .joined(separator: " · ")
+    }
+
+    private func audio(_ shots: [MiraShot]) -> String {
+        let spoken = shots.filter { !$0.words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if spoken.isEmpty { return "No words to record." }
+        if !spoken.contains(where: { $0.voiceover }) { return "Speak while you film." }
+        if spoken.allSatisfy({ $0.voiceover }) { return "Record the voiceover separately." }
+        return "Speak while you film. Record marked voiceovers separately."
     }
 }
 private struct MiraShotRow: View {
@@ -159,6 +177,7 @@ struct MiraShootingView: View {
             {
                 let index = min(max(0, project.shotIndex), board.shots.count - 1)
                 let shot = board.shots[index]
+                MiraTaskHeading(step: store.taskStep(.filming(projectID), in: project))
                 Text("Shot \(index+1) of \(board.shots.count)").font(.title2)
                 Text("\(board.shots.filter{project.filmed.contains($0.id)}.count) filmed by you").font(
                     .callout)
@@ -237,6 +256,8 @@ struct MiraDoneView: View {
             {
                 let count = board.shots.filter { project.filmed.contains($0.id) }.count
                 let caption = project.script?.caption.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                MiraTaskHeading(step: store.taskStep(.done(projectID), in: project))
+                Text("Upload and post in Mira are later steps.").foregroundStyle(.secondary)
                 Text(count == 1 ? "1 clip filmed" : "\(count) clips filmed")
                     .font(.largeTitle.bold()).monospacedDigit()
                 MiraSectionTitle(text: "Your caption")
@@ -262,7 +283,7 @@ struct MiraDoneView: View {
                         }
                     }
                 }
-                Button("Open Instagram") {
+                Button(MiraNextAction.prepareClips.title) {
                     openURL(URL(string: "instagram://app")!) { accepted in
                         if !accepted {
                             openURL(URL(string: "https://apps.apple.com/app/instagram/id389801252")!)
