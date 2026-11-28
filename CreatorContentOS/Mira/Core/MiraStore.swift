@@ -71,8 +71,13 @@ final class MiraStore {
 
     @discardableResult
     private func transitionRequest(_ job: MiraJob, _ event: MiraAIRequestEvent) -> MiraAIRequest? {
-        guard let next = requestState(job).handle(event) else { return nil }
-        requestStates[job.id] = next
+        transitionRequest(job.id, from: requestState(job), event)
+    }
+
+    @discardableResult
+    private func transitionRequest(_ jobID: UUID, from state: MiraAIRequest, _ event: MiraAIRequestEvent) -> MiraAIRequest? {
+        guard let next = state.handle(event) else { return nil }
+        requestStates[jobID] = next
         return next
     }
 
@@ -505,9 +510,8 @@ final class MiraStore {
         in project: MiraProject, boardID: UUID, shotID: UUID, url: URL, service: any MiraGenerationService
     ) {
         guard let source = project.shotPictureSources?[boardID], let originalID = source.shotIDs[shotID],
-            let next = pictureRequest(source.jobID).handle(.pictureLoadFailed(originalID, url, at: Date()))
+            transitionRequest(source.jobID, from: pictureRequest(source.jobID), .pictureLoadFailed(originalID, url, at: Date())) != nil
         else { return }
-        requestStates[source.jobID] = next
         if picturesNeedStatus(source.jobID) { pollPictures(source.jobID, service: service) }
     }
 
@@ -535,9 +539,8 @@ final class MiraStore {
                 do {
                     guard let response = try await service.pictureStatus(jobID) else { return }
                     if response.job.id == jobID, response.job.state == .succeeded, let pictures = response.pictures,
-                        let next = pictureRequest(jobID).handle(.picturesReceived(pictures))
+                        transitionRequest(jobID, from: pictureRequest(jobID), .picturesReceived(pictures)) != nil
                     {
-                        requestStates[jobID] = next
                         misses = 0
                         if !picturesNeedStatus(jobID) { return }
                     } else {

@@ -311,14 +311,14 @@ supabase stop
 colima stop --profile mira-s4-20261127
 ```
 
-The artifacts for this run are in `work/evidence/d2/20261127T201709Z.rUllrd/`. The final TesterArmy report is `api-handoff/report.json` in that directory. Use Java with the [TLC v1.7.4 jar](https://github.com/tlaplus/tlaplus/releases/tag/v1.7.4), SHA-1 `bee4a54f3ee3d4afc347c3240ec2d9e93b075104`. Use the matching configuration and module in [tla-d2](tla-d2). Example command from the root of this clone.
+The artifacts for this run are in `work/evidence/d2/20261127T201709Z.rUllrd/`. The final TesterArmy report is `api-handoff/report.json` in that directory. Use Java with the [TLC v1.7.4 jar](https://github.com/tlaplus/tlaplus/releases/tag/v1.7.4), SHA-1 `bee4a54f3ee3d4afc347c3240ec2d9e93b075104`. The matching module and configuration moved to [specs/tla](../../specs/tla/). Example command from the root of this clone.
 
 ```sh
 /opt/homebrew/opt/openjdk/bin/java -XX:+UseParallelGC \
   -cp work/evidence/d2/20261127T201709Z.rUllrd/tla2tools.jar tlc2.TLC -workers 1 -deadlock \
   -metadir work/evidence/d2/repro-tlc \
-  -config docs/mira-evidence/tla-d2/MiraShotPictures.cfg \
-  docs/mira-evidence/tla-d2/MiraShotPictures.tla
+  -config specs/tla/MiraShotPictures.cfg \
+  specs/tla/MiraShotPictures.tla
 ```
 
 | Check | Observed result |
