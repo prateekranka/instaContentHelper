@@ -192,3 +192,28 @@ Live AI counts were **0 text requests and 0 pictures**. No live ledger was creat
 - Large Dynamic Type and VoiceOver behavior.
 
 Local evidence folder `/Users/prateekranka/.codex-runs/mira-worker-1-20261128/evidence/fix3/20261128T074755Z.yiUedN`.
+
+
+## Fix3b physical iPhone result for PR #49
+
+**RESULT BLOCKED**
+
+The PR #49 physical iPhone run did not start. The ordered phone sequence stopped at 14:42:03 IST on PR #47. After XCTest tapped **Stop this idea** in the S3 server-backoff case, the menu stayed open and the card stayed at **Waiting to try again**.
+
+The PR #47 test-only keyboard changes were carried forward at `3086634fa5842ebe840949a45124bc834a0d4670`. The eight agent-rule groups and 19 proof checks passed on the carry-forward. GitHub confirmed the carry-forward commit on the PR branch.
+
+| Scenario | Result | Start IST | Duration | Evidence path |
+| --- | --- | --- | --- | --- |
+| Signed device build and Keep before install | Not run | — | — | `fix3b-pr47-sample-remaining/report.json` |
+| In-place install and Keep after install | Not run | — | — | `fix3b-pr47-sample-remaining/report.json` |
+| Sample cases, five read-only consent checks, live and Keep after tests | Not run | — | — | `fix3b-pr47-sample-remaining/report.json` |
+
+Live AI counts for PR #49 were **0 text requests and 0 pictures**.
+
+### Not verified
+
+- The signed device build at this revision and all physical iPhone behavior for this PR.
+
+Final phone claims were zero. The fix3b D2 fixture stopped and Tailscale routes matched the baseline.
+
+Local evidence folder `/Users/prateekranka/.codex-runs/mira-worker-3-20261128/evidence/fix3b/20261128T081057Z.9HGv7X`.
