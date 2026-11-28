@@ -241,3 +241,37 @@ share target. The run sent nothing and made no app code changes.
 Local evidence is under `work/evidence/sim-49/`. The scenario table,
 timestamps, run boundaries and reproduction commands are in
 `work/sim-result-pr49.md`.
+
+## Simulator continuation for PR #49
+
+**RESULT FAIL** at 15:52:29 IST on 28 November 2026. The Light Debug build at
+`6f56530` passed for sim-guard iPhone 2 on iOS 27.2. TesterArmy 0.15.2 used
+the `worker-5` fixture session and an isolated loopback HTTPS server.
+The combined scenario results are 21 passed, 26 failed, nine blocked, and
+11 phone only. One pass followed an earlier XCTest failure.
+
+| Scenario | Result | Evidence |
+| --- | --- | --- |
+| E4 before export | Clip matching by length passed. Both swapped clips kept their new positions after relaunch. | `e4-clips/report.json` |
+| Four E4 joined Reel cases | Phone only (simulator video-compositor crash, see .ips). The simulator selection excluded the `joined-reel` tag. | `joined-reel-selection.json`, `previous-compositor-crashes.json` |
+| Text-box and deal sample | Six passed and ten failed across the initial and follow-up runs. S3 speech-denied typing and the M03 undo case passed. The deal review displayed six deliverables. XCTest and locator failures stopped later assertions. | `text-boxes/report.json`, `speech-denied-rerun/report.json` |
+| Remaining sample | Seven passed and fifteen failed. The failed cases report XCTest action errors. The intentional Debug crash case relaunched Mira and passed. | `remaining-sample/report.json` |
+| E5 How you are doing | Home showed “Not enough data yet” and omitted Followers. The Debug allowlist omits `MCO_QA_E5_NOTE`. The app made zero requests to the E5 fixture. The run stopped at the first failure and blocked the other nine E5 cases. | `e5/report.json`, `e5-proxy.log` |
+
+The four compositor reports from the first run are
+`ContentHelper-2026-11-28-145727.ips`, `ContentHelper-2026-11-28-145747.ips`,
+`ContentHelper-2026-11-28-145817.ips`, and `ContentHelper-2026-11-28-145901.ips`.
+The joined 9:16 Reel with hook text, the brief check and approved render,
+Instagram share-sheet cancellation, Did you post it, and the WhatsApp note
+remain phone only. Real Photos clips, external share targets, the Notes share
+handoff, saved-account consent, and physical keyboard checks also remain phone
+only.
+
+Test-fix round two added the pre-export clip case and kept all four full E4
+journeys for the phone check. Changes are limited to tests and evidence. Live AI
+use was **0 text requests and 0 pictures**.
+
+Local evidence is under
+`work/evidence/sim-49/worker-5b/20261128T093507Z.QstTVj/`. The result table,
+IST timestamps, commands, fixture checks and crash paths are in
+`work/sim-result-pr49.md`.
