@@ -35,7 +35,7 @@ final class MiraDependencies {
     ) throws -> any MiraGenerationService {
         if project?.isDemo == true {
             if let fixture = Self.todayFixture(for: project?.request ?? "") { return fixture }
-            return MiraFixtureGenerationService(
+            return Self.fixtureGeneration(
                 slowShotUpdate: DebugLaunchConfiguration.fixtureSession != nil,
                 rejectFirstShotUpdate: project?.request == "Demo rejected shot update")
         }
@@ -52,6 +52,19 @@ final class MiraDependencies {
             else { throw MiraError.anotherAccount }
             if start { try runtime.services.requireAIConsent() }
         })
+    }
+
+    static func fixtureGeneration(
+        failTodayCard: Bool = false, slowTodayCards: Bool = false,
+        slowShotUpdate: Bool = false, rejectFirstShotUpdate: Bool = false
+    ) -> MiraFixtureGenerationService {
+        let isFixtureSession = DebugLaunchFlags.forceFixtureUI && DebugLaunchConfiguration.fixtureSession != nil
+        let creatorID = isFixtureSession
+            ? DebugLaunchConfiguration.value(for: "MCO_QA_FIXTURE_CREATOR").flatMap { UUID(uuidString: $0) }
+            : nil
+        return MiraFixtureGenerationService(
+            failTodayCard: failTodayCard, slowTodayCards: slowTodayCards, slowShotUpdate: slowShotUpdate,
+            rejectFirstShotUpdate: rejectFirstShotUpdate, isFixtureSession: isFixtureSession, creatorID: creatorID)
     }
 
     static func todayFixture(for request: String) -> MiraSupabaseGenerationService? {

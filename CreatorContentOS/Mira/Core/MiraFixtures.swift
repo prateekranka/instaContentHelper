@@ -294,16 +294,13 @@ struct MiraFixtureGenerationService: MiraGenerationService {
     var slowTodayCards = false
     var slowShotUpdate = false
     var rejectFirstShotUpdate = false
-    var creatorID: UUID? {
-        guard DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil else { return nil }
-        return DebugLaunchConfiguration.value(for: "MCO_QA_FIXTURE_CREATOR").flatMap { UUID(uuidString: $0) }
-    }
+    var isFixtureSession = false
+    var creatorID: UUID?
     func start(_ job: MiraJob) async throws -> MiraJobResponse {
         try Task.checkCancellation()
         var result = job
         let request = job.input.request
-        if job.input.operation == .todayIdea, request == Self.permissionRequest,
-            DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil {
+        if job.input.operation == .todayIdea, request == Self.permissionRequest, isFixtureSession {
             if job.input.angle?.hasPrefix("A personal") != true { return MiraJobResponse(job: job) }
             if Self.refusals.refuse(job.id, times: 1) { throw MiraError.busy }
             throw AIConsentRequired()
@@ -325,8 +322,7 @@ struct MiraFixtureGenerationService: MiraGenerationService {
             return MiraJobResponse(job: result)
         }
         result.output = MiraFixtures.output(for: job.input)
-        if job.input.operation == .reviseStoryboard, DebugLaunchFlags.forceFixtureUI,
-            DebugLaunchConfiguration.fixtureSession != nil {
+        if job.input.operation == .reviseStoryboard, isFixtureSession {
             if rejectFirstShotUpdate, let scriptID = job.input.script?.id, Self.refusals.refuse(scriptID, times: 1) {
                 result.output = MiraOutput(conflicts: ["The brief changed while this shot update was running."])
             } else if request == "Replace the first shot words with sugar." {
@@ -340,7 +336,9 @@ struct MiraFixtureGenerationService: MiraGenerationService {
     func status(_ job: MiraJob) async throws -> MiraJobResponse {
         if slowShotUpdate, job.input.operation == .reviseStoryboard {
             try await Task.sleep(for: .seconds(18))
-            return try await MiraFixtureGenerationService(rejectFirstShotUpdate: rejectFirstShotUpdate).start(job)
+            return try await MiraFixtureGenerationService(
+                rejectFirstShotUpdate: rejectFirstShotUpdate, isFixtureSession: isFixtureSession,
+                creatorID: creatorID).start(job)
         }
         if [Self.busyRequest, Self.permissionRequest].contains(job.input.request), job.input.operation == .todayIdea {
             try await Task.sleep(for: .seconds(job.input.angle?.hasPrefix("A short") == true ? 12 : 24))
@@ -353,7 +351,8 @@ struct MiraFixtureGenerationService: MiraGenerationService {
             let angle = job.input.angle ?? ""
             let wait = angle.hasPrefix("A short") ? 2 : angle.hasPrefix("A food") ? 8 : 14
             try await Task.sleep(for: .seconds(wait))
-            return try await MiraFixtureGenerationService().start(job)
+            return try await MiraFixtureGenerationService(
+                isFixtureSession: isFixtureSession, creatorID: creatorID).start(job)
         }
         return try await start(job)
     }

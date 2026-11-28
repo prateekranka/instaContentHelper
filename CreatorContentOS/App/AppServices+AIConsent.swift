@@ -1,9 +1,5 @@
 import Foundation
 
-struct AIConsentRequired: LocalizedError {
-    var errorDescription: String? { AIConsentCopy.blockedMessage }
-}
-
 extension AppServices {
     func requireAIConsent() throws {
         guard isLiveSupabaseRuntime else { return }
