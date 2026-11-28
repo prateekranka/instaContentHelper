@@ -654,9 +654,8 @@ async function sendAsk(screen: Screen, request: string) {
 }
 
 async function startShooting(screen: Screen) {
-  const shoot = screen.getByTestId('mira.shots.film');
-  await expect(shoot).toBeAttached({ timeout: 45_000 });
-  await tap(screen, shoot);
+  await expect(screen.getByTestId('Your Reel').first()).toBeAttached({ timeout: 45_000 });
+  await tap(screen, screen.getByTestId('mira.shots.film'));
 }
 
 async function openProjectFromList(screen: Screen, title: string) {
