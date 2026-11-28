@@ -1542,6 +1542,7 @@ test('E3 Notes Send Copy hands text to Deals and waits for Read this brief', asy
 
 const e4Fixture = ['-MCO_QA_E4', '1'];
 const e4Control = (screen: Screen, id: string) => screen.getByTestId(`mira.delivery.${id}`);
+const joinedReel = { tags: ['joined-reel'] };
 
 async function openSampleDelivery(app: App, screen: Screen, device: Device) {
   await launchMira(app, screen, device, false, e4Fixture);
@@ -1583,7 +1584,7 @@ async function expectDeliveryClip(screen: Screen, slot: number, name: string) {
   await expect(clip).toHaveText(name);
 }
 
-test('E4 sample clips match by length, can swap, persist, and join in the new order', async ({ app, screen, device }) => {
+async function matchAndSwapSampleClips(app: App, screen: Screen, device: Device) {
   await openSampleDelivery(app, screen, device);
   await expectDeliveryClip(screen, 1, 'E4FixtureShort');
   await expectDeliveryClip(screen, 2, 'E4FixtureMedium');
@@ -1599,10 +1600,19 @@ test('E4 sample clips match by length, can swap, persist, and join in the new or
   await launchMira(app, screen, device, false, e4Fixture);
   await expectDeliveryClip(screen, 2, 'E4FixtureLong');
   await expectDeliveryClip(screen, 3, 'E4FixtureMedium');
+}
+
+test('E4 sample clips match by length and keep swaps after relaunch', async ({ app, screen, device }) => {
+  await matchAndSwapSampleClips(app, screen, device);
+  await app.screenshot('e4-persisted-clip-order');
+});
+
+test('E4 sample clips match by length, can swap, persist, and join in the new order', joinedReel, async ({ app, screen, device }) => {
+  await matchAndSwapSampleClips(app, screen, device);
   await joinSampleDelivery(app, screen, 'e4-joined-reel');
 });
 
-test('E4 brief check only marks the missing discount code met after an approved render', async ({ app, screen, device }) => {
+test('E4 brief check only marks the missing discount code met after an approved render', joinedReel, async ({ app, screen, device }) => {
   await openSampleDelivery(app, screen, device);
   await joinSampleDelivery(app, screen, 'e4-reel-before-fix');
   const code = await checkSampleDelivery(screen);
@@ -1621,7 +1631,7 @@ test('E4 brief check only marks the missing discount code met after an approved 
   await app.screenshot('e4-reel-with-discount');
 });
 
-test('E4 Instagram share sheet can close with the tracker still pending', async ({ app, screen, device }) => {
+test('E4 Instagram share sheet can close with the tracker still pending', joinedReel, async ({ app, screen, device }) => {
   await openSampleDelivery(app, screen, device);
   await joinSampleDelivery(app, screen, 'e4-instagram-reel');
   await checkSampleDelivery(screen);
@@ -1634,7 +1644,7 @@ test('E4 Instagram share sheet can close with the tracker still pending', async 
   await sampleTracker(screen, 'Posted', 'Pending');
 });
 
-test('E4 WhatsApp keeps Send above the keyboard and leaves the brand tracker pending', async ({ app, screen, device }) => {
+test('E4 WhatsApp keeps Send above the keyboard and leaves the brand tracker pending', joinedReel, async ({ app, screen, device }) => {
   await openSampleDelivery(app, screen, device);
   await joinSampleDelivery(app, screen, 'e4-whatsapp-reel');
   await checkSampleDelivery(screen);
