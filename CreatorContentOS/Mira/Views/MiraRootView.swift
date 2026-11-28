@@ -215,7 +215,7 @@ struct MiraRootView: View {
     }
     private func fixtureGeneration(_ request: String) -> any MiraGenerationService {
         if let fixture = MiraDependencies.todayFixture(for: request) { return fixture }
-        return MiraFixtureGenerationService(
+        return MiraDependencies.fixtureGeneration(
             failTodayCard: request == "Demo card failure", slowTodayCards: request == "Demo slow cards")
     }
     private func open(_ id: UUID, tab: MiraMainTab) {

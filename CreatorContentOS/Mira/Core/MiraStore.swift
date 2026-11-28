@@ -1,6 +1,12 @@
 import Foundation
 import Observation
 
+struct AIConsentRequired: LocalizedError {
+    var errorDescription: String? {
+        "Allow AI to write ideas first. You can also allow this later in Profile → Review AI data permission."
+    }
+}
+
 protocol MiraGenerationService: Sendable {
     var creatorID: UUID? { get }
     func start(_ job: MiraJob) async throws -> MiraJobResponse
