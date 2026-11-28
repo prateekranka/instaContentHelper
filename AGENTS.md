@@ -1,6 +1,7 @@
 # Mira repository instructions
 
 See [Mira state machines](docs/state-machines.md) before changing a machine.
+Use [Mira test rounds](docs/mira-testing.md) for PR and release checks.
 
 ## Owner's testing policy
 
@@ -27,5 +28,6 @@ See [Mira state machines](docs/state-machines.md) before changing a machine.
 
 ## Workflow
 
-Work without subagents. Keep the public Mira tracker updated with actual timestamps,
+Use subagents when the work divides cleanly into separate parts with no overlap in files (owner, 2026-11-18).
+Keep the public Mira tracker updated with actual timestamps,
 verification results, blockers and remotely verified GitHub commit links.
