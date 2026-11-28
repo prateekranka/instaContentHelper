@@ -305,19 +305,22 @@ The last route on the active tab gives the current destination. Changing the pat
 
 ```mermaid
 stateDiagram-v2
-    [*] --> empty
-    empty --> continuing: unfinished Reel with work
-    continuing --> empty: no unfinished Reels with work
-    continuing --> continuing: work changed
+    state "Read the library" as workChanged
+    [*] --> workChanged
+    workChanged --> empty: no open deals or unfinished Reels
+    workChanged --> deals: open deals and no unfinished Reels
+    workChanged --> continuing: unfinished Reels, with or without deals
 ```
 
 The store projects the feed from the library and the last opened Reel. It excludes archived and filmed Reels and empty projects.
 The most recently opened unfinished Reel appears first. The other Reels use their last update time.
+Home includes confirmed, unpaid deals. Deals with dates appear in deadline order. Deals without dates follow them. The Deals tab keeps all confirmed deals.
 
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |
 | `empty` | Work changed | Read the library | Make today's Reel |
-| `continuing` | Work changed | Read the library | Each Reel uses the next step from Reel progress |
+| `continuing` | Work changed | Read the library | Each Reel uses the next step from Reel progress. Each deal opens its card. |
+| `deals` | Work changed | Read the library | Open deal |
 
 ## `MiraTaskStep`
 
@@ -479,6 +482,78 @@ In any state, a changed text, a changed existing detail, removal, extraction, or
 | `reviewing` | Edit, remove, extract or stop using. Confirm if valid. | Read updated brief | Confirm these requirements if valid. Otherwise extract proposed requirements. |
 | `unresolved` | Edit, remove, extract or stop using. Confirm if valid. | Read updated brief | Confirm these requirements if valid. Otherwise extract proposed requirements. |
 | `confirmed` | Edit, remove, extract or stop using. Confirm if valid. | Read updated brief | Edit brand requirements |
+
+## `MiraDealBriefState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraDealBriefState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> empty
+    empty --> editing: begin
+    editing --> editing: edit
+    editing --> reading: read
+    reading --> reconnect: interruption or reopen
+    reconnect --> reading: resume
+    reading --> failed: rejected or invalid result
+    reading --> reviewing: valid result
+    failed --> reading: retry
+    failed --> editing: edit
+    reviewing --> editing: edit
+    reviewing --> empty: confirm and save card
+```
+
+The store saves the draft and request ID before it sends a new request. A reconnect checks the same ID. If the server does not know that ID, Mira sends the original input with the same ID. Start requires current AI permission. Mira checks the job owner and matches each reply to the job ID, revision and input. The result must quote the source. The creator checks it before the deal appears in Deals or Home.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `empty` | Begin with pasted or shared text | `editing` | Paste a brief |
+| `editing` | Edit. Read valid text. Open a shared brief when the draft is empty. | `editing`, `reading` | Read this brief |
+| `reading` | Receive a matching terminal reply. Record an interruption. | `reviewing`, `failed` or `reconnect` | Wait |
+| `reconnect` | Resume | `reading` | Reconnect |
+| `failed` | Edit. Read valid text with a new request. | `editing`, `reading` | Try again |
+| `reviewing` | Edit. Confirm with the card transition. | `editing`, `empty` | Looks right |
+
+## `MiraDealCardState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraDealCardState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> reviewing
+    reviewing --> saved: confirm
+    saved --> saved: valid tracker event
+```
+
+The card keeps the original brief and the reviewed terms. The latest unpaid deal supplies the active checklist to a later caller. An empty checklist supplies no value.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `reviewing` | Confirm | `saved` | Looks right |
+| `saved` | Apply a valid tracker event | `saved` | Open deal |
+
+## `MiraDealTrackerState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraDealTrackerState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> toPost
+    toPost --> toTellBrand: posted
+    toTellBrand --> toConfirm: brand told
+    toConfirm --> toPay: confirmed
+    toPay --> paid: paid
+```
+
+The saved dates determine the current action. Each event records its own date and preserves earlier dates. A repeated or out-of-order event leaves the card unchanged.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `toPost` | Posted | `toTellBrand` | Mark as posted |
+| `toTellBrand` | Brand told | `toConfirm` | Mark brand told |
+| `toConfirm` | Confirmed | `toPay` | Mark as confirmed |
+| `toPay` | Paid | `paid` | Mark as paid |
+| `paid` | — | — | — |
 
 ## Server text job
 

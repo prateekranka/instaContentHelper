@@ -21,6 +21,7 @@ final class MiraStore {
     private(set) var library = MiraLibraryState.unopened
     private let repository: any MiraProjectRepository
     private var saveTask: Task<Void, Never>?
+    private var dealBriefTask: Task<Void, Never>?
     private var wordsStates: [UUID: MiraWordsState] = [:]
     private var requestStates: [UUID: MiraAIRequest] = [:]
     private var generationTasks: [UUID: Task<Void, Never>] = [:]
@@ -132,7 +133,7 @@ final class MiraStore {
     }
 
     var homeFeed: MiraHomeFeed {
-        MiraHomeFeed.empty.handle(.workChanged(document.projects, resume: location.lastProject))
+        MiraHomeFeed.empty.handle(.workChanged(document.projects, resume: location.lastProject, deals: deals))
     }
 
     func continueReel(_ id: UUID) {
@@ -911,5 +912,111 @@ final class MiraStore {
     func cancel(_ id: UUID, service: any MiraGenerationService) async {
         guard let job = project(id)?.job else { return }
         await stop(id, cardID: nil, job: job, service: service)
+    }
+}
+
+protocol MiraDealBriefService: Sendable {
+    var creatorID: UUID? { get }
+    func readDealBrief(_ job: MiraDealBriefJob, start: Bool) async throws -> MiraDealBriefReply
+}
+
+extension MiraStore {
+    var deals: [MiraDeal] { document.deals ?? [] }
+
+    var activeDealChecklist: MiraDealChecklist? {
+        deals.first { $0.tracker.paidAt == nil }?.checklist
+    }
+
+    var dealBriefState: MiraDealBriefState {
+        MiraDealBriefState(record: document.dealBriefDraft, running: dealBriefTask != nil)
+    }
+
+    var proposedDeal: MiraDealCardState? {
+        guard case .reviewing(let draft) = dealBriefState, let terms = draft.terms else { return nil }
+        return .reviewing(draft, terms)
+    }
+
+    @discardableResult
+    func beginDealBrief(id: UUID = UUID(), text: String = "") -> Bool {
+        guard transitionDealBrief(.begin(id, text)) else { return false }
+        save(immediate: false)
+        return true
+    }
+
+    func editDealBrief(_ text: String) {
+        if transitionDealBrief(.edit(text)) { save(immediate: false) }
+    }
+
+    @discardableResult
+    private func transitionDealBrief(_ event: MiraDealBriefEvent) -> Bool {
+        guard case .loaded = library, let next = dealBriefState.handle(event) else { return false }
+        document.dealBriefDraft = next.record
+        return true
+    }
+
+    func readDealBrief(using service: any MiraDealBriefService) {
+        guard dealBriefTask == nil, let draft = dealBriefState.record else { return }
+        let job: MiraDealBriefJob
+        let resume: Bool
+        if let pending = draft.job {
+            guard service.creatorID == pending.creatorID else {
+                reportError(MiraError.anotherAccount.localizedDescription)
+                return
+            }
+            job = pending
+            resume = true
+        } else {
+            job = MiraDealBriefJob(id: UUID(),
+                input: MiraDealBriefInput(text: draft.text, profile: document.profile), creatorID: service.creatorID)
+            resume = false
+        }
+        guard transitionDealBrief(resume ? .resume : .read(job)) else { return }
+        dealBriefTask = Task {
+            defer { dealBriefTask = nil }
+            guard await flush() else {
+                transitionDealBrief(.interrupted("Could not save this brief. Reconnect to try again."))
+                return
+            }
+            do {
+                var reply: MiraDealBriefReply
+                if resume {
+                    do { reply = try await service.readDealBrief(job, start: false) }
+                    catch MiraError.notFound { reply = try await service.readDealBrief(job, start: true) }
+                } else {
+                    reply = try await service.readDealBrief(job, start: true)
+                }
+                for _ in 0..<45 {
+                    guard reply.matches(job) else { throw MiraError.invalid("Could not match this brief to the request.") }
+                    if reply.state != .working { break }
+                    try await Task.sleep(for: .seconds(3))
+                    reply = try await service.readDealBrief(job, start: false)
+                }
+                if !transitionDealBrief(.received(reply)) {
+                    transitionDealBrief(.interrupted("Mira could not finish checking this request. Reconnect to check again."))
+                }
+            } catch {
+                transitionDealBrief(.interrupted(error.localizedDescription))
+            }
+            save()
+        }
+    }
+
+    func confirmDeal() -> UUID? {
+        guard let proposedDeal,
+            case .saved(let deal) = proposedDeal.handle(.confirm(at: Date())),
+            !deals.contains(where: { $0.id == deal.id }),
+            transitionDealBrief(.confirmed)
+        else { return nil }
+        document.deals = [deal] + deals
+        save()
+        return deal.id
+    }
+
+    func trackDeal(_ id: UUID, _ event: MiraDealTrackerEvent) {
+        guard case .loaded = library, let index = deals.firstIndex(where: { $0.id == id }),
+            case .saved(let deal) = MiraDealCardState.saved(deals[index]).handle(.track(event))
+        else { return }
+        document.deals?[index] = deal
+        save()
     }
 }

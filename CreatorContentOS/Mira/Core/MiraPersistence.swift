@@ -9,6 +9,8 @@ struct MiraDocument: Codable, Equatable, Sendable {
     var defaultConstraints: MiraConstraints?
     var demoMode = false
     var sequence = 0
+    var deals: [MiraDeal]?
+    var dealBriefDraft: MiraDealBriefDraft?
     func restoredNavigation() -> MiraNavigation {
         func restored(_ path: [MiraRoute]) -> [MiraRoute] {
             var result: [MiraRoute] = []
