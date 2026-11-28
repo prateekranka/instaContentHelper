@@ -2,9 +2,10 @@ enum MiraNextAction {
     case chooseIdea, writeScript, makeShots, updateShots, approveWords, startFilming
     case continueFilming, reviewPlan, wait, reconnect, stop, retry, makeCard
     case reviewProposal, editWords, retryShots, updateIdea
-    case useMicrophone, openSettings, stopRecording, connectInstagram, refreshInsights
+    case useMicrophone, openSettings, stopRecording, connectInstagram, reconnectInstagram, refreshInsights
     case reviewAIConsent, tryOpeningLibrary, updateApp, continueWork
     case enterBrief, extractRequirements, confirmRequirements, editBrief
+    case makeToday, readShotList, markFilmed, finishFilming, prepareClips
 
     var title: String {
         switch self {
@@ -29,6 +30,7 @@ enum MiraNextAction {
         case .openSettings: "Open Settings"
         case .stopRecording: "Stop recording"
         case .connectInstagram: "Connect Instagram"
+        case .reconnectInstagram: "Connect again"
         case .refreshInsights: "Check again"
         case .reviewAIConsent: "Review AI permission"
         case .tryOpeningLibrary: "Try opening saved work again"
@@ -38,6 +40,11 @@ enum MiraNextAction {
         case .extractRequirements: "Extract proposed requirements"
         case .confirmRequirements: "Confirm these requirements"
         case .editBrief: "Edit brand requirements"
+        case .makeToday: "Make today's Reel"
+        case .readShotList: "Got it, I'll go shoot"
+        case .markFilmed: "Mark filmed"
+        case .finishFilming: "Finish"
+        case .prepareClips: "Open Instagram"
         }
     }
 }
@@ -55,8 +62,8 @@ enum MiraReelProgress: Equatable {
             guard project.selectedIdeaID != nil else { return .choosing }
             guard project.script != nil else { return .writing }
             guard let board = project.storyboard else { return .planning(hasShots: false) }
-            guard !project.storyboardIsStale else { return .planning(hasShots: true) }
             guard project.isApproved else { return .approving }
+            guard !project.shotsNeedUpdate else { return .planning(hasShots: true) }
             if !board.shots.isEmpty && board.shots.allSatisfy({
                 project.filmed.contains($0.id) && !project.needsReview.contains($0.id)
             }) {
@@ -84,7 +91,7 @@ enum MiraReelProgress: Equatable {
         case .writing: .writeScript
         case .planning(let hasShots): hasShots ? .updateShots : .makeShots
         case .approving: .approveWords
-        case .ready: .startFilming
+        case .ready: .reviewPlan
         case .filming: .continueFilming
         case .complete: .reviewPlan
         }

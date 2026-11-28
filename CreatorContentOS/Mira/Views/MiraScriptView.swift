@@ -42,13 +42,10 @@ struct MiraScriptView: View {
                         }
                     }
                     Button("Change language or ask Mira", action: onAsk)
-                    Button(project.storyboard == nil ? "Make shot list" : "Update shot list") {
-                        store.approveScript(projectID)
-                        onGenerate(projectID, .storyboard, "Use my current reviewed script", nil, nil)
-                    }.buttonStyle(MiraPrimaryStyle()).disabled(
-                        script.spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || store.requestState(project.job).pending)
-                    Text("Make shot list confirms this script revision as its source.").font(.footnote)
+                    MiraInlineAction { mainAction(project) }
+                    if project.storyboard == nil {
+                        Text("Make shot list confirms this script revision as its source.").font(.footnote)
+                    }
                     DisclosureGroup("Script history (\(project.scripts.count) revisions)") {
                         ForEach(project.scripts.reversed()) { version in
                             VStack(alignment: .leading, spacing: 8) {
@@ -63,8 +60,7 @@ struct MiraScriptView: View {
                         }
                     }
                 } else {
-                    Button("Draft hook, script and caption") { onGenerate(projectID, .script, "", nil, nil) }
-                        .buttonStyle(MiraPrimaryStyle()).disabled(store.requestState(project.job).pending)
+                    MiraInlineAction { mainAction(project) }
                     Button("Write it myself") {
                         store.writeScriptManually(projectID)
                     }
@@ -72,6 +68,25 @@ struct MiraScriptView: View {
             }
         }
     }
+    @ViewBuilder func mainAction(_ project: MiraProject) -> some View {
+        if let script = project.script {
+            Button(project.storyboard == nil ? "Make shot list" : "Update shot list") {
+                if project.storyboard == nil {
+                    store.approveScript(projectID)
+                } else if !project.isApproved {
+                    store.navigate(.showWords(projectID))
+                    return
+                }
+                onGenerate(projectID, .storyboard, "Use my current reviewed script", nil, nil)
+            }.buttonStyle(MiraPrimaryStyle()).disabled(
+                script.spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || store.requestState(project.job).pending)
+        } else {
+            Button("Draft hook, script and caption") { onGenerate(projectID, .script, "", nil, nil) }
+                .buttonStyle(MiraPrimaryStyle()).disabled(store.requestState(project.job).pending)
+        }
+    }
+
     private func field<T>(_ path: WritableKeyPath<MiraScript, T>) -> Binding<T> where T: Equatable {
         let initial = store.project(projectID)!.script![keyPath: path]
         return Binding(
@@ -90,16 +105,16 @@ struct MiraWordsView: View {
     var body: some View {
         Group {
             if let project = store.project(projectID), let script = project.script {
-                page(project, script, state: store.wordsState(project))
+                page(script, state: store.wordsState(project), step: store.taskStep(.words(projectID), in: project))
             }
         }
         .navigationTitle("Your words").navigationBarTitleDisplayMode(.inline)
         .onAppear { onEvent(.appeared) }
     }
 
-    private func page(_ project: MiraProject, _ script: MiraScript, state: MiraWordsState) -> some View {
-        let busy = store.requestState(project.job).pending || isProposal(state)
+    private func page(_ script: MiraScript, state: MiraWordsState, step: MiraTaskStep) -> some View {
         return MiraPage {
+            MiraTaskHeading(step: step)
             VStack(alignment: .leading, spacing: 8) {
                 Text("Your opening line").font(.headline)
                 Text(script.hook).font(.title.bold())
@@ -111,30 +126,40 @@ struct MiraWordsView: View {
             Text("About \(script.durationSeconds) seconds").font(.body).monospacedDigit()
                 .foregroundStyle(.secondary)
             requestContent(state)
-            if !project.isApproved {
+            if case .reviewing = state {
                 Button("Sounds like me") { onEvent(.approve) }.buttonStyle(MiraPrimaryStyle())
-                    .disabled(busy).accessibilityIdentifier("mira.words.approve")
-            } else if project.storyboard == nil || !project.storyboardIsStale {
-                Button(MiraNextAction.startFilming.title) { onEvent(.startFilming) }.buttonStyle(MiraPrimaryStyle())
-                    .disabled(busy || isOpening(state)).accessibilityIdentifier("mira.words.start")
+                    .accessibilityIdentifier("mira.words.approve")
+            } else if case .ready = state {
+                Button(MiraNextAction.reviewPlan.title) { onEvent(.reviewPlan) }.buttonStyle(MiraPrimaryStyle())
+                    .accessibilityIdentifier("mira.words.start")
             }
-            Button("Make it simpler") { onEvent(.send(simplerRequest)) }.buttonStyle(.bordered)
-                .controlSize(.large).disabled(busy).accessibilityIdentifier("mira.words.simpler")
+            if canChange(state) {
+                Button("Make it simpler") { onEvent(.send(simplerRequest)) }.buttonStyle(.bordered)
+                    .controlSize(.large).accessibilityIdentifier("mira.words.simpler")
+            }
             if case .changing(let note) = state {
                 let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
                 MiraTextInput(
                     title: "What should change?", text: Binding(get: { note }, set: { onEvent(.note($0)) }),
                     axis: .vertical
                 ).lineLimit(2...4).font(.title3).accessibilityIdentifier("mira.words.note")
-                Button(state.nextAction?.title ?? "Send") { onEvent(.send(text)) }
-                    .buttonStyle(.bordered).controlSize(.large).disabled(busy || text.isEmpty)
-                    .accessibilityIdentifier("mira.words.send")
+                MiraInlineAction { sendButton(state, text: text) }
                 Button("Cancel") { onEvent(.cancelChange) }.buttonStyle(.bordered).controlSize(.large)
-            } else {
+            } else if canChange(state) {
                 Button("Change it") { onEvent(.change) }.buttonStyle(.bordered).controlSize(.large)
-                    .disabled(busy).accessibilityIdentifier("mira.words.change")
+                    .accessibilityIdentifier("mira.words.change")
+            }
+        }.miraBottomAction(whileEditing: true) {
+            if case .changing(let note) = state {
+                sendButton(state, text: note.trimmingCharacters(in: .whitespacesAndNewlines))
             }
         }
+    }
+
+    private func sendButton(_ state: MiraWordsState, text: String) -> some View {
+        Button(state.nextAction?.title ?? "Send") { onEvent(.send(text)) }
+            .buttonStyle(MiraPrimaryStyle()).disabled(text.isEmpty)
+            .accessibilityIdentifier("mira.words.send")
     }
 
     @ViewBuilder private func requestContent(_ state: MiraWordsState) -> some View {
@@ -171,27 +196,26 @@ struct MiraWordsView: View {
                 .accessibilityIdentifier("mira.words.use")
             keepButton("mira.words.keep")
         case .needsShots:
-            Text("Mira could not update your shots. Try again?").font(.title3)
+            Text("Mira needs to update the shots").font(.title3)
             Button(MiraNextAction.retryShots.title) { onEvent(.retry) }.buttonStyle(MiraPrimaryStyle())
                 .accessibilityIdentifier("mira.words.shots.retry")
-        case .retry:
-            Text("Mira could not finish. Try again?").font(.title3)
+        case .retry(let job):
+            Text(job.error ?? "Mira could not finish. Try again?").font(.title3)
             Button(MiraNextAction.retry.title) { onEvent(.retry) }.buttonStyle(MiraPrimaryStyle())
                 .accessibilityIdentifier("mira.words.retry")
             keepButton("mira.words.failed.keep")
-        case .reviewing, .ready, .changing, .opening, .applyingShots, .shotUpdateFailed:
+        case .opening, .applyingShots, .updatingShots:
+            ProgressView()
+        case .reviewing, .ready, .changing, .shotUpdateFailed:
             EmptyView()
         }
     }
 
-    private func isOpening(_ state: MiraWordsState) -> Bool {
-        if case .opening = state { return true }
-        return false
-    }
-
-    private func isProposal(_ state: MiraWordsState) -> Bool {
-        if case .proposal = state { return true }
-        return false
+    private func canChange(_ state: MiraWordsState) -> Bool {
+        switch state {
+        case .reviewing, .ready, .changing: true
+        default: false
+        }
     }
 
     private func stopButton(_ id: String) -> some View {

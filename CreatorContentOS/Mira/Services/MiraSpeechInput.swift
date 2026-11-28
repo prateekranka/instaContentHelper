@@ -113,9 +113,10 @@ final class MiraSpeechInput: MiraSpeechInputService {
     }
 
     func refreshPermissions() {
-        guard case .denied = state, SFSpeechRecognizer.authorizationStatus() == .authorized,
-            AVAudioApplication.shared.recordPermission == .granted else { return }
-        transition(.permissionsGranted)
+        guard case .denied = state, SFSpeechRecognizer.authorizationStatus() == .authorized else { return }
+        let microphone = AVAudioApplication.shared.recordPermission
+        guard microphone == .granted || microphone == .undetermined else { return }
+        transition(.permissionsRequestable)
     }
 
     func stop() {

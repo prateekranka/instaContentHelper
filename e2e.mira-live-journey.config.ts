@@ -10,7 +10,7 @@ export default {
     engine: mobile({
       platform: 'ios',
       device: 'Bobby’s',
-      session: 'mira-live-journey-2',
+      session: process.env.MIRA_E2E_DRIVER_SESSION ?? 'mira-live-journey-2',
       snapshot: 'full',
       videoTouches: false,
     }),

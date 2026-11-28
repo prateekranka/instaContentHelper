@@ -30,22 +30,23 @@ stateDiagram-v2
     [*] --> workChanged
     workChanged --> choosing: no idea
     workChanged --> writing: no script
-    workChanged --> planning: shots missing or old
+    workChanged --> planning: shots missing
     workChanged --> approving: words need approval
+    workChanged --> planning: shots are stale or contain different dialogue
     workChanged --> ready: ready to start
     workChanged --> filming: filming started
     workChanged --> complete: all shots filmed and checked
 ```
 
-In every state, `workChanged` reads the project and follows the first matching rule in the diagram, from top to bottom. Edits and undo can return the Reel to an earlier state.
+In every state, `workChanged` reads the project and follows the first matching rule in the diagram, from top to bottom. Edits and undo can return the Reel to an earlier state. Undo keeps filmed marks, review marks, and the current shot when the storyboard ID stays the same. Undoing a card change also restores the previous card selection, title, and constraints. Filming requires the current approved script, the current confirmed brief, and matching dialogue. The app joins the nonempty shot words in order and normalizes whitespace and curly quotes. If the normalized spoken text already starts with the hook, the app compares it directly with the joined shot words. Otherwise it prepends the hook.
 
 | State | Allowed event | Next state | Next step |
 | --- | --- | --- | --- |
 | `choosing` | Saved work changes | First match above | Choose an idea |
 | `writing` | Saved work changes | First match above | Write your script |
-| `planning` | Saved work changes | First match above | Make your shot list if missing. Update shot list if old. |
+| `planning` | Saved work changes | First match above | Make your shot list if missing. Update shot list if old or different from the approved words. |
 | `approving` | Saved work changes | First match above | Approve your words |
-| `ready` | Saved work changes | First match above | Start filming |
+| `ready` | Saved work changes | First match above | Review your filming plan |
 | `filming` | Saved work changes | First match above | Continue filming |
 | `complete` | Saved work changes | First match above | Review your filming plan |
 
@@ -66,6 +67,7 @@ stateDiagram-v2
     waitingToStart --> sending: send
     sending --> waitingToStart: busy, try again
     sending --> needsReconnect: save or link fails, or send limit
+    sending --> stopped: AI permission withdrawn before send
     sending --> active: accepted
     state active <<choice>>
     active --> working: optional generation step
@@ -86,13 +88,13 @@ stateDiagram-v2
     done --> done: picture status or matching image load failure
 ```
 
-A saved job maps idle to `idle`, working to `needsReconnect`, failed to `failed`, cancelled to `stopped`, and succeeded to `done`. The store starts a fresh request with a new job. `Store read` in the table refers to the full saved-job mapping.
+A saved job maps idle to `idle`, working to `needsReconnect`, failed to `failed`, cancelled to `stopped`, and succeeded to `done`. The store starts a fresh request with a new job. Every live start checks the current account and AI permission before sending text. A job from another account stays saved for its owner. A legacy job without a saved account can check existing server status. `Store read` in the table refers to the full saved-job mapping.
 
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |
 | `idle` | — | — | — |
 | `waitingToStart` | Send again. Stop. | `sending`. `stopping`. | Stop |
-| `sending` | Save fails or link fails. Server accepts. Server is busy. Stop. | `needsReconnect`. `working` with the job ID and optional step, or `waitingToRetry` during backoff. `waitingToStart`, or `needsReconnect` at the send limit. `stopping`. | Stop |
+| `sending` | Save fails or link fails. Server accepts. Server is busy. AI permission is withdrawn. Stop. | `needsReconnect`. `working` with the job ID and optional step, or `waitingToRetry` during backoff. `waitingToStart`, or `needsReconnect` at the send limit. `stopped`. `stopping`. | Stop |
 | `working` | Progress for the same job. Receive job. Link fails. Stop. | Replace the optional step in `working` or enter `waitingToRetry`. Store read. `needsReconnect`. `stopping`. | Stop |
 | `waitingToRetry` | Progress for the same job. Receive job. Link fails. Stop. | `working` with the latest optional step, or `waitingToRetry` while backoff continues. Store read. `needsReconnect`. `stopping`. | Stop |
 | `stopping` | Receive job. Link fails. | Store read. `needsReconnect`. | Wait |
@@ -202,36 +204,34 @@ stateDiagram-v2
     read --> reconnecting: link needed
     read --> stopping: stop sent
     read --> proposal: new words
-    read --> applyingShots: approved words and new shots
+    read --> applyingShots: approved words and matching shot update job ID
     read --> needsShots: old shots or rejected update
     read --> retry: failed or stopped revision
     read --> ready: approved
     read --> reviewing: approval needed
     reviewing --> changing: change
     ready --> changing: change
-    retry --> changing: change
-    needsShots --> changing: change
     changing --> changing: note
-    changing --> reviewing: cancel or approve
-    retry --> reviewing: approve, retry or keep
-    needsShots --> reviewing: retry
+    changing --> reviewing: cancel
+    retry --> reviewing: retry or keep
+    needsShots --> updatingShots: retry starts a new job
+    updatingShots --> applyingShots: matching job succeeds
     proposal --> reviewing: use or keep
-    ready --> opening: start filming
-    changing --> opening: start filming
-    retry --> opening: start filming
+    ready --> opening: review the shot list
     applyingShots --> opening: shots applied
     applyingShots --> shotUpdateFailed: shots rejected
     shotUpdateFailed --> needsShots: read same rejected job
     opening --> reviewing: screen opens
 ```
 
-On every read, the current request can set the view state. The screen keeps an open edit if there is no active request or new proposal. `requestStarted` resets any state to `reviewing`. `appeared` keeps the state except when it clears `opening`. The table lists the other events. A send uses a nonempty note and keeps the state until the request starts.
+On every read, the current request can set the view state. The screen keeps an open edit when the project and request allow it. `requestStarted` records the ID of a shot update from Your words or resets the state to `reviewing` for a script request. After relaunch, the creator reviews a finished shot update in the Reel editor because Your words keeps its automatic apply intent in memory. `appeared` keeps the state except when it clears `opening`. A send uses a nonempty note and keeps the state until the request starts.
 
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |
 | `reviewing` | Change. Send. Approve. | `changing`. `reviewing`. `reviewing`, then read project. | Approve your words |
-| `changing` | Edit note or send. Cancel or approve. Start filming. | `changing`. `reviewing`. `opening`. | Send |
+| `changing` | Edit note or send. Cancel. | `changing`. `reviewing`. | Send |
 | `opening` | Screen opens | `reviewing` | Wait |
+| `updatingShots` | A shot update starts from Your words. Read its result. | Read the request while it runs. `applyingShots` on success with the matching job ID. | Wait |
 | `shotUpdateFailed` | Read the same rejected job | `needsShots` | Try again |
 | `waiting` | Stop | `waiting`, then read request | Stop |
 | `waitingToRetry` | Stop | `waitingToRetry`, then read request | Stop |
@@ -239,12 +239,12 @@ On every read, the current request can set the view state. The screen keeps an o
 | `reconnecting` | Check again or stop | `reconnecting`, then read request | Check again |
 | `stopping` | Read stop result | Read request and project | Wait |
 | `proposal` | Use new words or keep current words | `reviewing` | Use this |
-| `retry` | Change. Send. Approve, retry or keep. Start filming. | `changing`. `retry`. `reviewing`. `opening`. | Try again |
-| `needsShots` | Change. Send. Retry. | `changing`. `needsShots`. `reviewing`. | Try again |
+| `retry` | Retry or keep the current words | `reviewing` | Try again |
+| `needsShots` | Retry | `updatingShots` when the request starts | Try again |
 | `applyingShots` | Receive result. Apply shots. Reject shots. | `applyingShots`. `opening`. `shotUpdateFailed`. | Wait |
-| `ready` | Change. Send. Start filming. | `changing`. `ready`. `opening`. | Start filming |
+| `ready` | Change. Send. Review the shot list. | `changing`. `ready`. `opening`. | Review your filming plan |
 
-The store checks approval before it opens filming. If the check fails, it restores the prior words state.
+When the creator requests a shot update from the editor and the words need approval, the button opens Your words. The store checks approval and dialogue before opening the reviewed shot list from Words. If the check fails, it restores the prior words state. Shooting has its own approval and dialogue checks. A rejected shot update keeps Try again available. A proposal from the editor requires Use this.
 
 ## `MiraLocationState`
 
@@ -254,20 +254,26 @@ The store checks approval before it opens filming. If the check fails, it restor
 stateDiagram-v2
     [*] --> savedTab
     state savedTab <<choice>>
-    savedTab --> today
-    savedTab --> projects
-    today --> projects: select or open Projects
-    projects --> today: select or open Today
-    today --> today: update path or history
-    projects --> projects: update path or history
+    savedTab --> home: saved Today
+    savedTab --> myBrand: saved Projects
+    home --> myBrand: select or open My Brand
+    myBrand --> home: select or open Home
+    home --> deals: select Deals
+    myBrand --> deals: select Deals
+    deals --> home: select or open Home
+    deals --> myBrand: select or open My Brand
 ```
 
-Either tab accepts `selectTab`, `open`, `setPath`, `push`, `showWords`, `remember`, and `remove`. The last five keep the active tab. `showWords` replaces the trailing filming or Done screens for that Reel. `remove` clears that Reel from both tab paths and its saved section.
+All tabs accept `selectTab`, `open`, `setPath`, `push`, `showWords`, `showPlan`, `remember`, and `remove`.
+Only selection and open change the active tab. Each tab keeps its own remembered section for each Reel while the app runs.
+Show Plan opens the editor at Shots in the current tab. Show Words replaces trailing filming or Done destinations. Remove clears the Reel from all tab paths and section histories.
+Home and My Brand use the existing `today` and `projects` saved paths and tab values. Restore My Brand's per-Reel sections and read Home's saved routes first. Then apply the saved position to its Reel in the saved tab. This lets an editor route reopen at Shots even if Words is earlier in the path. A concrete destination such as filming still selects its own screen. The Reel keeps its approved words, filmed marks, and shot index. Deals restores the last selected saved tab on relaunch. [Navigation restore model](../specs/tla/MiraLocation.tla)
 
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |
-| `today` | Select or open a tab. Update path or history. | Selected tab. `today`. | Use the current destination below |
-| `projects` | Select or open a tab. Update path or history. | Selected tab. `projects`. | Use the current destination below |
+| `home` | Select or open a tab. Update path or history. | Selected tab or `home` | Use the current destination |
+| `deals` | Select or open a tab. Update path or history. | Selected tab or `deals` | Share a brand brief to Mira |
+| `myBrand` | Select or open a tab. Update path or history. | Selected tab or `myBrand` | All Reels |
 
 ### `MiraLocation`
 
@@ -293,6 +299,51 @@ The last route on the active tab gives the current destination. Changing the pat
 | `filming` | Change active path | Last route or no destination | Continue filming |
 | `done` | Change active path | Last route or no destination | — |
 
+## `MiraHomeFeed`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraHomeFeed.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> empty
+    empty --> continuing: unfinished Reel with work
+    continuing --> empty: no unfinished Reels with work
+    continuing --> continuing: work changed
+```
+
+The store projects the feed from the library and the last opened Reel. It excludes archived and filmed Reels and empty projects.
+The most recently opened unfinished Reel appears first. The other Reels use their last update time.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `empty` | Work changed | Read the library | Make today's Reel |
+| `continuing` | Work changed | Read the library | Each Reel uses the next step from Reel progress |
+
+## `MiraTaskStep`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraTaskStep.swift)
+
+```mermaid
+stateDiagram-v2
+    state "Read current location" as route
+    [*] --> route
+    route --> idea
+    route --> words
+    route --> shotList
+    route --> shoot
+    route --> upload
+```
+
+The location and current editor section choose the visible step. The approval gate still controls filming. Step 5 shows the existing Done screen and names upload and post as later work.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `idea` | Read open location | Step for that location | Choose an idea |
+| `words` | Read open location | Step for that location | Use the words state or script editor |
+| `shotList` | Read open location | Step for that location | Review the list and go shoot when permitted |
+| `shoot` | Read open location | Step for that location | Mark the current shot filmed |
+| `upload` | Read open location | Step for that location | Open Instagram from Done |
+
 ## `MiraVoiceInputState`
 
 [Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraVoiceInputState.swift)
@@ -306,7 +357,7 @@ stateDiagram-v2
     askingPermission --> denied: permission denied
     askingPermission --> failed: start failed
     askingPermission --> idle: stop
-    denied --> idle: permissions granted
+    denied --> idle: speech allowed and microphone can be requested
     recording --> recording: tick
     recording --> finishing: stop
     finishing --> idle: words captured
@@ -319,7 +370,7 @@ Replies and ticks must match the current attempt ID. Stop also runs when capture
 | --- | --- | --- | --- |
 | `idle` | Start | `askingPermission` | Use microphone |
 | `askingPermission` | Starts. Denied. Fails. Stop. | `recording`. `denied`. `failed`. `idle`. | Wait |
-| `denied` | Both permissions granted | `idle` | Open Settings |
+| `denied` | Speech is allowed and microphone access is granted or undecided | `idle` | Open Settings |
 | `recording` | Tick. Stop. | `recording`. `finishing`. | Stop recording |
 | `finishing` | Finish with words or an error | `idle` or `failed` | Wait |
 | `failed` | Start | `askingPermission` | Use microphone |
@@ -334,7 +385,7 @@ stateDiagram-v2
     unopened --> loading: load
     loaded --> loading: check again
     loadFailed --> loading: check again
-    loaded --> connecting: connect if disconnected
+    loaded --> connecting: disconnected or permission needed
     connectionFailed --> connecting: connect
     connecting --> loading: connected
     connecting --> loaded: login cancelled
@@ -350,8 +401,8 @@ Each reply must match the current attempt ID. A failed refresh retains the previ
 | --- | --- | --- | --- |
 | `unopened` | Load | `loading` | Wait |
 | `loading` | Read result. Read fails. Cancel. | `loaded`. `loadFailed`. `loaded` with prior result or `unopened`. | Wait |
-| `connecting` | Connected. Login fails. Cancel. | `loading`. `connectionFailed`. `loaded` with disconnected result. | Wait |
-| `loaded` | Load again. Connect if disconnected. | `loading`. `connecting`. | Connect Instagram if disconnected. Otherwise the machine selects Check again, and the screen shows the result. |
+| `connecting` | Connected. Login fails. Cancel. | `loading`. `connectionFailed`. `loaded` with its prior result. | Wait |
+| `loaded` | Load again. Connect when disconnected or when permission is needed. | `loading`. `connecting`. | Connect Instagram if disconnected. Connect again if permission is needed. Otherwise use Check again. |
 | `loadFailed` | Load again | `loading` | Check again |
 | `connectionFailed` | Connect again | `connecting` | Connect Instagram |
 

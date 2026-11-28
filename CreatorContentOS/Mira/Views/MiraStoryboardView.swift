@@ -7,6 +7,7 @@ extension EnvironmentValues {
 struct MiraStoryboardView: View {
     var store: MiraStore
     var projectID: UUID
+    var tab: MiraMainTab
     var onUpdate: () -> Void
     var body: some View {
         if let project = store.project(projectID), let board = project.storyboard {
@@ -15,21 +16,16 @@ struct MiraStoryboardView: View {
                 Text(
                     "About \(board.shots.reduce(0){$0+$1.editedSeconds}) seconds edited · \(board.shots.count) shots"
                 ).font(.headline)
-                if project.storyboardIsStale {
-                    Text(
-                        "This shot list is out of date. Your earlier plan and filming history are preserved."
-                    ).font(.headline)
-                    Button("Update shot list", action: onUpdate).buttonStyle(MiraPrimaryStyle())
-                        .disabled(store.requestState(project.job).pending)
-                } else if project.isApproved {
-                    NavigationLink(value: MiraRoute.shooting(projectID)) {
-                        Text(project.startedFilming ? "Continue filming" : "Start filming").frame(
-                            maxWidth: .infinity, minHeight: 52)
-                    }.buttonStyle(MiraPrimaryStyle())
-                } else {
-                    NavigationLink(value: MiraRoute.words(projectID)) {
-                        Text("Approve your words").frame(maxWidth: .infinity, minHeight: 52)
-                    }.buttonStyle(MiraPrimaryStyle()).accessibilityIdentifier("mira.shots.approve")
+                let locations = details(board.shots.map(\.location))
+                let props = details(board.shots.map(\.props))
+                MiraShotRow(title: "Where", icon: "location", value: locations.isEmpty ? project.constraints.location : locations)
+                MiraShotRow(title: "What to bring", icon: "bag", value: props.isEmpty ? project.constraints.equipment : props)
+                MiraShotRow(title: "Audio", icon: "mic", value: audio(board.shots))
+                if project.shotsNeedUpdate {
+                    Text("Mira needs to update the shots").font(.headline)
+                }
+                if !project.canFilm {
+                    MiraInlineAction { mainAction(project) }
                 }
                 ForEach(Array(board.shots.enumerated()), id: \.element.id) { index, shot in
                     VStack(alignment: .leading, spacing: 16) {
@@ -58,18 +54,15 @@ struct MiraStoryboardView: View {
                             Text("Record these words separately.").font(.title3)
                         }
                         MiraShotRow(title: "On-screen text", icon: "textformat", value: shot.onScreenText)
-                        DisclosureGroup("More filming details") {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Where: \(shot.location)")
-                                if !shot.props.isEmpty { Text("What you need: \(shot.props)") }
-                                Text("Record for about \(shot.recordingSeconds) seconds.")
-                                Text(shot.action)
-                                if !shot.simplerAlternative.isEmpty {
-                                    Text("Simpler option: \(shot.simplerAlternative)")
-                                }
-                            }.font(.title3).padding(.top, 12)
+                        MiraShotRow(title: "Where", icon: "location", value: shot.location)
+                        if !shot.props.isEmpty {
+                            MiraShotRow(title: "What you need", icon: "bag", value: shot.props)
                         }
-                        .font(.headline)
+                        Text("Record for about \(shot.recordingSeconds) seconds.")
+                        Text(shot.action)
+                        if !shot.simplerAlternative.isEmpty {
+                            Text("Simpler option: \(shot.simplerAlternative)")
+                        }
                     }
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -94,8 +87,43 @@ struct MiraStoryboardView: View {
                 } else if case .confirmed = project.briefState {
                     Text("Brand requirements confirmed").font(.headline)
                 }
+                if project.canFilm {
+                    MiraInlineAction { mainAction(project) }
+                }
             }
         }
+    }
+
+    @ViewBuilder func mainAction(_ project: MiraProject) -> some View {
+        if project.shotsNeedUpdate {
+            Button("Update shot list", action: onUpdate).buttonStyle(MiraPrimaryStyle())
+                .disabled(project.isApproved && store.requestState(project.job).pending)
+        } else if !project.isApproved {
+            NavigationLink(value: MiraRoute.words(projectID)) {
+                Text("Approve your words").frame(maxWidth: .infinity, minHeight: 52)
+            }.buttonStyle(MiraPrimaryStyle()).accessibilityIdentifier("mira.shots.approve")
+        } else if project.canFilm {
+            let step = store.taskStep(.editor(projectID), in: project, tab: tab)
+            NavigationLink(value: MiraRoute.shooting(projectID)) {
+                Text(step.nextAction.title)
+            }.buttonStyle(MiraPrimaryStyle())
+                .accessibilityIdentifier("mira.shots.film")
+        }
+    }
+
+    private func details(_ values: [String]) -> String {
+        var seen: Set<String> = []
+        return values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+            .joined(separator: " · ")
+    }
+
+    private func audio(_ shots: [MiraShot]) -> String {
+        let spoken = shots.filter { !$0.words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if spoken.isEmpty { return "No words to record." }
+        if !spoken.contains(where: { $0.voiceover }) { return "Speak while you film." }
+        if spoken.allSatisfy({ $0.voiceover }) { return "Record the voiceover separately." }
+        return "Speak while you film. Record marked voiceovers separately."
     }
 }
 private struct MiraShotRow: View {
@@ -147,6 +175,7 @@ struct MiraShotDetails: View {
 struct MiraShootingView: View {
     var store: MiraStore
     var projectID: UUID
+    var tab: MiraMainTab
     var onAsk: (UUID) -> Void
     var onDone: () -> Void
     var onWords: () -> Void
@@ -154,11 +183,15 @@ struct MiraShootingView: View {
         MiraPage {
             if let project = store.project(projectID), !project.isApproved {
                 MiraApproveFirst(onWords: onWords)
+            } else if let project = store.project(projectID), !project.canFilm {
+                MiraUpdateShots(onWords: onWords)
             } else if let project = store.project(projectID), let board = project.storyboard,
                 !board.shots.isEmpty
             {
                 let index = min(max(0, project.shotIndex), board.shots.count - 1)
                 let shot = board.shots[index]
+                let step = store.taskStep(.filming(projectID), in: project)
+                MiraTaskHeading(step: step)
                 Text("Shot \(index+1) of \(board.shots.count)").font(.title2)
                 Text("\(board.shots.filter{project.filmed.contains($0.id)}.count) filmed by you").font(
                     .callout)
@@ -170,20 +203,21 @@ struct MiraShootingView: View {
                     .font(.title.bold())
                 Text("Film for about \(shot.recordingSeconds) seconds").monospacedDigit()
                 MiraShotDetails(shot: shot)
-                if project.storyboardIsStale {
-                    Text("The script or brief changed. Update the shot list before continuing.").font(
-                        .headline)
-                }
                 if project.needsReview.contains(shot.id) {
                     Text("This shot changed. Check these instructions before filming again.").font(.headline)
                 }
-                Button(
+                let mark = Button(
                     project.filmed.contains(shot.id)
                         ? "Mark not filmed"
-                        : (project.needsReview.contains(shot.id) ? "Reviewed and filmed" : "Mark filmed")
+                        : (project.needsReview.contains(shot.id) ? "Reviewed and filmed" : MiraNextAction.markFilmed.title)
                 ) {
                     store.toggleFilmed(projectID, shotID: shot.id)
-                }.buttonStyle(MiraPrimaryStyle()).disabled(project.storyboardIsStale)
+                }
+                if project.stage == .complete {
+                    mark.buttonStyle(.bordered)
+                } else {
+                    mark.buttonStyle(MiraPrimaryStyle())
+                }
                 HStack {
                     Button("Previous") { move(max(0, index - 1)) }.disabled(index == 0)
                     Spacer()
@@ -196,7 +230,7 @@ struct MiraShootingView: View {
                         .footnote
                     ).foregroundStyle(.secondary)
                 if project.stage == .complete {
-                    Button("Finish", action: onDone).buttonStyle(MiraPrimaryStyle())
+                    Button(step.nextAction.title, action: onDone).buttonStyle(MiraPrimaryStyle())
                         .accessibilityIdentifier("mira.filming.finish")
                 }
             } else {
@@ -204,7 +238,7 @@ struct MiraShootingView: View {
             }
         }.navigationTitle("Filming").navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                store.startFilming(projectID)
+                store.startFilming(projectID, tab: tab)
             }
     }
     private func move(_ index: Int) {
@@ -222,6 +256,14 @@ struct MiraApproveFirst: View {
     }
 }
 
+private struct MiraUpdateShots: View {
+    var onWords: () -> Void
+    var body: some View {
+        Text("Mira needs to update the shots").font(.title2.bold())
+        Button("Update shot list", action: onWords).buttonStyle(MiraPrimaryStyle())
+    }
+}
+
 struct MiraDoneView: View {
     var store: MiraStore
     var projectID: UUID
@@ -232,11 +274,15 @@ struct MiraDoneView: View {
         MiraPage {
             if let project = store.project(projectID), !project.isApproved {
                 MiraApproveFirst(onWords: onWords)
+            } else if let project = store.project(projectID), !project.canFilm {
+                MiraUpdateShots(onWords: onWords)
             } else if let project = store.project(projectID), let board = project.storyboard,
                 !board.shots.isEmpty
             {
                 let count = board.shots.filter { project.filmed.contains($0.id) }.count
                 let caption = project.script?.caption.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                MiraTaskHeading(step: store.taskStep(.done(projectID), in: project))
+                Text("Upload and post in Mira are later steps.").foregroundStyle(.secondary)
                 Text(count == 1 ? "1 clip filmed" : "\(count) clips filmed")
                     .font(.largeTitle.bold()).monospacedDigit()
                 MiraSectionTitle(text: "Your caption")
@@ -262,7 +308,7 @@ struct MiraDoneView: View {
                         }
                     }
                 }
-                Button("Open Instagram") {
+                Button(MiraNextAction.prepareClips.title) {
                     openURL(URL(string: "instagram://app")!) { accepted in
                         if !accepted {
                             openURL(URL(string: "https://apps.apple.com/app/instagram/id389801252")!)

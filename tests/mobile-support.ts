@@ -23,12 +23,14 @@ export async function tapVisibleControl(screen: Screen, locator: Locator) {
   await screen.tapAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
 }
 
-export function mobileKeyboard(screen: Screen) {
-  return screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
+export async function mobileKeyboard(screen: Screen) {
+  const preview = screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
+  return await preview.isVisible() ? preview
+    : screen.getByRole('window', 'Next keyboard', { exact: true, visible: true });
 }
 
 export async function closeKeyboard(screen: Screen, field: Locator) {
-  const keyboard = mobileKeyboard(screen);
+  const keyboard = await mobileKeyboard(screen);
   if (await keyboard.isVisible()) await field.press('Enter');
   await expect(keyboard).not.toBeVisible();
 }
@@ -68,14 +70,28 @@ function sameBox(first: Box, second: Box) {
 
 // Scroll through the actual app scroll view. A screen-wide synthesized scroll
 // can land on the fixed command bar when Dynamic Type makes that bar tall.
-export async function scrollToControl(screen: Screen, locator: Locator, direction: 'up' | 'down' = 'down', bottom?: number) {
+export async function scrollToControl(
+  screen: Screen,
+  locator: Locator,
+  direction: 'up' | 'down' | 'either' = 'down',
+  bottom?: number,
+  scrollOptions?: Pick<NonNullable<Parameters<Screen['scrollUntilVisible']>[1]>, 'momentum' | 'timeout'>,
+) {
   const scope = screen;
   const containingScrollView = screen.getByRole('scroll-view', { visible: true }).filter({ has: locator }).first();
   const scrollView = await containingScrollView.count() === 1
     ? containingScrollView : screen.getByRole('scroll-view', { visible: true }).first();
+  let lastDirection: 'up' | 'down' = direction === 'up' ? 'up' : 'down';
   let initialBox = await controlBox(locator);
   if (!initialBox) {
-    await scrollView.scrollUntilVisible(locator, { direction });
+    try {
+      await scrollView.scrollUntilVisible(locator, { ...scrollOptions, direction: lastDirection });
+    } catch (error) {
+      if (direction !== 'either' || !(error instanceof Error)
+        || !('code' in error) || error.code !== 'LOCATOR_NOT_FOUND') throw error;
+      lastDirection = 'up';
+      await scrollView.scrollUntilVisible(locator, { ...scrollOptions, direction: lastDirection });
+    }
     initialBox = await locator.boundingBox();
   }
   const scrollBox = await scrollView.boundingBox();
@@ -84,8 +100,9 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
     ?? { x: scrollBox.x, y: scrollBox.y + scrollBox.height, width: scrollBox.width, height: 0 };
   const visibleTop = Math.max(8, scrollBox.y + 2);
   const targetTop = Math.max(8, scrollBox.y - 0.5);
-  const keyboard = mobileKeyboard(screen);
-  const keyboardTop = (await controlBox(keyboard))?.y ?? tabBar.y;
+  const keyboard = await mobileKeyboard(screen);
+  const keyboardBox = await controlBox(keyboard);
+  const keyboardTop = keyboardBox && keyboardBox.y > 0 ? keyboardBox.y : tabBar.y;
   const viewportBottom = Math.min(tabBar.y - 8, keyboardTop - 8, bottom ?? tabBar.y);
   let visibleBottom = Math.min(viewportBottom, scrollBox.y + scrollBox.height - 2);
   const safeBottom = Math.min(visibleBottom, (visibleTop + viewportBottom) / 2 - 8);
@@ -111,7 +128,6 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   const swipeLeft = Math.max(tabBar.x + 8, scrollBox.x + 8);
   const swipeRight = Math.min(tabBar.x + tabBar.width - 8, scrollBox.x + scrollBox.width - 8);
   const x = (swipeLeft + swipeRight) / 2;
-  let lastDirection: 'up' | 'down' = direction;
   for (let attempt = 0; attempt < 24; attempt += 1) {
     const candidate = attempt === 0 ? initialBox : await controlBox(locator);
     if (candidate) {

@@ -45,7 +45,7 @@ struct MiraJobResponse: Decodable, Sendable {
 }
 
 enum MiraAIRequestEvent {
-    case send, saveFailed, accepted(MiraJobResponse), progress(MiraJobResponse), refused, stop, reconnect(String?), received(MiraJob)
+    case send, saveFailed, accepted(MiraJobResponse), progress(MiraJobResponse), refused, startBlocked, stop, reconnect(String?), received(MiraJob)
     case picturesReceived([MiraShotPictureReply])
     case pictureLoadFailed(UUID, URL, at: Date)
 }
@@ -77,6 +77,7 @@ enum MiraAIRequest: Equatable {
         case (.needsReconnect, .send): .sending(attempts: 0)
         case (.waitingToStart(let attempts), .send): .sending(attempts: attempts)
         case (.sending, .saveFailed): .needsReconnect(reason: nil)
+        case (.sending, .startBlocked): .stopped
         case (.sending, .accepted(let response)): Self.active(response)
         case (.working(let id, _), .progress(let response)) where id == response.job.id:
             Self.active(response)
