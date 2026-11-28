@@ -267,7 +267,7 @@ stateDiagram-v2
 All tabs accept `selectTab`, `open`, `setPath`, `push`, `showWords`, `showPlan`, `remember`, and `remove`.
 Only selection and open change the active tab. Each tab keeps its own remembered section for each Reel while the app runs.
 Show Plan opens the editor at Shots in the current tab. Show Words replaces trailing filming or Done destinations. Remove clears the Reel from all tab paths and section histories.
-Home and My Brand use the existing `today` and `projects` saved paths and tab values. My Brand restores each Reel's saved editor section. Home restores the active destinations from its saved path and position. Deals restores the last selected saved tab on relaunch.
+Home and My Brand use the existing `today` and `projects` saved paths and tab values. Restore My Brand's per-Reel sections and read Home's saved routes first. Then apply the saved position to its Reel in the saved tab. This lets an editor route reopen at Shots even if Words is earlier in the path. A concrete destination such as filming still selects its own screen. The Reel keeps its approved words, filmed marks, and shot index. Deals restores the last selected saved tab on relaunch. [Navigation restore model](../specs/tla/MiraLocation.tla)
 
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |

@@ -61,6 +61,10 @@ MIRA_E2E_E3_LIVE=1 MIRA_E2E_E3_PICK_READY=1 npx --no-install e2e list --config e
 
 The local Xcode toolchain was 27.2 (`27B52`, Swift 6.4.2). Both generic builds used the `CreatorContentOS` scheme. The simulator builds disabled signing. The device build used the Mac’s existing signing state. Xcode 26.3 compatibility and GitHub Actions on the repaired head remain pending.
 
+## Fix2 phone scope
+
+E2 and E3 share the same text and picture ledger. The E2 live journey reserves up to five pictures for its selected pick. If fewer than five picture slots remain, record the E3 live pick as **not run (picture limit not provable)** before launch. The E3 brief reading case needs no pictures. The Notes share extension case is outside this phone run because it completes a share from Notes.
+
 ## Phone and tracker
 
 The XCTest passcode blocks install, Keep, runtime E2E, native sharing, screenshots and live checks. Live counts were zero across `brandDoc`, `pickIdea`, `dealBrief`, other text and pictures. The sample checklist scenario needs the existing D2 fixture endpoints. The built-in demo fixture still declines to verify brief mappings. VoiceOver, large text and dark mode remain unverified. The existing Insights endpoint still lacks best-post patterns.
