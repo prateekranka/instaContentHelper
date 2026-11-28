@@ -65,22 +65,9 @@ struct MiraProjectView: View {
                             }.pickerStyle(.segmented)
                         }
                         if showingShots {
-                            MiraStoryboardView(
-                                store: store, projectID: projectID, tab: tab,
-                                onUpdate: {
-                                    if project.isApproved {
-                                        onGenerate(
-                                            projectID, .storyboard,
-                                            "Update to match my current script and confirmed requirements", nil,
-                                            nil)
-                                    } else {
-                                        store.navigate(.showWords(projectID))
-                                    }
-                                })
+                            storyboardView
                         } else {
-                            MiraScriptView(
-                                store: store, projectID: projectID, onGenerate: onGenerate,
-                                onAsk: { onSheet(.ask(projectID, .reviseScript, nil)) })
+                            scriptView
                         }
                         if !showingShots {
                             Button("Choose another idea") { store.chooseAnotherIdea(projectID) }
@@ -93,6 +80,15 @@ struct MiraProjectView: View {
                                 .footnote)
                         }
                         projectActions(project)
+                    }
+                }
+                .miraBottomAction(whileEditing: true) {
+                    if project.selectedIdeaID == nil {
+                        ideasButton(project)
+                    } else if showingShots {
+                        storyboardView.mainAction(project)
+                    } else {
+                        scriptView.mainAction(project)
                     }
                 }
                 .navigationTitle("Your Reel")
@@ -116,6 +112,26 @@ struct MiraProjectView: View {
             }
         }
     }
+    private var storyboardView: MiraStoryboardView {
+        MiraStoryboardView(
+            store: store, projectID: projectID, tab: tab,
+            onUpdate: {
+                if store.project(projectID)?.isApproved == true {
+                    onGenerate(
+                        projectID, .storyboard, "Update to match my current script and confirmed requirements",
+                        nil, nil)
+                } else {
+                    store.navigate(.showWords(projectID))
+                }
+            })
+    }
+
+    private var scriptView: MiraScriptView {
+        MiraScriptView(
+            store: store, projectID: projectID, onGenerate: onGenerate,
+            onAsk: { onSheet(.ask(projectID, .reviseScript, nil)) })
+    }
+
     @ViewBuilder private func projectActions(_ project: MiraProject) -> some View {
         Button("Add brand requirements") { onSheet(.brief(projectID)) }
         if !project.undo.isEmpty {
@@ -151,9 +167,7 @@ struct MiraProjectView: View {
                 "Final Reel: about \(project.constraints.reelSeconds) seconds",
                 value: constraint(\.reelSeconds), in: 10...90, step: 5)
             MiraField(title: "Available equipment", text: constraint(\.equipment))
-            Button(project.ideas.isEmpty ? "Show three ideas" : "More ideas") {
-                onGenerate(projectID, .ideas, project.request, nil, nil)
-            }.buttonStyle(MiraPrimaryStyle()).disabled(store.requestState(project.job).pending)
+            MiraInlineAction { ideasButton(project) }
             Button("Adjust with Ask Mira") { onSheet(.ask(projectID, .ideas, nil)) }
             Button("Add my own idea") { onSheet(.manualIdea(projectID)) }
             let displayedIdeas =
@@ -176,6 +190,12 @@ struct MiraProjectView: View {
             }
         }
     }
+    private func ideasButton(_ project: MiraProject) -> some View {
+        Button(project.ideas.isEmpty ? "Show three ideas" : "More ideas") {
+            onGenerate(projectID, .ideas, project.request, nil, nil)
+        }.buttonStyle(MiraPrimaryStyle()).disabled(store.requestState(project.job).pending)
+    }
+
     private func binding(_ path: WritableKeyPath<MiraProject, String>) -> Binding<String> {
         Binding(
             get: { store.project(projectID)?[keyPath: path] ?? "" },
