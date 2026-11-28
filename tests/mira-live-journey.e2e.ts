@@ -168,8 +168,16 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
   if (!prior) {
     await root(screen, 'Home');
     await app.screenshot('e1-live-home');
+    const insights = screen.getByText("How you're doing", { exact: true });
+    await expect(insights).toBeAttached({ timeout: 45_000 });
+    await fit(screen, insights);
+    for (const label of ['Followers', 'Reach', 'Saves']) {
+      await expect(screen.getByText(label, { exact: true })).toBeAttached();
+    }
+    await app.screenshot('e1-live-home-insights');
     const idea = screen.getByText('Nothing planned today. Want an idea?', { exact: true });
     if (await idea.count()) {
+      await fit(screen, idea, 'up');
       const make = await todayKeyboard(app, screen);
       await app.screenshot('e1-live-idea-card');
       started = Date.now();
