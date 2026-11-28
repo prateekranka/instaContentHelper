@@ -217,3 +217,27 @@ Live AI counts for PR #49 were **0 text requests and 0 pictures**.
 Final phone claims were zero. The fix3b D2 fixture stopped and Tailscale routes matched the baseline.
 
 Local evidence folder `/Users/prateekranka/.codex-runs/mira-worker-3-20261128/evidence/fix3b/20261128T081057Z.9HGv7X`.
+
+## Simulator result for PR #49
+
+**RESULT FAIL** at 14:59:54 IST on 2026-11-28. Xcode 27.2 built app source
+`3086634` for sim-guard iPhone 2, an iPhone 18 Pro on iOS 27.2. TesterArmy
+0.15.2 ran the named Light fixture against an isolated loopback HTTPS server.
+The initial sample invocation recorded seven passes. The remaining full-suite
+checks stopped after the E5 app fault. Live AI use was **0 text requests and
+0 pictures**.
+
+| Scenario | Result | Evidence |
+| --- | --- | --- |
+| E4 clip matching and swap | Verified the expected matches, swapped two clips, and verified that the new matches survived relaunch. The test fix brought Join Reel into view and retained its enabled assertion. | `e4-e5-round-1/report.json` |
+| E4 Join Reel and downstream checks | All four cases tapped the enabled Join Reel. Mira exited before playback. Four matching crash records show `SIGTRAP` in IOSurface and QuartzCore on the CoreMedia compositor queue. The brief check, share sheet, post confirmation and WhatsApp note remain unverified. | `e4-e5-round-1/failures/`, `e4-join-crashes.json` |
+| E5 How you are doing | Home showed “Not enough data yet” and no Followers row. The app's Debug allowlist omits `MCO_QA_E5_NOTE`, so Home did not call the E5 fixture. The remaining E5 cases did not finish. | `e4-e5-round-1/report.json`, `e4-e5-round-1-proxy.log` |
+
+The simulator had no paired account. Saved consent, the paired-account consent
+choice, importing real Photos clips, external share targets and the physical
+keyboard checks remain phone only. The Notes share case requires choosing a
+share target. The run sent nothing and made no app code changes.
+
+Local evidence is under `work/evidence/sim-49/`. The scenario table,
+timestamps, run boundaries and reproduction commands are in
+`work/sim-result-pr49.md`.
