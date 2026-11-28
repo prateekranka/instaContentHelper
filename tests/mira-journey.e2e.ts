@@ -1548,11 +1548,14 @@ async function openSampleDelivery(app: App, screen: Screen, device: Device) {
   await tap(screen, screen.getByTestId('mira.today.continue'));
   await expect(e4Control(screen, 'add')).toBeVisible();
   await tap(screen, e4Control(screen, 'fixtures'));
-  await expect(e4Control(screen, 'join')).toBeEnabled({ timeout: 45_000 });
+  await expect(e4Control(screen, 'clip.1')).toBeVisible({ timeout: 45_000 });
 }
 
 async function joinSampleDelivery(app: App, screen: Screen, screenshot: string) {
-  await tap(screen, e4Control(screen, 'join'));
+  const join = e4Control(screen, 'join');
+  await scrollToControl(screen, join);
+  await expect(join).toBeEnabled({ timeout: 45_000 });
+  await join.tap();
   await expect(e4Control(screen, 'player')).toBeVisible({ timeout: 120_000 });
   await app.screenshot(screenshot);
   await e3Button(screen, 'Close').tap();
@@ -1574,21 +1577,28 @@ async function sampleTracker(screen: Screen, field: string, value: string) {
   await expect(row).toHaveValue(value);
 }
 
+async function expectDeliveryClip(screen: Screen, slot: number, name: string) {
+  const clip = e4Control(screen, `clip.${slot}`);
+  await scrollToControl(screen, clip);
+  await expect(clip).toHaveText(name);
+}
+
 test('E4 sample clips match by length, can swap, persist, and join in the new order', async ({ app, screen, device }) => {
   await openSampleDelivery(app, screen, device);
-  await expect(e4Control(screen, 'clip.1')).toHaveText('E4FixtureShort');
-  await expect(e4Control(screen, 'clip.2')).toHaveText('E4FixtureMedium');
-  await expect(e4Control(screen, 'clip.3')).toHaveText('E4FixtureLong');
-  await scrollToControl(screen, e4Control(screen, 'swap.2'));
+  await expectDeliveryClip(screen, 1, 'E4FixtureShort');
+  await expectDeliveryClip(screen, 2, 'E4FixtureMedium');
+  await expectDeliveryClip(screen, 3, 'E4FixtureLong');
+  const swap = e4Control(screen, 'swap.2');
+  await scrollToControl(screen, swap, 'up');
   await app.screenshot('e4-clip-matching');
-  await tap(screen, e4Control(screen, 'swap.2'));
+  await swap.tap();
   await e3Button(screen, 'E4FixtureLong · swap').tap();
-  await expect(e4Control(screen, 'clip.2')).toHaveText('E4FixtureLong');
-  await expect(e4Control(screen, 'clip.3')).toHaveText('E4FixtureMedium');
+  await expectDeliveryClip(screen, 2, 'E4FixtureLong');
+  await expectDeliveryClip(screen, 3, 'E4FixtureMedium');
   await app.screenshot('e4-swapped-clips');
   await launchMira(app, screen, device, false, e4Fixture);
-  await expect(e4Control(screen, 'clip.2')).toHaveText('E4FixtureLong');
-  await expect(e4Control(screen, 'clip.3')).toHaveText('E4FixtureMedium');
+  await expectDeliveryClip(screen, 2, 'E4FixtureLong');
+  await expectDeliveryClip(screen, 3, 'E4FixtureMedium');
   await joinSampleDelivery(app, screen, 'e4-joined-reel');
 });
 
