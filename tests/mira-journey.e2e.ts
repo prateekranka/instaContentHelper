@@ -1161,9 +1161,15 @@ test('M13 permission withdrawal stops a waiting card with its request still save
   await launchMira(app, screen, device);
   const request = 'Demo permission withdrawn while waiting';
   await startTodayCard(screen, request, 3);
-  await expect(screen.getByTestId('mira.today.waiting.3')).toBeVisible();
+  const waiting = screen.getByTestId('mira.today.waiting.3');
+  await expect(waiting).toBeVisible();
+  const third = screen.getByTestId('mira.today.page.3');
+  await expect(third).toHaveAccessibleName('Idea 3 of 3, did not load', { timeout: 45_000 });
+  await third.tap();
+  await expect(third).toBeSelected();
   await expect(screen.getByText('This idea was stopped.', { exact: true })).toBeVisible({ timeout: 45_000 });
   await expect(screen.getByText('AI permission is off. Your words are saved.', { exact: true })).toBeVisible();
+  await expect(waiting).not.toBeAttached();
   await app.screenshot('m13-permission-withdrawal-stopped');
   await expect(screen.getByTestId('mira.today.makeCard.3')).not.toBeAttached();
 });
