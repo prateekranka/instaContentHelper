@@ -1246,15 +1246,18 @@ test('E2 interview accepts typing with speech denied, and the edited brand doc s
   await expect(pillar).toBeVisible();
   expect(await pillar.inputValue()).toBe('Training after 60');
   await fillText(pillar, 'HYROX after 60');
-  await closeKeyboard(screen, pillar);
+  await expect(pillar).toBeFocused();
   await app.screenshot('e2-brand-doc-review');
-  await tap(screen, screen.getByTestId('mira.brand.confirm'));
-  await expect(screen.getByTestId('mira.brand.saved')).toBeAttached();
+  const confirm = screen.getByTestId('mira.brand.confirm');
+  await confirm.tap();
+  const saved = screen.getByRole('scroll-view', 'Your brand doc', { exact: true }).getByTestId('mira.brand.saved');
+  const savedPillar = saved.filter({ hasText: /^HYROX after 60$/ });
+  await expect(savedPillar).toBeAttached();
   await app.screenshot('e2-brand-doc-confirmed');
   await launchMira(app, screen, device);
-  await expect(screen.getByText('HYROX after 60', { exact: true })).toBeVisible();
-  await expect(screen.getByText('Share more training Reels', { exact: true })).toBeAttached();
-  await expect(screen.getByTestId('mira.brand.confirm')).not.toBeAttached();
+  await expect(savedPillar).toBeVisible();
+  await expect(saved.filter({ hasText: /^Share more training Reels$/ })).toBeAttached();
+  await expect(confirm).not.toBeAttached();
 });
 
 for (const [instagram, override] of [
@@ -1264,10 +1267,11 @@ for (const [instagram, override] of [
     const overrides = ['-MCO_INSIGHTS_SCENARIO', instagram, '-MCO_QA_INSTAGRAM_RESULTS', override];
     await launchMira(app, screen, device, false, overrides);
     const prompt = screen.getByTestId('mira.instagramResults.question');
+    const make = screen.getByTestId('mira.home.idea').filter({ hasText: /^Make today's Reel$/ });
     if (instagram === 'ready' && override === 'ask') {
       await openToday(screen);
       await expect(prompt).not.toBeAttached();
-      await tap(screen, screen.getByTestId('mira.today.make'));
+      await tap(screen, make);
       await expect(prompt).toBeVisible();
       await app.screenshot('e2-instagram-permission-from-pick');
       await launchMira(app, screen, device, false, overrides);
@@ -1291,7 +1295,7 @@ for (const [instagram, override] of [
     expect(await item.inputValue()).toBe(override === 'allow' ? 'Build on your Instagram results' : 'Show simple steps');
     await tap(screen, screen.getByTestId('mira.brand.confirm'));
     await openTab(screen, 'Home');
-    await tap(screen, screen.getByTestId('mira.today.make'));
+    await tap(screen, make);
     await expect(screen.getByTestId('mira.pick.reason')).toHaveText(override === 'allow'
       ? 'Your early-morning training Reels reach the most people.'
       : 'This fits the themes you confirmed in My Brand.');
