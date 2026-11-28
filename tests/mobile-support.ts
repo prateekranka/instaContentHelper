@@ -23,12 +23,14 @@ export async function tapVisibleControl(screen: Screen, locator: Locator) {
   await screen.tapAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
 }
 
-export function mobileKeyboard(screen: Screen) {
-  return screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
+export async function mobileKeyboard(screen: Screen) {
+  const preview = screen.getByTestId('UIKeyboardLayoutStar Preview', { visible: true });
+  return await preview.isVisible() ? preview
+    : screen.getByRole('window', 'Next keyboard', { exact: true, visible: true });
 }
 
 export async function closeKeyboard(screen: Screen, field: Locator) {
-  const keyboard = mobileKeyboard(screen);
+  const keyboard = await mobileKeyboard(screen);
   if (await keyboard.isVisible()) await field.press('Enter');
   await expect(keyboard).not.toBeVisible();
 }
@@ -92,8 +94,9 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
     ?? { x: scrollBox.x, y: scrollBox.y + scrollBox.height, width: scrollBox.width, height: 0 };
   const visibleTop = Math.max(8, scrollBox.y + 2);
   const targetTop = Math.max(8, scrollBox.y - 0.5);
-  const keyboard = mobileKeyboard(screen);
-  const keyboardTop = (await controlBox(keyboard))?.y ?? tabBar.y;
+  const keyboard = await mobileKeyboard(screen);
+  const keyboardBox = await controlBox(keyboard);
+  const keyboardTop = keyboardBox && keyboardBox.y > 0 ? keyboardBox.y : tabBar.y;
   const viewportBottom = Math.min(tabBar.y - 8, keyboardTop - 8, bottom ?? tabBar.y);
   let visibleBottom = Math.min(viewportBottom, scrollBox.y + scrollBox.height - 2);
   const safeBottom = Math.min(visibleBottom, (visibleTop + viewportBottom) / 2 - 8);

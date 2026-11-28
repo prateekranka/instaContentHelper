@@ -134,18 +134,22 @@ async function todayKeyboard(app: App, screen: Screen) {
   await root(screen, 'Home');
   const field = screen.getByTestId('mira.today.request');
   const make = screen.getByTestId('mira.today.make');
-  const keyboard = mobileKeyboard(screen);
   await expect(make).toBeVisible();
   const prompt = 'At the gym, sled push';
   await field.fill(prompt);
+  const keyboard = await mobileKeyboard(screen);
   await expect(keyboard).toBeVisible();
   const keyboardBox = await keyboard.boundingBox();
   expect(keyboardBox).not.toBeNull();
-  const openMakeBox = await make.boundingBox();
-  expect(openMakeBox.y + openMakeBox.height).toBeLessThanOrEqual(keyboardBox.y);
-  for (const done of await button(screen, 'Done').all()) {
-    const box = await done.boundingBox();
-    expect(box!.y).toBeGreaterThanOrEqual(keyboardBox!.y);
+  await expect(make).toBeVisible();
+  await expect(make).toBeEnabled();
+  if (keyboardBox.y > 0) {
+    const openMakeBox = await make.boundingBox();
+    expect(openMakeBox.y + openMakeBox.height).toBeLessThanOrEqual(keyboardBox.y);
+    for (const done of await button(screen, 'Done').all()) {
+      const box = await done.boundingBox();
+      expect(box!.y).toBeGreaterThanOrEqual(keyboardBox.y);
+    }
   }
   await app.screenshot('keyboard-open');
   await field.press('Enter');

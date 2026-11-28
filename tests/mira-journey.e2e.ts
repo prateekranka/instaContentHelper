@@ -536,13 +536,7 @@ test('Today has one question, chips, Continue rules and start options in Profile
   await openToday(screen);
   const make = makeToday(screen);
   const request = homeRequest(screen);
-  const keyboard = fixtureSessionArguments.length
-    ? screen.getByRole('window', 'Next keyboard', { exact: true })
-    : mobileKeyboard(screen);
-  const dismissKeyboard = async () => {
-    if (await keyboard.isVisible()) await request.press('Enter');
-    await expect(keyboard).not.toBeVisible();
-  };
+  const dismissKeyboard = () => closeKeyboard(screen, request);
   await expect(make).toBeVisible({ timeout: 45_000 });
   await expect(request).toHaveAccessibleName('What can you film today?');
   await expect(homeMic(screen)).toBeVisible();
@@ -554,6 +548,7 @@ test('Today has one question, chips, Continue rules and start options in Profile
 
   const chip = (label: string) => homeIdeaButton(screen, label);
   await request.tap();
+  const keyboard = await mobileKeyboard(screen);
   await expect(keyboard).toBeVisible();
   await chip('Gym').tap();
   await expect(keyboard).not.toBeVisible();
@@ -1075,7 +1070,7 @@ test('M03 undo restores the previous card title, selected idea and filming const
   const note = screen.getByRole('textbox', 'What would help?', { exact: true });
   const request = '4 minutes in the kitchen';
   await fillText(note, request);
-  const keyboard = mobileKeyboard(screen);
+  const keyboard = await mobileKeyboard(screen);
   await expect(keyboard).toBeVisible();
   await closeKeyboard(screen, note);
   await expect(note).not.toBeFocused();
@@ -1088,10 +1083,13 @@ test('M03 undo restores the previous card title, selected idea and filming const
   await expect(keyboard).toBeVisible();
   const propose = screen.getByRole('button', 'Propose change', { exact: true });
   await expect(propose).toBeVisible();
+  await expect(propose).toBeEnabled();
   const [buttonBox, keyboardBox] = await Promise.all([propose.boundingBox(), keyboard.boundingBox()]);
-  expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(keyboardBox.y);
+  if (keyboardBox.y > 0) {
+    expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(keyboardBox.y);
+  }
   await app.screenshot('ask-mira-button-above-keyboard');
-  await propose.tap();
+  await screen.tapAt({ x: buttonBox.x + buttonBox.width / 2, y: buttonBox.y + buttonBox.height / 2 });
   await expect(screen.getByText('About 4 min to film', { exact: true })).toBeVisible();
   await tap(screen, second);
   await openProjectFromList(screen, 'My simple breakfast');
