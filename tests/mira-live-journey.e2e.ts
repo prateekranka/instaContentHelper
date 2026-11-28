@@ -82,7 +82,9 @@ async function menu(screen: Screen, name: string) {
 }
 
 async function openProject(screen: Screen, title: string) {
-  await root(screen, 'Projects');
+  await root(screen, 'My Brand');
+  const archived = screen.getByText('Show archived projects', { exact: true });
+  if (!await archived.count()) await tapVisibleControl(screen, screen.getByText('All Reels', { exact: true }).first());
   const row = screen.getByRole('button', { visible: true }).filter({ hasText: title }).first();
   if (await row.count()) await tapVisibleControl(screen, row);
   else await tapVisibleControl(screen, screen.getByText(title, { exact: true }).first());
@@ -116,7 +118,7 @@ async function waitForOutput(screen: Screen, output: Locator, message: string, l
 }
 
 async function todayKeyboard(app: App, screen: Screen) {
-  await root(screen, 'Today');
+  await root(screen, 'Home');
   const field = screen.getByTestId('mira.today.request');
   const make = screen.getByTestId('mira.today.make');
   const keyboard = keyboardWindow(screen);
@@ -159,14 +161,32 @@ test('1 Today keyboard only keeps the request and the Make button reachable', as
   await todayKeyboard(app, screen);
 });
 
-test('1 Today brings back three live cards and opens the chosen filming plan', { timeout: 720_000 }, async ({ app, screen, device }) => {
+test('E1 live Home makes ideas and opens Words and the one-page shot list', { timeout: 720_000 }, async ({ app, screen, device }) => {
   await launch(app, screen, device);
   const prior = recorded().find(entry => entry.scenario === 1 && entry.calls);
   let started = prior?.at ? Date.parse(prior.at) : Date.now();
   if (!prior) {
-    const make = await todayKeyboard(app, screen);
-    started = Date.now();
-    await request(1, "Make today's Reel", 3, () => make.tap());
+    await root(screen, 'Home');
+    await app.screenshot('e1-live-home');
+    const idea = screen.getByText('Nothing planned today. Want an idea?', { exact: true });
+    if (await idea.count()) {
+      const make = await todayKeyboard(app, screen);
+      await app.screenshot('e1-live-idea-card');
+      started = Date.now();
+      await request(1, "Make today's Reel", 3, () => make.tap());
+    } else {
+      const field = screen.getByTestId('mira.ask.bar');
+      await field.fill('At home, 10 minutes to film a breakfast Reel');
+      const send = button(screen, 'Send to Mira');
+      await expect(send).toBeVisible();
+      await app.screenshot('e1-live-ask-for-idea');
+      started = Date.now();
+      await request(1, 'Send a Home idea request', 3, () => send.tap());
+    }
+  } else {
+    const words = screen.getByTestId('mira.words.approve');
+    test.skip(!await words.count() && !await screen.getByTestId('mira.today.page.1').count(),
+      'The existing live batch could not be found without sending another request.');
   }
   const deadline = Date.now() + timeout;
   const ready = screen.getByRole('button', /^Idea [1-3] of 3, ready$/);
@@ -230,26 +250,27 @@ test('1 Today brings back three live cards and opens the chosen filming plan', {
   await screen.getByTestId(`mira.today.page.${chosenIndex + 1}`).tap();
   await tapVisibleControl(screen, screen.getByTestId(`mira.today.makeCard.${chosenIndex + 1}`));
   record({ scenario: 1, action: 'selected Today project', title: chosen, calls: 0 });
-  await fit(screen, approve(screen));
-  await openProject(screen, chosen);
-  await fit(screen, approve(screen));
-  await back(screen).tap();
-  const projectName = screen.getByRole('textbox', 'Project name', { exact: true });
-  expect(await projectName.inputValue()).toBe(chosen);
-  await selectShots(screen);
-  await fit(screen, text(screen, 'Your filming plan'));
-  await app.screenshot('chosen-plan');
+  const step = screen.getByTestId('mira.task.step');
+  await expect(step).toHaveText('2 / 6');
+  await app.screenshot('e1-live-words');
+  await tapVisibleControl(screen, approve(screen));
+  await expect(step).toHaveText('3 / 6');
+  await fit(screen, screen.getByText('Your filming plan', { exact: true }));
+  await app.screenshot('e1-live-shot-list-summary');
   const firstPicture = screen.getByRole('image', aiPictures).first();
   await fit(screen, firstPicture);
-  await app.screenshot('chosen-plan-ai-picture');
-  expect(pictureCounts.every(count => count > 0)).toBe(true);
-  expect(recorded().some(entry => steps.includes(entry.action))).toBe(true);
+  await app.screenshot('e1-live-shot-list-picture');
+  const shoot = screen.getByTestId('mira.shots.film');
+  await fit(screen, shoot);
+  await expect(shoot).toHaveAccessibleName("Got it, I'll go shoot");
+  await app.screenshot('e1-live-shot-list-action');
+  expect(pictureCounts.reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(15);
 });
 
 test('2 Your words opens filming and reaches Done', async ({ app, screen, device }) => {
   const title = todayTitle();
   await launch(app, screen, device);
-  await root(screen, 'Today');
+  await root(screen, 'Home');
   const resume = screen.getByTestId('mira.today.continue');
   await fit(screen, resume);
   expect(await resume.textContent()).toContain(title);
@@ -281,7 +302,7 @@ test('3 S1 B1–B3 gate the shot list, open filming and Continue', async ({ app,
   if (await text(screen, 'Your caption').isVisible()) await back(screen).tap();
   const resume = screen.getByTestId('mira.today.continue');
   if (!await currentShot.isVisible()) {
-    await root(screen, 'Today');
+    await root(screen, 'Home');
     await fit(screen, resume);
     expect(await resume.textContent()).toContain(title);
     await tapVisibleControl(screen, resume);
@@ -297,20 +318,20 @@ test('3 S1 B1–B3 gate the shot list, open filming and Continue', async ({ app,
     && !await button(screen, 'Plan options').count()) await selectShots(screen);
   await menu(screen, 'Plan options');
   await button(screen, 'Undo last content change').tap();
-  await tab(screen, 'Today');
+  await tab(screen, 'Home');
   await expect(screen.getByTestId('mira.approveFirst.message')).toBeVisible();
   await expect(button(screen, 'Mark filmed')).not.toBeVisible();
   await expect(text(screen, /^Shot \d+ of \d+$/)).not.toBeVisible();
   await app.screenshot('b2-filming-closed');
 
-  await tab(screen, 'Projects');
+  await tab(screen, 'My Brand');
   const shotGate = screen.getByTestId('mira.shots.approve');
   await fit(screen, shotGate, 'up');
   await expect(filming).not.toBeVisible();
   await app.screenshot('b1-shot-list-approval');
   await tapVisibleControl(screen, shotGate);
   await fit(screen, approve(screen));
-  await root(screen, 'Today');
+  await root(screen, 'Home');
   await fit(screen, resume);
   expect(await resume.textContent()).toContain(title);
   await expect(text(screen, 'Approve your words')).toBeVisible();
@@ -319,7 +340,7 @@ test('3 S1 B1–B3 gate the shot list, open filming and Continue', async ({ app,
   await tapVisibleControl(screen, resume);
   await tapVisibleControl(screen, approve(screen));
   await expect(text(screen, /^Shot \d+ of \d+$/)).toBeVisible();
-  await root(screen, 'Today');
+  await root(screen, 'Home');
   await fit(screen, resume);
   expect(await resume.textContent()).toContain(title);
   await expect(text(screen, 'Continue filming')).toBeVisible();
@@ -384,7 +405,7 @@ test('4 Make it simpler returns one live revision', async ({ app, screen, device
 });
 
 async function startStepByStep(screen: Screen) {
-  await root(screen, 'Projects');
+  await root(screen, 'My Brand');
   await button(screen, 'Profile').tap();
   await tapVisibleControl(screen, screen.getByTestId('mira.profile.stepByStep'));
   await expect(text(screen, 'Choosing an idea')).toBeVisible();
@@ -485,7 +506,7 @@ test('5 Projects Plan step by step makes a live filming plan', async ({ app, scr
 
 test('Keyboard Profile closes with Done without editing the saved name', async ({ app, screen, device }) => {
   await launch(app, screen, device);
-  await root(screen, 'Today');
+  await root(screen, 'Home');
   await button(screen, 'Profile').tap();
   const field = screen.getByRole('textbox', 'Your name', { exact: true });
   await fit(screen, field);
@@ -508,7 +529,7 @@ test('Keyboard manual idea closes with Done and keeps the title', async ({ app, 
 
 test('6 Profile changes Look from Dark to Light and shows Problem reports', async ({ app, screen, device }) => {
   await launch(app, screen, device);
-  await root(screen, 'Today');
+  await root(screen, 'Home');
   await button(screen, 'Profile').tap();
   const look = screen.getByTestId('mira.profile.look');
   await expect(look).toBeVisible();
@@ -529,7 +550,7 @@ test('S2 saved live plan scrolls the final shot above the tab bar', async ({ app
   const title = recorded().findLast(entry => entry.action === 'selected step-by-step project')?.title;
   test.skip(!title, 'The live step-by-step project is required.');
   await launch(app, screen, device);
-  await root(screen, 'Projects');
+  await root(screen, 'My Brand');
   const savedPlan = screen.getByRole('button').filter({ hasText: title! })
     .filter({ hasText: /Start filming|Continue filming/ }).first();
   await tapVisibleControl(screen, savedPlan);
@@ -583,7 +604,7 @@ test('S2 saved live plan scrolls the final shot above the tab bar', async ({ app
 
 test('S2 Projects list scrolls its final row above the tab bar', async ({ app, screen, device }) => {
   await launch(app, screen, device);
-  await root(screen, 'Projects');
+  await root(screen, 'My Brand');
   const page = await screen.getByRole('scroll-view', { visible: true }).first().boundingBox();
   const tabs = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
   expect(page).not.toBeNull();

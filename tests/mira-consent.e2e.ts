@@ -15,8 +15,8 @@ async function openConsentStatus(screen: Screen, device: Device, override?: 'unk
   await expect(tabs).toBeAttached({ timeout: 45_000 });
   const alert = screen.getByRole('alert', /Apple.Account Verification/);
   if (await alert.count() > 0) await alert.getByRole('button', 'Not Now', { exact: true }).tap();
-  const today = tabs.getByRole('tab', 'Today', { exact: true });
-  await (await today.count() ? today : tabs.getByRole('button', 'Today', { exact: true })).tap();
+  const today = tabs.getByRole('tab', 'Home', { exact: true });
+  await (await today.count() ? today : tabs.getByRole('button', 'Home', { exact: true })).tap();
   const profile = screen.getByRole('button', 'Profile', { exact: true });
   const back = screen.getByTestId('BackButton');
   for (let step = 0; step < 4 && !await profile.isVisible() && await back.isVisible(); step += 1) {
@@ -37,17 +37,23 @@ async function tapMake(screen: Screen, expectedStatus: string) {
   await scrollToControl(screen, status);
   await expect(status).toBeVisible();
   await screen.getByRole('button', 'Done', { exact: true }).tap();
-  await tapVisibleControl(screen, screen.getByTestId('mira.today.make'));
+  const make = screen.getByTestId('mira.today.make');
+  if (await make.count()) {
+    await tapVisibleControl(screen, make);
+  } else {
+    await screen.getByTestId('mira.ask.bar').fill('Film something at home');
+    await screen.getByRole('button', 'Send to Mira', { exact: true }).tap();
+  }
 }
 
-test('Undecided AI permission opens the question from Today', async ({ app, screen, device }) => {
+test('Undecided AI permission opens the question from Home', async ({ app, screen, device }) => {
   await openConsentStatus(screen, device, 'unknown');
   await tapMake(screen, 'Not decided yet');
   await expect(screen.getByText('AI data permission', { exact: true })).toBeVisible();
   await app.screenshot('ai-permission-question');
 });
 
-test('Declined AI permission shows a message and opens review from Today', async ({ app, screen, device }) => {
+test('Declined AI permission shows a message and opens review from Home', async ({ app, screen, device }) => {
   await openConsentStatus(screen, device, 'declined');
   await tapMake(screen, 'Not allowed yet');
   const message = screen.getByTestId('mira.today.aiPermissionNeeded');
