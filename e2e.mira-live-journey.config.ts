@@ -9,7 +9,7 @@ export default {
     name: 'mira-live-journey-ios',
     engine: mobile({
       platform: 'ios',
-      device: 'Bobby’s',
+      device: process.env.MIRA_E2E_DEVICE ?? 'Bobby’s',
       session: process.env.MIRA_E2E_DRIVER_SESSION ?? 'mira-live-journey-2',
       snapshot: 'full',
       videoTouches: false,

@@ -14,13 +14,52 @@ export async function waitForMobileApp(screen: Screen) {
   await expect.poll(() => appIsRunning(screen), { timeout: 20_000, interval: 1_000 }).toBe(true);
 }
 
+export async function backOut(screen: Screen) {
+  const back = screen.getByTestId('BackButton', { visible: true });
+  const profile = screen.getByRole('button', 'Profile', { exact: true, visible: true });
+  for (let step = 0; step < 5 && await back.isVisible(); step += 1) {
+    try {
+      await back.tap({ timeout: 3_000 });
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'LOCATOR_NOT_FOUND'
+        && !await back.isVisible() && await profile.isVisible()) return;
+      throw error;
+    }
+  }
+}
+
 export async function tapVisibleControl(screen: Screen, locator: Locator) {
-  const scrolledBox = await scrollToControl(screen, locator);
+  await scrollToControl(screen, locator);
   await expect(locator).toBeVisible();
   await expect(locator).toBeEnabled();
-  const next = await controlBox(locator);
-  const box = next && sameBox(next, scrolledBox) ? next : await stableBox(locator);
-  await screen.tapAt({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  await locator.tap();
+}
+
+export async function fieldValue(field: Locator) {
+  const value = await field.inputValue();
+  return value || (await field.getAttribute('value')) || (await field.textContent()) || '';
+}
+
+export async function expectFieldValue(field: Locator, value: string) {
+  await expect.poll(() => fieldValue(field)).toBe(value);
+}
+
+export async function dialogByText(screen: Screen, name: string | RegExp) {
+  const alert = screen.getByRole('alert', name, { exact: true });
+  const dialog = screen.getByRole('dialog', name, { exact: true });
+  const title = screen.getByText(name, { exact: true });
+  const alertWithTitle = screen.getByRole('alert').filter({ has: title });
+  if (await alert.count()) return alert;
+  if (await dialog.count()) return dialog;
+  if (await alertWithTitle.count()) return alertWithTitle;
+  return screen.getByRole('dialog').filter({ has: title });
+}
+
+export async function tapMenuItem(screen: Screen, name: string | RegExp) {
+  const item = screen.getByRole('menuitem', name, { exact: true, visible: true });
+  const button = screen.getByRole('button', name, { exact: true, visible: true });
+  await expect.poll(async () => await item.count() || await button.count()).toBe(1);
+  await (await item.count() ? item : button).tap();
 }
 
 export async function mobileKeyboard(screen: Screen) {
@@ -83,16 +122,21 @@ export async function scrollToControl(
     ? containingScrollView : screen.getByRole('scroll-view', { visible: true }).first();
   let lastDirection: 'up' | 'down' = direction === 'up' ? 'up' : 'down';
   let initialBox = await controlBox(locator);
+  if (!await scrollView.count()) {
+    if (!initialBox) await expect(locator).toBeVisible();
+    return stableBox(locator, initialBox);
+  }
   if (!initialBox) {
+    const search = { momentum: 'fast' as const, ...scrollOptions };
     try {
-      await scrollView.scrollUntilVisible(locator, { ...scrollOptions, direction: lastDirection });
+      await scrollView.scrollUntilVisible(locator, { ...search, direction: lastDirection });
     } catch (error) {
       if (direction !== 'either' || !(error instanceof Error)
         || !('code' in error) || error.code !== 'LOCATOR_NOT_FOUND') throw error;
       lastDirection = 'up';
-      await scrollView.scrollUntilVisible(locator, { ...scrollOptions, direction: lastDirection });
+      await scrollView.scrollUntilVisible(locator, { ...search, direction: lastDirection });
     }
-    initialBox = await locator.boundingBox();
+    initialBox = await controlBox(locator);
   }
   const scrollBox = await scrollView.boundingBox();
   const tabs = screen.getByRole('tablist', 'Tab Bar', { exact: true, visible: true });
@@ -121,13 +165,6 @@ export async function scrollToControl(
       }
     }
   }
-  const swipeMid = (visibleBottom + visibleTop) / 2;
-  const swipeDelta = Math.min(88, Math.max(0, (visibleBottom - visibleTop) * 0.34));
-  const swipeFrom = swipeMid + swipeDelta / 2;
-  const swipeTo = swipeMid - swipeDelta / 2;
-  const swipeLeft = Math.max(tabBar.x + 8, scrollBox.x + 8);
-  const swipeRight = Math.min(tabBar.x + tabBar.width - 8, scrollBox.x + scrollBox.width - 8);
-  const x = (swipeLeft + swipeRight) / 2;
   for (let attempt = 0; attempt < 24; attempt += 1) {
     const candidate = attempt === 0 ? initialBox : await controlBox(locator);
     if (candidate) {
@@ -141,9 +178,7 @@ export async function scrollToControl(
       lastDirection = box.y < targetTop ? 'up' : 'down';
     }
     expect(visibleBottom).toBeGreaterThan(visibleTop);
-    expect(swipeRight).toBeGreaterThan(swipeLeft);
-    if (lastDirection === 'up') await screen.swipe({ from: { x, y: swipeTo }, to: { x, y: swipeFrom } });
-    else await screen.swipe({ from: { x, y: swipeFrom }, to: { x, y: swipeTo } });
+    await scrollView.swipe({ direction: lastDirection, momentum: candidate ? 'slow' : 'fast' });
   }
   await expect(locator).toBeVisible();
   const box = await stableBox(locator);
@@ -156,6 +191,7 @@ export async function scrollToControl(
 }
 
 async function controlBox(locator: Locator) {
+  if (!await locator.count()) return null;
   try {
     const box = await locator.boundingBox();
     expect(box).not.toBeNull();

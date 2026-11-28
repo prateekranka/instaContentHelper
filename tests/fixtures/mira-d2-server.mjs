@@ -1,9 +1,12 @@
 import { createServer } from 'node:http';
+import { createServer as createSecureServer } from 'node:https';
+import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import recordedToday from './mira-recorded-today.json' with { type: 'json' };
 
 const port = Number(process.env.MIRA_D2_FIXTURE_PORT ?? 18796);
-const origin = process.env.MIRA_E2E_D2_ENDPOINT;
+const tls = process.env.MIRA_D2_FIXTURE_TLS_DIR;
+let origin = process.env.MIRA_E2E_D2_ENDPOINT;
 const jobs = new Map();
 const preview = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAADYAAABgCAIAAADZ8BZgAAAAw0lEQVR4nO3OsQ0CQQxE0SuFniiBAIkS6I0WaIeUhBS4tX1aa/WkH8+87XS7Nm+bLkBERETsFSJilxARu4SI2CXEJsTX8/6t+cQfuEJokLgTVwKNEAO+jHKYGPaFlWPEpC+mXItY4gsoFyIW+kaViIiIiIgxYq1y/+lyxCrl0OOKxLxy9C5CzCgDX0FiTBk7ihOHoJmLLPEvND9eQzw6RMQuISJ+elzOR4eIiIiIiIiIiIiIiIiIiIiIiIiIiIiIOJn4BkTalCNcrb77AAAAAElFTkSuQmCC', 'base64');
 
@@ -118,6 +121,14 @@ async function handle(request, response) {
   return json(response, { job });
 }
 
-createServer((request, response) => {
+const receive = (request, response) => {
   handle(request, response).catch(() => json(response, { error: 'invalid_fixture_request' }, 400));
-}).listen(port, '127.0.0.1');
+};
+const server = tls ? createSecureServer({
+  key: readFileSync(`${tls}/server.key`),
+  cert: readFileSync(`${tls}/server.pem`),
+}, receive) : createServer(receive);
+server.listen(port, '127.0.0.1', () => {
+  origin ??= `${tls ? 'https' : 'http'}://127.0.0.1:${server.address().port}`;
+  console.log(server.address().port);
+});

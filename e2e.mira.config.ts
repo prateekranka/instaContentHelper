@@ -3,7 +3,7 @@ import { mobile } from '@e2e-dev/mobile';
 import { resolve } from 'node:path';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
-const install = process.env.MIRA_E2E_INSTALL === '1';
+const install = process.env.MIRA_E2E_INSTALL === '1' && Boolean(process.env.MIRA_E2E_FIXTURE_SESSION?.trim());
 export const fixtureSessionArguments = process.env.MIRA_E2E_FIXTURE_SESSION
   ? ['-MCO_QA_SESSION', process.env.MIRA_E2E_FIXTURE_SESSION] : [];
 export const launchArguments = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_APPEARANCE', 'light'];

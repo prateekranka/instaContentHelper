@@ -1,7 +1,7 @@
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type Screen } from 'e2e';
 import { launchArguments } from '../e2e.mira.config';
-import { scrollToControl, waitForMobileApp } from './mobile-support';
+import { dialogByText, scrollToControl, waitForMobileApp } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
 
@@ -13,7 +13,7 @@ async function openConsentStatus(screen: Screen, device: Device, override?: 'unk
   await waitForMobileApp(screen);
   const tabs = screen.getByRole('tablist', 'Tab Bar', { exact: true });
   await expect(tabs).toBeAttached({ timeout: 45_000 });
-  const alert = screen.getByRole('alert', /Apple.Account Verification/);
+  const alert = await dialogByText(screen, /Apple.Account Verification/);
   if (await alert.count() > 0) await alert.getByRole('button', 'Not Now', { exact: true }).tap();
   const today = tabs.getByRole('tab', 'Home', { exact: true });
   await (await today.count() ? today : tabs.getByRole('button', 'Home', { exact: true })).tap();
@@ -32,7 +32,7 @@ async function openConsentStatus(screen: Screen, device: Device, override?: 'unk
   await expect(screen.getByText('Account connected', { exact: true })).toBeVisible();
 }
 
-test('Saved AI permission is allowed on a normal launch', async ({ app, screen, device }) => {
+test('Saved AI permission is allowed on a normal launch', { tags: ['@consent', '@phone-only'] }, async ({ app, screen, device }) => {
   await openConsentStatus(screen, device);
   const allowed = screen.getByText('Allowed', { exact: true });
   await scrollToControl(screen, allowed);
@@ -41,7 +41,7 @@ test('Saved AI permission is allowed on a normal launch', async ({ app, screen, 
 });
 
 for (const override of ['unknown', 'allowed', 'declined', 'out-of-date'] as const) {
-  test(`M15 live Profile uses saved consent with the debug ${override} override`, async ({ app, screen, device }) => {
+  test(`M15 live Profile uses saved consent with the debug ${override} override`, { tags: ['@consent', '@phone-only'] }, async ({ app, screen, device }) => {
     await openConsentStatus(screen, device, override);
     const allowed = screen.getByText('Allowed', { exact: true });
     await scrollToControl(screen, allowed);

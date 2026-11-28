@@ -2,7 +2,7 @@ import type { E2EConfig } from 'e2e';
 import { resolve } from 'node:path';
 
 export default {
-  tests: 'tests/mira-provider-system.e2e.ts',
+  tests: ['tests/mira-provider-system.e2e.ts', 'tests/mira-ideas-smoke.e2e.ts'],
   targets: [{ name: 'mira-api', platform: 'api' }],
   workers: 1,
   retries: 0,
