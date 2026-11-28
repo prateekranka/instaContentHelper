@@ -511,10 +511,10 @@ test('Your words gate leads to approved filming and the Done screen', async ({ a
   await scrollToControl(screen, copy);
   await tap(screen, copy);
   await expect(screen.getByRole('button', 'Copied', { exact: true })).toBeVisible();
-  const instagram = screen.getByTestId('mira.done.instagram');
-  await scrollToControl(screen, instagram);
-  await expect(instagram).toBeVisible();
-  await bottomAboveTabs(app, screen, title('Mira does not post. You post in Instagram.'), 'done-screen');
+  await bottomAboveTabs(app, screen, copy, 'done-screen');
+  const addClips = screen.getByTestId('mira.delivery.add');
+  await scrollToControl(screen, addClips, 'up');
+  await expect(addClips).toBeVisible();
 });
 
 const look = process.env.MIRA_E2E_LOOK ?? 'light';
@@ -1491,4 +1491,126 @@ test('E3 Notes Send Copy hands text to Deals and waits for Read this brief', asy
   await expect(e3Button(screen, 'Read this brief')).toBeVisible();
   await expect(e3Button(screen, 'Looks right')).toHaveCount(0);
   await app.screenshot('e3-shared-brief-in-deals');
+});
+
+const e4Fixture = ['-MCO_QA_E4', '1'];
+const e4Control = (screen: Screen, id: string) => screen.getByTestId(`mira.delivery.${id}`);
+
+async function openSampleDelivery(app: App, screen: Screen, device: Device) {
+  await launchMira(app, screen, device, false, e4Fixture);
+  await tap(screen, screen.getByTestId('mira.today.continue'));
+  await expect(e4Control(screen, 'add')).toBeVisible();
+  await tap(screen, e4Control(screen, 'fixtures'));
+  await expect(e4Control(screen, 'join')).toBeEnabled({ timeout: 45_000 });
+}
+
+async function joinSampleDelivery(app: App, screen: Screen, screenshot: string) {
+  await tap(screen, e4Control(screen, 'join'));
+  await expect(e4Control(screen, 'player')).toBeVisible({ timeout: 120_000 });
+  await app.screenshot(screenshot);
+  await e3Button(screen, 'Close').tap();
+  await expect(e4Control(screen, 'savePhotos')).toBeAttached();
+}
+
+async function checkSampleDelivery(screen: Screen) {
+  await tap(screen, e4Control(screen, 'brief'));
+  const check = screen.getByTestId(/^mira\.delivery\.check\.onScreenText\./);
+  await expect(check).toHaveText('Can fix', { timeout: 45_000 });
+  return check;
+}
+
+async function sampleTracker(screen: Screen, field: string, value: string) {
+  await openToday(screen);
+  await openTab(screen, 'Deals');
+  await tap(screen, e3Button(screen, 'Open deal for Peak Sip'));
+  const row = screen.getByLabel(field, { exact: true });
+  await expect(row).toHaveValue(value);
+}
+
+test('E4 sample clips match by length, can swap, persist, and join in the new order', async ({ app, screen, device }) => {
+  await openSampleDelivery(app, screen, device);
+  await expect(e4Control(screen, 'clip.1')).toHaveText('E4FixtureShort');
+  await expect(e4Control(screen, 'clip.2')).toHaveText('E4FixtureMedium');
+  await expect(e4Control(screen, 'clip.3')).toHaveText('E4FixtureLong');
+  await scrollToControl(screen, e4Control(screen, 'swap.2'));
+  await app.screenshot('e4-clip-matching');
+  await tap(screen, e4Control(screen, 'swap.2'));
+  await e3Button(screen, 'E4FixtureLong · swap').tap();
+  await expect(e4Control(screen, 'clip.2')).toHaveText('E4FixtureLong');
+  await expect(e4Control(screen, 'clip.3')).toHaveText('E4FixtureMedium');
+  await app.screenshot('e4-swapped-clips');
+  await launchMira(app, screen, device, false, e4Fixture);
+  await expect(e4Control(screen, 'clip.2')).toHaveText('E4FixtureLong');
+  await expect(e4Control(screen, 'clip.3')).toHaveText('E4FixtureMedium');
+  await joinSampleDelivery(app, screen, 'e4-joined-reel');
+});
+
+test('E4 brief check only marks the missing discount code met after an approved render', async ({ app, screen, device }) => {
+  await openSampleDelivery(app, screen, device);
+  await joinSampleDelivery(app, screen, 'e4-reel-before-fix');
+  const code = await checkSampleDelivery(screen);
+  await expect(screen.getByTestId(/^mira\.delivery\.check\.caption\./)).toHaveText('Met');
+  await expect(screen.getByTestId(/^mira\.delivery\.check\.shot\./)).toHaveText('Missing');
+  await expect(e4Control(screen, 'adjustment')).toHaveCount(0);
+  const apply = e3Button(screen, 'Apply fix for Show the discount code');
+  await scrollToControl(screen, apply);
+  await app.screenshot('e4-brief-can-fix');
+  await tap(screen, apply);
+  await expect(code).toHaveText('Met', { timeout: 120_000 });
+  await expect(e4Control(screen, 'adjustment')).toHaveText('I added SIP20.');
+  await app.screenshot('e4-brief-fixed');
+  await tap(screen, e3Button(screen, 'Watch your Reel'));
+  await expect(e4Control(screen, 'player')).toBeVisible();
+  await app.screenshot('e4-reel-with-discount');
+});
+
+test('E4 Instagram handoff shares the video and preserves the pending tracker on return', async ({ app, screen, device }) => {
+  await openSampleDelivery(app, screen, device);
+  await joinSampleDelivery(app, screen, 'e4-instagram-reel');
+  await checkSampleDelivery(screen);
+  await tap(screen, e4Control(screen, 'instagram'));
+  const instagram = screen.getByText('Instagram', { exact: true }).first();
+  await expect(instagram).toBeVisible({ timeout: 30_000 });
+  await app.screenshot('e4-instagram-share-sheet');
+  await instagram.tap();
+  await app.screenshot('e4-instagram-handoff');
+  await launchMira(app, screen, device, false, e4Fixture);
+  await expect(e4Control(screen, 'posted')).toBeAttached();
+  await sampleTracker(screen, 'Posted', 'Pending');
+});
+
+test('E4 WhatsApp handoff pre-fills a note and preserves the pending brand tracker', async ({ app, screen, device }) => {
+  await openSampleDelivery(app, screen, device);
+  await joinSampleDelivery(app, screen, 'e4-whatsapp-reel');
+  await checkSampleDelivery(screen);
+  await tap(screen, e4Control(screen, 'instagram'));
+  await expect(e4Control(screen, 'posted')).not.toBeVisible();
+  await launchMira(app, screen, device, false, e4Fixture);
+  await tap(screen, e4Control(screen, 'posted'));
+  await expect(e3Text(screen, 'Mira recorded that you posted the Reel.')).toBeVisible();
+  await tap(screen, e4Control(screen, 'note'));
+  const message = e4Control(screen, 'whatsapp.note');
+  await expect(message).toContainText('Hi Peak Sip');
+  await tap(screen, e4Control(screen, 'whatsapp.phone'));
+  await e4Control(screen, 'whatsapp.phone').fill('+1 202 555 0143');
+  await device.dismissKeyboard();
+  await scrollToControl(screen, e4Control(screen, 'whatsapp'));
+  await app.screenshot('e4-whatsapp-text');
+  await tap(screen, e4Control(screen, 'whatsapp'));
+  const fallback = e4Control(screen, 'whatsapp.fixtureURL');
+  const confirmation = e4Control(screen, 'sent');
+  await expect.poll(async () => Boolean(await fallback.count() || await confirmation.count()), { timeout: 30_000 })
+    .toBe(true);
+  if (await fallback.count()) {
+    const url = new URL((await fallback.textContent()) ?? '');
+    expect(url.hostname).toBe('wa.me');
+    expect(url.pathname).toBe('/12025550143');
+    expect(url.searchParams.get('text')).toBe(await message.textContent());
+    await app.screenshot('e4-whatsapp-unavailable-link');
+  } else {
+    await expect(confirmation).toBeAttached();
+    await app.screenshot('e4-whatsapp-confirm-after-handoff');
+  }
+  await launchMira(app, screen, device, false, e4Fixture);
+  await sampleTracker(screen, 'Brand told', 'Pending');
 });
