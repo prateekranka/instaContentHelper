@@ -70,7 +70,13 @@ function sameBox(first: Box, second: Box) {
 
 // Scroll through the actual app scroll view. A screen-wide synthesized scroll
 // can land on the fixed command bar when Dynamic Type makes that bar tall.
-export async function scrollToControl(screen: Screen, locator: Locator, direction: 'up' | 'down' | 'either' = 'down', bottom?: number) {
+export async function scrollToControl(
+  screen: Screen,
+  locator: Locator,
+  direction: 'up' | 'down' | 'either' = 'down',
+  bottom?: number,
+  scrollOptions?: Pick<NonNullable<Parameters<Screen['scrollUntilVisible']>[1]>, 'momentum' | 'timeout'>,
+) {
   const scope = screen;
   const containingScrollView = screen.getByRole('scroll-view', { visible: true }).filter({ has: locator }).first();
   const scrollView = await containingScrollView.count() === 1
@@ -79,12 +85,12 @@ export async function scrollToControl(screen: Screen, locator: Locator, directio
   let initialBox = await controlBox(locator);
   if (!initialBox) {
     try {
-      await scrollView.scrollUntilVisible(locator, { direction: lastDirection });
+      await scrollView.scrollUntilVisible(locator, { ...scrollOptions, direction: lastDirection });
     } catch (error) {
       if (direction !== 'either' || !(error instanceof Error)
         || !('code' in error) || error.code !== 'LOCATOR_NOT_FOUND') throw error;
       lastDirection = 'up';
-      await scrollView.scrollUntilVisible(locator, { direction: lastDirection });
+      await scrollView.scrollUntilVisible(locator, { ...scrollOptions, direction: lastDirection });
     }
     initialBox = await locator.boundingBox();
   }

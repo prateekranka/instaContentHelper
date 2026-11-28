@@ -191,8 +191,8 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
     await root(screen, 'Home');
     await app.screenshot('e1-live-home');
     const insights = screen.getByText("How you're doing", { exact: true });
-    await expect(insights).toBeAttached({ timeout: 45_000 });
-    await fit(screen, insights);
+    await scrollToControl(screen, insights, 'either', undefined, { momentum: 'fast', timeout: 90_000 });
+    await expect(insights).toBeVisible();
     for (const label of ['Followers', 'Reach', 'Saves']) {
       await expect(screen.getByText(label, { exact: true })).toBeAttached();
     }
