@@ -12,6 +12,36 @@ enum MiraFixtures {
     }
     static func output(for input: MiraGenerationInput) -> MiraOutput {
         switch input.operation {
+        case .brandDoc:
+            return MiraOutput(brandDoc: MiraBrandDocument(
+                pillars: ["Training after 60", "Everyday food", "Small habits"],
+                tone: "Warm and direct", audience: "People building a sustainable routine",
+                dos: [input.brandInput?.instagramSummary == nil ? "Show simple steps" : "Build on your Instagram results"],
+                donts: ["Avoid health promises"], goals: ["Share more training Reels"]))
+        case .pickIdea:
+            var fixture = input
+            fixture.operation = .todayIdea
+            fixture.brief = input.dealChecklist?.validationBrief
+            let used = input.recentIdeas + (input.avoid ?? [])
+            let angles = [
+                ("A short", "A quick movement break"), ("A food", "My simple breakfast"),
+                ("A personal", "A small pause in my day"),
+            ]
+            let unused = angles.first { !used.contains($0.1) }
+            fixture.angle = unused?.0 ?? "A short"
+            var result = output(for: fixture)
+            if unused == nil {
+                var count = used.count + 1
+                while used.contains("Another movement break \(count)") { count += 1 }
+                result.ideas?[0].title = "Another movement break \(count)"
+            }
+            if input.bestPostPatterns?.isEmpty == false {
+                result.reason = "Your early-morning training Reels reach the most people."
+            } else {
+                result.reason = input.brandDoc == nil ? "You can film this on your own in the time you have."
+                    : "This fits the themes you confirmed in My Brand."
+            }
+            return result
         case .todayIdea:
             let angle = input.angle ?? ""
             let title: String

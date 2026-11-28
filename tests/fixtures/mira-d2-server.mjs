@@ -11,6 +11,8 @@ function output(input, card) {
   const language = input.profile.language;
   const { location, filmingMinutes } = input.constraints;
   const title = ['A quiet breakfast', 'A table by the window', 'A short walk'][card - 1];
+  const pick = input.operation === 'pickIdea';
+  const checklist = pick ? input.dealChecklist : undefined;
   const recorded = input.request === 'Demo D2 pictures' && card === 1;
   const script = recorded ? { ...recordedToday.script, id: randomUUID(), language } : {
     id: randomUUID(), hook: 'Here’s how I start the day.',
@@ -25,11 +27,21 @@ function output(input, card) {
     framing: 'Hands and bowl', frameType: 'closeUp', action, words: words[index], voiceover: false,
     onScreenText: '', simplerAlternative: 'Keep the phone still.',
   }));
+  const mappings = checklist?.items.map(item => ({
+    requirementID: item.id, shotIDs: [shots[2].id], scriptExcerpt: '',
+  })) ?? [];
+  if (checklist) {
+    shots[2].onScreenText = checklist.items.filter(item => item.kind === 'onScreenText')
+      .map(item => item.requiredText ?? '').filter(Boolean).join(' ');
+  }
   return {
     ideas: [{ id: randomUUID(), title, hook: script.hook, visual: shots[0].action,
       fit: 'You can film alone.', filmingMinutes: Math.min(10, filmingMinutes), setup: 'Use the table.' }],
-    script, storyboard: { id: randomUUID(), sourceScriptID: script.id, requirementsRevision: 0, shots, mappings: [] },
+    script, storyboard: {
+      id: randomUUID(), sourceScriptID: script.id, requirementsRevision: checklist?.revision ?? 0, shots, mappings,
+    },
     conflicts: [],
+    ...(pick ? { reason: 'You can film this in one place with things you already have.' } : {}),
   };
 }
 
@@ -71,14 +83,20 @@ async function handle(request, response) {
       if (body.finish) entry.finished = true;
       if (body.previews) entry.previews = body.previews;
     }
-    return json(response, matching.map(({ card, starts, prematureOptIns, optedIn, expiredGets, freshGets, refreshes }) => ({
-      card, starts, prematureOptIns, optedIn, expiredGets, freshGets, refreshes,
-    })));
+    return json(response, matching.map(entry => {
+      const { card, starts, prematureOptIns, optedIn, expiredGets, freshGets, refreshes } = entry;
+      return { card, starts, prematureOptIns, optedIn, expiredGets, freshGets, refreshes,
+        dealChecklist: entry.job.input.dealChecklist };
+    }));
   }
   if (!path.endsWith('/functions/v1/mira-generation')) return json(response, {}, 404);
   if (body.action === 'start') {
-    if (body.pictures !== undefined || body.input.operation !== 'todayIdea') return json(response, {}, 400);
-    const card = body.input.angle.startsWith('A short') ? 1 : body.input.angle.startsWith('A food') ? 2 : 3;
+    const pick = body.input.operation === 'pickIdea' && body.input.request === 'Demo E2 pick';
+    if (body.pictures !== undefined || (!pick && body.input.operation !== 'todayIdea')) return json(response, {}, 400);
+    const card = pick
+      ? ['A quiet breakfast', 'A table by the window', 'A short walk'].findIndex(title => !body.input.avoid.includes(title)) + 1
+      : body.input.angle.startsWith('A short') ? 1 : body.input.angle.startsWith('A food') ? 2 : 3;
+    if (!card) return json(response, {}, 400);
     const id = body.id.toLowerCase();
     if (!jobs.has(id)) {
       jobs.set(id, {
@@ -104,7 +122,11 @@ async function handle(request, response) {
   if (body.action === 'status' && body.pictures === true) {
     entry.optedIn += 1;
     if (!entry.finished) entry.prematureOptIns += 1;
-    if (entry.previews === 'pending' || entry.previews === 'ready') {
+    if (entry.finished && entry.job.input.operation === 'pickIdea') {
+      job.pictures = entry.output.storyboard.shots.map(shot => ({
+        shotID: shot.id, status: 'ready', url: `${origin}/image/${id}/fresh`,
+      }));
+    } else if (entry.previews === 'pending' || entry.previews === 'ready') {
       const [first, second] = entry.output.storyboard.shots;
       const variant = entry.expiredGets ? 'fresh' : 'expired';
       if (entry.previews === 'ready' && variant === 'fresh') entry.refreshes += 1;

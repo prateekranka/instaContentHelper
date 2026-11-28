@@ -70,7 +70,7 @@ final class MiraDependencies {
     static func todayFixture(for request: String) -> MiraSupabaseGenerationService? {
         #if DEBUG
         guard DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil,
-            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures", "Demo D2 transport"].contains(request),
+            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures", "Demo D2 transport", "Demo E2 pick"].contains(request),
             let endpoint = DebugLaunchConfiguration.value(for: "MCO_QA_D2_ENDPOINT"),
             let url = URL(string: endpoint), url.scheme == "https", url.host != nil
         else { return nil }
@@ -84,21 +84,21 @@ final class MiraDependencies {
     }
 }
 
-struct MiraSupabaseGenerationService: MiraGenerationService {
+struct MiraSupabaseGenerationService: MiraGenerationService, MiraDealBriefService {
     let session: PairedDeviceSession
     var urlSession: URLSession = .shared
     var authorize: (@MainActor @Sendable (Bool) throws -> Void)?
     var creatorID: UUID? { authorize == nil ? nil : session.creatorID }
-    private struct Request: Encodable {
+    private struct Request<Input: Encodable>: Encodable {
         var action: String
         var id: UUID
         var creatorID: UUID
         var inputRevision: Int?
-        var input: MiraGenerationInput?
+        var input: Input?
         var consentVersion: Int?
         var pictures: Bool?
     }
-    private struct Response: Decodable { var job: MiraJobResponse }
+    private struct Response<Reply: Decodable>: Decodable { var job: Reply }
     private struct Failure: Decodable { var error: String? }
     func start(_ job: MiraJob) async throws -> MiraJobResponse {
         try checkOwner(job)
@@ -123,7 +123,21 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
     private func send(
         _ action: String, id: UUID, start: MiraJob? = nil, pictures: Bool? = nil
     ) async throws -> MiraJobResponse {
-        let needsConsent = start != nil || pictures == true
+        try await send(Request(
+            action: action, id: id, creatorID: session.creatorID, inputRevision: start?.inputRevision,
+            input: start?.input, consentVersion: start == nil ? nil : 1, pictures: pictures))
+    }
+
+    func readDealBrief(_ job: MiraDealBriefJob, start: Bool) async throws -> MiraDealBriefReply {
+        guard job.creatorID == creatorID else { throw MiraError.anotherAccount }
+        return try await send(Request(
+            action: start ? "start" : "status", id: job.id, creatorID: session.creatorID,
+            inputRevision: start ? MiraDealBriefJob.revision : nil, input: start ? job.input : nil,
+            consentVersion: start ? 1 : nil))
+    }
+
+    private func send<Input: Encodable, Reply: Decodable>(_ body: Request<Input>) async throws -> Reply {
+        let needsConsent = body.action == "start" || body.pictures == true
         let url = session.projectURL.appendingPathComponent("functions/v1/mira-generation")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -132,23 +146,23 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
         request.setValue("Bearer \(session.publishableKey)", forHTTPHeaderField: "Authorization")
         request.setValue(session.deviceToken, forHTTPHeaderField: "x-mco-device-token")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(
-            Request(
-                action: action, id: id, creatorID: session.creatorID, inputRevision: start?.inputRevision,
-                input: start?.input, consentVersion: start == nil ? nil : 1, pictures: pictures))
+        request.httpBody = try JSONEncoder().encode(body)
         let (data, response): (Data, URLResponse)
         do {
             try await authorize?(needsConsent)
             try Task.checkCancellation()
             (data, response) = try await urlSession.data(for: request)
-        } catch let error as URLError where error.code == .networkConnectionLost && action != "cancel" {
+        } catch let error as URLError where error.code == .networkConnectionLost && body.action != "cancel" {
             try Task.checkCancellation()
             do {
                 try await authorize?(needsConsent)
             } catch let consent as AIConsentRequired {
-                guard let start else { throw consent }
-                do { return try await status(start) }
-                catch MiraError.notFound { throw consent }
+                guard body.action == "start" else { throw consent }
+                do {
+                    return try await send(Request<Input>(action: "status", id: body.id, creatorID: body.creatorID))
+                } catch MiraError.notFound {
+                    throw consent
+                }
             }
             (data, response) = try await urlSession.data(for: request)
         }
@@ -163,6 +177,10 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
             case 404:
                 throw MiraError.invalid(
                     "The Mira generation endpoint or job is unavailable. Your saved work is safe.")
+            case 429 where code == "operation_daily_cap_reached" && Input.self == MiraDealBriefInput.self:
+                throw MiraError.invalid("Mira has reached today's limit for reading briefs. Try again tomorrow.")
+            case 429 where code == "operation_daily_cap_reached":
+                throw MiraError.invalid("Mira reached today’s limit for this request. Try again tomorrow.")
             case 409 where code == "rate_limited", 429:
                 throw MiraError.busy
             case 409:
@@ -174,6 +192,6 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
                     "Generation is unavailable (\(http.statusCode)). Your saved work is unchanged.")
             }
         }
-        return try JSONDecoder().decode(Response.self, from: data).job
+        return try JSONDecoder().decode(Response<Reply>.self, from: data).job
     }
 }

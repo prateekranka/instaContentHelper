@@ -17,6 +17,7 @@ enum DebugLaunchConfiguration {
         "MCO_QA_D2_ENDPOINT",
         "MCO_QA_DAMAGED_LIBRARY",
         "MCO_QA_FIXTURE_CREATOR",
+        "MCO_QA_INSTAGRAM_RESULTS",
         "MCO_QA_SESSION"
     ]
 

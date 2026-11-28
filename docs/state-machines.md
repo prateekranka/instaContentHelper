@@ -15,7 +15,7 @@
 
 The last column gives the primary next step for each state. Conditions can change the step the creator sees. A dash means the machine supplies no step. An event with no matching rule leaves the state alone.
 
-The store keeps the current location, library, words, and request states.
+The store keeps the current location, library, words, request, interview, brand document, and pick states.
 The speech service and insights view each keep their own state. Send an event
 through the existing transition path to change one of these fields. Reel
 progress, Today cards, consent, and brief state are read from other records.
@@ -305,19 +305,22 @@ The last route on the active tab gives the current destination. Changing the pat
 
 ```mermaid
 stateDiagram-v2
-    [*] --> empty
-    empty --> continuing: unfinished Reel with work
-    continuing --> empty: no unfinished Reels with work
-    continuing --> continuing: work changed
+    state "Read the library" as workChanged
+    [*] --> workChanged
+    workChanged --> empty: no open deals or unfinished Reels
+    workChanged --> deals: open deals and no unfinished Reels
+    workChanged --> continuing: unfinished Reels, with or without deals
 ```
 
 The store projects the feed from the library and the last opened Reel. It excludes archived and filmed Reels and empty projects.
 The most recently opened unfinished Reel appears first. The other Reels use their last update time.
+Home includes confirmed, unpaid deals. Deals with dates appear in deadline order. Deals without dates follow them. The Deals tab keeps all confirmed deals. A pick in progress or ready appears on Home with these cards.
 
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |
 | `empty` | Work changed | Read the library | Make today's Reel |
-| `continuing` | Work changed | Read the library | Each Reel uses the next step from Reel progress |
+| `continuing` | Work changed | Read the library | Each Reel uses the next step from Reel progress. Each deal opens its card. |
+| `deals` | Work changed | Read the library | Open deal |
 
 ## `MiraTaskStep`
 
@@ -343,6 +346,93 @@ The location and current editor section choose the visible step. The approval ga
 | `shotList` | Read open location | Step for that location | Review the list and go shoot when permitted |
 | `shoot` | Read open location | Step for that location | Mark the current shot filmed |
 | `upload` | Read open location | Step for that location | Open Instagram from Done |
+
+## `MiraBrandInterview`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraBrandInterview.swift)
+
+```mermaid
+stateDiagram-v2
+    idle --> answering: Start
+    answering --> answering: Edit, Back or Next
+    answering --> generating: Submit six answers
+    generating --> idle: Receive document draft
+    generating --> failed: Request fails
+    failed --> generating: Retry
+    failed --> answering: Edit answers
+    answering --> idle: Cancel
+    failed --> idle: Cancel
+```
+
+The interview keeps a question index and six answers in memory. Only a reply
+for the current job can finish the interview. The draft moves to
+`MiraBrandDocumentState`. The existing speech machine handles permission,
+recording, and the Settings action on denial.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `idle` | Start. Reset. | `answering`. `idle`. | Start the interview |
+| `answering` | Edit. Back. Next with an answer. Generate with the last answer. Reset. | Update the answer or question index. `generating` for Generate. `idle` for Reset. | Next, or Make my brand doc |
+| `generating` | Receive a draft for the current job. Fail the current job. Reset on account change. | `idle`. `failed`. `idle`. | Wait |
+| `failed` | Generate again. Back. Reset. | `generating`. `answering`. `idle`. | Try again |
+
+## `MiraBrandDocumentState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraBrandDocumentState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> empty: Read library without a doc
+    [*] --> confirmed: Read library with a doc
+    empty --> reviewing: Receive draft
+    reviewing --> reviewing: Change an item
+    reviewing --> confirmed: This is me
+    confirmed --> reviewing: Edit
+    reviewing --> empty: Cancel with no saved doc
+    reviewing --> confirmed: Restore saved doc
+```
+
+The optional `MiraDocument.brandDoc` holds the confirmed value. The draft
+stays in memory. Generation reads the confirmed value while the creator edits.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `empty` | Read saved value. Receive a valid draft. | `empty` or `confirmed`. `reviewing`. | Start the interview |
+| `reviewing` | Change draft. Confirm valid draft. Read saved value on cancel. | `reviewing`. `confirmed` and save. `empty` or `confirmed`. | This is me |
+| `confirmed` | Edit. Read saved value. | `reviewing`. `empty` or `confirmed`. | Edit my brand doc |
+
+## `MiraPickState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraPickState.swift)
+
+```mermaid
+stateDiagram-v2
+    idle --> working: Ask for a pick
+    working --> working: Receive progress
+    working --> ready: Receive valid pick and reason
+    working --> failed: Request fails
+    ready --> working: Ask for another pick
+    ready --> idle: Make this one
+    failed --> working: Try again
+```
+
+The store keeps the current pick and skipped titles in memory. The input
+uses the confirmed brand document and the checklist from the latest confirmed
+unpaid deal. Mira omits the checklist if that deal has no items or there is no
+active deal. Instagram-derived context requires a separate saved choice for
+the active creator. The store validates the job, the returned idea, the reason,
+and the matching words and shots before presenting the pick. On Make, the store
+checks that the deal and checklist still match. A change resets the pick. The
+new Reel keeps the checklist revision and item IDs in its confirmed brief.
+The store opens Your words. Only the accepted pick gives the saved shot list a
+picture source.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `idle` | Start. Reset. | `working`. `idle`. | Make today's Reel |
+| `working` | Progress, receive or fail the current job. Reset. | `working`, `ready` or `failed`. `idle`. | Wait |
+| `ready` | Start another. Make. Reset. | `working` with the previous result. `idle` after making the Reel. `idle`. | Make this one |
+| `failed` | Start again. Reset. | `working`. `idle`. | Try again |
 
 ## `MiraVoiceInputState`
 
@@ -479,6 +569,78 @@ In any state, a changed text, a changed existing detail, removal, extraction, or
 | `reviewing` | Edit, remove, extract or stop using. Confirm if valid. | Read updated brief | Confirm these requirements if valid. Otherwise extract proposed requirements. |
 | `unresolved` | Edit, remove, extract or stop using. Confirm if valid. | Read updated brief | Confirm these requirements if valid. Otherwise extract proposed requirements. |
 | `confirmed` | Edit, remove, extract or stop using. Confirm if valid. | Read updated brief | Edit brand requirements |
+
+## `MiraDealBriefState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraDealBriefState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> empty
+    empty --> editing: begin
+    editing --> editing: edit
+    editing --> reading: read
+    reading --> reconnect: interruption or reopen
+    reconnect --> reading: resume
+    reading --> failed: rejected or invalid result
+    reading --> reviewing: valid result
+    failed --> reading: retry
+    failed --> editing: edit
+    reviewing --> editing: edit
+    reviewing --> empty: confirm and save card
+```
+
+The store saves the draft and request ID before it sends a new request. A reconnect checks the same ID. If the server does not know that ID, Mira sends the original input with the same ID. Start requires current AI permission. Mira checks the job owner and matches each reply to the job ID, revision and input. The result must quote the source. The creator checks it before the deal appears in Deals or Home.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `empty` | Begin with pasted or shared text | `editing` | Paste a brief |
+| `editing` | Edit. Read valid text. Open a shared brief when the draft is empty. | `editing`, `reading` | Read this brief |
+| `reading` | Receive a matching terminal reply. Record an interruption. | `reviewing`, `failed` or `reconnect` | Wait |
+| `reconnect` | Resume | `reading` | Reconnect |
+| `failed` | Edit. Read valid text with a new request. | `editing`, `reading` | Try again |
+| `reviewing` | Edit. Confirm with the card transition. | `editing`, `empty` | Looks right |
+
+## `MiraDealCardState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraDealCardState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> reviewing
+    reviewing --> saved: confirm
+    saved --> saved: valid tracker event
+```
+
+The card keeps the original brief and the reviewed terms. The latest unpaid deal supplies the active checklist to `pickIdea`. An empty checklist supplies no value.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `reviewing` | Confirm | `saved` | Looks right |
+| `saved` | Apply a valid tracker event | `saved` | Open deal |
+
+## `MiraDealTrackerState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraDealTrackerState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> toPost
+    toPost --> toTellBrand: posted
+    toTellBrand --> toConfirm: brand told
+    toConfirm --> toPay: confirmed
+    toPay --> paid: paid
+```
+
+The saved dates determine the current action. Each event records its own date and preserves earlier dates. A repeated or out-of-order event leaves the card unchanged.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `toPost` | Posted | `toTellBrand` | Mark as posted |
+| `toTellBrand` | Brand told | `toConfirm` | Mark brand told |
+| `toConfirm` | Confirmed | `toPay` | Mark as confirmed |
+| `toPay` | Paid | `paid` | Mark as paid |
+| `paid` | — | — | — |
 
 ## Server text job
 

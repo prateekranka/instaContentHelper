@@ -1,6 +1,8 @@
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type App, type Locator, type Screen } from 'e2e';
+import { answerBrandInterview, openLegacyIdeas, openPickedShotList } from './mira-e2-support';
 import { d2FixtureArguments, fixtureSessionArguments } from '../e2e.mira.config';
+import { e3Brief, e3Deliverables } from './fixtures/mira-deal-brief';
 import { appIsRunning, closeKeyboard, mobileKeyboard, scrollToControl, tapVisibleControl, waitForMobileApp } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
@@ -10,9 +12,9 @@ test.beforeEach(() => {
   sampleSession = fixtureSessionArguments.length ? `${fixtureSessionArguments[1]}-${Date.now()}` : '';
 });
 
-function fixtureLaunch() {
+function fixtureLaunch(extra: string[] = []) {
   return [...english, '-MCO_FORCE_FIXTURE_UI', '1', ...d2FixtureArguments,
-    ...(sampleSession ? ['-MCO_QA_SESSION', sampleSession] : [])];
+    ...(sampleSession ? ['-MCO_QA_SESSION', sampleSession] : []), ...extra];
 }
 
 if (fixtureSessionArguments.length !== 2 || !fixtureSessionArguments[1]?.trim()) {
@@ -23,9 +25,9 @@ async function tap(screen: Screen, locator: Locator) {
   await tapVisibleControl(screen, locator);
 }
 
-async function launchMira(app: App, screen: Screen, device: Device, install = false) {
+async function launchMira(app: App, screen: Screen, device: Device, install = false, extra: string[] = []) {
   if (install && process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
-  if (sampleSession) await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch() });
+  if (sampleSession) await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch(extra) });
   else await app.open();
   await waitForMobileApp(screen);
   await dismissSystemVerification(screen);
@@ -79,7 +81,13 @@ async function backOut(screen: Screen) {
   for (let step = 0; step < 4; step += 1) {
     const back = screen.getByTestId('BackButton');
     if (await back.count() === 0) break;
-    await back.tap();
+    try {
+      await back.tap();
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'LOCATOR_NOT_FOUND')
+        || await back.count() > 0) throw error;
+      break;
+    }
   }
 }
 
@@ -123,6 +131,7 @@ async function d2Fixture(scenario: string, update: Record<string, string | numbe
   return await response.json() as {
     card: number; starts: number; prematureOptIns: number; optedIn: number;
     expiredGets: number; freshGets: number; refreshes: number;
+    dealChecklist?: { revision: number; items: { excerpt: string; kind: string; requiredText?: string }[] };
   }[];
 }
 
@@ -190,10 +199,9 @@ test('E1 tabs share the Ask Mira bar and My Brand keeps archived Reels reachable
   await expect(archived).toBeChecked();
   await expect(screen.getByText('Untitled Reel', { exact: true })).toBeVisible();
   await tap(screen, screen.getByText('Untitled Reel', { exact: true }));
-  const reel = screen.getByRole('other', 'My Brand', { exact: true }).filter({
-    has: screen.getByTestId('Your Reel'),
-  });
-  await expect(reel.getByPlaceholder('Ask Mira about this Reel', { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByTestId('Your Reel')).toBeVisible();
+  await expect(screen.getByTestId('BackButton')).toHaveAccessibleName('My Brand');
+  await expect(screen.getByPlaceholder('Ask Mira about this Reel', { exact: true, visible: true })).toBeVisible();
   await app.screenshot('e1-archived-reel-ask');
 });
 
@@ -408,6 +416,7 @@ test('Profile shows Allow and Decline immediately after each choice', async ({ a
 test('Today cards swipe into the matching filming plan and retry one failed card', async ({ app, screen, device }) => {
   await launchMira(app, screen, device, true);
   await openToday(screen);
+  await openLegacyIdeas(screen);
   const make = makeToday(screen);
   const title = (label: string) => screen.getByText(label, { exact: true, visible: true });
   const page = (number: number) => screen.getByTestId(`mira.today.page.${number}`);
@@ -465,6 +474,7 @@ test('Today cards swipe into the matching filming plan and retry one failed card
 test('Your words gate leads to approved filming and the Done screen', async ({ app, screen, device }) => {
   await launchMira(app, screen, device, true);
   await openToday(screen);
+  await openLegacyIdeas(screen);
   const make = makeToday(screen);
   const title = (label: string) => screen.getByText(label, { exact: true, visible: true });
   const approve = screen.getByTestId('mira.words.approve');
@@ -593,7 +603,7 @@ test('Today has one question, chips, Continue rules and start options in Profile
   expect(makeBox.y).toBeGreaterThanOrEqual(pageBox.y);
   expect(makeBox.y + makeBox.height).toBeLessThanOrEqual(Math.min(pageBox.y + pageBox.height, tabBox.y));
   await app.screenshot('today-keyboard-closed');
-  await make.tap();
+  await startTodayCard(screen, 'Demo slow cards', 1);
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
   await expect(screen.getByText('About 1 minute', { exact: true })).toBeVisible();
   await expect(screen.getByText('Mira is making idea 1 of 3', { exact: true })).toBeVisible();
@@ -615,17 +625,13 @@ test('Today has one question, chips, Continue rules and start options in Profile
 
 async function startTodayCard(screen: Screen, request: string, card: number) {
   await openToday(screen);
-  const make = makeToday(screen);
-  if (await make.count()) {
-    if (request) {
-      const field = homeRequest(screen);
-      await fillText(field, request);
-      await closeKeyboard(screen, field);
-    }
-    await tap(screen, make);
-  } else {
-    await sendAsk(screen, request || 'Something I can film at home');
+  await openLegacyIdeas(screen);
+  const field = homeRequest(screen);
+  if (request) {
+    await fillText(field, request);
+    await closeKeyboard(screen, field);
   }
+  await tap(screen, makeToday(screen));
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
   await screen.getByTestId(`mira.today.page.${card}`).tap();
 }
@@ -1230,10 +1236,9 @@ test('M17 a rejected update keeps Retry as the next step and retry reaches filmi
   await tap(screen, screen.getByTestId('mira.words.simpler'));
   await tap(screen, screen.getByTestId('mira.words.use'));
   await tap(screen, wordsApprove(screen));
-  const message = screen.getByText('Mira needs to update the shots.', { exact: true });
-  await expect(message).toBeVisible({ timeout: 45_000 });
-  await screen.getByRole('button', 'OK', { exact: true }).tap();
-  await expect(message).not.toBeVisible();
+  await expect(screen.getByText('Mira needs to update the shots.', { exact: true, visible: true }))
+    .toBeVisible({ timeout: 45_000 });
+  await screen.getByRole('button', 'OK', { exact: true, visible: true }).tap();
   const retry = screen.getByTestId('mira.words.shots.retry');
   await scrollToControl(screen, retry);
   await expect(retry).toBeVisible();
@@ -1258,4 +1263,278 @@ test('M19 missing Instagram permission offers Connect again in the sample librar
   await app.screenshot('m19-instagram-reconnect');
   await tap(screen, reconnect);
   await expect(screen.getByText('Instagram connection is unavailable in the sample library.', { exact: true })).toBeVisible();
+});
+
+test('E2 interview accepts typing with speech denied, and the edited brand doc survives relaunch', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await openTab(screen, 'My Brand');
+  await screen.getByTestId('mira.brand.start').tap();
+  await answerBrandInterview(app, screen, next => tap(screen, next), true);
+  const pillar = screen.getByTestId('mira.brand.pillars.1');
+  await expect(pillar).toBeVisible();
+  expect(await pillar.inputValue()).toBe('Training after 60');
+  await fillText(pillar, 'HYROX after 60');
+  await expect(pillar).toBeFocused();
+  await app.screenshot('e2-brand-doc-review');
+  const confirm = screen.getByTestId('mira.brand.confirm');
+  await confirm.tap();
+  const saved = screen.getByRole('scroll-view', 'Your brand doc', { exact: true }).getByTestId('mira.brand.saved');
+  const savedPillar = saved.filter({ hasText: /^HYROX after 60$/ });
+  await expect(savedPillar).toBeAttached();
+  await app.screenshot('e2-brand-doc-confirmed');
+  await launchMira(app, screen, device);
+  await expect(savedPillar).toBeVisible();
+  await expect(saved.filter({ hasText: /^Share more training Reels$/ })).toBeAttached();
+  await expect(confirm).not.toBeAttached();
+});
+
+for (const [instagram, override] of [
+  ['notconnected', 'ask'], ['ready', 'ask'], ['ready', 'not-now'], ['ready', 'allow'],
+]) {
+  test(`E2 Instagram results permission: ${instagram} / ${override}`, async ({ app, screen, device }) => {
+    const overrides = ['-MCO_INSIGHTS_SCENARIO', instagram, '-MCO_QA_INSTAGRAM_RESULTS', override];
+    await launchMira(app, screen, device, false, overrides);
+    const prompt = screen.getByTestId('mira.instagramResults.question');
+    const make = screen.getByTestId('mira.home.idea').filter({ hasText: /^Make today's Reel$/ });
+    if (instagram === 'ready' && override === 'ask') {
+      await openToday(screen);
+      await expect(prompt).not.toBeAttached();
+      await tap(screen, make);
+      await expect(prompt).toBeVisible();
+      await app.screenshot('e2-instagram-permission-from-pick');
+      await launchMira(app, screen, device, false, overrides);
+    }
+    await openTab(screen, 'My Brand');
+    await expect(prompt).not.toBeAttached();
+    await screen.getByTestId('mira.brand.start').tap();
+    if (instagram === 'ready' && override === 'ask') {
+      await expect(prompt).toHaveText('Use your Instagram results to pick ideas');
+      await expect(screen.getByTestId('mira.instagramResults.allow')).toBeVisible();
+      await expect(screen.getByTestId('mira.instagramResults.notNow')).toBeVisible();
+      await app.screenshot('e2-instagram-permission');
+      return;
+    }
+    await expect(screen.getByTestId('mira.brand.answer')).toBeVisible();
+    await expect(prompt).not.toBeAttached();
+    if (instagram === 'notconnected') return;
+    await answerBrandInterview(app, screen, next => tap(screen, next));
+    const item = screen.getByTestId('mira.brand.dos.1');
+    await scrollToControl(screen, item);
+    expect(await item.inputValue()).toBe(override === 'allow' ? 'Build on your Instagram results' : 'Show simple steps');
+    await tap(screen, screen.getByTestId('mira.brand.confirm'));
+    await openTab(screen, 'Home');
+    await tap(screen, make);
+    await expect(screen.getByTestId('mira.pick.reason')).toHaveText(override === 'allow'
+      ? 'Your early-morning training Reels reach the most people.'
+      : 'This fits the themes you confirmed in My Brand.');
+    await expect(prompt).not.toBeAttached();
+    await app.screenshot(`e2-instagram-${override}-pick`);
+  });
+}
+
+test('E2 Home shows another idea and asks for pictures only for the Reel she makes', async ({ app, screen, device }) => {
+  const scenario = 'Demo E2 pick';
+  await d2Fixture(scenario, { begin: true });
+  await launchMira(app, screen, device);
+  await openToday(screen);
+  const input = screen.getByTestId('mira.today.request');
+  await fillText(input, scenario);
+  await closeKeyboard(screen, input);
+  await tap(screen, screen.getByTestId('mira.today.make'));
+  await expect(screen.getByTestId('mira.pick.wait')).toBeVisible();
+  await expect.poll(async () => (await d2Fixture(scenario)).length).toBe(1);
+  await d2Fixture(scenario, { card: 1, finish: true });
+
+  const title = screen.getByTestId('mira.pick.title');
+  const reason = screen.getByTestId('mira.pick.reason');
+  await expect(title).toHaveText('A quiet breakfast');
+  await expect(reason).toHaveText('You can film this in one place with things you already have.');
+  await app.screenshot('e2-pick-with-reason');
+
+  await tap(screen, screen.getByTestId('mira.pick.another'));
+  await expect.poll(async () => (await d2Fixture(scenario)).length).toBe(2);
+  await d2Fixture(scenario, { card: 2, finish: true });
+  await expect(title).toHaveText('A table by the window');
+  await expect(reason).toBeVisible();
+  expect((await d2Fixture(scenario)).map(item => item.optedIn)).toEqual([0, 0]);
+  await app.screenshot('e2-another-idea');
+
+  await tap(screen, screen.getByTestId('mira.pick.make'));
+  await openPickedShotList(app, screen);
+  const picture = d2Picture(screen, 'AI picture', 1);
+  await scrollToControl(screen, screen.getByTestId('mira.shot.picture.1'));
+  await expect(picture).toBeVisible({ timeout: 45_000 });
+  const stats = await d2Fixture(scenario);
+  expect(stats.find(item => item.card === 1)?.optedIn).toBe(0);
+  expect(stats.find(item => item.card === 2)?.optedIn).toBeGreaterThan(0);
+  expect(stats.map(item => item.starts)).toEqual([1, 1]);
+  expect(stats.every(item => item.dealChecklist === undefined)).toBe(true);
+  await app.screenshot('e2-picked-shot-list-pictures');
+  await launchMira(app, screen, device);
+  await expect(screen.getByTestId('mira.shots.film')).toBeAttached();
+});
+
+const e3Button = (screen: Screen, name: string) => screen.getByRole('button', name, { exact: true });
+const e3Text = (screen: Screen, value: string) => screen.getByText(value, { exact: true });
+
+async function pasteDeal(screen: Screen, device: Device, brief: string) {
+  await openTab(screen, 'Deals');
+  await tap(screen, e3Button(screen, 'Paste a brief'));
+  await expect(e3Button(screen, 'Read this brief')).toBeDisabled();
+  await device.setClipboard(brief);
+  await expect(screen.getByTestId('mira.deals.paste')).toBeEnabled();
+  await tap(screen, screen.getByTestId('mira.deals.paste'));
+  const field = screen.getByRole('textbox', 'Brand brief', { exact: true });
+  expect(await field.inputValue()).toBe(brief);
+  return field;
+}
+
+async function confirmSampleDeal(screen: Screen, device: Device) {
+  await pasteDeal(screen, device, e3Brief);
+  await tap(screen, e3Button(screen, 'Read this brief'));
+  await expect(e3Button(screen, 'Looks right')).toBeAttached();
+  await tap(screen, e3Button(screen, 'Looks right'));
+}
+
+test('E3 paste reads six deliverables, shows unresolved terms and saves only on confirmation', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await pasteDeal(screen, device, e3Brief);
+  await app.screenshot('e3-paste-brief');
+  await tap(screen, e3Button(screen, 'Read this brief'));
+  await expect(e3Text(screen, 'Peak Sip')).toBeVisible();
+  await expect(e3Text(screen, '₹25,000 + GST')).toBeAttached();
+  await expect(e3Text(screen, 'Due 8 December 2026.')).toBeAttached();
+  await app.screenshot('e3-deal-review');
+  for (const excerpt of e3Deliverables) await expect(e3Text(screen, excerpt)).toBeAttached();
+  await expect(e3Text(screen, '#ad')).toBeAttached();
+  await expect(e3Text(screen, 'SIP20')).toBeAttached();
+  const unresolved = e3Text(screen, 'Ask the brand for the shop link.');
+  await scrollToControl(screen, unresolved);
+  await expect(unresolved).toBeVisible();
+  await app.screenshot('e3-unresolved');
+  await openToday(screen);
+  await expect(e3Button(screen, 'Open deal for Peak Sip')).toHaveCount(0);
+  await openTab(screen, 'Deals');
+  await tap(screen, e3Button(screen, 'Looks right'));
+  await expect(e3Text(screen, 'Peak Sip')).toBeVisible();
+  await launchMira(app, screen, device);
+  await openTab(screen, 'Deals');
+  await tap(screen, e3Button(screen, 'Open deal for Peak Sip'));
+  await expect(e3Text(screen, 'Peak Sip')).toBeVisible();
+  await expect(e3Text(screen, 'SIP20')).toBeAttached();
+  await expect(e3Button(screen, 'Looks right')).toHaveCount(0);
+});
+
+test('E3 tracker records four dates in order and keeps them after relaunch', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await confirmSampleDeal(screen, device);
+  const steps = [
+    ['Posted', 'Mark as posted'], ['Brand told', 'Mark brand told'],
+    ['Confirmed', 'Mark as confirmed'], ['Paid', 'Mark as paid'],
+  ] as const;
+  const dates: string[] = [];
+  for (const [label, action] of steps) {
+    const row = screen.getByLabel(label, { exact: true });
+    await expect(row).toHaveAttribute('value', 'Pending');
+    await tap(screen, e3Button(screen, action));
+    const value = await row.getAttribute('value');
+    expect(value).toMatch(/\d{4}/);
+    dates.push(value!);
+  }
+  await app.screenshot('e3-tracker-paid');
+  await launchMira(app, screen, device);
+  await openTab(screen, 'Deals');
+  await tap(screen, e3Button(screen, 'Open deal for Peak Sip'));
+  for (const [index, [label, action]] of steps.entries()) {
+    const row = screen.getByLabel(label, { exact: true });
+    await expect(row).toHaveAttribute('value', dates[index]!);
+    await expect(e3Button(screen, action)).toHaveCount(0);
+  }
+  await e3Button(screen, 'Close').tap();
+  await openToday(screen);
+  await expect(e3Button(screen, 'Open deal for Peak Sip')).toHaveCount(0);
+});
+
+test('E3 Home shows the reviewed deal fee and deadline and opens that deal', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await confirmSampleDeal(screen, device);
+  await e3Button(screen, 'Close').tap();
+  await openToday(screen);
+  await expect(e3Text(screen, 'Peak Sip')).toBeVisible();
+  await expect(e3Text(screen, '₹25,000 + GST')).toBeVisible();
+  await expect(e3Text(screen, 'Due 8 December 2026.')).toBeVisible();
+  await app.screenshot('e3-home-deal');
+  await tap(screen, e3Button(screen, 'Open deal for Peak Sip'));
+  await expect(e3Button(screen, 'Mark as posted')).toBeAttached();
+});
+
+test('E2 and E3 Home sends the reviewed deal and opens its mapped shot list', async ({ app, screen, device }) => {
+  const scenario = 'Demo E2 pick';
+  await d2Fixture(scenario, { begin: true });
+  await launchMira(app, screen, device);
+  await confirmSampleDeal(screen, device);
+  await e3Button(screen, 'Close').tap();
+  await openToday(screen);
+  const input = screen.getByTestId('mira.ask.bar');
+  await fillText(input, scenario);
+  await tap(screen, e3Button(screen, 'Send to Mira'));
+  await expect.poll(async () => (await d2Fixture(scenario)).length).toBe(1);
+  const [request] = await d2Fixture(scenario);
+  expect(request.dealChecklist?.revision).toBe(1);
+  expect(request.dealChecklist?.items.map(item => item.excerpt)).toEqual(e3Deliverables);
+  expect(request.dealChecklist?.items.find(item => item.kind === 'onScreenText')?.requiredText).toBe('SIP20');
+  await d2Fixture(scenario, { card: 1, finish: true });
+  await expect(screen.getByTestId('mira.pick.reason')).toBeVisible();
+  await expect(e3Button(screen, 'Open deal for Peak Sip')).toBeAttached();
+  await app.screenshot('e2e3-home-pick-and-deal');
+  await tap(screen, screen.getByTestId('mira.pick.make'));
+  await openPickedShotList(app, screen);
+  await expect(e3Text(screen, 'Brand requirements included in the plan')).toBeAttached();
+  const code = e3Text(screen, 'SIP20');
+  await scrollToControl(screen, code);
+  await expect(code).toBeVisible();
+  await app.screenshot('e2e3-picked-deal-shot-list');
+});
+
+test('E3 a failed read keeps the pasted brief available for correction', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  const field = await pasteDeal(screen, device, 'Peak Sip sent the fee but did not include the terms.');
+  await tap(screen, e3Button(screen, 'Read this brief'));
+  await expect(e3Text(screen, "Mira couldn't read this brief. Your text is still here.")).toBeAttached();
+  expect(await field.inputValue()).toBe('Peak Sip sent the fee but did not include the terms.');
+  await device.setClipboard(e3Brief);
+  await tap(screen, screen.getByTestId('mira.deals.paste'));
+  expect(await field.inputValue()).toBe(e3Brief);
+  await tap(screen, e3Button(screen, 'Read this brief'));
+  await expect(e3Button(screen, 'Looks right')).toBeAttached();
+});
+
+test('E3 Notes Send Copy hands text to Deals and waits for Read this brief', async ({ app, screen, device }) => {
+  test.skip(process.env.MIRA_E2E_E3_NOTES !== '1', 'Enable after the signed extension is installed and Notes is ready.');
+  const brief = 'Mira E3 Notes share sample. Fee ₹5,000. Due 8 December 2026.';
+  await device.openApp('com.apple.mobilenotes');
+  await e3Button(screen, 'New Note').tap();
+  const field = screen.getByRole('textbox', { visible: true }).first();
+  await field.fill(brief);
+  await device.dismissKeyboard();
+  await e3Button(screen, 'Share').tap();
+  const collaboration = e3Button(screen, 'Collaborate');
+  if (await collaboration.isVisible()) {
+    await collaboration.tap();
+    await e3Button(screen, 'Send Copy').tap();
+  }
+  await app.screenshot('e3-notes-share-sheet');
+  await e3Button(screen, 'Mira').tap();
+  await e3Button(screen, 'Save brief to Mira').tap();
+  await expect(e3Text(screen, 'Saved to Mira. Open Mira to read the brief in Deals.')).toBeVisible();
+  await e3Button(screen, 'Done').tap();
+  await device.openApp(bundleId, {
+    relaunch: true, launchArguments: [...fixtureLaunch(), '-MCO_QA_SHARE_BRIEF', brief],
+  });
+  const draft = screen.getByRole('textbox', 'Brand brief', { exact: true });
+  await expect(draft).toBeVisible();
+  expect(await draft.inputValue()).toBe(brief);
+  await expect(e3Button(screen, 'Read this brief')).toBeVisible();
+  await expect(e3Button(screen, 'Looks right')).toHaveCount(0);
+  await app.screenshot('e3-shared-brief-in-deals');
 });

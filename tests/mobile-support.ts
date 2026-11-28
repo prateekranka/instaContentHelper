@@ -32,6 +32,8 @@ export async function mobileKeyboard(screen: Screen) {
 export async function closeKeyboard(screen: Screen, field: Locator) {
   const keyboard = await mobileKeyboard(screen);
   if (await keyboard.isVisible()) await field.press('Enter');
+  const keyboardWindow = screen.getByRole('window', 'Next keyboard', { exact: true, visible: true });
+  await expect(keyboardWindow).not.toBeVisible();
   await expect(keyboard).not.toBeVisible();
 }
 

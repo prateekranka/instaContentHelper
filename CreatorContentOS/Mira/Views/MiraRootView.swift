@@ -12,6 +12,12 @@ struct MiraRootView: View {
     @State private var sheet: MiraSheet?
     @State private var todayRequest = ""
     @State private var todayNeedsAIConsent = false
+    @State private var legacyRequest = ""
+    @State private var stepByStepProject: UUID?
+    @State private var e2EntryTask: Task<Void, Never>?
+    @State private var dealNeedsAIConsent = false
+    @State private var sharedBriefWaiting = false
+    @State private var checkingSharedBriefs = false
     var body: some View {
         libraryContent
         .tint(MiraTheme.accent)
@@ -27,12 +33,33 @@ struct MiraRootView: View {
                         store: store,
                         onStepByStep: {
                             sheet = nil
-                            open(store.newProject(), tab: .myBrand)
+                            let id = store.newProject()
+                            stepByStepProject = id
+                            open(id, tab: .myBrand)
                         },
                         onDemo: {
                             sheet = nil
                             open(store.addDemo(), tab: .home)
                         })
+                case .compareIdeas(let id):
+                    MiraTodayHome(
+                        store: store, request: $legacyRequest, blockedConsent: nil,
+                        onMake: { makeLegacyIdeas(id) }, onReviewAIConsent: {},
+                        onContinue: { _ in }, legacyEntry: true)
+                        .navigationTitle("Compare three ideas").navigationBarTitleDisplayMode(.inline)
+                case .instagramResults(let prompt):
+                    MiraPage {
+                        Text("Use your Instagram results to pick ideas")
+                            .font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+                            .accessibilityIdentifier("mira.instagramResults.question")
+                        Text("If you allow this, Mira can share your Instagram results with its AI providers when it makes your brand doc or picks an idea.")
+                        Button("Allow") { chooseInstagramResults(true, prompt: prompt) }
+                            .buttonStyle(MiraPrimaryStyle())
+                            .accessibilityIdentifier("mira.instagramResults.allow")
+                        Button("Not now") { chooseInstagramResults(false, prompt: prompt) }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("mira.instagramResults.notNow")
+                    }
                 case .ask(let id, let operation, let target, let request):
                     MiraAskView(
                         store: store, projectID: id, operation: operation, target: target,
@@ -69,6 +96,9 @@ struct MiraRootView: View {
                         open(id, tab: .myBrand)
                         sheet = nil
                     }
+                case .deal(let id):
+                    MiraDealDetailView(store: store, id: id)
+                        .toolbar { Button("Close") { sheet = nil } }
                 case .brief(let id): MiraBriefView(store: store, projectID: id, onGenerate: generate)
                 case .manualIdea(let id): MiraManualIdeaView(store: store, projectID: id)
                 }
@@ -94,8 +124,18 @@ struct MiraRootView: View {
                 .accessibilityAddTraits(.updatesFrequently)
             }
         }
-        .task { await store.load() }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { Task { await store.flush() } } }
+        .task { await loadLibrary() }
+        .onChange(of: liveSession?.deviceToken) { _, _ in
+            e2EntryTask?.cancel()
+            if case .instagramResults = sheet { sheet = nil }
+            store.resetE2Session()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            Task {
+                if phase == .active { await checkSharedBriefs(openDeals: true) }
+                else { await store.flush() }
+            }
+        }
     }
     @ViewBuilder private var libraryContent: some View {
         switch store.library {
@@ -113,7 +153,7 @@ struct MiraRootView: View {
                 if failure == .newerVersion {
                     Text(store.library.nextAction.title)
                 } else {
-                    Button(store.library.nextAction.title) { Task { await store.load() } }
+                    Button(store.library.nextAction.title) { Task { await loadLibrary() } }
                 }
             }
         }
@@ -127,10 +167,12 @@ struct MiraRootView: View {
                 home.navigationDestination(for: MiraRoute.self) { destination($0, tab: .home) }
             }.tabItem { Label("Home", systemImage: "house") }.tag(MiraMainTab.home)
             NavigationStack {
-                MiraPage {
-                    MiraSectionTitle(text: "Share a brand brief to Mira")
-                    Text("No deals yet. Paste a brief below to save it with a Reel.")
-                }
+                MiraDealsView(
+                    store: store, sharedBriefWaiting: sharedBriefWaiting,
+                    needsConsent: services.isLiveSupabaseRuntime && services.aiConsent != .allowed
+                        && (dealNeedsAIConsent || store.dealBriefState.record?.job != nil),
+                    onRead: readDealBrief, onReviewConsent: { services.setAIConsentSheetPresented(true) },
+                    onConfirm: confirmDeal, onOpen: { sheet = .deal($0) })
                 .navigationTitle("Deals").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -141,7 +183,8 @@ struct MiraRootView: View {
             NavigationStack(path: tabPath(.myBrand)) {
                 MiraMyBrandView(
                     store: store, onProfile: { sheet = .profile }, onBrief: { sheet = .brief($0) },
-                    onOpen: { open($0, tab: .myBrand) }, onDelete: delete)
+                    onOpen: { open($0, tab: .myBrand) }, onDelete: delete,
+                    onStartBrand: { beginE2(.interview) }, onGenerateBrand: { beginE2(.brandDoc) })
                 .navigationDestination(for: MiraRoute.self) { destination($0, tab: .myBrand) }
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -164,11 +207,7 @@ struct MiraRootView: View {
     private func startFromAsk(_ text: String) {
         store.navigate(.open(.home, []))
         todayRequest = text
-        if let batch = store.document.projects.first(where: { !$0.archived && $0.hasWorkingCards }) {
-            store.navigate(.open(.home, [.todayCards(batch.id)]))
-        } else {
-            makeToday()
-        }
+        beginE2(.pick(text))
     }
 
     @ViewBuilder private var profileButton: some View {
@@ -187,9 +226,16 @@ struct MiraRootView: View {
         MiraTodayHome(
             store: store, request: $todayRequest,
             blockedConsent: todayNeedsAIConsent && services.isLiveSupabaseRuntime ? services.aiConsent : nil,
-            onMake: makeToday,
+            onMake: { beginE2(.pick(todayRequest)) },
             onReviewAIConsent: { services.setAIConsentSheetPresented(true) },
-            onContinue: { store.continueReel($0) }
+            onContinue: { store.continueReel($0) },
+            onOpenDeal: { id in
+                store.navigate(.selectTab(.deals))
+                sheet = .deal(id)
+            },
+            onMakePick: { store.makePick() },
+            onAnother: { beginE2(.pick("")) },
+            checkingInstagram: e2EntryTask != nil
         )
         .navigationTitle("Home").navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
@@ -199,18 +245,198 @@ struct MiraRootView: View {
         .modifier(MiraInputScope())
     }
 
-    private func makeToday() {
+    private func loadLibrary() async {
+        await store.load()
+        await checkSharedBriefs(openDeals: true)
+    }
+
+    private func checkSharedBriefs(openDeals: Bool) async {
+        guard case .loaded = store.library, !checkingSharedBriefs else { return }
+        let fixtureText = DebugLaunchConfiguration.value(for: "MCO_QA_SHARE_BRIEF")
+        if DebugLaunchFlags.forceFixtureUI && fixtureText == nil { return }
+        checkingSharedBriefs = true
+        defer { checkingSharedBriefs = false }
+        do {
+            var items = try MiraSharedBriefInbox.pending(matching: DebugLaunchFlags.forceFixtureUI ? fixtureText : nil)
+            let imported = Set(store.deals.map(\.id) + [store.dealBriefState.record?.id].compactMap { $0 })
+            let duplicates = items.filter { imported.contains($0.id) }
+            if !duplicates.isEmpty, await store.flush() {
+                for item in duplicates { try MiraSharedBriefInbox.markImported(item.id) }
+            }
+            items.removeAll { imported.contains($0.id) }
+            guard let next = items.first else {
+                sharedBriefWaiting = false
+                return
+            }
+            if openDeals { store.navigate(.selectTab(.deals)) }
+            guard store.beginDealBrief(id: next.id, text: next.text) else {
+                sharedBriefWaiting = true
+                return
+            }
+            sharedBriefWaiting = items.count > 1
+            if await store.flush() { try MiraSharedBriefInbox.markImported(next.id) }
+        } catch {
+            if store.location.tab == .deals {
+                store.reportError("Could not open shared briefs. You can still paste a brief in Deals.")
+            }
+        }
+    }
+
+    private func readDealBrief() {
+        dealNeedsAIConsent = false
+        do {
+            if DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil {
+                store.readDealBrief(using: MiraDealFixtureService())
+                return
+            }
+            let reconnecting = store.dealBriefState.record?.job != nil
+            guard let generation = try service(nil, requiresConsent: !reconnecting) as? any MiraDealBriefService else {
+                throw MiraError.invalid("Mira could not open the brief reader. Your text is still here.")
+            }
+            store.readDealBrief(using: generation)
+        } catch is AIConsentRequired {
+            dealNeedsAIConsent = true
+        } catch {
+            store.reportError(error.localizedDescription)
+        }
+    }
+
+    private func confirmDeal() {
+        guard let id = store.confirmDeal() else { return }
+        sheet = .deal(id)
+        Task { await checkSharedBriefs(openDeals: false) }
+    }
+
+    private var liveSession: PairedDeviceSession? {
+        if case .live(let session) = appState.runtime.mode { return session }
+        return nil
+    }
+
+    private var instagramCreatorID: UUID? {
+        DebugLaunchFlags.forceFixtureUI
+            ? UUID(uuidString: "E2000000-0000-4000-8000-000000000001")
+            : liveSession?.creatorID
+    }
+
+    private var instagramPermissionOverride: String? {
+        #if DEBUG
+        return DebugLaunchConfiguration.value(for: "MCO_QA_INSTAGRAM_RESULTS")
+        #else
+        return nil
+        #endif
+    }
+
+    private func instagramPermission(for creatorID: UUID) -> Bool? {
+        switch instagramPermissionOverride {
+        case "ask": return nil
+        case "allow": return true
+        case "not-now": return false
+        default: break
+        }
+        guard let permission = store.document.instagramResultsPermission, permission.creatorID == creatorID else {
+            return nil
+        }
+        return permission.allowed
+    }
+
+    private func instagramState(session: PairedDeviceSession?) async -> InstagramInsightsState? {
+        #if DEBUG
+        if DebugLaunchFlags.forceFixtureUI {
+            return InstagramInsightsFixture.state(for: DebugLaunchFlags.insightsScenario ?? "notconnected")
+        }
+        #endif
+        guard let session else { return nil }
+        return try? await MiraSupabaseInsightsService(session: session).fetchInsights()
+    }
+
+    private func beginE2(_ action: MiraE2Action) {
+        guard e2EntryTask == nil else { return }
+        if case .interview = action {
+            guard store.brandInterview == .idle else { return }
+        }
+        if case .pick = action, case .working = store.pickState { return }
         todayNeedsAIConsent = false
+        let session = liveSession
+        guard let creatorID = instagramCreatorID else {
+            performE2(action, report: nil)
+            return
+        }
+        let permission = instagramPermission(for: creatorID)
+        guard permission == true || (permission == nil && action.asksInstagramPermission) else {
+            performE2(action, report: nil)
+            return
+        }
+        e2EntryTask = Task {
+            defer { e2EntryTask = nil }
+            let state = await instagramState(session: session)
+            guard !Task.isCancelled, session?.deviceToken == liveSession?.deviceToken else { return }
+            let report: InstagramInsightsReport?
+            if case .ready(let value) = state, value.source == .api { report = value }
+            else { report = nil }
+            if permission == nil, let state, state != .notConnected {
+                sheet = .instagramResults(.init(action: action, creatorID: creatorID, report: report))
+            } else {
+                performE2(action, report: permission == true ? report : nil)
+            }
+        }
+    }
+
+    private func chooseInstagramResults(_ allowed: Bool, prompt: MiraInstagramResultsPrompt) {
+        sheet = nil
+        guard prompt.creatorID == instagramCreatorID else { return }
+        if instagramPermissionOverride == nil {
+            store.saveInstagramResultsPermission(allowed, creatorID: prompt.creatorID)
+        }
+        performE2(prompt.action, report: allowed ? prompt.report : nil)
+    }
+
+    private func performE2(_ action: MiraE2Action, report: InstagramInsightsReport?) {
+        if case .interview = action {
+            store.sendBrandInterview(.start)
+            return
+        }
         do {
             let demo = DebugLaunchFlags.forceFixtureUI
-            let request = todayRequest.trimmingCharacters(in: .whitespacesAndNewlines)
-            let generation: any MiraGenerationService = demo
-                ? fixtureGeneration(request)
-                : try service(nil)
-            let id = store.startToday(request: request, demo: demo, service: generation)
-            todayRequest = ""
+            let fixtureRequest: String
+            if case .pick(let text) = action {
+                fixtureRequest = text.isEmpty ? store.pickState.request ?? "" : text
+            } else {
+                fixtureRequest = ""
+            }
+            let generation: any MiraGenerationService = demo ? fixtureGeneration(fixtureRequest) : try service(nil)
+            switch action {
+            case .interview: break
+            case .brandDoc:
+                let followers = report?.headline.first { $0.id == "followers" }.flatMap { metric in
+                    Int(metric.value.replacingOccurrences(of: ",", with: ""))
+                }
+                store.generateBrandDocument(instagram: followers.flatMap { $0 >= 0 ? .init(followers: $0) : nil }, service: generation)
+            case .pick(let text):
+                let pattern = report?.nudge.map { MiraBrandDocument.trimmed($0) }
+                store.startPick(request: MiraBrandDocument.trimmed(text), demo: demo,
+                                patterns: pattern.flatMap { MiraBrandDocument.validLine($0) ? [$0] : nil },
+                                service: generation)
+                todayRequest = ""
+            }
+        } catch is AIConsentRequired {
+            if case .pick = action { todayNeedsAIConsent = true }
+            else { services.setAIConsentSheetPresented(true) }
+        } catch {
+            store.reportError(error.localizedDescription)
+        }
+    }
+
+    private func makeLegacyIdeas(_ projectID: UUID) {
+        do {
+            let demo = DebugLaunchFlags.forceFixtureUI
+            let request = MiraBrandDocument.trimmed(legacyRequest)
+            let generation: any MiraGenerationService = demo ? fixtureGeneration(request) : try service(nil)
+            let id = store.startToday(request: request, demo: demo, projectID: projectID, service: generation)
+            legacyRequest = ""
+            sheet = nil
             open(id, tab: .home)
         } catch is AIConsentRequired {
+            sheet = nil
             todayNeedsAIConsent = true
         } catch {
             store.reportError(error.localizedDescription)
@@ -231,6 +457,16 @@ struct MiraRootView: View {
                 store: store, projectID: id, tab: tab, onSheet: { sheet = $0 }, onGenerate: generate,
                 onReconnect: reconnect, onCancel: cancel)
                 .task(id: store.project(id)?.storyboard?.id) { watchPictures(id) }
+                .toolbar {
+                    if stepByStepProject == id, let project = store.project(id),
+                        project.ideas.isEmpty, project.todayCards == nil, project.job == nil {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Compare three ideas", systemImage: "rectangle.on.rectangle") {
+                                sheet = .compareIdeas(id)
+                            }.accessibilityIdentifier("mira.project.compareIdeas")
+                        }
+                    }
+                }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if let project = store.project(id) {
                         editorAskBar(project, tab: tab)
@@ -398,41 +634,16 @@ struct MiraMyBrandView: View {
     var onBrief: (UUID) -> Void
     var onOpen: (UUID) -> Void
     var onDelete: (UUID) -> Void
+    var onStartBrand: () -> Void
+    var onGenerateBrand: () -> Void
     @State private var showReels = false
     @State private var archived = false
     @State private var deletion: UUID?
     @State private var renaming: UUID?
     @State private var newName = ""
     var body: some View {
-        MiraPage {
-            let profile = store.document.profile
-            DisclosureGroup("Creator profile") {
-                VStack(alignment: .leading, spacing: 10) {
-                    profileDetail("Name", profile.name)
-                    profileDetail("Themes", profile.themes)
-                    profileDetail("Audience", profile.audience)
-                    profileDetail("Language", profile.language.rawValue)
-                    profileDetail("Tone", profile.tone)
-                    profileDetail("Avoid", profile.avoid)
-                    profileDetail("Examples", profile.samples)
-                    Button("Edit creator profile", action: onProfile)
-                }.padding(.vertical, 8)
-            }.font(.headline)
-            DisclosureGroup("Brand brief") {
-                let briefs = store.document.projects.filter { !$0.brief.original.isEmpty }
-                    .sorted { $0.updatedAt > $1.updatedAt }
-                if briefs.isEmpty {
-                    Text("No saved brand briefs.")
-                }
-                ForEach(briefs) { project in
-                    Button(project.title) { onBrief(project.id) }
-                        .padding(.vertical, 6)
-                }
-            }.font(.headline)
-            DisclosureGroup("All Reels", isExpanded: $showReels) {
-                VStack(alignment: .leading, spacing: 18) { reels }
-                    .padding(.vertical, 12)
-            }.font(.headline)
+        MiraBrandView(store: store, onStart: onStartBrand, onGenerate: onGenerateBrand) {
+            librarySections
         }.navigationTitle("My Brand").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: Binding(
                 get: { renaming != nil }, set: { if !$0 { renaming = nil } }
@@ -468,6 +679,37 @@ struct MiraMyBrandView: View {
                 }
             }
     }
+    @ViewBuilder private var librarySections: some View {
+        let profile = store.document.profile
+        DisclosureGroup("Creator profile") {
+            VStack(alignment: .leading, spacing: 10) {
+                profileDetail("Name", profile.name)
+                profileDetail("Themes", profile.themes)
+                profileDetail("Audience", profile.audience)
+                profileDetail("Language", profile.language.rawValue)
+                profileDetail("Tone", profile.tone)
+                profileDetail("Avoid", profile.avoid)
+                profileDetail("Examples", profile.samples)
+                Button("Edit creator profile", action: onProfile)
+            }.padding(.vertical, 8)
+        }.font(.headline)
+        DisclosureGroup("Brand brief") {
+            let briefs = store.document.projects.filter { !$0.brief.original.isEmpty }
+                .sorted { $0.updatedAt > $1.updatedAt }
+            if briefs.isEmpty {
+                Text("No saved brand briefs.")
+            }
+            ForEach(briefs) { project in
+                Button(project.title) { onBrief(project.id) }
+                    .padding(.vertical, 6)
+            }
+        }.font(.headline)
+        DisclosureGroup("All Reels", isExpanded: $showReels) {
+            VStack(alignment: .leading, spacing: 18) { reels }
+                .padding(.vertical, 12)
+        }.font(.headline)
+    }
+
     @ViewBuilder private func profileDetail(_ label: String, _ value: String) -> some View {
         if !value.isEmpty {
             LabeledContent(label, value: value).font(.body)
@@ -566,6 +808,11 @@ struct MiraTodayHome: View {
     let onMake: () -> Void
     let onReviewAIConsent: () -> Void
     let onContinue: (UUID) -> Void
+    var onOpenDeal: (UUID) -> Void = { _ in }
+    var onMakePick: () -> Void = {}
+    var onAnother: () -> Void = {}
+    var checkingInstagram = false
+    var legacyEntry = false
     @Environment(MiraDependencies.self) private var dependencies
     @Environment(\.scenePhase) private var scenePhase
     @State private var speech: (any MiraSpeechInputService)?
@@ -579,34 +826,19 @@ struct MiraTodayHome: View {
 
     var body: some View {
         MiraPage {
-            switch store.homeFeed {
-            case .empty:
-                Text("Nothing planned today.").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
-                MiraFeedCard {
-                    MiraSectionTitle(text: "Nothing planned today. Want an idea?")
-                    ideaRequest
-                    MiraInlineAction { makeButton }
-                }.accessibilityIdentifier("mira.home.idea")
-            case .continuing(let reels):
-                Text(reels.count == 1 ? "You have one Reel in progress." : "You have \(reels.count) Reels in progress.")
-                    .font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
-                ForEach(reels) { reel in
-                    MiraFeedCard {
-                        Text("Continue").font(.subheadline).foregroundStyle(MiraTheme.secondaryInk)
-                        MiraSectionTitle(text: reel.title)
-                        ProgressView(value: Double(reel.completedSteps), total: Double(MiraTaskStep.total))
-                            .accessibilityLabel("Reel progress")
-                            .accessibilityValue("\(reel.completedSteps) of \(MiraTaskStep.total) steps complete")
-                        Button(reel.nextAction.title) { onContinue(reel.id) }
-                            .buttonStyle(MiraPrimaryStyle())
-                            .accessibilityIdentifier("mira.today.continue")
-                    }
-                }
+            if legacyEntry {
+                MiraSectionTitle(text: "What can you film today?")
+                ideaRequest
+                MiraInlineAction { makeButton }
+            } else {
+                homeContent
             }
-            consentRecovery
-            MiraInsightsView(compact: true)
         }.miraBottomAction(whileEditing: true) {
-            if case .empty = store.homeFeed { makeButton }
+            if legacyEntry {
+                makeButton
+            } else if case .empty = store.homeFeed, store.pickState == .idle {
+                makeButton
+            }
         }
         .onAppear { if speech == nil { speech = dependencies.makeSpeechInput() } }
         .onDisappear { speech?.stop() }
@@ -623,6 +855,52 @@ struct MiraTodayHome: View {
         .onChange(of: speech?.transcript ?? "") { _, spoken in
             guard !spoken.isEmpty else { return }
             request = joined(spokenBase, spoken)
+        }
+    }
+
+    @ViewBuilder private var homeContent: some View {
+        if store.pickState != .idle {
+            MiraHomePickCard(state: store.pickState, onMake: onMakePick, onAnother: onAnother)
+                .disabled(checkingInstagram)
+        }
+        switch store.homeFeed {
+        case .empty:
+            if store.pickState == .idle {
+                Text("Nothing planned today.").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+                MiraFeedCard {
+                    MiraSectionTitle(text: "Nothing planned today. Want an idea?")
+                    ideaRequest
+                    MiraInlineAction { makeButton }
+                }.accessibilityIdentifier("mira.home.idea")
+            }
+        case .deals(let deals):
+            Text(deals.count == 1 ? "You have one open deal." : "You have \(deals.count) open deals.")
+                .font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+            dealCards(deals)
+        case .continuing(let reels, let deals):
+            Text(reels.count == 1 ? "You have one Reel in progress." : "You have \(reels.count) Reels in progress.")
+                .font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+            ForEach(reels) { reel in
+                MiraFeedCard {
+                    Text("Continue").font(.subheadline).foregroundStyle(MiraTheme.secondaryInk)
+                    MiraSectionTitle(text: reel.title)
+                    ProgressView(value: Double(reel.completedSteps), total: Double(MiraTaskStep.total))
+                        .accessibilityLabel("Reel progress")
+                        .accessibilityValue("\(reel.completedSteps) of \(MiraTaskStep.total) steps complete")
+                    Button(reel.nextAction.title) { onContinue(reel.id) }
+                        .buttonStyle(MiraPrimaryStyle())
+                        .accessibilityIdentifier("mira.today.continue")
+                }
+            }
+            dealCards(deals)
+        }
+        consentRecovery
+        MiraInsightsView(compact: true)
+    }
+
+    private func dealCards(_ deals: [MiraDeal]) -> some View {
+        ForEach(deals) { deal in
+            MiraDealSummary(deal: deal) { onOpenDeal(deal.id) }
         }
     }
 
@@ -654,7 +932,7 @@ struct MiraTodayHome: View {
             onMake()
         }
         .buttonStyle(MiraPrimaryStyle())
-        .disabled(speech?.state.isRecording == true)
+        .disabled(speech?.state.isRecording == true || checkingInstagram)
         .accessibilityIdentifier("mira.today.make")
     }
 

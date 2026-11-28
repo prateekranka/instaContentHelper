@@ -7,6 +7,10 @@ enum MiraNextAction {
     case enterBrief, extractRequirements, confirmRequirements, editBrief
     case makeToday, readShotList, markFilmed, finishFilming, prepareClips
 
+    case startBrandInterview, nextQuestion, makeBrandDoc, confirmBrandDoc, editBrandDoc
+    case pasteDealBrief, readDealBrief, confirmDeal, openDeal
+    case markDealPosted, markBrandTold, markDealConfirmed, markDealPaid
+
     var title: String {
         switch self {
         case .chooseIdea: "Choose an idea"
@@ -45,6 +49,19 @@ enum MiraNextAction {
         case .markFilmed: "Mark filmed"
         case .finishFilming: "Finish"
         case .prepareClips: "Open Instagram"
+        case .startBrandInterview: "Start the interview"
+        case .nextQuestion: "Next"
+        case .makeBrandDoc: "Make my brand doc"
+        case .confirmBrandDoc: "This is me"
+        case .editBrandDoc: "Edit my brand doc"
+        case .pasteDealBrief: "Paste a brief"
+        case .readDealBrief: "Read this brief"
+        case .confirmDeal: "Looks right"
+        case .openDeal: "Open deal"
+        case .markDealPosted: "Mark as posted"
+        case .markBrandTold: "Mark brand told"
+        case .markDealConfirmed: "Mark as confirmed"
+        case .markDealPaid: "Mark as paid"
         }
     }
 }
