@@ -1073,9 +1073,15 @@ test('M03 undo restores the previous card title, selected idea and filming const
   const card = screen.getByRole('scroll-view', { visible: true }).filter({ has: second }).last();
   await tap(screen, card.getByRole('button', 'Change something', { exact: true }));
   const note = screen.getByRole('textbox', 'What would help?', { exact: true });
-  await fillText(note, '4 minutes in the kitchen');
-  await closeKeyboard(screen, note);
-  await tap(screen, screen.getByRole('button', 'Propose change', { exact: true }));
+  const request = '4 minutes in the kitchen';
+  await fillText(note, request);
+  await note.press('Enter');
+  await expect(screen.getByRole('window', 'Next keyboard', { exact: true })).not.toBeVisible();
+  await expect(note).not.toBeFocused();
+  await expect(note).toHaveValue(request);
+  const propose = screen.getByRole('button', 'Propose change', { exact: true });
+  await scrollToControl(screen, propose);
+  await propose.tap();
   await expect(screen.getByText('About 4 min to film', { exact: true })).toBeVisible();
   await tap(screen, second);
   await openProjectFromList(screen, 'My simple breakfast');
