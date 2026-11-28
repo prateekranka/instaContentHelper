@@ -164,7 +164,6 @@ test('E1 shows a Continue card and the words action for each unfinished Reel', a
 test('E1 tabs share the Ask Mira bar and My Brand keeps archived Reels reachable', async ({ app, screen, device }) => {
   await launchMira(app, screen, device);
   await openToday(screen);
-  const bar = screen.getByTestId('mira.ask.bar');
   for (const name of ['Home', 'Deals', 'My Brand']) await expect(await tabControl(screen, name)).toBeVisible();
   await bottomAboveTabs(app, screen, makeToday(screen), 'e1-home-ask-clearance');
   await openTab(screen, 'Deals');
@@ -186,7 +185,7 @@ test('E1 tabs share the Ask Mira bar and My Brand keeps archived Reels reachable
   await expect(archived).toBeChecked();
   await expect(screen.getByText('Untitled Reel', { exact: true })).toBeVisible();
   await tap(screen, screen.getByText('Untitled Reel', { exact: true }));
-  await expect(bar).toBeVisible();
+  await expect(screen.getByTestId('mira.ask.bar', { visible: true })).toBeVisible();
   await app.screenshot('e1-archived-reel-ask');
 });
 

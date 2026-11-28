@@ -9,6 +9,9 @@ const evidence = resolve(
 );
 const ledgerPath = resolve(evidence, 'live-requests.jsonl');
 const timeout = 240_000;
+const pictureLimit = 9;
+const maxPicturesPerCard = 5;
+const pictureLimitReason = 'not run (picture limit not provable)';
 const recorded = (path = ledgerPath) => {
   try {
     return readFileSync(path, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as Entry);
@@ -20,7 +23,7 @@ const recorded = (path = ledgerPath) => {
 
 type Entry = {
   scenario: number; action: string; calls?: number; title?: string; at?: string;
-  card?: number; pictures?: number; shots?: number; milliseconds?: number;
+  card?: number; pictures?: number; pictureSlots?: number; shots?: number; milliseconds?: number;
 };
 
 function record(entry: Entry) {
@@ -28,9 +31,19 @@ function record(entry: Entry) {
   appendFileSync(ledgerPath, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`, { mode: 0o600 });
 }
 
+function fitsPictureBudget(cards: number) {
+  const reserved = recorded().reduce((total, entry) => total + (entry.pictureSlots ?? 0), 0);
+  return reserved + cards * maxPicturesPerCard <= pictureLimit;
+}
+
+function reservePictures(scenario: number, action: string, cards: number) {
+  if (!fitsPictureBudget(cards)) throw new Error(pictureLimitReason);
+  record({ scenario, action, pictureSlots: cards * maxPicturesPerCard });
+}
+
 async function request(scenario: number, action: string, calls: number, tap: () => Promise<void>) {
   const prior = recorded();
-  const limit = Number(process.env.MIRA_E2E_LIVE_REQUEST_LIMIT ?? '12');
+  const limit = Math.min(6, Number(process.env.MIRA_E2E_LIVE_REQUEST_LIMIT ?? '6'));
   expect(prior.reduce((total, entry) => total + (entry.calls ?? 0), 0) + calls).toBeLessThanOrEqual(limit);
   expect(prior.filter(entry => entry.scenario === scenario && entry.action === action && entry.calls)).toHaveLength(0);
   record({ scenario, action, calls });
@@ -162,6 +175,9 @@ test('1 Today keyboard only keeps the request and the Make button reachable', as
 });
 
 test('E1 live Home makes ideas and opens Words and the one-page shot list', { timeout: 720_000 }, async ({ app, screen, device }) => {
+  const cards = 3;
+  test.skip(!fitsPictureBudget(cards), pictureLimitReason);
+  reservePictures(1, 'Reserve pictures for the Today batch before launch', cards);
   await launch(app, screen, device);
   const prior = recorded().find(entry => entry.scenario === 1 && entry.calls);
   let started = prior?.at ? Date.parse(prior.at) : Date.now();
@@ -263,7 +279,7 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
   await screen.getByTestId(`mira.today.page.${chosenIndex + 1}`).tap();
   await tapVisibleControl(screen, screen.getByTestId(`mira.today.makeCard.${chosenIndex + 1}`));
   record({ scenario: 1, action: 'selected Today project', title: chosen, calls: 0 });
-  expect(pictureCounts.reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(15);
+  expect(pictureCounts.reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(pictureLimit);
   await captureE1Plan(app, screen);
 });
 

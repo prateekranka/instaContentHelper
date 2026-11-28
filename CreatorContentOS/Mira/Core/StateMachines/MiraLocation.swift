@@ -71,15 +71,14 @@ enum MiraLocationState {
         }, uniquingKeysWith: { first, _ in first })
         var history = MiraLocationHistory(
             savedTab: saved.tab, paths: paths, screens: [.myBrand: projects], lastProject: document.position.projectID)
-        if let id = history.lastProject, history.screens[activeTab]?[id] == nil,
-            let screen = MiraProjectScreen(rawValue: document.position.screen) {
-            history.screens[activeTab, default: [:]][id] = screen
-        }
         for route in paths[.home, default: []] {
             if let project = document.projects.first(where: { $0.id == route.projectID }) {
                 let previous = history.screens[.home]?[project.id]
                 history.screens[.home, default: [:]][project.id] = route.screen(in: project, remembering: previous)
             }
+        }
+        if let id = history.lastProject, let screen = MiraProjectScreen(rawValue: document.position.screen) {
+            history.screens[activeTab, default: [:]][id] = screen
         }
         self = saved.tab == .today ? .home(history) : .myBrand(history)
         if let location = current, let project = document.projects.first(where: { $0.id == location.projectID }) {
