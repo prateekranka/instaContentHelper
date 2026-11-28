@@ -185,7 +185,10 @@ test('E1 tabs share the Ask Mira bar and My Brand keeps archived Reels reachable
   await expect(archived).toBeChecked();
   await expect(screen.getByText('Untitled Reel', { exact: true })).toBeVisible();
   await tap(screen, screen.getByText('Untitled Reel', { exact: true }));
-  await expect(screen.getByTestId('mira.ask.bar', { visible: true })).toBeVisible();
+  const reel = screen.getByRole('other', 'My Brand', { exact: true }).filter({
+    has: screen.getByTestId('Your Reel'),
+  });
+  await expect(reel.getByPlaceholder('Ask Mira about this Reel', { exact: true, visible: true })).toBeVisible();
   await app.screenshot('e1-archived-reel-ask');
 });
 
