@@ -110,6 +110,7 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
     private func send(
         _ action: String, id: UUID, start: MiraJob? = nil, pictures: Bool? = nil
     ) async throws -> MiraJobResponse {
+        let needsConsent = start != nil || pictures == true
         let url = session.projectURL.appendingPathComponent("functions/v1/mira-generation")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -124,12 +125,18 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
                 input: start?.input, consentVersion: start == nil ? nil : 1, pictures: pictures))
         let (data, response): (Data, URLResponse)
         do {
-            try await authorize?(start != nil)
+            try await authorize?(needsConsent)
             try Task.checkCancellation()
             (data, response) = try await urlSession.data(for: request)
         } catch let error as URLError where error.code == .networkConnectionLost && action != "cancel" {
-            try await authorize?(start != nil)
             try Task.checkCancellation()
+            do {
+                try await authorize?(needsConsent)
+            } catch let consent as AIConsentRequired {
+                guard let start else { throw consent }
+                do { return try await status(start) }
+                catch MiraError.notFound { throw consent }
+            }
             (data, response) = try await urlSession.data(for: request)
         }
         guard let http = response as? HTTPURLResponse else { throw MiraError.offline }

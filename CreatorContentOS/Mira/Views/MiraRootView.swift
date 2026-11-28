@@ -263,18 +263,19 @@ struct MiraRootView: View {
     }
     private func retryCard(_ id: UUID, cardID: UUID, request: String? = nil, language: MiraLanguage? = nil) {
         do {
-            store.retryCard(id, cardID: cardID, request: request, language: language, service: try service(id))
+            store.retryCard(id, cardID: cardID, request: request, language: language,
+                            service: try service(id, requiresConsent: false))
         } catch { store.reportError(error.localizedDescription) }
     }
     private func reconnectCards(_ id: UUID, reportError: Bool) {
         guard let project = store.project(id),
             project.hasWorkingCards || project.shotPictureSources?.isEmpty == false
         else { return }
-        do { store.reconnectCards(id, service: try service(id)) }
+        do { store.reconnectCards(id, service: try service(id, requiresConsent: false)) }
         catch { if reportError { store.reportError(error.localizedDescription) } }
     }
     private func reconnect(_ id: UUID) {
-        do { store.reconnect(id, service: try service(id)) } catch {
+        do { store.reconnect(id, service: try service(id, requiresConsent: false)) } catch {
             store.reportError(error.localizedDescription)
         }
     }

@@ -233,7 +233,7 @@ final class MiraStore {
             case .clearProposal:
                 update(id) { $0.job = nil }
             case .reconnect:
-                reconnect(id, service: try service(true))
+                reconnect(id, service: try service(false))
             case .stop:
                 let generation = try service(false)
                 Task { await cancel(id, service: generation) }
