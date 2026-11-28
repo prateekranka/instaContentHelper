@@ -101,6 +101,13 @@ async function stopLeftoverIdeas(screen: Screen) {
   await backOut(screen);
 }
 
+const homeRequest = (screen: Screen) =>
+  screen.getByRole('textbox', 'What can you film today?', { exact: true });
+const homeIdeaButton = (screen: Screen, name: string | RegExp) =>
+  screen.getByRole('scroll-view').getByRole('button', name, { exact: true });
+const homeMic = (screen: Screen) => homeIdeaButton(screen, /^(Speak instead of typing|Open Settings)$/);
+const makeToday = (screen: Screen) => screen.getByRole('button', "Make today's Reel", { exact: true });
+
 async function d2Fixture(scenario: string, update: Record<string, string | number | boolean> = {}) {
   const address = process.env.MIRA_D2_FIXTURE_CONTROL;
   test.skip(!address || !process.env.MIRA_E2E_D2_ENDPOINT, 'Set both D2 fixture endpoints for these phone scenarios.');
@@ -123,9 +130,9 @@ test('E1 Home shows the idea card with no work, including after saving an empty 
   await openToday(screen);
   const idea = screen.getByText('Nothing planned today. Want an idea?', { exact: true });
   await expect(idea).toBeVisible();
-  await expect(screen.getByTestId('mira.today.request')).toBeVisible();
-  await expect(screen.getByTestId('mira.today.mic')).toBeVisible();
-  await expect(screen.getByTestId('mira.today.chip.home')).toBeVisible();
+  await expect(homeRequest(screen)).toBeVisible();
+  await expect(homeMic(screen)).toBeVisible();
+  await expect(homeIdeaButton(screen, 'Home')).toBeVisible();
   await expect(screen.getByText("How you're doing", { exact: true })).not.toBeVisible();
   await app.screenshot('e1-home-empty');
   await screen.getByRole('button', 'Profile', { exact: true }).tap();
@@ -159,7 +166,7 @@ test('E1 tabs share the Ask Mira bar and My Brand keeps archived Reels reachable
   await openToday(screen);
   const bar = screen.getByTestId('mira.ask.bar');
   for (const name of ['Home', 'Deals', 'My Brand']) await expect(await tabControl(screen, name)).toBeVisible();
-  await bottomAboveTabs(app, screen, screen.getByTestId('mira.today.make'), 'e1-home-ask-clearance');
+  await bottomAboveTabs(app, screen, makeToday(screen), 'e1-home-ask-clearance');
   await openTab(screen, 'Deals');
   const help = screen.getByText('Share a brand brief to Mira', { exact: true });
   await bottomAboveTabs(app, screen, help, 'e1-deals-ask-clearance');
@@ -173,7 +180,10 @@ test('E1 tabs share the Ask Mira bar and My Brand keeps archived Reels reachable
   await expandAllReels(screen);
   await bottomAboveTabs(app, screen, screen.getByRole('button', 'Archive', { exact: true }), 'e1-my-brand-all-reels');
   await tap(screen, screen.getByRole('button', 'Archive', { exact: true }));
-  await tap(screen, screen.getByText('Show archived projects', { exact: true }));
+  const archived = screen.getByRole('switch', 'Show archived projects', { exact: true });
+  const nativeSwitch = screen.getByRole('switch', /^[01]$/);
+  await (await nativeSwitch.count() === 1 ? nativeSwitch : archived).check();
+  await expect(archived).toBeChecked();
   await expect(screen.getByText('Untitled Reel', { exact: true })).toBeVisible();
   await tap(screen, screen.getByText('Untitled Reel', { exact: true }));
   await expect(bar).toBeVisible();
@@ -315,7 +325,7 @@ test('D2 replays a cut start reply with the same job ID', async ({ app, screen, 
 test('demo moves from an idea to a saved filming plan', async ({ app, screen, device }) => {
   await launchMira(app, screen, device, true);
   await openToday(screen);
-  await expect(screen.getByTestId('mira.today.make')).toBeVisible({ timeout: 45_000 });
+  await expect(makeToday(screen)).toBeVisible({ timeout: 45_000 });
   await screen.getByRole('button', 'Profile', { exact: true }).tap();
   await tap(screen, screen.getByTestId('mira.profile.demo'));
   await expect(screen.getByText('Example — not your content')).toBeVisible();
@@ -391,7 +401,7 @@ test('Profile shows Allow and Decline immediately after each choice', async ({ a
 test('Today cards swipe into the matching filming plan and retry one failed card', async ({ app, screen, device }) => {
   await launchMira(app, screen, device, true);
   await openToday(screen);
-  const make = screen.getByTestId('mira.today.make');
+  const make = makeToday(screen);
   const title = (label: string) => screen.getByText(label, { exact: true, visible: true });
   const page = (number: number) => screen.getByTestId(`mira.today.page.${number}`);
   const picture = (number: number) => screen.getByTestId(`mira.shot.picture.${number}`, { visible: true });
@@ -448,7 +458,7 @@ test('Today cards swipe into the matching filming plan and retry one failed card
 test('Your words gate leads to approved filming and the Done screen', async ({ app, screen, device }) => {
   await launchMira(app, screen, device, true);
   await openToday(screen);
-  const make = screen.getByTestId('mira.today.make');
+  const make = makeToday(screen);
   const title = (label: string) => screen.getByText(label, { exact: true, visible: true });
   const approve = screen.getByTestId('mira.words.approve');
   await expect(make).toBeVisible({ timeout: 45_000 });
@@ -517,8 +527,8 @@ const look = process.env.MIRA_E2E_LOOK ?? 'light';
 test('Today has one question, chips, Continue rules and start options in Profile', async ({ app, screen, device }) => {
   await launchMira(app, screen, device, true);
   await openToday(screen);
-  const make = screen.getByTestId('mira.today.make');
-  const request = screen.getByTestId('mira.today.request');
+  const make = makeToday(screen);
+  const request = homeRequest(screen);
   const keyboard = fixtureSessionArguments.length
     ? screen.getByRole('window', 'Next keyboard', { exact: true })
     : mobileKeyboard(screen);
@@ -528,28 +538,28 @@ test('Today has one question, chips, Continue rules and start options in Profile
   };
   await expect(make).toBeVisible({ timeout: 45_000 });
   await expect(request).toHaveAccessibleName('What can you film today?');
-  await expect(screen.getByTestId('mira.today.mic')).toBeVisible();
+  await expect(homeMic(screen)).toBeVisible();
   await expect(screen.getByText('Plan step by step', { exact: true })).not.toBeVisible();
   await expect(screen.getByText('Try Mamta’s demo notebook', { exact: true })).not.toBeVisible();
   await fillText(request, '');
   await dismissKeyboard();
   await app.screenshot(`d1-today-${look}`);
 
-  const chip = (id: string) => screen.getByTestId(`mira.today.chip.${id}`);
+  const chip = (label: string) => homeIdeaButton(screen, label);
   await request.tap();
   await expect(keyboard).toBeVisible();
-  await chip('gym').tap();
+  await chip('Gym').tap();
   await expect(keyboard).not.toBeVisible();
   expect(await request.inputValue()).toBe('At the gym');
-  await chip('home').tap();
+  await chip('Home').tap();
   expect(await request.inputValue()).toBe('At home');
-  await chip('10min').tap();
+  await chip('10 min').tap();
   expect(await request.inputValue()).toBe('At home, 10 minutes');
-  await chip('20min').tap();
+  await chip('20 min').tap();
   expect(await request.inputValue()).toBe('At home, 20 minutes');
-  await chip('20min').tap();
+  await chip('20 min').tap();
   expect(await request.inputValue()).toBe('At home');
-  await chip('outside').tap();
+  await chip('Outside').tap();
   expect(await request.inputValue()).toBe('Outside');
   await app.screenshot(`d1-today-chips-${look}`);
   await fillText(request, '');
@@ -603,10 +613,10 @@ test('Today has one question, chips, Continue rules and start options in Profile
 
 async function startTodayCard(screen: Screen, request: string, card: number) {
   await openToday(screen);
-  const make = screen.getByTestId('mira.today.make');
+  const make = makeToday(screen);
   if (await make.count()) {
     if (request) {
-      const field = screen.getByTestId('mira.today.request');
+      const field = homeRequest(screen);
       await fillText(field, request);
       await closeKeyboard(screen, field);
     }
@@ -762,7 +772,7 @@ test('S1 B4 a full server shows Waiting to start and sends the idea again by its
   await screen.getByTestId('BackButton').tap();
   const open = screen.getByTestId('mira.today.continue').first();
   await expect(open).toBeVisible();
-  await expect(screen.getByTestId('mira.today.make')).not.toBeVisible();
+  await expect(makeToday(screen)).not.toBeVisible();
   await app.screenshot(`s1-b4-today-open-${look}`);
   await open.tap();
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
@@ -848,7 +858,7 @@ test('S2 Plan step by step uses plain microphone words and scrolls above the tab
   await launchMira(app, screen, device);
   await openToday(screen);
   const continueCard = screen.getByTestId('mira.today.continue').first();
-  const todayEnd = await continueCard.count() ? continueCard : screen.getByTestId('mira.today.make');
+  const todayEnd = await continueCard.count() ? continueCard : makeToday(screen);
   await bottomAboveTabs(app, screen, todayEnd, 's2-today-bottom');
   await screen.getByRole('button', 'Profile', { exact: true }).tap();
   await tap(screen, screen.getByTestId('mira.profile.stepByStep'));
@@ -1015,7 +1025,7 @@ async function stopLeftoverIdeasAfterOpening(screen: Screen) {
 test('S3 denied speech shows one Settings action and still accepts typing', async ({ app, screen, device }) => {
   await launchMira(app, screen, device);
   await openToday(screen);
-  const mic = screen.getByTestId('mira.today.mic');
+  const mic = homeMic(screen);
   await expect(mic).toHaveAccessibleName('Speak instead of typing');
   await app.screenshot('mic-idle');
   const denied = screen.getByText(
@@ -1034,7 +1044,7 @@ test('S3 denied speech shows one Settings action and still accepts typing', asyn
   await expect(mic).toHaveAccessibleName('Open Settings');
   await expect(screen.getByRole('alert')).not.toBeVisible();
   await app.screenshot('mic-denied');
-  const request = screen.getByTestId('mira.today.request');
+  const request = homeRequest(screen);
   await fillText(request, 'Film a sample clip at home');
   await request.press('Enter');
   await expect(screen.getByRole('window', 'Next keyboard', { exact: true })).not.toBeVisible();
