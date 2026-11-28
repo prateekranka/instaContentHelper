@@ -42,17 +42,7 @@ struct MiraScriptView: View {
                         }
                     }
                     Button("Change language or ask Mira", action: onAsk)
-                    Button(project.storyboard == nil ? "Make shot list" : "Update shot list") {
-                        if project.storyboard == nil {
-                            store.approveScript(projectID)
-                        } else if !project.isApproved {
-                            store.navigate(.showWords(projectID))
-                            return
-                        }
-                        onGenerate(projectID, .storyboard, "Use my current reviewed script", nil, nil)
-                    }.buttonStyle(MiraPrimaryStyle()).disabled(
-                        script.spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            || store.requestState(project.job).pending)
+                    MiraInlineAction { mainAction(project) }
                     if project.storyboard == nil {
                         Text("Make shot list confirms this script revision as its source.").font(.footnote)
                     }
@@ -70,8 +60,7 @@ struct MiraScriptView: View {
                         }
                     }
                 } else {
-                    Button("Draft hook, script and caption") { onGenerate(projectID, .script, "", nil, nil) }
-                        .buttonStyle(MiraPrimaryStyle()).disabled(store.requestState(project.job).pending)
+                    MiraInlineAction { mainAction(project) }
                     Button("Write it myself") {
                         store.writeScriptManually(projectID)
                     }
@@ -79,6 +68,25 @@ struct MiraScriptView: View {
             }
         }
     }
+    @ViewBuilder func mainAction(_ project: MiraProject) -> some View {
+        if let script = project.script {
+            Button(project.storyboard == nil ? "Make shot list" : "Update shot list") {
+                if project.storyboard == nil {
+                    store.approveScript(projectID)
+                } else if !project.isApproved {
+                    store.navigate(.showWords(projectID))
+                    return
+                }
+                onGenerate(projectID, .storyboard, "Use my current reviewed script", nil, nil)
+            }.buttonStyle(MiraPrimaryStyle()).disabled(
+                script.spoken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || store.requestState(project.job).pending)
+        } else {
+            Button("Draft hook, script and caption") { onGenerate(projectID, .script, "", nil, nil) }
+                .buttonStyle(MiraPrimaryStyle()).disabled(store.requestState(project.job).pending)
+        }
+    }
+
     private func field<T>(_ path: WritableKeyPath<MiraScript, T>) -> Binding<T> where T: Equatable {
         let initial = store.project(projectID)!.script![keyPath: path]
         return Binding(
@@ -135,15 +143,23 @@ struct MiraWordsView: View {
                     title: "What should change?", text: Binding(get: { note }, set: { onEvent(.note($0)) }),
                     axis: .vertical
                 ).lineLimit(2...4).font(.title3).accessibilityIdentifier("mira.words.note")
-                Button(state.nextAction?.title ?? "Send") { onEvent(.send(text)) }
-                    .buttonStyle(.bordered).controlSize(.large).disabled(text.isEmpty)
-                    .accessibilityIdentifier("mira.words.send")
+                MiraInlineAction { sendButton(state, text: text) }
                 Button("Cancel") { onEvent(.cancelChange) }.buttonStyle(.bordered).controlSize(.large)
             } else if canChange(state) {
                 Button("Change it") { onEvent(.change) }.buttonStyle(.bordered).controlSize(.large)
                     .accessibilityIdentifier("mira.words.change")
             }
+        }.miraBottomAction(whileEditing: true) {
+            if case .changing(let note) = state {
+                sendButton(state, text: note.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
         }
+    }
+
+    private func sendButton(_ state: MiraWordsState, text: String) -> some View {
+        Button(state.nextAction?.title ?? "Send") { onEvent(.send(text)) }
+            .buttonStyle(MiraPrimaryStyle()).disabled(text.isEmpty)
+            .accessibilityIdentifier("mira.words.send")
     }
 
     @ViewBuilder private func requestContent(_ state: MiraWordsState) -> some View {
