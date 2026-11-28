@@ -169,3 +169,26 @@ Live AI counts were **0 text requests and 0 pictures**. The phone had zero claim
 
 - PR #49 phone behavior and account preservation.
 - E4 and E5 live behavior. The Instagram Insights function change stays undeployed.
+
+## Fix3 keyboard and iPhone result for PR #49
+
+**RESULT BLOCKED**
+
+The ordered phone sequence stopped during the pre-install Keep check on PR #47. TesterArmy could not start its XCTest runner. Its `xcodebuild build-for-testing` command failed and reported a provisioning-profile hint. PR #49 did not start its phone run.
+
+The source head `1434adf` passed all six GitHub checks. All eight agent rule groups, the 19 historical rule proofs and both local Xcode builds passed for the app source at `1434adf`.
+
+| Scenario | Result | Start IST | Duration | Evidence path |
+| --- | --- | --- | --- | --- |
+| Keep before install, in-place install and Keep after install | Not run | — | — | `fix3-pr47-keep-before/report.json` |
+| Sample scenarios, read-only consent, live and Keep after tests | Not run | — | — | `fix3-pr47-keep-before-retry/report.json` |
+
+Live AI counts were **0 text requests and 0 pictures**. No live ledger was created. The final phone claim count was zero. No D2 fixture started. The Tailscale route list matched the initial list.
+
+### Fix3 checks still open
+
+- The physical iPhone install and account checks.
+- Keyboard behavior, saved state and live journeys on the phone.
+- Large Dynamic Type and VoiceOver behavior.
+
+Local evidence folder `/Users/prateekranka/.codex-runs/mira-worker-1-20261128/evidence/fix3/20261128T074755Z.yiUedN`.
