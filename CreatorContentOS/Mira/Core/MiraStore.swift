@@ -137,25 +137,26 @@ final class MiraStore {
         let editor: [MiraRoute] = [.project(id)]
         let hasCards = project.todayCards?.isEmpty == false
         let path: [MiraRoute]
+        var screen: MiraProjectScreen?
         switch project.stage {
         case .choosing:
             path = hasCards ? [.todayCards(id)] : editor
         case .writing:
             path = editor
         case .planning(let hasShots):
-            location = location.handle(.remember(id, hasShots ? .shots : .script, makeCurrent: true))
+            screen = hasShots ? .shots : .script
             path = editor
         case .approving:
             path = (hasCards ? [.todayCards(id)] : editor) + [.words(id)]
         case .ready:
-            location = location.handle(.remember(id, .shots, makeCurrent: true))
+            screen = .shots
             path = editor
         case .filming:
             path = editor + [.shooting(id)]
         case .complete:
             return
         }
-        navigate(.open(.home, path))
+        navigate(.open(.home, path, remembering: screen))
     }
 
     func taskStep(_ location: MiraLocation, in project: MiraProject) -> MiraTaskStep {

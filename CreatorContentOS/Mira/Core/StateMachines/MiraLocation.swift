@@ -49,7 +49,7 @@ struct MiraLocationHistory {
 enum MiraLocationEvent {
     case selectTab(MiraMainTab)
     case setPath(MiraMainTab, [MiraRoute])
-    case open(MiraMainTab, [MiraRoute])
+    case open(MiraMainTab, [MiraRoute], remembering: MiraProjectScreen? = nil)
     case push(MiraLocation)
     case showWords(UUID)
     case showPlan(UUID)
@@ -117,8 +117,9 @@ enum MiraLocationState {
             selected = tab
         case .setPath(let tab, let path):
             history.paths[tab] = path.map(MiraLocation.init)
-        case .open(let tab, let path):
+        case .open(let tab, let path, let screen):
             history.paths[tab] = path.map(MiraLocation.init)
+            if let screen, let id = path.last?.projectID { history.screens[id] = screen }
             selected = tab
         case .push(let location):
             if history.paths[tab]?.last != location { history.paths[tab, default: []].append(location) }
