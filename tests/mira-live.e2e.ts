@@ -2,7 +2,7 @@ import { test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 import { scrollToControl, tapVisibleControl } from './mobile-support';
 
-test('One live Make today’s Reel request returns three cards', async ({ app, screen, device }) => {
+test('One live Make today’s Reel request returns three cards', { tags: ['@home', '@d2', '@shots', '@phone-only'] }, async ({ app, screen, device }) => {
   if (process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
   await app.open();
 

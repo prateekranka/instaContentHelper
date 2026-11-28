@@ -2,7 +2,7 @@ import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type App, type Locator, type Screen } from 'e2e';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { mobileKeyboard, scrollToControl, tapVisibleControl } from './mobile-support';
+import { backOut, dialogByText, expectFieldValue, fieldValue, mobileKeyboard, scrollToControl, tapMenuItem, tapVisibleControl } from './mobile-support';
 
 const evidence = resolve(
   process.env.MIRA_E2E_LIVE_LEDGER_DIR ?? process.env.MIRA_E2E_OUTPUT ?? 'work/evidence/mira-live-journey',
@@ -68,7 +68,7 @@ async function launch(app: App, screen: Screen, device: Device) {
     await expect.poll(() => tabs.count(), { timeout: 15_000, interval: 1_000 }).toBe(1);
   }
   await expect(screen.getByTestId('sign-in.welcome')).not.toBeVisible();
-  const verification = screen.getByRole('alert', /Apple.Account Verification/);
+  const verification = await dialogByText(screen, /Apple.Account Verification/);
   if (await verification.isVisible()) {
     await verification.getByRole('button', 'Not Now', { exact: true }).tap();
   }
@@ -83,9 +83,7 @@ async function tab(screen: Screen, name: string) {
 
 async function root(screen: Screen, name: string) {
   await tab(screen, name);
-  for (let step = 0; step < 5 && await back(screen).isVisible(); step += 1) {
-    await back(screen).tap();
-  }
+  await backOut(screen);
   await expect(button(screen, 'Profile')).toBeVisible();
 }
 
@@ -122,7 +120,7 @@ async function selectShots(screen: Screen) {
 async function waitForOutput(screen: Screen, output: Locator, message: string, limit = timeout) {
   await expect.poll(async () => {
     const failure = screen.getByText(/^(Mira could not finish\.|Could not check this idea\.|Allow AI to write ideas first\.|The network connection was lost\.)/, { visible: true });
-    if (await screen.getByRole('alert', 'Mira', { exact: true }).isVisible() || await failure.isVisible()) {
+    if (await (await dialogByText(screen, 'Mira')).isVisible() || await failure.isVisible()) {
       return 'Mira reported a generation failure';
     }
     return await output.count() ? 'ready' : 'waiting';
@@ -154,7 +152,7 @@ async function todayKeyboard(app: App, screen: Screen) {
   await app.screenshot('keyboard-open');
   await field.press('Enter');
   await expect(keyboard).not.toBeVisible();
-  expect(await field.inputValue()).toBe(prompt);
+  await expectFieldValue(field, prompt);
   await app.screenshot('keyboard-closed');
   const gym = screen.getByTestId('mira.today.chip.gym');
   const ten = screen.getByTestId('mira.today.chip.10min');
@@ -164,7 +162,7 @@ async function todayKeyboard(app: App, screen: Screen) {
   await tapVisibleControl(screen, ten);
   await expect(ten).toBeSelected();
   await expect(keyboard).not.toBeVisible();
-  expect(await field.inputValue()).toBe(`${prompt}, 10 minutes`);
+  await expectFieldValue(field, `${prompt}, 10 minutes`);
   await expect(make).toBeEnabled();
   const makeBox = await make.boundingBox();
   const pageBox = await screen.getByRole('scroll-view', { visible: true }).first().boundingBox();
@@ -175,12 +173,14 @@ async function todayKeyboard(app: App, screen: Screen) {
   return make;
 }
 
-test('1 Today keyboard only keeps the request and the Make button reachable', async ({ app, screen, device }) => {
+test('1 Today keyboard only keeps the request and the Make button reachable', { tags: ['@home', '@phone-only'] }, async ({ app, screen, device }) => {
   await launch(app, screen, device);
   await todayKeyboard(app, screen);
 });
 
-test('E1 live Home makes ideas and opens Words and the one-page shot list', { timeout: 720_000 }, async ({ app, screen, device }) => {
+test('E1 live Home makes ideas and opens Words and the one-page shot list', {
+  timeout: 720_000, tags: ['@home', '@words', '@shots', '@insights', '@d2', '@phone-only'],
+}, async ({ app, screen, device }) => {
   const cards = 3;
   test.skip(!fitsPictureBudget(cards), pictureLimitReason);
   reservePictures(1, 'Reserve pictures for the Today batch before launch', cards);
@@ -188,15 +188,7 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
   const prior = recorded().find(entry => entry.scenario === 1 && entry.calls);
   let started = prior?.at ? Date.parse(prior.at) : Date.now();
   if (!prior) {
-    await root(screen, 'Home');
-    await app.screenshot('e1-live-home');
-    const insights = screen.getByText("How you're doing", { exact: true });
-    await scrollToControl(screen, insights, 'either', undefined, { momentum: 'none', timeout: 150_000 });
-    await expect(insights).toBeVisible();
-    for (const label of ['Followers', 'Reach', 'Saves']) {
-      await expect(screen.getByText(label, { exact: true })).toBeAttached();
-    }
-    await app.screenshot('e1-live-home-insights');
+    await checkHomeInsights(app, screen);
     const idea = screen.getByText('Nothing planned today. Want an idea?', { exact: true });
     if (await idea.count()) {
       await fit(screen, idea, 'up');
@@ -206,7 +198,9 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
       await request(1, "Make today's Reel", 3, () => make.tap());
     } else {
       const field = screen.getByTestId('mira.ask.bar');
-      await field.fill('At home, 10 minutes to film a breakfast Reel');
+      const prompt = 'At home, 10 minutes to film a breakfast Reel';
+      await field.fill(prompt);
+      await expectFieldValue(field, prompt);
       const send = button(screen, 'Send to Mira');
       await expect(send).toBeVisible();
       await app.screenshot('e1-live-ask-for-idea');
@@ -229,7 +223,7 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
   const steps = ['Writing your words, now', 'Planning 3 shots, now', 'Planning 3 shots, done'];
   const observed = new Map<string, number>();
   await expect.poll(async () => {
-    if (await failed.count() || await screen.getByRole('alert', 'Mira', { exact: true }).isVisible()
+    if (await failed.count() || await (await dialogByText(screen, 'Mira')).isVisible()
       || await screen.getByTestId('mira.today.aiPermissionNeeded').isVisible()) return 'failed';
     if (await ready.count() === 3) return 'ready';
     for (const [index, step] of steps.entries()) {
@@ -281,12 +275,52 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
 
   const chosenIndex = pictureCounts[2] > 0 ? 2 : pictureCounts.findIndex(count => count > 0);
   expect(chosenIndex).toBeGreaterThanOrEqual(0);
+  expect(pictureCounts.reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(pictureLimit);
   const chosen = titles[chosenIndex];
   await screen.getByTestId(`mira.today.page.${chosenIndex + 1}`).tap();
   await tapVisibleControl(screen, screen.getByTestId(`mira.today.makeCard.${chosenIndex + 1}`));
   record({ scenario: 1, action: 'selected Today project', title: chosen, calls: 0 });
-  expect(pictureCounts.reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(pictureLimit);
   await captureE1Plan(app, screen);
+});
+
+async function checkHomeInsights(app: App, screen: Screen) {
+  await root(screen, 'Home');
+  await app.screenshot('e1-live-home');
+  const insights = screen.getByText("How you're doing", { exact: true });
+  await scrollToControl(screen, insights, 'either', undefined, { timeout: 150_000 });
+  await expect(insights).toBeVisible();
+  for (const label of ['Followers', 'Reach', 'Saves']) {
+    await expect(screen.getByText(label, { exact: true })).toBeAttached();
+  }
+  await app.screenshot('e1-live-home-insights');
+}
+
+test('Smoke checks Home insights and previews three live ideas from one job', {
+  timeout: 600_000, tags: ['@home', '@insights', '@reel', '@phone-smoke', '@phone-only'],
+}, async ({ app, screen, device }) => {
+  expect(process.env.MIRA_E2E_ALLOW_LIVE_DRAFT).toBe('1');
+  expect(process.env.MIRA_E2E_LIVE_REQUEST_LIMIT).toBe('6');
+  expect(process.env.MIRA_E2E_LIVE_PICTURE_LIMIT).toBe('15');
+  expect(recorded()).toHaveLength(0);
+  await launch(app, screen, device);
+  await checkHomeInsights(app, screen);
+  await startStepByStep(screen);
+  const field = screen.getByRole('textbox', 'Tell Mira', { exact: true });
+  const prompt = 'At home, show the first step of making morning chai.';
+  await fit(screen, field);
+  await field.fill(prompt);
+  await closeWithDone(app, screen, field, prompt, 'smoke-live-prompt');
+  const generate = button(screen, 'Show three ideas').first();
+  await fit(screen, generate);
+  await expect(generate).toBeEnabled();
+  record({ scenario: 42, action: 'Reserve pictures for an ideas-only job', pictureSlots: 0 });
+  await request(42, 'Reserve up to three provider attempts for one ideas job', 3, () => generate.tap());
+  const choices = button(screen, 'Use this idea');
+  await waitForOutput(screen, choices.first(), 'Wait for live ideas.', 300_000);
+  await expect(choices).toHaveCount(3);
+  await fit(screen, choices.first());
+  await app.screenshot('smoke-live-ideas');
+  record({ scenario: 42, action: 'Three unselected ideas observed', pictures: 0 });
 });
 
 async function captureE1Plan(app: App, screen: Screen) {
@@ -309,7 +343,7 @@ async function captureE1Plan(app: App, screen: Screen) {
   await app.screenshot('e1-live-shot-list-action');
 }
 
-test('2 Your words opens filming and reaches Done', async ({ app, screen, device }) => {
+test('2 Your words opens filming and reaches Done', { tags: ['@home', '@words', '@shots', '@reel', '@phone-only'] }, async ({ app, screen, device }) => {
   const title = todayTitle();
   await launch(app, screen, device);
   await root(screen, 'Home');
@@ -337,7 +371,7 @@ test('2 Your words opens filming and reaches Done', async ({ app, screen, device
   await app.screenshot('done');
 });
 
-test('3 S1 B1–B3 gate the shot list, open filming and Continue', async ({ app, screen, device }) => {
+test('3 S1 B1–B3 gate the shot list, open filming and Continue', { tags: ['@home', '@words', '@shots', '@reel', '@phone-only'] }, async ({ app, screen, device }) => {
   const title = todayTitle();
   await launch(app, screen, device);
   const currentShot = text(screen, /^Shot \d+ of \d+$/);
@@ -390,7 +424,7 @@ test('3 S1 B1–B3 gate the shot list, open filming and Continue', async ({ app,
   await app.screenshot('b3-continue-filming');
 });
 
-test('4 Make it simpler returns one live revision', async ({ app, screen, device }) => {
+test('4 Make it simpler returns one live revision', { tags: ['@home', '@reel', '@phone-only'] }, async ({ app, screen, device }) => {
   const title = todayTitle();
   await launch(app, screen, device);
   await openProject(screen, title);
@@ -460,11 +494,11 @@ async function closeWithDone(app: App, screen: Screen, field: Locator, value: st
   await app.screenshot(`${label}-open`);
   await field.press('Enter');
   await expect(keyboard).not.toBeVisible();
-  expect(await field.inputValue()).toBe(value);
+  await expectFieldValue(field, value);
   await app.screenshot(`${label}-closed`);
 }
 
-test('5 Projects Plan step by step makes a live filming plan', async ({ app, screen, device }) => {
+test('5 Projects Plan step by step makes a live filming plan', { tags: ['@brand', '@words', '@shots', '@reel', '@phone-only'] }, async ({ app, screen, device }) => {
   await launch(app, screen, device);
   const field = screen.getByRole('textbox', 'Tell Mira', { exact: true });
   const prompt = 'At home, show the first step of making my morning chai.';
@@ -484,23 +518,23 @@ test('5 Projects Plan step by step makes a live filming plan', async ({ app, scr
     await openProject(screen, selectedTitle);
   } else if (alreadyRequested('Show three ideas')) {
     await fit(screen, field, 'up');
-    expect(await field.inputValue()).toBe(prompt);
+    await expectFieldValue(field, prompt);
     await fit(screen, moreIdeas);
   } else {
     await startStepByStep(screen);
     await fit(screen, field);
     await field.fill(prompt);
     await closeWithDone(app, screen, field, prompt, 'step-by-step-tell-mira-keyboard');
-    const initialTitle = await projectName.inputValue();
+    const initialTitle = await fieldValue(projectName);
     await projectName.tap();
     const keyboard = keyboardWindow(screen);
     await expect(keyboard).toBeVisible();
     await app.screenshot('step-by-step-project-name-keyboard-open');
-    const heading = await text(screen, 'What do you have time for?').boundingBox();
-    expect(heading).not.toBeNull();
-    await screen.tapAt({ x: heading!.x + heading!.width / 2, y: heading!.y + heading!.height / 2 });
+    const heading = text(screen, 'What do you have time for?');
+    await expect(heading).toBeVisible();
+    await heading.tap();
     await expect(keyboard).not.toBeVisible();
-    expect(await projectName.inputValue()).toBe(initialTitle);
+    await expectFieldValue(projectName, initialTitle);
     await app.screenshot('step-by-step-project-name-keyboard-closed');
     await generate('Show three ideas', moreIdeas);
   }
@@ -511,7 +545,7 @@ test('5 Projects Plan step by step makes a live filming plan', async ({ app, scr
     await tapVisibleControl(screen, pick);
   }
   await fit(screen, projectName, 'up');
-  const title = await projectName.inputValue();
+  const title = await fieldValue(projectName);
   expect(title.trim().length).toBeGreaterThan(0);
   expect(title).not.toBe('Untitled Reel');
   if (selectedTitle) expect(title).toBe(selectedTitle);
@@ -544,21 +578,21 @@ test('5 Projects Plan step by step makes a live filming plan', async ({ app, scr
   expect(detailBox!.y + detailBox!.height).toBeLessThanOrEqual(tabBox!.y - 8);
   await app.screenshot('step-by-step-first-shot-after-relaunch');
   await fit(screen, projectName, 'up');
-  expect(await projectName.inputValue()).toBe(title);
+  await expectFieldValue(projectName, title);
 });
 
-test('Keyboard Profile closes with Done without editing the saved name', async ({ app, screen, device }) => {
+test('Keyboard Profile closes with Done without editing the saved name', { tags: ['@consent', '@phone-smoke', '@phone-only'] }, async ({ app, screen, device }) => {
   await launch(app, screen, device);
   await root(screen, 'Home');
   await button(screen, 'Profile').tap();
   const field = screen.getByRole('textbox', 'Your name', { exact: true });
   await fit(screen, field);
-  const value = await field.inputValue();
+  const value = await fieldValue(field);
   await field.tap();
   await closeWithDone(app, screen, field, value, 'profile-name-keyboard');
 });
 
-test('Keyboard manual idea closes with Done and keeps the title', async ({ app, screen, device }) => {
+test('Keyboard manual idea closes with Done and keeps the title', { tags: ['@brand', '@reel', '@phone-only'] }, async ({ app, screen, device }) => {
   await launch(app, screen, device);
   await startStepByStep(screen);
   await tapVisibleControl(screen, button(screen, 'Add my own idea'));
@@ -570,7 +604,7 @@ test('Keyboard manual idea closes with Done and keeps the title', async ({ app, 
   await button(screen, 'Cancel').tap();
 });
 
-test('6 Profile changes Look from Dark to Light and shows Problem reports', async ({ app, screen, device }) => {
+test('6 Profile changes Look from Dark to Light and shows Problem reports', { tags: ['@consent', '@phone-only'] }, async ({ app, screen, device }) => {
   await launch(app, screen, device);
   await root(screen, 'Home');
   await button(screen, 'Profile').tap();
@@ -589,11 +623,13 @@ test('6 Profile changes Look from Dark to Light and shows Problem reports', asyn
 });
 
 
-test('S2 saved live plan scrolls the final shot above the tab bar', async ({ app, screen, device }) => {
+test('S2 saved live plan scrolls the final shot above the tab bar', { tags: ['@brand', '@shots', '@reel', '@phone-only'] }, async ({ app, screen, device }) => {
   const title = recorded().findLast(entry => entry.action === 'selected step-by-step project')?.title;
   test.skip(!title, 'The live step-by-step project is required.');
   await launch(app, screen, device);
   await root(screen, 'My Brand');
+  const allReels = screen.getByText('All Reels', { exact: true }).first();
+  if (!await screen.getByText('Show archived projects', { exact: true }).count()) await tapVisibleControl(screen, allReels);
   const savedPlan = screen.getByRole('button').filter({ hasText: title! })
     .filter({ hasText: /Start filming|Continue filming/ }).first();
   await tapVisibleControl(screen, savedPlan);
@@ -605,15 +641,10 @@ test('S2 saved live plan scrolls the final shot above the tab bar', async ({ app
   expect(shotCount).toBeTruthy();
   await fit(screen, screen.getByText(`Shot ${shotCount}`, { exact: true }));
 
-  const page = await screen.getByRole('scroll-view', { visible: true }).first().boundingBox();
+  const list = screen.getByRole('scroll-view', { visible: true }).first();
   const tabs = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
-  expect(page).not.toBeNull();
   expect(tabs).not.toBeNull();
-  const x = page!.x + page!.width / 2;
-  const swipe = () => screen.swipe({
-    from: { x, y: tabs!.y - 36 },
-    to: { x, y: page!.y + 70 },
-  });
+  const swipe = () => list.swipe({ direction: 'down', momentum: 'fast' });
   for (let step = 0; step < 4; step += 1) await swipe();
   const detail = screen.getByText('More filming details', { exact: true, visible: true }).last();
   await expect(detail).toBeVisible();
@@ -645,18 +676,13 @@ test('S2 saved live plan scrolls the final shot above the tab bar', async ({ app
   await app.screenshot('filming-bottom-after-relaunch');
 });
 
-test('S2 Projects list scrolls its final row above the tab bar', async ({ app, screen, device }) => {
+test('S2 Projects list scrolls its final row above the tab bar', { tags: ['@brand', '@reel', '@phone-only'] }, async ({ app, screen, device }) => {
   await launch(app, screen, device);
   await root(screen, 'My Brand');
-  const page = await screen.getByRole('scroll-view', { visible: true }).first().boundingBox();
+  const list = screen.getByRole('scroll-view', { visible: true }).first();
   const tabs = await screen.getByRole('tablist', 'Tab Bar', { exact: true }).boundingBox();
-  expect(page).not.toBeNull();
   expect(tabs).not.toBeNull();
-  const x = page!.x + page!.width / 2;
-  const swipe = () => screen.swipe({
-    from: { x, y: tabs!.y - 36 },
-    to: { x, y: page!.y + 70 },
-  });
+  const swipe = () => list.swipe({ direction: 'down', momentum: 'fast' });
   const lastDelete = screen.getByRole('button', 'Delete', { exact: true, visible: true }).last();
   const rowPosition = async () => {
     const box = await lastDelete.boundingBox();
@@ -670,7 +696,7 @@ test('S2 Projects list scrolls its final row above the tab bar', async ({ app, s
   await app.screenshot('projects-final-row-above-tab-bar');
 });
 
-test('Astra live smoke opens filming from approved Today words within three requests', async ({ app, screen, device }) => {
+test('Astra live smoke opens filming from approved Today words within three requests', { tags: ['@home', '@words', '@shots', '@reel', '@phone-only'] }, async ({ app, screen, device }) => {
   expect(process.env.MIRA_E2E_LIVE_REQUEST_LIMIT).toBe('3');
   await launch(app, screen, device);
   const make = await todayKeyboard(app, screen);
@@ -696,4 +722,95 @@ test('Astra live smoke opens filming from approved Today words within three requ
   await expect(text(screen, /^Shot 1 of [3-5]$/)).toBeVisible({ timeout: 45_000 });
   await expect(text(screen, 'Mira needs to update the shots')).not.toBeAttached();
   await app.screenshot('live-approved-shots-filming');
+});
+
+test('Smoke Keep preserves AI permission and the connected Instagram account', {
+  tags: ['@consent', '@insights', '@phone-smoke', '@phone-only'],
+}, async ({ app, screen, device }) => {
+  await device.openApp('com.prateekranka.creatorcontenthelper', { relaunch: true, launchArguments: [] });
+  const tabs = screen.getByRole('tablist', 'Tab Bar', { exact: true });
+  const verification = await dialogByText(screen, /Apple.Account Verification/);
+  if (await verification.count()) await verification.getByRole('button', 'Not Now', { exact: true }).tap();
+  await expect(tabs).toBeAttached({ timeout: 45_000 });
+  await root(screen, 'Home');
+  await button(screen, 'Profile').tap();
+  const status = screen.getByText(/^(Allowed|Not decided yet|Not allowed yet|Review needed|Connect account)$/);
+  await scrollToControl(screen, status);
+  await expect(screen.getByText('Allowed', { exact: true, visible: true })).toHaveCount(1);
+  await app.screenshot('profile-ai-permission');
+  const insights = screen.getByTestId('mira.profile.insights');
+  await scrollToControl(screen, insights, 'up');
+  await insights.tap();
+  const handle = screen.getByText(/^@prateekranka\b/);
+  await expect(handle).toBeVisible({ timeout: 30_000 });
+  const followers = screen.getByText(/^Followers(?:,|$)/).first();
+  await scrollToControl(screen, followers, 'up');
+  await expect(followers).toBeVisible();
+  if (!/\d/.test((await followers.textContent()) ?? '')) {
+    await expect(screen.getByText(/^\d[\d,.]*[KMB]?$/).first()).toBeVisible();
+  }
+  await app.screenshot('instagram-live-numbers');
+  await scrollToControl(screen, handle, 'either');
+  await app.screenshot('instagram-connected-prateekranka');
+  await expect(screen.getByText('Sample data', { exact: true })).not.toBeVisible();
+});
+
+test('Smoke opens and cancels the share sheet for a saved Reel', {
+  tags: ['@brand', '@reel', '@phone-smoke', '@phone-only'],
+}, async ({ app, screen, device }) => {
+  await launch(app, screen, device);
+  const title = process.env.MIRA_E2E_PHONE_REEL?.trim();
+  if (title) {
+    await openProject(screen, title);
+  } else {
+    await root(screen, 'My Brand');
+    const archived = screen.getByText('Show archived projects', { exact: true });
+    if (!await archived.count()) await tapVisibleControl(screen, screen.getByText('All Reels', { exact: true }).first());
+    const reel = screen.getByRole('button').filter({ hasText: / · / }).first();
+    await tapVisibleControl(screen, reel);
+  }
+  const share = button(screen, 'Share current plan');
+  const options = screen.getByRole('pop-up-button', 'Plan options', { exact: true });
+  if (await options.count() || await button(screen, 'Plan options').count()) {
+    await menu(screen, 'Plan options');
+    await tapMenuItem(screen, 'Share current plan');
+  } else {
+    await scrollToControl(screen, share, 'either');
+    await share.tap();
+  }
+  const copy = button(screen, 'Copy');
+  await expect(copy).toBeVisible();
+  await app.screenshot('share-sheet-open');
+  const cancel = button(screen, /^(Close|Cancel)$/);
+  await cancel.tap();
+  await expect(copy).not.toBeVisible();
+  await expect(screen.getByRole('navigation', 'Your Reel', { exact: true })).toBeAttached();
+});
+
+test('Smoke opens and cancels Photos and joins sample clips in the E4 fixture', {
+  tags: ['@reel', '@shots', '@phone-smoke', '@phone-only'],
+}, async ({ app, screen, device }) => {
+  test.skip(process.env.MIRA_E2E_PHONE_E4 !== '1', 'This branch has no E4 clip screen.');
+  const session = process.env.MIRA_E2E_FIXTURE_SESSION;
+  expect(session).toMatch(/^mira-t2-phone-/);
+  await device.openApp('com.prateekranka.creatorcontenthelper', {
+    relaunch: true,
+    launchArguments: ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_APPEARANCE', 'light',
+      '-MCO_FORCE_FIXTURE_UI', '1', '-MCO_QA_SESSION', session!, '-MCO_QA_E4', '1'],
+  });
+  await expect(screen.getByTestId('mira.fixture.profile')).toBeVisible({ timeout: 45_000 });
+  await tapVisibleControl(screen, screen.getByTestId('mira.today.continue'));
+  const add = screen.getByTestId('mira.delivery.add');
+  await tapVisibleControl(screen, add);
+  const cancel = button(screen, 'Cancel');
+  await expect(cancel).toBeVisible();
+  await cancel.tap();
+  await expect(add).toBeVisible();
+  await tapVisibleControl(screen, screen.getByTestId('mira.delivery.fixtures'));
+  const join = screen.getByTestId('mira.delivery.join');
+  await expect(join).toBeEnabled({ timeout: 45_000 });
+  await tapVisibleControl(screen, join);
+  await expect(screen.getByTestId('mira.delivery.player')).toBeVisible({ timeout: 120_000 });
+  await app.screenshot('joined-sample-reel');
+  await button(screen, 'Close').tap();
 });

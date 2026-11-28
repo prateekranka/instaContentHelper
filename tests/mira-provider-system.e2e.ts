@@ -70,7 +70,7 @@ async function observations() {
   };
 }
 
-test('rejects unsigned and non-consented requests without calling a provider', async () => {
+test('rejects unsigned and non-consented requests without calling a provider', { tags: ['@d2'] }, async () => {
   const before = (await observations()).calls.length;
   expect((await call(crypto.randomUUID(), 'start', 'deepseek', 'ok', true, false)).status).toBe(401);
   expect((await call(crypto.randomUUID(), 'start', 'deepseek', 'ok', false, true)).status).toBe(400);
@@ -78,7 +78,7 @@ test('rejects unsigned and non-consented requests without calling a provider', a
 });
 
 for (const provider of ['deepseek', 'openai', 'gemini']) {
-  test(`${provider} returns a validated idea job through the same endpoint`, async () => {
+  test(`${provider} returns a validated idea job through the same endpoint`, { tags: ['@d2', '@reel'] }, async () => {
     const id = crypto.randomUUID();
     expect((await call(id, 'start', provider)).status).toBe(200);
     const result = await call(id, 'status', provider);
@@ -93,7 +93,7 @@ for (const provider of ['deepseek', 'openai', 'gemini']) {
   });
 }
 
-test('a provider outage is queued for retry and invalid output fails closed', async () => {
+test('a provider outage is queued for retry and invalid output fails closed', { tags: ['@d2'] }, async () => {
   const retry = crypto.randomUUID();
   expect((await call(retry, 'start', 'gemini', 'unavailable')).status).toBe(200);
   let seen = await observations();
@@ -109,7 +109,7 @@ test('a provider outage is queued for retry and invalid output fails closed', as
   expect((await call(invalid, 'status', 'openai')).body.job.phase).toBe('failed');
 });
 
-test('job phase distinguishes a new, held, expired, recovered and cancelled claim', async () => {
+test('job phase distinguishes a new, held, expired, recovered and cancelled claim', { tags: ['@reel'] }, async () => {
   const held = crypto.randomUUID();
   const start = await call(held, 'start', 'deepseek', 'lost-claim');
   expect(start.body.job.state).toBe('working');
@@ -130,7 +130,7 @@ test('job phase distinguishes a new, held, expired, recovered and cancelled clai
   expect(recovered.body.job.phase).toBe('succeeded');
 });
 
-test('a claim with too little time left fails without starting the provider', async () => {
+test('a claim with too little time left fails without starting the provider', { tags: ['@d2', '@reel'] }, async () => {
   const id = crypto.randomUUID();
   const before = (await observations()).calls.length;
   expect((await call(id, 'start', 'openai', 'remaining-lease-short')).status).toBe(200);
@@ -141,7 +141,7 @@ test('a claim with too little time left fails without starting the provider', as
   expect((await observations()).calls.length).toBe(before);
 });
 
-test('local PostgREST rejects short claims and forbidden job status changes', async () => {
+test('local PostgREST rejects short claims and forbidden job status changes', { tags: ['@reel'] }, async () => {
   const port = process.env.MIRA_API_E2E_LOCAL_PORT;
   test.skip(!port, 'Start local Supabase and supply the local database scenario fixtures.');
   if (!port || !/^\d{1,5}$/.test(port)) throw new Error('Expected a local PostgREST port.');
@@ -182,7 +182,7 @@ test('local PostgREST rejects short claims and forbidden job status changes', as
   expect(reopened.body.message).toBe('mira_invalid_job_transition');
 });
 
-test('a storyboard has filming fields and revising one shot preserves a legacy shot', async () => {
+test('a storyboard has filming fields and revising one shot preserves a legacy shot', { tags: ['@shots'] }, async () => {
   const script = {
     id: crypto.randomUUID(), hook: 'Here is my breakfast.', spoken: 'Here is my breakfast.\nAdd fruit to the bowl.',
     caption: 'My breakfast', durationSeconds: 20, language: 'English',
@@ -250,7 +250,7 @@ async function tick(id: string) {
   expect(result.status).toBe(204);
 }
 
-test('the Today response advances on completed streamed sections and keeps its legacy fields', async () => {
+test('the Today response advances on completed streamed sections and keeps its legacy fields', { tags: ['@home', '@d2'] }, async () => {
   const id = crypto.randomUUID();
   const mode = 'd2-stream';
   const { body } = await call(id, 'start', 'openai', mode, true, true, todayInput);
@@ -281,7 +281,7 @@ test('the Today response advances on completed streamed sections and keeps its l
     .toEqual(['idea_ready', 'script_ready', 'storyboard_ready']);
 });
 
-test('a cut Today stream keeps partial text out of output and returns the existing retry phase', async () => {
+test('a cut Today stream keeps partial text out of output and returns the existing retry phase', { tags: ['@home', '@d2'] }, async () => {
   const id = crypto.randomUUID();
   const mode = 'd2-cut';
   await call(id, 'start', 'openai', mode, true, true, todayInput);
@@ -302,7 +302,7 @@ function pictureCalls(mode: string) {
     call.mode === mode && call.url.endsWith('/images/generations')));
 }
 
-test('old-style status never starts pictures for a successful Today card', async () => {
+test('old-style status never starts pictures for a successful Today card', { tags: ['@home', '@d2', '@reel'] }, async () => {
   const id = crypto.randomUUID();
   const mode = 'd2-legacy-status';
   expect((await call(id, 'start', 'openai', mode, true, true, todayInput)).status).toBe(200);
@@ -322,7 +322,7 @@ test('old-style status never starts pictures for a successful Today card', async
   expect((await status()).body.job).not.toHaveProperty('pictures');
 });
 
-test('a successful Today card returns independent picture states and signed URLs', async () => {
+test('a successful Today card returns independent picture states and signed URLs', { tags: ['@home', '@d2'] }, async () => {
   const id = crypto.randomUUID();
   const mode = 'd2-mixed';
   await call(id, 'start', 'openai', mode, true, true, todayInput);
@@ -357,7 +357,7 @@ test('a successful Today card returns independent picture states and signed URLs
   }
 });
 
-test('a retry recovers uploaded pictures after a lost ready update without a second provider call', async () => {
+test('a retry recovers uploaded pictures after a lost ready update without a second provider call', { tags: ['@d2'] }, async () => {
   const id = crypto.randomUUID();
   const mode = 'd2-lost-picture-write';
   await call(id, 'start', 'openai', mode, true, true, todayInput);
@@ -370,7 +370,7 @@ test('a retry recovers uploaded pictures after a lost ready update without a sec
   expect((await pictureCalls(mode))).toHaveLength(3);
 });
 
-test('a short remaining picture lease refuses every provider call and preserves the card', async () => {
+test('a short remaining picture lease refuses every provider call and preserves the card', { tags: ['@d2'] }, async () => {
   const id = crypto.randomUUID();
   const mode = 'd2-short-picture';
   await call(id, 'start', 'openai', mode, true, true, todayInput);
@@ -392,7 +392,7 @@ function localSupabase() {
   };
 }
 
-test('local Storage serves only a signed picture from the authenticated card status', async () => {
+test('local Storage serves only a signed picture from the authenticated card status', { tags: ['@d2', '@reel'] }, async () => {
   const local = localSupabase();
   const anon = process.env.MIRA_API_E2E_LOCAL_ANON;
   if (!anon) throw new Error('Local anon key is missing.');
@@ -439,7 +439,7 @@ test('local Storage serves only a signed picture from the authenticated card sta
   expect((await pictureCalls(mode))).toHaveLength(3);
 });
 
-test('local PostgREST reserves at most 30 pictures across concurrent cards without using text slots', async () => {
+test('local PostgREST reserves at most 30 pictures across concurrent cards without using text slots', { tags: ['@d2'] }, async () => {
   const local = localSupabase();
   async function write(path: string, method: string, payload: object) {
     const response = await fetch(`${local.url}/rest/v1/${path}`, {
@@ -478,7 +478,7 @@ test('local PostgREST reserves at most 30 pictures across concurrent cards witho
   expect(fourth.body.message).toBe('too_many_active_jobs');
 });
 
-test('the deployed Mira endpoint returns filming fields for a solo storyboard', async () => {
+test('the deployed Mira endpoint returns filming fields for a solo storyboard', { tags: ['@shots'] }, async () => {
   test.skip(process.env.MIRA_API_E2E_LIVE !== '1', 'Supply credentials for an isolated live QA workspace.');
   const liveCreator = process.env.MCO_LIVE_CREATOR_ID;
   const deviceToken = process.env.MCO_LIVE_DEVICE_TOKEN;
@@ -540,7 +540,7 @@ const todayAngles = [
   'A mindset tip for keeping up a habit',
 ];
 
-test('three Today inputs go through the adapters and incomplete cards fail closed', async () => {
+test('three Today inputs go through the adapters and incomplete cards fail closed', { tags: ['@home', '@d2'] }, async () => {
   const before = (await observations()).calls.length;
   const providers = ['openai', 'deepseek', 'gemini'];
   const cards = await Promise.all(todayAngles.map(async (angle, index) => {
@@ -569,7 +569,7 @@ test('three Today inputs go through the adapters and incomplete cards fail close
   }
 });
 
-test('the deployed Mira endpoint generates three Today cards in one parallel run', async () => {
+test('the deployed Mira endpoint generates three Today cards in one parallel run', { tags: ['@home', '@d2'] }, async () => {
   test.skip(process.env.MIRA_API_E2E_LIVE_TODAY !== '1', 'Use the isolated live QA workspace for this run.');
   const liveCreator = process.env.MCO_LIVE_CREATOR_ID;
   const deviceToken = process.env.MCO_LIVE_DEVICE_TOKEN;
@@ -656,7 +656,7 @@ const phaseERequests = { ...phaseEInputs, pickIdea: pickInput };
 const phaseEOperations = Object.keys(phaseERequests) as (keyof typeof phaseERequests)[];
 
 for (const operation of phaseEOperations) {
-  test(`Phase E ${operation} accepts its contract, isolates shared text and rejects invalid output`, async () => {
+  test(`Phase E ${operation} accepts its contract, isolates shared text and rejects invalid output`, { tags: ['@deals', '@brand'] }, async () => {
     const mode = `e-${operation}`;
     const payload = phaseERequests[operation];
     const id = crypto.randomUUID();
@@ -702,7 +702,7 @@ for (const operation of phaseEOperations) {
   });
 }
 
-test('Phase E permits missing Instagram data and keeps optional data in the provider data message', async () => {
+test('Phase E permits missing Instagram data and keeps optional data in the provider data message', { tags: ['@d2', '@insights', '@deals', '@brand'] }, async () => {
   const payload = { ...phaseEInputs.brandDoc, oldBrandDoc: brandDoc,
     instagramSummary: { followers: 85, topPosts: [{ caption: injection, saves: 4 }] } };
   const id = crypto.randomUUID();
@@ -731,7 +731,7 @@ test('Phase E permits missing Instagram data and keeps optional data in the prov
   expect(message).not.toContain(postLink);
 });
 
-test('Phase E grounds dates, codes and evidence and checks daily action targets', async () => {
+test('Phase E grounds dates, codes and evidence and checks daily action targets', { tags: ['@home', '@deals', '@brand'] }, async () => {
   const unclear = { ...phaseEInputs.dealBrief, briefText: phaseEInputs.dealBrief.briefText.replace(deal.deadlineExcerpt, 'Due soon.') };
   const hindi = { ...phaseEInputs.dealBrief, language: 'Hindi', writingSystem: 'Devanagari',
     briefText: phaseEInputs.dealBrief.briefText.replace(deal.deadlineExcerpt, 'अंतिम तारीख २ दिसंबर २०२६।') };
@@ -798,7 +798,7 @@ async function phaseELocalMember() {
 for (const [operation, cap] of [
   ['brandDoc', 5], ['pickIdea', 20], ['dealBrief', 10], ['briefCheck', 10], ['brandNote', 10],
 ] as const) {
-  test(`local Phase E ${operation} admits its last call and refuses more at the daily cap`, async () => {
+  test(`local Phase E ${operation} admits its last call and refuses more at the daily cap`, { tags: ['@deals', '@brand'] }, async () => {
     const local = await phaseELocalMember();
     await local.seedUsage(operation, cap - 1);
     const mode = `e-local-cap-${operation}`;
@@ -817,7 +817,7 @@ for (const [operation, cap] of [
   });
 }
 
-test('local Phase E concurrent claims contend for the final quota and retry attempts count', async () => {
+test('local Phase E concurrent claims contend for the final quota and retry attempts count', { tags: ['@deals', '@brand', '@reel'] }, async () => {
   const local = await phaseELocalMember();
   await local.seedUsage('brandDoc', 4);
   const mode = 'e-local-claim-race';
@@ -840,7 +840,7 @@ test('local Phase E concurrent claims contend for the final quota and retry atte
   expect(await local.usage('brandNote')).toEqual([{ calls: 2 }]);
 });
 
-test('local Phase E daily notes share one job during concurrent requests and reuse its stored output', async () => {
+test('local Phase E daily notes share one job during concurrent requests and reuse its stored output', { tags: ['@home', '@insights', '@deals', '@brand', '@reel'] }, async () => {
   const local = await phaseELocalMember();
   const mode = 'e-local-daily-cache';
   const start = (id: string, payload = phaseEInputs.dailyNote, creator = creatorID) =>
@@ -862,7 +862,7 @@ test('local Phase E daily notes share one job during concurrent requests and reu
   expect(await local.usage('dailyNote')).toEqual([{ calls: 1 }]);
 });
 
-test('local Phase E daily note uses a slot, expires at rollover and never retries a failed call', async () => {
+test('local Phase E daily note uses a slot, expires at rollover and never retries a failed call', { tags: ['@home', '@insights', '@deals', '@brand'] }, async () => {
   const local = await phaseELocalMember();
   const yesterday = new Date(Date.now() - 86_400_000).toISOString();
   const stale = crypto.randomUUID();
@@ -891,7 +891,7 @@ test('local Phase E daily note uses a slot, expires at rollover and never retrie
   expect((await observations()).calls.filter(entry => entry.mode === mode)).toHaveLength(1);
 });
 
-test('local Phase E cancellation keeps the same daily job without spending quota', async () => {
+test('local Phase E cancellation keeps the same daily job without spending quota', { tags: ['@deals', '@brand', '@reel'] }, async () => {
   const local = await phaseELocalMember();
   const id = crypto.randomUUID();
   const mode = 'e-local-daily-cancel';
@@ -904,7 +904,7 @@ test('local Phase E cancellation keeps the same daily job without spending quota
   expect((await observations()).calls.filter(entry => entry.mode === mode)).toHaveLength(0);
 });
 
-test('local Phase E pick streams D2 steps and reserves pictures only on opt-in status', async () => {
+test('local Phase E pick streams D2 steps and reserves pictures only on opt-in status', { tags: ['@home', '@d2', '@deals', '@brand', '@reel'] }, async () => {
   const local = await phaseELocalMember();
   const id = crypto.randomUUID();
   const mode = 'e-local-pick-stream';
@@ -933,7 +933,7 @@ test('local Phase E pick streams D2 steps and reserves pictures only on opt-in s
   expect(await pictureCalls(mode)).toHaveLength(3);
 });
 
-test('M05 accepts a recorded Today script and storyboard with the hook already in spoken', async () => {
+test('M05 accepts a recorded Today script and storyboard with the hook already in spoken', { tags: ['@home', '@d2', '@words', '@shots'] }, async () => {
   const id = crypto.randomUUID();
   const mode = 'astra-recorded-today';
   const start = await call(id, 'start', 'openai', mode, true, true, todayInput);
@@ -946,7 +946,7 @@ test('M05 accepts a recorded Today script and storyboard with the hook already i
   expect(job.output.storyboard).toEqual(recordedToday.storyboard);
 });
 
-test('M05 storyboard dialogue must cover the source script verbatim and in order', async () => {
+test('M05 storyboard dialogue must cover the source script verbatim and in order', { tags: ['@words', '@shots'] }, async () => {
   const script = { id: crypto.randomUUID(), hook: '“Here’s” my breakfast.',
     spoken: '"Here\'s" my   breakfast.\nAdd fruit to the bowl.',
     caption: 'My breakfast', language: 'English', durationSeconds: 20 };
@@ -972,7 +972,7 @@ test('M05 storyboard dialogue must cover the source script verbatim and in order
   expect(results.every(job => job.error.includes('shot_words_script_coverage') && job.output === undefined)).toBe(true);
 });
 
-test('M07 stopping before admission blocks a later paid start only in that scope', async () => {
+test('M07 stopping before admission blocks a later paid start only in that scope', { tags: ['@d2'] }, async () => {
   const owner = await phaseELocalMember();
   const other = await phaseELocalMember();
   const id = crypto.randomUUID();
@@ -989,7 +989,7 @@ test('M07 stopping before admission blocks a later paid start only in that scope
   expect(await other.usage('brandDoc')).toEqual([{ calls: 1 }]);
 });
 
-test('M08 result save and finish failures reuse one provider result and one cap attempt', async () => {
+test('M08 result save and finish failures reuse one provider result and one cap attempt', { tags: ['@d2', '@reel'] }, async () => {
   const local = await phaseELocalMember();
   const id = crypto.randomUUID();
   const mode = 'e-local-astra-save';
@@ -1008,7 +1008,7 @@ test('M08 result save and finish failures reuse one provider result and one cap 
   expect(row.body).toEqual([{ attempts: 1 }]);
 });
 
-test('M09 direct claims and terminal writes must supply a valid lease and payload', async () => {
+test('M09 direct claims and terminal writes must supply a valid lease and payload', { tags: ['@reel'] }, async () => {
   const local = await phaseELocalMember();
   const id = crypto.randomUUID();
   expect((await local.enqueue(id, input)).status).toBe(200);
@@ -1022,7 +1022,7 @@ test('M09 direct claims and terminal writes must supply a valid lease and payloa
   expect((await update({ status: 'failed', error: 'fixture_error' })).status).toBe(200);
 });
 
-test('M10 uppercase shot IDs remain associated with the correct signed pictures', async () => {
+test('M10 uppercase shot IDs remain associated with the correct signed pictures', { tags: ['@d2', '@shots'] }, async () => {
   const local = await phaseELocalMember();
   const mode = 'e-local-astra-uppercase';
   const id = crypto.randomUUID();
@@ -1037,7 +1037,7 @@ test('M10 uppercase shot IDs remain associated with the correct signed pictures'
   expect(await pictureCalls(mode)).toHaveLength(3);
 });
 
-test('M10 expired and failed reservations release capacity before any picture call', async () => {
+test('M10 expired and failed reservations release capacity before any picture call', { tags: ['@d2'] }, async () => {
   const local = await phaseELocalMember();
   const claim = async (id: string) => {
     const args = { p_job_id: id, p_lease_id: crypto.randomUUID(), p_lease_seconds: 125 };
@@ -1065,7 +1065,7 @@ test('M10 expired and failed reservations release capacity before any picture ca
     .toEqual(['generating', 'generating', 'failed', 'failed', 'failed']);
 });
 
-test('M11 status recovers a late uploaded picture after showing failed, with one paid call', async () => {
+test('M11 status recovers a late uploaded picture after showing failed, with one paid call', { tags: ['@d2', '@reel'] }, async () => {
   const local = await phaseELocalMember();
   const mode = 'e-local-astra-late-upload';
   const id = crypto.randomUUID();
@@ -1092,7 +1092,7 @@ test('M11 status recovers a late uploaded picture after showing failed, with one
   expect(await pictureCalls(mode)).toHaveLength(1);
 });
 
-test('M12 Daily Note checks each number against the metric named beside it', async () => {
+test('M12 Daily Note checks each number against the metric named beside it', { tags: ['@home', '@insights'] }, async () => {
   const latest = { saves7d: 27, topPosts: [{ caption: 'A fruit bowl', views: 1234 }] };
   const run = async (mode: string, extra: object) => {
     const id = crypto.randomUUID();
@@ -1107,7 +1107,7 @@ test('M12 Daily Note checks each number against the metric named beside it', asy
   expect((await run('astra-hindi-metrics', { language: 'Hindi', writingSystem: 'Devanagari' })).state).toBe('succeeded');
 });
 
-test('M20 the lease rule rejects a weakened floor in the newest Mira claim migration', () => {
+test('M20 the lease rule rejects a weakened floor in the newest Mira claim migration', { tags: ['@reel'] }, () => {
   const proof = execFileSync('python3', ['scripts/prove-agent-rules.py', '--class', 'mira_lease_budget'], { encoding: 'utf8' });
   expect(proof).toContain('PROVED mira_lease_budget: a weakened lease floor in the newest Mira claim migration; exit=1');
 });
