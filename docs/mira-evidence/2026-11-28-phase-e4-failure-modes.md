@@ -1,0 +1,12 @@
+# Mira Phase E4 failure modes
+
+The phone is blocked at the XCTest passcode prompt. Write the TesterArmy scenarios for the morning run. Do both generic builds and the source checks overnight.
+
+| Area | Failure | Verification |
+| --- | --- | --- |
+| Import and match | Videos picked out of order are assigned by picker order alone. Duplicate assignments, cancelled import, an unreadable clip, or a changed shot list can replace saved work. | Import three clips of distinct lengths in reverse order. Inspect the assigned clips, swap two, reopen the Reel, and check that the assignments persist. Change the shot list or cancel an import and check the former clips remain available. |
+| Join and save | Wrong source order, orientation, duration, audio, or missing hook. A failed or stale render can replace the prior export. Denied Photos access can hide the Mira copy. | Inspect the joined 9:16 Reel, check the cuts and hook, and reopen it. Apply an on-screen fix and inspect the new render. Check Save to Photos on tap and the denial path without deleting media. |
+| Brief check | A result can belong to the wrong deal or edit. A result can claim a visual requirement as met without inspecting footage. A proposed fix can apply without consent. | Check a deal with a missing code. Confirm that it stays missing until approval and appears in the revised caption or export. Check a visual item and a late response after an input change. |
+| Instagram | Opening the share control can mark a deal posted or start a publish. An older or unrelated media item can cause a false live confirmation. | Check that share hands off the file and copies the caption. Return without posting and confirm the tracker remains unchanged. Use a sample result for confirmed posting, and check the fallback if the read-only API cannot identify it. |
+| WhatsApp | A message can reach the wrong contact or advance the tracker on open. Missing WhatsApp can lose the text. | Inspect the target and prefilled note without sending. Return and check that the tracker stays at the prior step. Use sample data for explicit confirmation. Check the fallback when WhatsApp is unavailable. |
+| Persistence and integration | Old projects fail to open. A render or request can overwrite a newer change. Signing, state documents, compatibility or approval gates regress. | Build both generic destinations. Run agent rules, their proof, the documentation check and shared TLA+ suite. Run the earlier sample scenarios and the three Keep checks when the phone is available. |
