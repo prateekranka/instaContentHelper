@@ -184,9 +184,14 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
       await request(1, 'Send a Home idea request', 3, () => send.tap());
     }
   } else {
-    const words = screen.getByTestId('mira.words.approve');
-    test.skip(!await words.count() && !await screen.getByTestId('mira.today.page.1').count(),
-      'The existing live batch could not be found without sending another request.');
+    const step = screen.getByTestId('mira.task.step');
+    const screenStep = await step.count() ? await step.textContent() : undefined;
+    if (screenStep === '2 / 6' || screenStep === '3 / 6') {
+      await captureE1Plan(app, screen);
+      return;
+    }
+    expect(await screen.getByTestId('mira.today.page.1').count(),
+      'The first live batch must still be open before retrying without another request.').toBe(1);
   }
   const deadline = Date.now() + timeout;
   const ready = screen.getByRole('button', /^Idea [1-3] of 3, ready$/);
@@ -250,10 +255,18 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
   await screen.getByTestId(`mira.today.page.${chosenIndex + 1}`).tap();
   await tapVisibleControl(screen, screen.getByTestId(`mira.today.makeCard.${chosenIndex + 1}`));
   record({ scenario: 1, action: 'selected Today project', title: chosen, calls: 0 });
+  expect(pictureCounts.reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(15);
+  await captureE1Plan(app, screen);
+});
+
+async function captureE1Plan(app: App, screen: Screen) {
+  const aiPictures = /^AI picture for shot [1-5]$/;
   const step = screen.getByTestId('mira.task.step');
-  await expect(step).toHaveText('2 / 6');
-  await app.screenshot('e1-live-words');
-  await tapVisibleControl(screen, approve(screen));
+  if (await approve(screen).count()) {
+    await expect(step).toHaveText('2 / 6');
+    await app.screenshot('e1-live-words');
+    await tapVisibleControl(screen, approve(screen));
+  }
   await expect(step).toHaveText('3 / 6');
   await fit(screen, screen.getByText('Your filming plan', { exact: true }));
   await app.screenshot('e1-live-shot-list-summary');
@@ -264,8 +277,7 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
   await fit(screen, shoot);
   await expect(shoot).toHaveAccessibleName("Got it, I'll go shoot");
   await app.screenshot('e1-live-shot-list-action');
-  expect(pictureCounts.reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(15);
-});
+}
 
 test('2 Your words opens filming and reaches Done', async ({ app, screen, device }) => {
   const title = todayTitle();

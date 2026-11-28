@@ -84,28 +84,16 @@ async function openToday(screen: Screen) {
 }
 
 async function stopLeftoverIdeas(screen: Screen) {
-  for (let batch = 0; batch < 3; batch += 1) {
-    const open = screen.getByTestId('mira.today.continue').first();
-    if (await open.count() === 0 || !await screen.getByRole('button', 'Choose an idea', { exact: true }).count()) return;
-    const busyIdeas = screen.getByRole('button', /^Idea \d of 3, (waiting to start|Mira is making it|Waiting to try again)$/);
-    await tap(screen, screen.getByRole('button', 'Choose an idea', { exact: true }).first());
-    if (!await screen.getByTestId('mira.today.page.3').isVisible()) {
-      await backOut(screen);
-      return;
-    }
-    const busy = busyIdeas;
-    if (!await busy.count()) {
-      await backOut(screen);
-      return;
-    }
-    for (let idea = 0; idea < 3 && await busy.count() > 0; idea += 1) {
-      await busy.first().tap();
-      await (await menuControl(screen, 'More')).tap();
-      await screen.getByRole('button', 'Stop this idea', { exact: true }).tap();
-      await expect(screen.getByText('This idea was stopped.', { exact: true, visible: true }).first()).toBeVisible();
-    }
-    await backOut(screen);
+  await tap(screen, screen.getByTestId('mira.today.continue').first());
+  await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
+  const busy = screen.getByRole('button', /^Idea \d of 3, (waiting to start|Mira is making it|Waiting to try again)$/);
+  for (let idea = 0; idea < 3 && await busy.count() > 0; idea += 1) {
+    await busy.first().tap();
+    await (await menuControl(screen, 'More')).tap();
+    await screen.getByRole('button', 'Stop this idea', { exact: true }).tap();
+    await expect(screen.getByText('This idea was stopped.', { exact: true, visible: true }).first()).toBeVisible();
   }
+  await backOut(screen);
 }
 
 async function d2Fixture(scenario: string, update: Record<string, string | number | boolean> = {}) {
@@ -124,6 +112,105 @@ async function d2Fixture(scenario: string, update: Record<string, string | numbe
 const d2Step = (screen: Screen, name: string) => screen.getByLabel(name, { exact: true, visible: true });
 const d2Picture = (screen: Screen, kind: string, shot: number) =>
   screen.getByRole('image', `${kind} for shot ${shot}`, { exact: true, visible: true });
+
+test('E1 Home shows the idea card with no work, including after saving an empty Reel', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await openToday(screen);
+  const idea = screen.getByText('Nothing planned today. Want an idea?', { exact: true });
+  await expect(idea).toBeVisible();
+  await expect(screen.getByTestId('mira.today.request')).toBeVisible();
+  await expect(screen.getByTestId('mira.today.mic')).toBeVisible();
+  await expect(screen.getByTestId('mira.today.chip.home')).toBeVisible();
+  await expect(screen.getByText("How you're doing", { exact: true })).not.toBeVisible();
+  await app.screenshot('e1-home-empty');
+  await screen.getByRole('button', 'Profile', { exact: true }).tap();
+  await tap(screen, screen.getByTestId('mira.profile.stepByStep'));
+  await expect(screen.getByText('1 / 6', { exact: true })).toBeVisible();
+  await openToday(screen);
+  await expect(idea).toBeVisible();
+  await expect(screen.getByTestId('mira.today.continue')).toHaveCount(0);
+});
+
+test('E1 shows a Continue card and the words action for each unfinished Reel', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await chooseTodayCard(screen, 1, 'A quick movement break');
+  await chooseTodayCard(screen, 2, 'My simple breakfast');
+  await openToday(screen);
+  const cards = screen.getByTestId('mira.today.continue');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.first()).toHaveAccessibleName('Approve your words');
+  await expect(cards.last()).toHaveAccessibleName('Approve your words');
+  const progress = screen.getByLabel('Reel progress', { exact: true }).first();
+  await expect(progress).toBeAttached();
+  await expect(screen.getByText('You have 2 Reels in progress.', { exact: true })).toBeVisible();
+  await app.screenshot('e1-home-with-work');
+  await tap(screen, cards.first());
+  await expect(screen.getByText('2 / 6', { exact: true })).toBeVisible();
+  await expect(screen.getByTestId('mira.words.approve')).toBeAttached();
+});
+
+test('E1 tabs share the Ask Mira bar and My Brand keeps archived Reels reachable', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await openToday(screen);
+  const bar = screen.getByTestId('mira.ask.bar');
+  for (const name of ['Home', 'Deals', 'My Brand']) await expect(await tabControl(screen, name)).toBeVisible();
+  await bottomAboveTabs(app, screen, screen.getByTestId('mira.today.make'), 'e1-home-ask-clearance');
+  await openTab(screen, 'Deals');
+  const help = screen.getByText('Share a brand brief to Mira', { exact: true });
+  await bottomAboveTabs(app, screen, help, 'e1-deals-ask-clearance');
+  await sendAsk(screen, 'Caption: Sample breakfast at home');
+  const draft = screen.getByRole('textbox', 'Original brand requirements', { exact: true });
+  expect(await draft.inputValue()).toBe('Caption: Sample breakfast at home');
+  await app.screenshot('e1-deals-brief-draft');
+  await tap(screen, screen.getByRole('button', 'Save as a Reel brief', { exact: true }));
+  await expect(screen.getByText('1 / 6', { exact: true })).toBeVisible();
+  await backOut(screen);
+  await expandAllReels(screen);
+  await bottomAboveTabs(app, screen, screen.getByRole('button', 'Archive', { exact: true }), 'e1-my-brand-all-reels');
+  await tap(screen, screen.getByRole('button', 'Archive', { exact: true }));
+  await tap(screen, screen.getByText('Show archived projects', { exact: true }));
+  await expect(screen.getByText('Untitled Reel', { exact: true })).toBeVisible();
+  await tap(screen, screen.getByText('Untitled Reel', { exact: true }));
+  await expect(bar).toBeVisible();
+  await app.screenshot('e1-archived-reel-ask');
+});
+
+test('E1 resumes Words, reads the one-page shot list, and goes to the saved shot', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await chooseTodayCard(screen, 1, 'A quick movement break');
+  const step = screen.getByTestId('mira.task.step');
+  await expect(step).toHaveText('2 / 6');
+  await sendAsk(screen, 'Use simpler words for the opening');
+  const note = screen.getByTestId('mira.words.note');
+  await scrollToControl(screen, note);
+  expect(await note.inputValue()).toBe('Use simpler words for the opening');
+  await tap(screen, screen.getByRole('button', 'Cancel', { exact: true }));
+  await launchMira(app, screen, device);
+  await expect(step).toHaveText('2 / 6');
+  await app.screenshot('e1-words-step');
+  await tap(screen, screen.getByTestId('mira.words.approve'));
+  await expect(step).toHaveText('3 / 6');
+  await launchMira(app, screen, device);
+  await expect(step).toHaveText('3 / 6');
+  const plan = screen.getByText('Your filming plan', { exact: true });
+  await scrollToControl(screen, plan);
+  for (const label of ['Where', 'What to bring', 'Audio']) {
+    await expect(screen.getByText(label, { exact: true }).first()).toBeAttached();
+  }
+  await app.screenshot('e1-shot-list-summary');
+  const shoot = screen.getByTestId('mira.shots.film');
+  await bottomAboveTabs(app, screen, shoot, 'e1-shot-list-action');
+  await expect(shoot).toHaveAccessibleName("Got it, I'll go shoot");
+  await shoot.tap();
+  await expect(step).toHaveText('4 / 6');
+  await tap(screen, screen.getByRole('button', 'Mark filmed', { exact: true }));
+  await tap(screen, screen.getByRole('button', 'Next', { exact: true }));
+  await launchMira(app, screen, device);
+  await expect(step).toHaveText('4 / 6');
+  await expect(screen.getByText('Shot 2 of 3', { exact: true })).toBeVisible();
+  await expect(screen.getByText('1 filmed by you', { exact: true })).toBeVisible();
+  await app.screenshot('e1-resume-shot-two');
+});
 
 test('D2 wait follows the server steps and opens the first ready card', async ({ app, screen, device }) => {
   const scenario = 'Demo D2 steps';
@@ -941,103 +1028,4 @@ test('S3 denied speech shows one Settings action and still accepts typing', asyn
   await expect(screen.getByRole('window', 'Next keyboard', { exact: true })).not.toBeVisible();
   expect(await request.inputValue()).toBe('Film a sample clip at home');
   await app.screenshot('mic-denied-typing');
-});
-
-test('E1 Home shows the idea card with no work, including after saving an empty Reel', async ({ app, screen, device }) => {
-  await launchMira(app, screen, device);
-  await openToday(screen);
-  const idea = screen.getByText('Nothing planned today. Want an idea?', { exact: true });
-  await expect(idea).toBeVisible();
-  await expect(screen.getByTestId('mira.today.request')).toBeVisible();
-  await expect(screen.getByTestId('mira.today.mic')).toBeVisible();
-  await expect(screen.getByTestId('mira.today.chip.home')).toBeVisible();
-  await expect(screen.getByText("How you're doing", { exact: true })).not.toBeVisible();
-  await app.screenshot('e1-home-empty');
-  await screen.getByRole('button', 'Profile', { exact: true }).tap();
-  await tap(screen, screen.getByTestId('mira.profile.stepByStep'));
-  await expect(screen.getByText('1 / 6', { exact: true })).toBeVisible();
-  await openToday(screen);
-  await expect(idea).toBeVisible();
-  await expect(screen.getByTestId('mira.today.continue')).toHaveCount(0);
-});
-
-test('E1 shows a Continue card and the words action for each unfinished Reel', async ({ app, screen, device }) => {
-  await launchMira(app, screen, device);
-  await chooseTodayCard(screen, 1, 'A quick movement break');
-  await chooseTodayCard(screen, 2, 'My simple breakfast');
-  await openToday(screen);
-  const cards = screen.getByTestId('mira.today.continue');
-  await expect(cards).toHaveCount(2);
-  await expect(cards.first()).toHaveAccessibleName('Approve your words');
-  await expect(cards.last()).toHaveAccessibleName('Approve your words');
-  const progress = screen.getByLabel('Reel progress', { exact: true }).first();
-  await expect(progress).toBeAttached();
-  await expect(screen.getByText('You have 2 Reels in progress.', { exact: true })).toBeVisible();
-  await app.screenshot('e1-home-with-work');
-  await tap(screen, cards.first());
-  await expect(screen.getByText('2 / 6', { exact: true })).toBeVisible();
-  await expect(screen.getByTestId('mira.words.approve')).toBeAttached();
-});
-
-test('E1 tabs share the Ask Mira bar and My Brand keeps archived Reels reachable', async ({ app, screen, device }) => {
-  await launchMira(app, screen, device);
-  await openToday(screen);
-  const bar = screen.getByTestId('mira.ask.bar');
-  for (const name of ['Home', 'Deals', 'My Brand']) await expect(await tabControl(screen, name)).toBeVisible();
-  await bottomAboveTabs(app, screen, screen.getByTestId('mira.today.make'), 'e1-home-ask-clearance');
-  await openTab(screen, 'Deals');
-  const help = screen.getByText('Share a brand brief to Mira', { exact: true });
-  await bottomAboveTabs(app, screen, help, 'e1-deals-ask-clearance');
-  await sendAsk(screen, 'Caption: Sample breakfast at home');
-  const draft = screen.getByRole('textbox', 'Original brand requirements', { exact: true });
-  expect(await draft.inputValue()).toBe('Caption: Sample breakfast at home');
-  await app.screenshot('e1-deals-brief-draft');
-  await tap(screen, screen.getByRole('button', 'Save as a Reel brief', { exact: true }));
-  await expect(screen.getByText('1 / 6', { exact: true })).toBeVisible();
-  await backOut(screen);
-  await expandAllReels(screen);
-  await bottomAboveTabs(app, screen, screen.getByRole('button', 'Archive', { exact: true }), 'e1-my-brand-all-reels');
-  await tap(screen, screen.getByRole('button', 'Archive', { exact: true }));
-  await tap(screen, screen.getByText('Show archived projects', { exact: true }));
-  await expect(screen.getByText('Untitled Reel', { exact: true })).toBeVisible();
-  await tap(screen, screen.getByText('Untitled Reel', { exact: true }));
-  await expect(bar).toBeVisible();
-  await app.screenshot('e1-archived-reel-ask');
-});
-
-test('E1 resumes Words, reads the one-page shot list, and goes to the saved shot', async ({ app, screen, device }) => {
-  await launchMira(app, screen, device);
-  await chooseTodayCard(screen, 1, 'A quick movement break');
-  const step = screen.getByTestId('mira.task.step');
-  await expect(step).toHaveText('2 / 6');
-  await sendAsk(screen, 'Use simpler words for the opening');
-  const note = screen.getByTestId('mira.words.note');
-  await scrollToControl(screen, note);
-  expect(await note.inputValue()).toBe('Use simpler words for the opening');
-  await tap(screen, screen.getByRole('button', 'Cancel', { exact: true }));
-  await launchMira(app, screen, device);
-  await expect(step).toHaveText('2 / 6');
-  await app.screenshot('e1-words-step');
-  await tap(screen, screen.getByTestId('mira.words.approve'));
-  await expect(step).toHaveText('3 / 6');
-  await launchMira(app, screen, device);
-  await expect(step).toHaveText('3 / 6');
-  const plan = screen.getByText('Your filming plan', { exact: true });
-  await scrollToControl(screen, plan);
-  for (const label of ['Where', 'What to bring', 'Audio']) {
-    await expect(screen.getByText(label, { exact: true }).first()).toBeAttached();
-  }
-  await app.screenshot('e1-shot-list-summary');
-  const shoot = screen.getByTestId('mira.shots.film');
-  await bottomAboveTabs(app, screen, shoot, 'e1-shot-list-action');
-  await expect(shoot).toHaveAccessibleName("Got it, I'll go shoot");
-  await shoot.tap();
-  await expect(step).toHaveText('4 / 6');
-  await tap(screen, screen.getByRole('button', 'Mark filmed', { exact: true }));
-  await tap(screen, screen.getByRole('button', 'Next', { exact: true }));
-  await launchMira(app, screen, device);
-  await expect(step).toHaveText('4 / 6');
-  await expect(screen.getByText('Shot 2 of 3', { exact: true })).toBeVisible();
-  await expect(screen.getByText('1 filmed by you', { exact: true })).toBeVisible();
-  await app.screenshot('e1-resume-shot-two');
 });
