@@ -35,6 +35,18 @@ struct MiraDeliveryView: View {
                 }
             }
         }
+        .miraBottomAction(whileEditing: true) {
+            if let project = store.project(projectID), project.canFilm,
+               let deal = store.deliveryDeal(for: project), deal.tracker.brandToldAt == nil {
+                switch MiraReelPostState(record: project.deliveryRecord) {
+                case .posted(let result), .live(let result):
+                    if result.dealID == deal.id {
+                        whatsappAction(store.tellBrandState(for: project), deal: deal)
+                    }
+                default: EmptyView()
+                }
+            }
+        }
         .navigationTitle("Your Reel")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: selection) { _, items in importSelection(items) }
@@ -297,15 +309,11 @@ struct MiraDeliveryView: View {
                 MiraSectionTitle(text: "Your WhatsApp note")
                 Text(message).textSelection(.enabled).accessibilityIdentifier("mira.delivery.whatsapp.note")
                 Button("Copy note") { UIPasteboard.general.string = message }.buttonStyle(.bordered)
-                TextField("Brand’s WhatsApp number with country code", text: $phone)
+                MiraTextInput(title: "Brand’s WhatsApp number with country code", text: $phone)
                     .textContentType(.telephoneNumber)
-                    .keyboardType(.phonePad)
-                    .textFieldStyle(.roundedBorder)
+                    .keyboardType(.numbersAndPunctuation)
                     .accessibilityIdentifier("mira.delivery.whatsapp.phone")
-                Button("Send to \(deal.terms.title)") { openWhatsApp(note, message: message) }
-                    .buttonStyle(.bordered)
-                    .disabled(whatsAppURL(message: message, scheme: "whatsapp") == nil || openingWhatsApp)
-                    .accessibilityIdentifier("mira.delivery.whatsapp")
+                MiraInlineAction { sendWhatsAppButton(note, message: message, deal: deal) }
                 if showWhatsAppFallback, let url = whatsAppURL(message: message, scheme: "https") {
                     Text("WhatsApp is unavailable. You can copy the note or open this link.")
                     Button("Open WhatsApp link") {
@@ -330,6 +338,21 @@ struct MiraDeliveryView: View {
         case .sent:
             MiraSectionTitle(text: "Brand told")
         }
+    }
+
+    @ViewBuilder private func whatsappAction(_ state: MiraTellBrandState, deal: MiraDeal) -> some View {
+        switch state {
+        case .draft(let note), .opened(let note):
+            if let message = note.message { sendWhatsAppButton(note, message: message, deal: deal) }
+        default: EmptyView()
+        }
+    }
+
+    private func sendWhatsAppButton(_ note: MiraBrandMessage, message: String, deal: MiraDeal) -> some View {
+        Button("Send to \(deal.terms.title)") { openWhatsApp(note, message: message) }
+            .buttonStyle(MiraPrimaryStyle())
+            .disabled(whatsAppURL(message: message, scheme: "whatsapp") == nil || openingWhatsApp)
+            .accessibilityIdentifier("mira.delivery.whatsapp")
     }
 
     @ViewBuilder private func caption(_ caption: String) -> some View {

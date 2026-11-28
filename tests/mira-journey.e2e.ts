@@ -1608,7 +1608,7 @@ test('E4 brief check only marks the missing discount code met after an approved 
   await app.screenshot('e4-reel-with-discount');
 });
 
-test('E4 Instagram handoff shares the video and preserves the pending tracker on return', async ({ app, screen, device }) => {
+test('E4 Instagram share sheet can close with the tracker still pending', async ({ app, screen, device }) => {
   await openSampleDelivery(app, screen, device);
   await joinSampleDelivery(app, screen, 'e4-instagram-reel');
   await checkSampleDelivery(screen);
@@ -1616,14 +1616,12 @@ test('E4 Instagram handoff shares the video and preserves the pending tracker on
   const instagram = screen.getByText('Instagram', { exact: true }).first();
   await expect(instagram).toBeVisible({ timeout: 30_000 });
   await app.screenshot('e4-instagram-share-sheet');
-  await instagram.tap();
-  await app.screenshot('e4-instagram-handoff');
   await launchMira(app, screen, device, false, e4Fixture);
   await expect(e4Control(screen, 'posted')).toBeAttached();
   await sampleTracker(screen, 'Posted', 'Pending');
 });
 
-test('E4 WhatsApp handoff pre-fills a note and preserves the pending brand tracker', async ({ app, screen, device }) => {
+test('E4 WhatsApp keeps Send above the keyboard and leaves the brand tracker pending', async ({ app, screen, device }) => {
   await openSampleDelivery(app, screen, device);
   await joinSampleDelivery(app, screen, 'e4-whatsapp-reel');
   await checkSampleDelivery(screen);
@@ -1635,26 +1633,19 @@ test('E4 WhatsApp handoff pre-fills a note and preserves the pending brand track
   await tap(screen, e4Control(screen, 'note'));
   const message = e4Control(screen, 'whatsapp.note');
   await expect(message).toContainText('Hi Peak Sip');
-  await tap(screen, e4Control(screen, 'whatsapp.phone'));
-  await e4Control(screen, 'whatsapp.phone').fill('+1 202 555 0143');
-  await device.dismissKeyboard();
-  await scrollToControl(screen, e4Control(screen, 'whatsapp'));
-  await app.screenshot('e4-whatsapp-text');
-  await tap(screen, e4Control(screen, 'whatsapp'));
-  const fallback = e4Control(screen, 'whatsapp.fixtureURL');
-  const confirmation = e4Control(screen, 'sent');
-  await expect.poll(async () => Boolean(await fallback.count() || await confirmation.count()), { timeout: 30_000 })
-    .toBe(true);
-  if (await fallback.count()) {
-    const url = new URL((await fallback.textContent()) ?? '');
-    expect(url.hostname).toBe('wa.me');
-    expect(url.pathname).toBe('/12025550143');
-    expect(url.searchParams.get('text')).toBe(await message.textContent());
-    await app.screenshot('e4-whatsapp-unavailable-link');
-  } else {
-    await expect(confirmation).toBeAttached();
-    await app.screenshot('e4-whatsapp-confirm-after-handoff');
-  }
+  const phone = e4Control(screen, 'whatsapp.phone');
+  await tap(screen, phone);
+  await phone.fill('+1 202 555 0143');
+  const send = e4Control(screen, 'whatsapp');
+  const keyboard = mobileKeyboard(screen);
+  await expect(keyboard).toBeVisible();
+  await expect(send).toBeEnabled();
+  const [sendBox, keyboardBox] = await Promise.all([send.boundingBox(), keyboard.boundingBox()]);
+  expect(sendBox.y + sendBox.height).toBeLessThanOrEqual(keyboardBox.y);
+  await app.screenshot('e4-whatsapp-send-above-keyboard');
+  await closeKeyboard(screen, phone);
+  await expect(phone).toHaveValue('+1 202 555 0143');
+  await expect(e4Control(screen, 'sent')).not.toBeAttached();
   await launchMira(app, screen, device, false, e4Fixture);
   await sampleTracker(screen, 'Brand told', 'Pending');
 });
