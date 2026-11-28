@@ -15,8 +15,8 @@
 
 The last column gives the primary next step for each state. Conditions can change the step the creator sees. A dash means the machine supplies no step. An event with no matching rule leaves the state alone.
 
-The store keeps the current location, library, words, request, interview, brand document, and pick states.
-The speech service and insights view each keep their own state. Send an event
+The store keeps the current location, library, words, request, interview, brand document, pick, Home insights and daily note states.
+The speech service and Profile insights view each keep their own state. Send an event
 through the existing transition path to change one of these fields. Reel
 progress, Today cards, consent, and brief state are read from other records.
 The store owns the active Reel renders and applies delivery events to each project’s optional delivery record.
@@ -437,6 +437,58 @@ picture source.
 | `ready` | Start another. Make. Reset. | `working` with the previous result. `idle` after making the Reel. `idle`. | Make this one |
 | `failed` | Start again. Reset. | `working`. `idle`. | Try again |
 
+## `MiraHomeInsightsState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraHomeInsightsState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> unopened
+    unopened --> loading: read the current account
+    ready --> loading: next account or UTC day
+    unavailable --> loading: read again
+    loading --> ready: matching reply with data
+    loading --> unavailable: matching reply without data or read fails
+    loading --> unopened: reset on session change
+    ready --> unopened: reset on session change
+    unavailable --> unopened: reset on session change
+```
+
+Home reads the current account's report. It displays followers, reach and saves with the available comparison. Missing values and missing comparisons show “Not enough data yet.” The latest snapshot supplies up to five What worked cards. If only posts are available, the endpoint adds them to the legacy `no_data` response. Each card offers **Make one like this** and sends the selected caption as a pattern through the existing pick flow after the Instagram results choice allows it. Show another idea retains that pattern while permission remains allowed. The store keeps the report in memory. It accepts a reply only for the current read.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `unopened` | Load. Reset. | `loading`. `unopened`. | — |
+| `loading` | Load again. Receive the current read. Reset. | `loading`. `ready` or `unavailable`. `unopened`. | Wait |
+| `unavailable` | Load on Home reentry. Reset. | `loading`. `unopened`. | — |
+| `ready` | Load for a new scope. Reset. | `loading`. `unopened`. | Make one like this, when a post has a caption and a reported count |
+
+## `MiraDailyNoteState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraDailyNoteState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> loading: start for current account and UTC day
+    loading --> ready: matching reply with a valid note
+    loading --> unavailable: matching failure or unusable reply
+    ready --> loading: new account or UTC day
+    unavailable --> loading: new account or UTC day
+    loading --> idle: reset on session change
+    ready --> idle: reset on session change
+    unavailable --> idle: reset on session change
+```
+
+The store starts a note only with current AI permission. Instagram snapshots require the separate E2 choice. Without that choice the start sends only open work and language, with an empty snapshot array. A Home reentry uses the in-memory result for the same account and UTC day. A cold launch asks the server for that day and polls the returned job ID. The store checks the admitted input, revision and job identity on status replies. The current permission controls whether a cached note that used snapshots can appear. The current list of unfinished Reels and unpaid deals controls whether a target button can appear and open its item.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `idle` | Start. Reset. | `loading`. `idle`. | — |
+| `loading` | Receive a valid note or failure for the current attempt. Start a different scope. Reset. | `ready` or `unavailable`. `loading`. `idle`. | Wait |
+| `ready` | Start a different scope. Reset. | `loading`. `idle`. | Use the one supplied action if it still applies. Make an idea, continue the Reel or open the deal. |
+| `unavailable` | Start a different scope. Reset. | `loading`. `idle`. | — |
+
 ## `MiraVoiceInputState`
 
 [Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraVoiceInputState.swift)
@@ -728,7 +780,7 @@ stateDiagram-v2
     posted --> live: verified Instagram Reel link
 ```
 
-The share sheet receives only the local export. The app copies the caption for the creator. The post confirmation must refer to the shared export. The current Instagram endpoint has no post identity, so the live transition has no production caller. The creator confirmation records Posted and updates the linked deal.
+The share sheet receives only the local export. The app copies the caption for the creator. The post confirmation must refer to the shared export. Instagram Insights snapshots contain captions and counts. They provide no post identity or link to the shared export. The live transition still requires a verified Reel link. The creator confirmation records Posted and updates the linked deal.
 
 | State | Events | Next state | Next action |
 | --- | --- | --- | --- |

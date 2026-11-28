@@ -28,8 +28,11 @@ final class MiraStore {
     private(set) var brandInterview = MiraBrandInterview.idle
     private(set) var brandDocumentState = MiraBrandDocumentState.empty
     private(set) var pickState = MiraPickState.idle
+    private(set) var dailyNoteState = MiraDailyNoteState.idle
+    private(set) var homeInsightsState = MiraHomeInsightsState.unopened
     private var brandTask: Task<Void, Never>?
     private var pickTask: Task<Void, Never>?
+    private var dailyNoteTask: Task<Void, Never>?
     private let repository: any MiraProjectRepository
     private var saveTask: Task<Void, Never>?
     private var clipImports: Set<UUID> = []
@@ -1016,7 +1019,8 @@ extension MiraStore {
     }
 
     func startPick(
-        request: String, demo: Bool, patterns: [String]?, service: any MiraGenerationService
+        request: String, demo: Bool, patterns: [String]?, postPattern: String? = nil,
+        service: any MiraGenerationService
     ) {
         let previous: MiraJob?
         let skipped: [String]
@@ -1045,7 +1049,7 @@ extension MiraStore {
 
         let checklist = activeDealChecklist
         let context = MiraPickContext(dealID: checklist == nil ? nil : activeDeal?.id, isDemo: demo,
-                                      skippedTitles: Array(skipped.prefix(30)))
+                                      skippedTitles: Array(skipped.prefix(30)), postPattern: postPattern)
         var constraints = document.defaultConstraints ?? MiraConstraints()
         constraints.populate(from: prompt)
         let recent = document.projects.filter { $0.isDemo == demo }.flatMap { project in
@@ -1147,6 +1151,84 @@ extension MiraStore {
         var failed = job
         failed.state = .failed
         return (failed, terminal.message)
+    }
+}
+
+extension MiraStore {
+    var dailyNoteWork: MiraDailyNoteWork {
+        let reels: [MiraContinueReel]
+        let deals: [MiraDeal]
+        switch homeFeed {
+        case .empty: (reels, deals) = ([], [])
+        case .deals(let open): (reels, deals) = ([], open)
+        case .continuing(let unfinished, let open): (reels, deals) = (unfinished, open)
+        }
+        return MiraDailyNoteWork(
+            reels: reels.map { .init(id: $0.id, title: $0.title, fallback: "Untitled Reel") },
+            deals: deals.map { .init(id: $0.id, title: $0.terms.brand, fallback: "Untitled deal") })
+    }
+
+    func sendHomeInsights(_ event: MiraHomeInsightsEvent) {
+        guard let next = homeInsightsState.handle(event) else { return }
+        homeInsightsState = next
+    }
+
+    @discardableResult
+    private func sendDailyNote(_ event: MiraDailyNoteEvent) -> Bool {
+        guard let next = dailyNoteState.handle(event) else { return false }
+        dailyNoteState = next
+        return true
+    }
+
+    func resetHomeInsights() {
+        dailyNoteTask?.cancel()
+        sendDailyNote(.reset)
+        sendHomeInsights(.reset)
+    }
+
+    func startDailyNote(scope: MiraDailyNoteScope, snapshots: [MiraInsightSnapshot],
+                        service: any MiraDailyNoteService, canSend: @escaping @MainActor () -> Bool) {
+        let requestID = UUID()
+        guard sendDailyNote(.start(scope, requestID)) else { return }
+        dailyNoteTask?.cancel()
+        let work = dailyNoteWork
+        let input = MiraDailyNoteInput(language: document.profile.language, writingSystem: document.profile.writingSystem,
+                                       snapshots: snapshots, openReels: Array(work.reels.prefix(20)),
+                                       openDeals: Array(work.deals.prefix(20)))
+        dailyNoteTask = Task {
+            do {
+                guard canSend(), scope.day == MiraDailyNoteScope.utcDay else {
+                    sendDailyNote(.failed(requestID))
+                    return
+                }
+                var reply = try await service.dailyNote(id: requestID, input: input)
+                let admittedID = reply.id
+                let admittedInput = reply.input
+                let admittedRevision = reply.inputRevision
+                guard admittedID != requestID || (admittedRevision == 0 && admittedInput == input) else {
+                    sendDailyNote(.failed(requestID))
+                    return
+                }
+                for _ in 0..<30 {
+                    try Task.checkCancellation()
+                    guard scope.day == MiraDailyNoteScope.utcDay, reply.id == admittedID, reply.input == admittedInput,
+                        reply.inputRevision == admittedRevision, admittedRevision >= 0,
+                        reply.input.operation == "dailyNote" else { break }
+                    if reply.state != .working {
+                        if let note = reply.note {
+                            sendDailyNote(.received(requestID, note, usesInstagram: !reply.input.snapshots.isEmpty))
+                            return
+                        }
+                        break
+                    }
+                    try await Task.sleep(for: .seconds(3))
+                    reply = try await service.dailyNote(id: admittedID, input: nil)
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+            }
+            sendDailyNote(.failed(requestID))
+        }
     }
 }
 

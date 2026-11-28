@@ -1,7 +1,7 @@
 import { mobile } from '@e2e-dev/mobile';
 import type { E2EConfig } from 'e2e';
 import { resolve } from 'node:path';
-import { launchArguments } from './e2e.mira.config';
+import { passiveLaunchArguments } from './e2e.mira.config';
 
 export default {
   tests: 'tests/mira-live-journey.e2e.ts',
@@ -16,7 +16,7 @@ export default {
     }),
     app: {
       bundleId: 'com.prateekranka.creatorcontenthelper',
-      launchArguments,
+      launchArguments: passiveLaunchArguments,
     },
   }],
   workers: 1,

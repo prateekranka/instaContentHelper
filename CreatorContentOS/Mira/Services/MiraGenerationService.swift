@@ -77,7 +77,7 @@ final class MiraDependencies {
     static func todayFixture(for request: String) -> MiraSupabaseGenerationService? {
         #if DEBUG
         guard DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil,
-            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures", "Demo D2 transport", "Demo E2 pick"].contains(request),
+            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures", "Demo D2 transport", "Demo E2 pick", "Demo E5 note"].contains(request),
             let endpoint = DebugLaunchConfiguration.value(for: "MCO_QA_D2_ENDPOINT"),
             let url = URL(string: endpoint), url.scheme == "https", url.host != nil
         else { return nil }
@@ -91,7 +91,7 @@ final class MiraDependencies {
     }
 }
 
-struct MiraSupabaseGenerationService: MiraGenerationService, MiraDealBriefService, MiraDeliveryService {
+struct MiraSupabaseGenerationService: MiraGenerationService, MiraDealBriefService, MiraDeliveryService, MiraDailyNoteService {
     let session: PairedDeviceSession
     var urlSession: URLSession = .shared
     var authorize: (@MainActor @Sendable (Bool) throws -> Void)?
@@ -160,6 +160,12 @@ struct MiraSupabaseGenerationService: MiraGenerationService, MiraDealBriefServic
             action: start ? "start" : "status", id: job.id, creatorID: session.creatorID,
             inputRevision: start ? job.revision : nil, input: start ? job.input : nil,
             consentVersion: start ? 1 : nil))
+    }
+
+    func dailyNote(id: UUID, input: MiraDailyNoteInput?) async throws -> MiraDailyNoteReply {
+        try await send(Request(action: input == nil ? "status" : "start", id: id, creatorID: session.creatorID,
+                               inputRevision: input == nil ? nil : 0, input: input,
+                               consentVersion: input == nil ? nil : 1))
     }
 
     private func send<Input: Encodable, Reply: Decodable>(_ body: Request<Input>) async throws -> Reply {

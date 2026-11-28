@@ -31,6 +31,7 @@ struct InstagramInsightsReport: Sendable, Equatable {
     let detail: [InstagramInsightMetric]      // richer in-app view
     let nudge: String?
     let fetchedAt: Date
+    var snapshots: [MiraInsightSnapshot]? = nil
 }
 
 /// Every surface state for the insights screen. There is deliberately no

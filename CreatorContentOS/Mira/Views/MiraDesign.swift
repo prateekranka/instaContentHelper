@@ -144,6 +144,14 @@ enum MiraE2Action {
     case interview
     case brandDoc
     case pick(String)
+    case post(String)
+
+    var isPick: Bool {
+        switch self {
+        case .pick, .post: true
+        case .interview, .brandDoc: false
+        }
+    }
 
     var asksInstagramPermission: Bool {
         if case .brandDoc = self { return false }

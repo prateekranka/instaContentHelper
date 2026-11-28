@@ -1,6 +1,6 @@
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type Screen } from 'e2e';
-import { launchArguments } from '../e2e.mira.config';
+import { passiveLaunchArguments as launchArguments } from '../e2e.mira.config';
 import { scrollToControl, waitForMobileApp } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';

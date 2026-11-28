@@ -52,7 +52,7 @@ struct MiraRootView: View {
                         Text("Use your Instagram results to pick ideas")
                             .font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
                             .accessibilityIdentifier("mira.instagramResults.question")
-                        Text("If you allow this, Mira can share your Instagram results with its AI providers when it makes your brand doc or picks an idea.")
+                        Text("If you allow this, Mira can share your Instagram results with its AI providers for your brand doc, Reel ideas and Mira noticed.")
                         Button("Allow") { chooseInstagramResults(true, prompt: prompt) }
                             .buttonStyle(MiraPrimaryStyle())
                             .accessibilityIdentifier("mira.instagramResults.allow")
@@ -129,6 +129,7 @@ struct MiraRootView: View {
             e2EntryTask?.cancel()
             if case .instagramResults = sheet { sheet = nil }
             store.resetE2Session()
+            store.resetHomeInsights()
         }
         .onChange(of: scenePhase) { _, phase in
             Task {
@@ -227,18 +228,119 @@ struct MiraRootView: View {
             onMake: { beginE2(.pick(todayRequest)) },
             onReviewAIConsent: { services.setAIConsentSheetPresented(true) },
             onContinue: { store.continueReel($0) },
-            onOpenDeal: { id in
-                store.navigate(.selectTab(.deals))
-                sheet = .deal(id)
-            },
+            onOpenDeal: { openHomeDeal($0) },
             onMakePick: { store.makePick() },
             onAnother: { beginE2(.pick("")) },
-            checkingInstagram: e2EntryTask != nil
+            checkingInstagram: e2EntryTask != nil,
+            insights: MiraHomeInsightsCards(state: store.homeInsightsState, scope: homeLoad.scope,
+                                            canPick: canPickFromHome, onPost: { usePostPattern($0) }),
+            dailyNote: homeLoad.allowsNote ? MiraDailyNoteCard(
+                state: store.dailyNoteState, scope: homeLoad.scope, work: store.dailyNoteWork,
+                allowsInstagram: allowsHomeInstagram, canPick: canPickFromHome, onAction: { openNoteAction($0) }) : nil
         )
+        .task(id: homeLoad) { await loadHomeInsights() }
         .navigationTitle("Home").navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             askBar("Ask Mira for a Reel idea", send: { startFromAsk($0) })
+        }
+    }
+
+    private struct HomeLoad: Equatable {
+        let scope: MiraDailyNoteScope?
+        let deviceToken: String?
+        let active: Bool
+        let allowsNote: Bool
+    }
+
+    private var homeFixture: MiraSupabaseGenerationService? {
+        guard DebugLaunchConfiguration.isEnabled("MCO_QA_E5_NOTE") else { return nil }
+        return MiraDependencies.todayFixture(for: "Demo E5 note")
+    }
+
+    private var homeLoad: HomeLoad {
+        let fixture = DebugLaunchFlags.forceFixtureUI
+        let session = fixture ? nil : liveSession
+        let scope = instagramCreatorID.map { creatorID in
+            MiraDailyNoteScope(workspaceID: session?.workspaceID ?? creatorID, creatorID: creatorID,
+                               memberID: session?.memberID ?? creatorID, day: MiraDailyNoteScope.utcDay)
+        }
+        let allowed = fixture ? homeFixture != nil : session != nil && services.aiConsent == .allowed
+        return HomeLoad(scope: scope, deviceToken: session?.deviceToken,
+                        active: store.location.tab == .home && store.location.path(.home).isEmpty && scenePhase == .active,
+                        allowsNote: allowed && !DebugLaunchConfiguration.isEnabled("MCO_QA_DISABLE_DAILY_NOTE"))
+    }
+
+    private var allowsHomeInstagram: Bool {
+        instagramCreatorID.flatMap { instagramPermission(for: $0) } == true
+    }
+
+    private var canPickFromHome: Bool {
+        if case .working = store.pickState { return false }
+        return e2EntryTask == nil
+    }
+
+    private func loadHomeInsights() async {
+        let load = homeLoad
+        guard load.active, let scope = load.scope else { return }
+        let fixture = homeFixture
+        let data: MiraHomeInsightData?
+        if case .ready(let owner, let existing) = store.homeInsightsState, owner == scope {
+            data = existing
+        } else {
+            let attempt = UUID()
+            store.sendHomeInsights(.load(scope, attempt))
+            let state: InstagramInsightsState?
+            if let fixture {
+                state = try? await MiraSupabaseInsightsService(session: fixture.session).fetchInsights()
+            } else {
+                state = await instagramState(session: liveSession)
+            }
+            guard !Task.isCancelled, load == homeLoad else { return }
+            if case .ready(let report) = state { data = report.homeInsightData }
+            else { data = nil }
+            store.sendHomeInsights(.received(attempt, data))
+        }
+        guard load.allowsNote, store.dailyNoteState.scope != scope,
+            let generation = fixture ?? ((try? service(nil)) as? MiraSupabaseGenerationService) else { return }
+        let snapshots = allowsHomeInstagram ? data?.snapshots ?? [] : []
+        store.startDailyNote(scope: scope, snapshots: snapshots, service: generation, canSend: {
+            homeLoad.scope == scope && homeLoad.deviceToken == load.deviceToken && homeLoad.allowsNote
+                && (snapshots.isEmpty || allowsHomeInstagram)
+        })
+    }
+
+    private func openHomeDeal(_ id: UUID) {
+        store.navigate(.selectTab(.deals))
+        sheet = .deal(id)
+    }
+
+    private func openNoteAction(_ action: MiraDailyNote.Action) {
+        guard homeLoad.allowsNote,
+            case .ready(let scope, let note, let usesInstagram) = store.dailyNoteState,
+            scope == homeLoad.scope, !usesInstagram || allowsHomeInstagram,
+            note.action == action, note.canAct(in: store.dailyNoteWork) else { return }
+        switch action.type {
+        case .makeIdea:
+            guard canPickFromHome else { return }
+            performE2(.pick("Give me a Reel idea for today."), report: nil)
+        case .continueReel:
+            if let id = action.id { store.continueReel(id) }
+        case .openDeal:
+            if let id = action.id { openHomeDeal(id) }
+        case .none:
+            break
+        }
+    }
+
+    private func usePostPattern(_ post: MiraInsightPost) {
+        guard canPickFromHome, let creatorID = instagramCreatorID,
+            case .ready(let scope, let data) = store.homeInsightsState,
+            scope == homeLoad.scope, data.posts.contains(post), !post.pattern.isEmpty else { return }
+        if instagramPermission(for: creatorID) == true {
+            performE2(.post(post.pattern), report: nil)
+        } else {
+            sheet = .instagramResults(.init(action: .post(post.pattern), creatorID: creatorID, report: nil))
         }
     }
 
@@ -390,7 +492,7 @@ struct MiraRootView: View {
         if case .interview = action {
             guard store.brandInterview == .idle else { return }
         }
-        if case .pick = action, case .working = store.pickState { return }
+        if action.isPick && !canPickFromHome { return }
         todayNeedsAIConsent = false
         let session = liveSession
         guard let creatorID = instagramCreatorID else {
@@ -423,6 +525,7 @@ struct MiraRootView: View {
         if instagramPermissionOverride == nil {
             store.saveInstagramResultsPermission(allowed, creatorID: prompt.creatorID)
         }
+        if case .post = prompt.action, !allowed { return }
         performE2(prompt.action, report: allowed ? prompt.report : nil)
     }
 
@@ -439,7 +542,9 @@ struct MiraRootView: View {
             } else {
                 fixtureRequest = ""
             }
-            let generation: any MiraGenerationService = demo ? fixtureGeneration(fixtureRequest) : try service(nil)
+            let generation: any MiraGenerationService
+            if let fixture = homeFixture, action.isPick { generation = fixture }
+            else { generation = demo ? fixtureGeneration(fixtureRequest) : try service(nil) }
             switch action {
             case .interview: break
             case .brandDoc:
@@ -448,14 +553,19 @@ struct MiraRootView: View {
                 }
                 store.generateBrandDocument(instagram: followers.flatMap { $0 >= 0 ? .init(followers: $0) : nil }, service: generation)
             case .pick(let text):
-                let pattern = report?.nudge.map { MiraBrandDocument.trimmed($0) }
+                let selected = text.isEmpty && allowsHomeInstagram ? store.pickState.postPattern : nil
+                let pattern = selected ?? report?.nudge.map { MiraBrandDocument.trimmed($0) }
                 store.startPick(request: MiraBrandDocument.trimmed(text), demo: demo,
                                 patterns: pattern.flatMap { MiraBrandDocument.validLine($0) ? [$0] : nil },
-                                service: generation)
+                                postPattern: selected, service: generation)
+                todayRequest = ""
+            case .post(let pattern):
+                store.startPick(request: "Make one like this", demo: demo, patterns: [pattern],
+                                postPattern: pattern, service: generation)
                 todayRequest = ""
             }
         } catch is AIConsentRequired {
-            if case .pick = action { todayNeedsAIConsent = true }
+            if action.isPick { todayNeedsAIConsent = true }
             else { services.setAIConsentSheetPresented(true) }
         } catch {
             store.reportError(error.localizedDescription)
@@ -851,6 +961,8 @@ struct MiraTodayHome: View {
     var onAnother: () -> Void = {}
     var checkingInstagram = false
     var legacyEntry = false
+    var insights: MiraHomeInsightsCards?
+    var dailyNote: MiraDailyNoteCard?
     @Environment(MiraDependencies.self) private var dependencies
     @Environment(\.scenePhase) private var scenePhase
     @State private var speech: (any MiraSpeechInputService)?
@@ -894,6 +1006,7 @@ struct MiraTodayHome: View {
             MiraHomePickCard(state: store.pickState, onMake: onMakePick, onAnother: onAnother)
                 .disabled(checkingInstagram)
         }
+        dailyNote
         switch store.homeFeed {
         case .empty:
             if store.pickState == .idle {
@@ -925,7 +1038,7 @@ struct MiraTodayHome: View {
             dealCards(deals)
         }
         consentRecovery
-        MiraInsightsView(compact: true)
+        insights
     }
 
     private func dealCards(_ deals: [MiraDeal]) -> some View {
