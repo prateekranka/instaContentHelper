@@ -1,7 +1,7 @@
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type Screen } from 'e2e';
 import { launchArguments } from '../e2e.mira.config';
-import { scrollToControl, tapVisibleControl, waitForMobileApp } from './mobile-support';
+import { scrollToControl, waitForMobileApp } from './mobile-support';
 
 const bundleId = process.env.MIRA_E2E_BUNDLE ?? 'com.prateekranka.creatorcontenthelper.codexverify';
 
@@ -32,40 +32,6 @@ async function openConsentStatus(screen: Screen, device: Device, override?: 'unk
   await expect(screen.getByText('Account connected', { exact: true })).toBeVisible();
 }
 
-async function tapMake(screen: Screen, expectedStatus: string) {
-  const status = screen.getByText(expectedStatus, { exact: true });
-  await scrollToControl(screen, status);
-  await expect(status).toBeVisible();
-  await screen.getByRole('button', 'Done', { exact: true }).tap();
-  const make = screen.getByTestId('mira.today.make');
-  if (await make.count()) {
-    await tapVisibleControl(screen, make);
-  } else {
-    await screen.getByTestId('mira.ask.bar').fill('Film something at home');
-    await screen.getByRole('button', 'Send to Mira', { exact: true }).tap();
-  }
-}
-
-test('Undecided AI permission opens the question from Home', async ({ app, screen, device }) => {
-  await openConsentStatus(screen, device, 'unknown');
-  await tapMake(screen, 'Not decided yet');
-  await expect(screen.getByText('AI data permission', { exact: true })).toBeVisible();
-  await app.screenshot('ai-permission-question');
-});
-
-test('Declined AI permission shows a message and opens review from Home', async ({ app, screen, device }) => {
-  await openConsentStatus(screen, device, 'declined');
-  await tapMake(screen, 'Not allowed yet');
-  const message = screen.getByTestId('mira.today.aiPermissionNeeded');
-  const review = screen.getByRole('button', 'Review AI permission', { exact: true });
-  await expect(message).toBeVisible();
-  await expect(review).toBeVisible();
-  await app.screenshot('ai-permission-needed');
-  await tapVisibleControl(screen, review);
-  await expect(screen.getByText('AI data permission', { exact: true })).toBeVisible();
-  await app.screenshot('ai-permission-review');
-});
-
 test('Saved AI permission is allowed on a normal launch', async ({ app, screen, device }) => {
   await openConsentStatus(screen, device);
   const allowed = screen.getByText('Allowed', { exact: true });
@@ -74,17 +40,12 @@ test('Saved AI permission is allowed on a normal launch', async ({ app, screen, 
   await app.screenshot('profile-ai-permission-allowed');
 });
 
-test('S3 allowed override shows Allowed in Profile', async ({ app, screen, device }) => {
-  await openConsentStatus(screen, device, 'allowed');
-  const allowed = screen.getByText('Allowed', { exact: true });
-  await scrollToControl(screen, allowed);
-  await expect(allowed).toBeVisible();
-  await app.screenshot('consent-allowed-override');
-});
-
-test('S3 earlier permission requires review again', async ({ app, screen, device }) => {
-  await openConsentStatus(screen, device, 'out-of-date');
-  await tapMake(screen, 'Review needed');
-  await expect(screen.getByText('AI data permission', { exact: true })).toBeVisible();
-  await app.screenshot('consent-out-of-date');
-});
+for (const override of ['unknown', 'allowed', 'declined', 'out-of-date'] as const) {
+  test(`M15 live Profile uses saved consent with the debug ${override} override`, async ({ app, screen, device }) => {
+    await openConsentStatus(screen, device, override);
+    const allowed = screen.getByText('Allowed', { exact: true });
+    await scrollToControl(screen, allowed);
+    await expect(allowed).toBeVisible();
+    await app.screenshot(`live-permission-ignores-${override}-override`);
+  });
+}

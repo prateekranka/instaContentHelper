@@ -124,7 +124,7 @@ struct MiraRootView: View {
             get: { store.location.tab }, set: { store.navigate(.selectTab($0)) })
         return TabView(selection: selection) {
             NavigationStack(path: tabPath(.home)) {
-                home.navigationDestination(for: MiraRoute.self, destination: destination)
+                home.navigationDestination(for: MiraRoute.self) { destination($0, tab: .home) }
             }.tabItem { Label("Home", systemImage: "house") }.tag(MiraMainTab.home)
             NavigationStack {
                 MiraPage {
@@ -141,7 +141,7 @@ struct MiraRootView: View {
                 MiraMyBrandView(
                     store: store, onProfile: { sheet = .profile }, onBrief: { sheet = .brief($0) },
                     onOpen: { open($0, tab: .myBrand) }, onDelete: delete)
-                .navigationDestination(for: MiraRoute.self, destination: destination)
+                .navigationDestination(for: MiraRoute.self) { destination($0, tab: .myBrand) }
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     askBar("Ask Mira for a Reel idea", send: { startFromAsk($0) })
@@ -221,16 +221,16 @@ struct MiraRootView: View {
     private func open(_ id: UUID, tab: MiraMainTab) {
         store.open(id, tab: tab)
     }
-    @ViewBuilder private func destination(_ route: MiraRoute) -> some View {
+    @ViewBuilder private func destination(_ route: MiraRoute, tab: MiraMainTab) -> some View {
         switch route {
         case .project(let id):
             MiraProjectView(
-                store: store, projectID: id, onSheet: { sheet = $0 }, onGenerate: generate,
+                store: store, projectID: id, tab: tab, onSheet: { sheet = $0 }, onGenerate: generate,
                 onReconnect: reconnect, onCancel: cancel)
                 .task(id: store.project(id)?.storyboard?.id) { watchPictures(id) }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if let project = store.project(id) {
-                        editorAskBar(project)
+                        editorAskBar(project, tab: tab)
                     }
                 }
         case .todayCards(let id):
@@ -254,11 +254,11 @@ struct MiraRootView: View {
                 .task { reconnectCards(id, reportError: false) }
         case .shooting(let id):
             MiraShootingView(
-                store: store, projectID: id, onAsk: { shot in sheet = .ask(id, .reviseShot, shot) },
+                store: store, projectID: id, tab: tab, onAsk: { shot in sheet = .ask(id, .reviseShot, shot) },
                 onDone: { push(.done(id)) }, onWords: { showWords(id) })
                 .task(id: store.project(id)?.storyboard?.id) { watchPictures(id) }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if let project = store.project(id), let board = project.storyboard, !board.shots.isEmpty {
+                    if let project = store.project(id), project.canFilm, let board = project.storyboard, !board.shots.isEmpty {
                         let index = min(max(0, project.shotIndex), board.shots.count - 1)
                         let shot = board.shots[index]
                         askBar("Ask Mira to change a shot") { sheet = .ask(id, .reviseShot, shot.id, note: $0) }
@@ -286,8 +286,8 @@ struct MiraRootView: View {
                 }
         }
     }
-    private func editorAskBar(_ project: MiraProject) -> some View {
-        let section = store.editorScreen(project)
+    private func editorAskBar(_ project: MiraProject, tab: MiraMainTab) -> some View {
+        let section = store.editorScreen(project, tab: tab)
         let placeholder = section == .shots ? "Ask Mira to change a shot"
             : project.script == nil ? "Ask Mira about this Reel" : "Ask Mira to change the words"
         return askBar(placeholder) { request in
@@ -323,7 +323,7 @@ struct MiraRootView: View {
     }
     private func service(_ id: UUID?, requiresConsent: Bool = true) throws -> any MiraGenerationService {
         try dependencies.generationService(
-            for: id.flatMap(store.project), appState: appState, services: services,
+            for: id.flatMap(store.project), appState: appState,
             requiresConsent: requiresConsent)
     }
     private func generate(
@@ -338,18 +338,19 @@ struct MiraRootView: View {
     }
     private func retryCard(_ id: UUID, cardID: UUID, request: String? = nil, language: MiraLanguage? = nil) {
         do {
-            store.retryCard(id, cardID: cardID, request: request, language: language, service: try service(id))
+            store.retryCard(id, cardID: cardID, request: request, language: language,
+                            service: try service(id, requiresConsent: false))
         } catch { store.reportError(error.localizedDescription) }
     }
     private func reconnectCards(_ id: UUID, reportError: Bool) {
         guard let project = store.project(id),
             project.hasWorkingCards || project.shotPictureSources?.isEmpty == false
         else { return }
-        do { store.reconnectCards(id, service: try service(id)) }
+        do { store.reconnectCards(id, service: try service(id, requiresConsent: false)) }
         catch { if reportError { store.reportError(error.localizedDescription) } }
     }
     private func reconnect(_ id: UUID) {
-        do { store.reconnect(id, service: try service(id)) } catch {
+        do { store.reconnect(id, service: try service(id, requiresConsent: false)) } catch {
             store.reportError(error.localizedDescription)
         }
     }
@@ -898,6 +899,7 @@ struct MiraTodayCardsView: View {
             if previous != nil { Text("Mira is making a new version. About 1 minute.").font(.title3) }
         case .failed(_, let stopped):
             Text(stopped ? "This idea was stopped." : "This idea did not load.").font(.title3)
+            if let reason = card.job.error { Text(reason).font(.callout) }
             Button(state.nextAction.title) { onRetry(card.id) }.buttonStyle(MiraPrimaryStyle())
         case .needsUpdate:
             Button(state.nextAction.title) { onRetry(card.id) }.buttonStyle(MiraPrimaryStyle())

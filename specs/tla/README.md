@@ -8,7 +8,7 @@ Each run stores its TLC output and traces under `work/tla-results` by default.
 
 | Module | Checks |
 | --- | --- |
-| `MiraReel` | Approval before filming, correct stage and work labels, Stop, and the next step for Your words. |
+| `MiraReel` | Approval before filming, review of Shots after Words, correct stage and work labels, Stop, and the next step for Your words. Undo preserves progress on the same storyboard. A proposal from the editor needs an explicit review action. |
 | `MiraJobs` | Allowed transitions, lease budget, Stop before admission, and result staging without another attempt. `MiraJobs-Refusal.cfg` checks safe refusal of a short lease. |
 | `MiraShotPictures` | Reservation cap, release before dispatch, one call per shot, late upload recovery, and separate text slots. |
 | `MiraTodayLimit` | Three active jobs at most, honest work labels, and eventual completion without a manual reconnect. |

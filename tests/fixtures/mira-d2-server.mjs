@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import recordedToday from './mira-recorded-today.json' with { type: 'json' };
 
 const port = Number(process.env.MIRA_D2_FIXTURE_PORT ?? 18796);
 const origin = process.env.MIRA_E2E_D2_ENDPOINT;
@@ -10,14 +11,18 @@ function output(input, card) {
   const language = input.profile.language;
   const { location, filmingMinutes } = input.constraints;
   const title = ['A quiet breakfast', 'A table by the window', 'A short walk'][card - 1];
-  const script = {
-    id: randomUUID(), hook: 'This is how I start the day.', spoken: 'Here is one thing I do every morning.',
+  const recorded = input.request === 'Demo D2 pictures' && card === 1;
+  const script = recorded ? { ...recordedToday.script, id: randomUUID(), language } : {
+    id: randomUUID(), hook: 'Here’s how I start the day.',
+    spoken: 'Here’s how I start the day.\nHere is one thing I do every morning.',
     caption: 'My morning routine.', durationSeconds: 15, language,
   };
-  const shots = ['Set the bowl down', 'Add the fruit', 'Show the bowl'].map(action => ({
+  const words = ["Here's how I start the day.", 'Here is one thing I do every morning.', ''];
+  const shots = recorded ? recordedToday.storyboard.shots.map(shot => ({ ...shot, id: randomUUID() }))
+    : ['Set the bowl down', 'Add the fruit', 'Show the bowl'].map((action, index) => ({
     id: randomUUID(), purpose: action, editedSeconds: 5, recordingSeconds: 7, location,
     props: 'Bowl and fruit', placement: 'Put the phone on the table.', distance: 'One arm away',
-    framing: 'Hands and bowl', frameType: 'closeUp', action, words: action, voiceover: false,
+    framing: 'Hands and bowl', frameType: 'closeUp', action, words: words[index], voiceover: false,
     onScreenText: '', simplerAlternative: 'Keep the phone still.',
   }));
   return {

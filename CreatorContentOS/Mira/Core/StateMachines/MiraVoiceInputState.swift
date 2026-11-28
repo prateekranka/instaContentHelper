@@ -2,7 +2,7 @@ import Foundation
 
 enum MiraVoiceInputEvent {
     case start(UUID), recording(UUID), tick(UUID, Int), denied(UUID), failed(UUID, String)
-    case stop, finished(String?), permissionsGranted
+    case stop, finished(String?), permissionsRequestable
 }
 
 enum MiraVoiceInputState: Equatable {
@@ -21,7 +21,7 @@ enum MiraVoiceInputState: Equatable {
         case (.askingPermission(let id), .failed(let reply, let reason)) where id == reply: .failed(reason)
         case (.recording(let id, _), .tick(let reply, let elapsed)) where id == reply:
             .recording(id, elapsed: elapsed)
-        case (.denied, .permissionsGranted): .idle
+        case (.denied, .permissionsRequestable): .idle
         case (.askingPermission, .stop): .idle
         case (.recording, .stop): .finishing
         case (.finishing, .finished(let reason)): reason.map { .failed($0) } ?? .idle

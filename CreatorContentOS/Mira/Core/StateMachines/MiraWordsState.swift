@@ -2,7 +2,7 @@ import Foundation
 
 enum MiraWordsEvent {
     case appeared, change, note(String), cancelChange, send(String), approve, reviewPlan
-    case useProposal, keepWords, retry, reconnect, stop, received, requestStarted
+    case useProposal, keepWords, retry, reconnect, stop, received, requestStarted(UUID?)
     case shotsApplied, shotsRejected
 }
 
@@ -15,6 +15,7 @@ enum MiraWordsState {
     case reviewing
     case changing(String)
     case opening
+    case updatingShots(UUID)
     case shotUpdateFailed(UUID)
     case waiting
     case waitingToRetry
@@ -41,14 +42,17 @@ enum MiraWordsState {
             if job.input.operation == .reviseScript, let script = job.output?.script {
                 return .proposal(script)
             }
-            if project.isApproved, job.input.operation == .reviseStoryboard, job.output?.storyboard != nil {
-                if case .shotUpdateFailed(let id) = self, id == job.id { return .needsShots }
+            if case .updatingShots(let id) = self, id == job.id, project.isApproved,
+                job.input.operation == .reviseStoryboard, job.output != nil {
                 return .applyingShots(job)
             }
         }
+        if case .shotUpdateFailed(let id) = self, id == project.job?.id, project.isApproved {
+            return .needsShots
+        }
+        if project.isApproved, !project.canFilm { return .needsShots }
         if case .changing = self { return self }
-        if project.isApproved, project.storyboard != nil, project.storyboardIsStale { return .needsShots }
-        if let job = project.job, [.reviseScript, .reviseStoryboard].contains(job.input.operation) {
+        if let job = project.job, job.input.operation == .reviseScript {
             switch request {
             case .failed, .stopped: return .retry(job)
             default: break
@@ -59,18 +63,17 @@ enum MiraWordsState {
 
     func handle(_ event: MiraWordsEvent) -> (Self, MiraWordsEffect?)? {
         switch (self, event) {
-        case (.opening, .appeared), (_, .requestStarted): (.reviewing, nil)
+        case (.opening, .appeared), (_, .requestStarted(nil)): (.reviewing, nil)
+        case (_, .requestStarted(let id?)): (.updatingShots(id), nil)
         case (_, .appeared): (self, nil)
-        case (.reviewing, .change), (.ready, .change), (.needsShots, .change), (.retry, .change):
+        case (.reviewing, .change), (.ready, .change):
             (.changing(""), nil)
         case (.changing, .note(let text)): (.changing(text), nil)
         case (.changing, .cancelChange): (.reviewing, nil)
-        case (.changing, .send(let text)), (.reviewing, .send(let text)), (.ready, .send(let text)),
-            (.needsShots, .send(let text)), (.retry, .send(let text)):
+        case (.changing, .send(let text)), (.reviewing, .send(let text)), (.ready, .send(let text)):
             text.isEmpty ? nil : (self, .generate(.reviseScript, text, nil, nil))
-        case (.reviewing, .approve), (.retry, .approve), (.changing, .approve): (.reviewing, .approve)
-        case (.ready, .reviewPlan), (.retry, .reviewPlan), (.changing, .reviewPlan):
-            (.opening, .openPlan)
+        case (.reviewing, .approve): (.reviewing, .approve)
+        case (.ready, .reviewPlan): (.opening, .openPlan)
         case (.proposal, .useProposal): (.reviewing, .applyWords)
         case (.proposal, .keepWords), (.retry, .keepWords): (.reviewing, .clearProposal)
         case (.retry(let job), .retry):
@@ -96,7 +99,7 @@ enum MiraWordsState {
         case .retry: .retry
         case .needsShots: .retryShots
         case .ready: .reviewPlan
-        case .opening, .stopping, .applyingShots: .wait
+        case .opening, .stopping, .applyingShots, .updatingShots: .wait
         case .shotUpdateFailed: .retryShots
         }
     }

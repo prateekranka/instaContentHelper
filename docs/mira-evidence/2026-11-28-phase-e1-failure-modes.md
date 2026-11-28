@@ -11,3 +11,11 @@
 | Shot list | The summary misses timing, location, props or audio. The last shot is hidden. A stale or unapproved plan can start filming. | Check the summary and last shot on one scroll page. Use the shooting button only with a current plan and approved words. Repeat with invalidated approval or an out-of-date plan. |
 | Data and runtime settings | Build or install loses saved projects, consent or Instagram. Required runtime keys are absent. | Build both targets. Check only whether the five Info.plist values are present. Keep checks run before the in-place install, after it and after testing. |
 | Cost and regression | A live retry starts duplicate text requests or exceeds the picture cap. | Reserve each live batch in the request ledger. Count observed pictures and retain the ledger for any test-only retry. Run B4 and B5 with sample data only. |
+
+## Astra integration
+
+| Surface | Failure mode | Check |
+| --- | --- | --- |
+| Tab state | Opening Shots or Shooting from Home changes the remembered My Brand section. Deals overwrites a saved tab on relaunch, or old Today and Projects values lose their routes. | Check the merged location transitions and saved fields. Use the Astra M16 journey with Home and My Brand. Check Deals and old saves with the E1 navigation scenarios. |
+| Words and filming | An E1 shortcut applies an unreviewed proposal, accepts mismatched dialogue, or opens Shooting before the approved plan. A rejected update loses its retry. | Run the Reel model and check the combined Words, Shots and Shooting routes. Retain the Astra approval and retry scenarios. |
+| Request and recovery | A retry loses consent or ownership checks, sample cleanup reaches a live request, or Home insights and Ask Mira bypass the shared recovery state. | Check production and fixture entry points after merging. Retain the Astra consent, account, sample guard, microphone and insights scenarios. |

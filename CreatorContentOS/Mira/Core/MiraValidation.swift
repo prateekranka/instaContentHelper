@@ -1,6 +1,23 @@
 import Foundation
 
 enum MiraValidation {
+    static func matchesDialogue(_ board: MiraStoryboard, script: MiraScript) -> Bool {
+        func normalize(_ text: String) -> String {
+            text.replacingOccurrences(of: "[‘’]", with: "'", options: .regularExpression)
+                .replacingOccurrences(of: "[“”]", with: "\"", options: .regularExpression)
+                .replacingOccurrences(
+                    of: #"[\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]+"#,
+                    with: " ", options: .regularExpression)
+                .trimmingCharacters(in: CharacterSet(charactersIn: " "))
+        }
+        let hook = normalize(script.hook)
+        let spoken = normalize(script.spoken)
+        let expected = spoken.utf16.starts(with: hook.utf16)
+            ? spoken : [hook, spoken].filter { !$0.isEmpty }.joined(separator: " ")
+        let actual = board.shots.map { normalize($0.words) }.filter { !$0.isEmpty }.joined(separator: " ")
+        return !board.shots.isEmpty && actual.utf16.elementsEqual(expected.utf16)
+    }
+
     static func validate(_ output: MiraOutput, for operation: MiraOperation, input: MiraGenerationInput?)
         throws
     {

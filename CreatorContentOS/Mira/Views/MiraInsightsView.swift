@@ -72,6 +72,10 @@ struct MiraInsightsView: View {
             info("Insights need a Professional account", "Switch your Instagram to a Creator or Business account to see your numbers here.")
         case .permissionNeeded:
             info("Permission needed", "Let Mira read your numbers when you connect Instagram.")
+            if case .loaded = state {
+                Button(state.nextAction.title) { Task { await connect() } }
+                    .buttonStyle(MiraPrimaryStyle())
+            }
         case .noData:
             info("Not available yet", "No insights yet. Check back after your next post goes live.")
         case .ready(let report):
@@ -200,6 +204,10 @@ struct MiraInsightsView: View {
     private func connect() async {
         let attempt = UUID()
         guard transition(.connect(attempt)) else { return }
+        if DebugLaunchFlags.forceFixtureUI {
+            transition(.failed(attempt, "Instagram connection is unavailable in the sample library."))
+            return
+        }
         let oauthState = attempt.uuidString
         guard InstagramOAuth.isConfigured, let url = InstagramOAuth.authorizeURL(state: oauthState) else {
             transition(.failed(attempt, "Instagram connection isn't configured in this build yet."))
