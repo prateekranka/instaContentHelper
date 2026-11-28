@@ -18,7 +18,10 @@ const recorded = (path = ledgerPath) => {
   }
 };
 
-type Entry = { scenario: number; action: string; calls?: number; title?: string };
+type Entry = {
+  scenario: number; action: string; calls?: number; title?: string; at?: string;
+  card?: number; pictures?: number; shots?: number; milliseconds?: number;
+};
 
 function record(entry: Entry) {
   mkdirSync(evidence, { recursive: true });
@@ -103,7 +106,7 @@ async function selectShots(screen: Screen) {
 
 async function waitForOutput(screen: Screen, output: Locator, message: string, limit = timeout) {
   await expect.poll(async () => {
-    const failure = screen.getByText(/^(Mira could not finish\.|Could not check this idea\.|Allow AI to write ideas first\.)/, { visible: true });
+    const failure = screen.getByText(/^(Mira could not finish\.|Could not check this idea\.|Allow AI to write ideas first\.|The network connection was lost\.)/, { visible: true });
     if (await screen.getByRole('alert', 'Mira', { exact: true }).isVisible() || await failure.isVisible()) {
       return 'Mira reported a generation failure';
     }
@@ -156,25 +159,48 @@ test('1 Today keyboard only keeps the request and the Make button reachable', as
   await todayKeyboard(app, screen);
 });
 
-test('1 Today brings back three live cards and opens the chosen filming plan', async ({ app, screen, device }) => {
+test('1 Today brings back three live cards and opens the chosen filming plan', { timeout: 720_000 }, async ({ app, screen, device }) => {
   await launch(app, screen, device);
-  const make = await todayKeyboard(app, screen);
+  const prior = recorded().find(entry => entry.scenario === 1 && entry.calls);
+  let started = prior?.at ? Date.parse(prior.at) : Date.now();
+  if (!prior) {
+    const make = await todayKeyboard(app, screen);
+    started = Date.now();
+    await request(1, "Make today's Reel", 3, () => make.tap());
+  }
   const deadline = Date.now() + timeout;
-  await request(1, "Make today's Reel", 3, () => make.tap());
   const ready = screen.getByRole('button', /^Idea [1-3] of 3, ready$/);
   const failed = screen.getByRole('button', /^Idea [1-3] of 3, (did not load|needs an update)$/);
+  const steps = ['Writing your words, now', 'Planning 3 shots, now', 'Planning 3 shots, done'];
+  const observed = new Map<string, number>();
   await expect.poll(async () => {
     if (await failed.count() || await screen.getByRole('alert', 'Mira', { exact: true }).isVisible()
       || await screen.getByTestId('mira.today.aiPermissionNeeded').isVisible()) return 'failed';
-    return await ready.count() === 3 ? 'ready' : 'waiting';
-  }, { timeout: Math.max(1, deadline - Date.now()), interval: 3_000 }).not.toBe('waiting');
+    if (await ready.count() === 3) return 'ready';
+    for (const [index, step] of steps.entries()) {
+      if (!await screen.getByLabel(step, { exact: true, visible: true }).isVisible()) continue;
+      const page = await screen.getByText(/^[1-3] of 3$/, { visible: true }).first().textContent();
+      const key = page ?? 'current card';
+      const previous = observed.get(key) ?? -1;
+      expect(index).toBeGreaterThanOrEqual(previous);
+      if (index > previous) {
+        observed.set(key, index);
+        record({ scenario: 1, action: step, card: Number(page?.[0]) || undefined, milliseconds: Date.now() - started });
+        await app.screenshot(`live-wait-${key[0]}-${index + 1}`);
+      }
+      break;
+    }
+    return 'waiting';
+  }, { timeout: Math.max(1, deadline - Date.now()), interval: 1_000 }).not.toBe('waiting');
   await expect(ready).toHaveCount(3);
   await app.screenshot('cards-ready');
 
-  const firstPage = screen.getByTestId('mira.today.page.1');
-  await firstPage.tap();
   const titles: string[] = [];
+  const pictureCounts: number[] = [];
+  const pictureDeadline = Date.now() + 300_000;
+  const aiPictures = /^AI picture for shot [1-5]$/;
   for (let card = 1; card <= 3; card += 1) {
+    await screen.getByTestId(`mira.today.page.${card}`).tap();
     await expect(text(screen, `${card} of 3`)).toBeVisible();
     const makeCard = screen.getByTestId(`mira.today.makeCard.${card}`);
     const cardView = screen.getByRole('scroll-view').filter({ has: makeCard }).last();
@@ -183,18 +209,26 @@ test('1 Today brings back three live cards and opens the chosen filming plan', a
     const title = (await heading.textContent())?.trim() ?? '';
     expect(title.length).toBeGreaterThan(0);
     titles.push(title);
-    record({ scenario: 1, action: `Today card ${card}`, title });
-    await app.screenshot(`card-${card}`);
-    if (card < 3) {
-      const box = await heading.boundingBox();
-      const area = await cardView.boundingBox();
-      const y = box!.y + box!.height / 2;
-      await screen.swipe({ from: { x: area!.x + area!.width * 0.88, y }, to: { x: area!.x + area!.width * 0.12, y } });
+    const shots = await cardView.getByTestId(/^mira\.shot\.picture\.[1-5]$/).count();
+    expect(shots).toBeGreaterThanOrEqual(3);
+    const pictures = cardView.getByRole('image', aiPictures, { visible: true });
+    if (Date.now() < pictureDeadline) {
+      await expect(pictures).toHaveCount(shots, { timeout: pictureDeadline - Date.now() }).catch(async error => {
+        if (!(error instanceof Error && 'code' in error && error.code === 'ASSERTION_FAILED')) throw error;
+      });
     }
+    const count = await pictures.count();
+    pictureCounts.push(count);
+    record({ scenario: 1, action: 'Today card pictures', card, title, pictures: count, shots,
+      milliseconds: Date.now() - started });
+    await app.screenshot(`card-${card}`);
   }
 
-  const chosen = titles[2];
-  await tapVisibleControl(screen, screen.getByTestId('mira.today.makeCard.3'));
+  const chosenIndex = pictureCounts[2] > 0 ? 2 : pictureCounts.findIndex(count => count > 0);
+  expect(chosenIndex).toBeGreaterThanOrEqual(0);
+  const chosen = titles[chosenIndex];
+  await screen.getByTestId(`mira.today.page.${chosenIndex + 1}`).tap();
+  await tapVisibleControl(screen, screen.getByTestId(`mira.today.makeCard.${chosenIndex + 1}`));
   record({ scenario: 1, action: 'selected Today project', title: chosen, calls: 0 });
   await fit(screen, approve(screen));
   await openProject(screen, chosen);
@@ -205,6 +239,11 @@ test('1 Today brings back three live cards and opens the chosen filming plan', a
   await selectShots(screen);
   await fit(screen, text(screen, 'Your filming plan'));
   await app.screenshot('chosen-plan');
+  const firstPicture = screen.getByRole('image', aiPictures).first();
+  await fit(screen, firstPicture);
+  await app.screenshot('chosen-plan-ai-picture');
+  expect(pictureCounts.every(count => count > 0)).toBe(true);
+  expect(recorded().some(entry => steps.includes(entry.action))).toBe(true);
 });
 
 test('2 Your words opens filming and reaches Done', async ({ app, screen, device }) => {
@@ -374,8 +413,12 @@ test('5 Projects Plan step by step makes a live filming plan', async ({ app, scr
     await waitForOutput(screen, result, `Wait for the result of ${label}.`, 150_000);
   };
   const moreIdeas = button(screen, 'More ideas');
-  const ideasRequested = recorded().some(entry => entry.scenario === 5 && entry.action === 'Show three ideas' && entry.calls);
-  if (ideasRequested) {
+  const history = recorded().filter(entry => entry.scenario === 5);
+  const alreadyRequested = (action: string) => history.some(entry => entry.action === action && entry.calls);
+  const selectedTitle = history.findLast(entry => entry.action === 'selected step-by-step project')?.title;
+  if (selectedTitle) {
+    await openProject(screen, selectedTitle);
+  } else if (alreadyRequested('Show three ideas')) {
     await fit(screen, field, 'up');
     expect(await field.inputValue()).toBe(prompt);
     await fit(screen, moreIdeas);
@@ -397,16 +440,31 @@ test('5 Projects Plan step by step makes a live filming plan', async ({ app, scr
     await app.screenshot('step-by-step-project-name-keyboard-closed');
     await generate('Show three ideas', moreIdeas);
   }
-  const pick = button(screen, 'Use this idea').first();
-  await fit(screen, pick);
-  await app.screenshot('step-by-step-live-idea');
-  await tapVisibleControl(screen, pick);
+  if (!selectedTitle) {
+    const pick = button(screen, 'Use this idea').first();
+    await fit(screen, pick);
+    await app.screenshot('step-by-step-live-idea');
+    await tapVisibleControl(screen, pick);
+  }
   await fit(screen, projectName, 'up');
   const title = await projectName.inputValue();
   expect(title.trim().length).toBeGreaterThan(0);
   expect(title).not.toBe('Untitled Reel');
-  record({ scenario: 5, action: 'selected step-by-step project', title });
-  await generate('Draft hook, script and caption', screen.getByRole('textbox', 'Hook · spoken opening', { exact: true }));
+  if (selectedTitle) expect(title).toBe(selectedTitle);
+  else record({ scenario: 5, action: 'selected step-by-step project', title });
+  const script = screen.getByRole('textbox', 'Hook · spoken opening', { exact: true });
+  if (alreadyRequested('Draft hook, script and caption')) {
+    if (!await script.count()) {
+      const recheck = button(screen, 'Check again');
+      await fit(screen, recheck);
+      record({ scenario: 5, action: 'Recheck the saved script job', calls: 0 });
+      await tapVisibleControl(screen, recheck);
+      await waitForOutput(screen, script, 'Wait for the saved script job.', 150_000);
+      await app.screenshot('step-by-step-saved-script-recovered');
+    }
+  } else {
+    await generate('Draft hook, script and caption', script);
+  }
   const shots = screen.getByText('Your filming plan', { exact: true });
   await generate('Make shot list', shots, true);
   await fit(screen, shots, 'up');

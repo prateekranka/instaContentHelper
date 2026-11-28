@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension EnvironmentValues {
+    @Entry var miraPictureUnavailable: (UUID, UUID, UUID, URL) -> Void = { _, _, _, _ in }
+}
+
 struct MiraStoryboardView: View {
     var store: MiraStore
     var projectID: UUID
@@ -31,7 +35,10 @@ struct MiraStoryboardView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Shot \(index + 1)").font(.largeTitle.bold())
                             .accessibilityAddTraits(.isHeader)
-                        MiraShotPicture(shot: shot, number: index + 1)
+                        MiraShotPicture(
+                            shot: shot, number: index + 1,
+                            picture: store.picture(in: project, boardID: board.id, shotID: shot.id),
+                            source: (project.id, board.id))
                         Text(shot.purpose).font(.title3.weight(.semibold))
                         if project.needsReview.contains(shot.id) {
                             Text("Changed shot · review before filming").font(.headline)
@@ -155,7 +162,10 @@ struct MiraShootingView: View {
                 Text("Shot \(index+1) of \(board.shots.count)").font(.title2)
                 Text("\(board.shots.filter{project.filmed.contains($0.id)}.count) filmed by you").font(
                     .callout)
-                MiraShotPicture(shot: shot, number: index + 1)
+                MiraShotPicture(
+                    shot: shot, number: index + 1,
+                    picture: store.picture(in: project, boardID: board.id, shotID: shot.id),
+                    source: (project.id, board.id))
                 Text(index == 0 ? "Say your opening line" : (index == board.shots.count - 1 ? "Say your last line" : "Say the next part"))
                     .font(.title.bold())
                 Text("Film for about \(shot.recordingSeconds) seconds").monospacedDigit()
@@ -277,12 +287,45 @@ struct MiraShotPicture: View {
     let shot: MiraShot
     let number: Int
     var showSeconds = false
+    var picture: MiraShotPictureState? = nil
+    var source: (project: UUID, board: UUID)? = nil
+    @Environment(\.miraPictureUnavailable) private var pictureUnavailable
     @ScaledMetric(relativeTo: .body) private var thumbnailWidth = 49.0
 
     var body: some View {
         let width = showSeconds ? min(thumbnailWidth, 68) : 88
         VStack(spacing: 5) {
-            Canvas { context, size in
+            Group {
+                switch picture {
+                case .ready(let url, _):
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFit()
+                                .accessibilityLabel("AI picture for shot \(number)")
+                        case .failure:
+                            drawing.onAppear {
+                                if let source { pictureUnavailable(source.project, source.board, shot.id, url) }
+                            }
+                        default: drawing
+                        }
+                    }
+                    .id(url)
+                case .pending, .refreshing, .failed, nil: drawing
+                }
+            }
+            .frame(width: width, height: width * 1.5)
+            .clipShape(.rect(cornerRadius: 8))
+            if showSeconds { Text("\(shot.editedSeconds)s").font(.body.monospacedDigit()) }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Shot \(number), \(shot.pictureType.label), \(shot.editedSeconds) seconds")
+        .accessibilityAddTraits(.isImage)
+        .accessibilityIdentifier("mira.shot.picture.\(number)")
+    }
+
+    private var drawing: some View {
+        Canvas { context, size in
                 let rect = CGRect(origin: .zero, size: size)
                 let phone = Path(roundedRect: rect.insetBy(dx: 1.5, dy: 1.5), cornerRadius: size.width * 0.17)
                 context.fill(phone, with: .color(MiraTheme.paper))
@@ -298,13 +341,9 @@ struct MiraShotPicture: View {
                 context.stroke(figure.applying(transform), with: .color(MiraTheme.ink),
                                style: StrokeStyle(lineWidth: max(1.7, size.width * 0.035),
                                                   lineCap: .round, lineJoin: .round))
-            }.frame(width: width, height: width * 1.5)
-            if showSeconds { Text("\(shot.editedSeconds)s").font(.body.monospacedDigit()) }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Shot \(number), \(shot.pictureType.label), \(shot.editedSeconds) seconds")
+        .accessibilityLabel("Drawn frame for shot \(number)")
         .accessibilityAddTraits(.isImage)
-        .accessibilityIdentifier("mira.shot.picture.\(number)")
     }
 
     private var figure: Path {

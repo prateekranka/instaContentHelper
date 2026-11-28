@@ -15,6 +15,10 @@ struct MiraRootView: View {
     var body: some View {
         libraryContent
         .tint(MiraTheme.accent)
+        .environment(\.miraPictureUnavailable, { id, boardID, shotID, url in
+            guard let project = store.project(id), let generation = try? service(id) else { return }
+            store.refreshPicture(in: project, boardID: boardID, shotID: shotID, url: url, service: generation)
+        })
         .sheet(item: $sheet) { value in
             NavigationStack {
                 switch value {
@@ -168,14 +172,11 @@ struct MiraRootView: View {
         todayNeedsAIConsent = false
         do {
             let demo = DebugLaunchFlags.forceFixtureUI
+            let request = todayRequest.trimmingCharacters(in: .whitespacesAndNewlines)
             let generation: any MiraGenerationService = demo
-                ? MiraFixtureGenerationService(
-                    failTodayCard: todayRequest == "Demo card failure",
-                    slowTodayCards: todayRequest == "Demo slow cards")
+                ? fixtureGeneration(request)
                 : try service(nil)
-            let id = store.startToday(
-                request: todayRequest.trimmingCharacters(in: .whitespacesAndNewlines),
-                demo: demo, service: generation)
+            let id = store.startToday(request: request, demo: demo, service: generation)
             todayRequest = ""
             open(id, tab: .today)
         } catch is AIConsentRequired {
@@ -183,6 +184,11 @@ struct MiraRootView: View {
         } catch {
             store.reportError(error.localizedDescription)
         }
+    }
+    private func fixtureGeneration(_ request: String) -> any MiraGenerationService {
+        if let fixture = MiraDependencies.todayFixture(for: request) { return fixture }
+        return MiraFixtureGenerationService(
+            failTodayCard: request == "Demo card failure", slowTodayCards: request == "Demo slow cards")
     }
     private func open(_ id: UUID, tab: MiraTab) {
         store.open(id, tab: tab)
@@ -193,6 +199,7 @@ struct MiraRootView: View {
             MiraProjectView(
                 store: store, projectID: id, onSheet: { sheet = $0 }, onGenerate: generate,
                 onReconnect: reconnect, onCancel: cancel)
+                .task(id: store.project(id)?.storyboard?.id) { watchPictures(id) }
         case .todayCards(let id):
             MiraTodayCardsView(
                 store: store, projectID: id,
@@ -216,6 +223,7 @@ struct MiraRootView: View {
             MiraShootingView(
                 store: store, projectID: id, onAsk: { shot in sheet = .ask(id, .reviseShot, shot) },
                 onDone: { push(.done(id)) }, onWords: { showWords(id) })
+                .task(id: store.project(id)?.storyboard?.id) { watchPictures(id) }
         case .words(let id):
             MiraWordsView(
                 store: store, projectID: id,
@@ -228,6 +236,12 @@ struct MiraRootView: View {
     }
     private func push(_ route: MiraRoute) {
         store.navigate(.push(MiraLocation(route)))
+    }
+    private func watchPictures(_ id: UUID) {
+        guard let project = store.project(id), let boardID = project.storyboard?.id,
+            project.shotPictureSources?[boardID] != nil, let generation = try? service(id)
+        else { return }
+        store.watchPictures(in: project, boardID: boardID, service: generation)
     }
     private func showWords(_ id: UUID) {
         store.navigate(.showWords(id))
@@ -253,7 +267,9 @@ struct MiraRootView: View {
         } catch { store.reportError(error.localizedDescription) }
     }
     private func reconnectCards(_ id: UUID, reportError: Bool) {
-        guard store.project(id)?.hasWorkingCards == true else { return }
+        guard let project = store.project(id),
+            project.hasWorkingCards || project.shotPictureSources?.isEmpty == false
+        else { return }
         do { store.reconnectCards(id, service: try service(id)) }
         catch { if reportError { store.reportError(error.localizedDescription) } }
     }
@@ -622,6 +638,7 @@ struct MiraTodayCardsView: View {
     @Environment(\.miraTabBarClearance) private var tabBarClearance
     @State private var position: Int? = 0
     @State private var hasShownFirstCard = false
+    @State private var firstIdeaHaptic = false
 
     var body: some View {
         if let project = store.project(projectID), let cards = project.todayCards, !cards.isEmpty {
@@ -676,7 +693,10 @@ struct MiraTodayCardsView: View {
                     }
                 }
             }
-            .sensoryFeedback(.success, trigger: cards.contains(where: \.ready)) { old, new in !old && new }
+            .sensoryFeedback(.success, trigger: firstIdeaHaptic)
+            .onChange(of: cards.contains { store.cardState($0, in: project).ideaReady }) { _, ready in
+                if ready { firstIdeaHaptic = true }
+            }
             .onChange(of: cards.map(\.ready), initial: true) { _, ready in
                 guard !hasShownFirstCard, let first = ready.firstIndex(of: true) else { return }
                 hasShownFirstCard = true
@@ -747,8 +767,8 @@ struct MiraTodayCardsView: View {
             Text(idea.title).font(.title.bold()).accessibilityAddTraits(.isHeader)
             Text(idea.hook).font(.title3)
             ViewThatFits(in: .horizontal) {
-                pictures(board)
-                ScrollView(.horizontal) { pictures(board) }
+                pictures(board, project: project)
+                ScrollView(.horizontal) { pictures(board, project: project) }
             }
             VStack(alignment: .leading, spacing: 8) {
                 Label("About \(idea.filmingMinutes) min to film", systemImage: "clock")
@@ -759,8 +779,8 @@ struct MiraTodayCardsView: View {
                 Button(state.nextAction.title) { onMake(card.id) }.buttonStyle(MiraPrimaryStyle())
                     .accessibilityIdentifier("mira.today.makeCard.\(index + 1)")
             }
-        } else if case .making = state {
-            placeholder(index: index, count: count)
+        } else if case .making(_, let progress) = state {
+            placeholder(index: index, count: count, progress: progress)
         }
         switch state {
         case .waiting:
@@ -772,7 +792,7 @@ struct MiraTodayCardsView: View {
         case .reconnect(_, let reason):
             Text(reason ?? "Reconnect to check this idea.").font(.title3)
             Button(state.nextAction.title, action: onReconnect).buttonStyle(MiraPrimaryStyle())
-        case .making(let previous):
+        case .making(let previous, _):
             if previous != nil { Text("Mira is making a new version. About 1 minute.").font(.title3) }
         case .failed(_, let stopped):
             Text(stopped ? "This idea was stopped." : "This idea did not load.").font(.title3)
@@ -785,7 +805,7 @@ struct MiraTodayCardsView: View {
         }
     }
 
-    private func placeholder(index: Int, count: Int) -> some View {
+    private func placeholder(index: Int, count: Int, progress: MiraGenerationStep?) -> some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Mira is making idea \(index + 1) of \(count)").font(.title2.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
@@ -803,26 +823,48 @@ struct MiraTodayCardsView: View {
                 }
             }
             .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 12) {
-                step("Finding an idea", symbol: "arrow.right.circle.fill", state: "now")
-                step("Writing your words", symbol: "circle", state: "next")
-                step("Planning 3 shots", symbol: "circle", state: "next")
+            if let progress {
+                VStack(alignment: .leading, spacing: 12) {
+                    step("Finding an idea", state: .done)
+                    step("Writing your words", state: progress == .ideaReady ? .now : .done)
+                    let planning: WaitStep = switch progress {
+                    case .ideaReady: .next
+                    case .scriptReady: .now
+                    case .storyboardReady: .done
+                    }
+                    step("Planning 3 shots", state: planning)
+                }
             }
             Text("About 1 minute. You can wait here or look at the other ideas.")
                 .font(.subheadline).foregroundStyle(MiraTheme.secondaryInk)
         }
     }
 
-    private func step(_ title: String, symbol: String, state: String) -> some View {
-        Label(title, systemImage: symbol).font(.body.weight(state == "now" ? .semibold : .regular))
-            .foregroundStyle(state == "now" ? MiraTheme.ink : MiraTheme.secondaryInk)
-            .accessibilityLabel("\(title), \(state)")
+    private enum WaitStep: String {
+        case done, now, next
+
+        var symbol: String {
+            switch self {
+            case .done: "checkmark.circle.fill"
+            case .now: "arrow.right.circle.fill"
+            case .next: "circle"
+            }
+        }
     }
 
-    private func pictures(_ board: MiraStoryboard) -> some View {
+    private func step(_ title: String, state: WaitStep) -> some View {
+        Label(title, systemImage: state.symbol).font(.title3.weight(state == .now ? .semibold : .regular))
+            .foregroundStyle(state == .next ? MiraTheme.secondaryInk : MiraTheme.ink)
+            .accessibilityLabel("\(title), \(state.rawValue)")
+    }
+
+    private func pictures(_ board: MiraStoryboard, project: MiraProject) -> some View {
         HStack(alignment: .top, spacing: 8) {
             ForEach(Array(board.shots.enumerated()), id: \.element.id) { index, shot in
-                MiraShotPicture(shot: shot, number: index + 1, showSeconds: true)
+                MiraShotPicture(
+                    shot: shot, number: index + 1, showSeconds: true,
+                    picture: store.picture(in: project, boardID: board.id, shotID: shot.id),
+                    source: (project.id, board.id))
             }
         }.fixedSize(horizontal: true, vertical: false)
     }

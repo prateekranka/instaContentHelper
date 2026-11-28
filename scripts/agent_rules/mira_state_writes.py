@@ -121,8 +121,8 @@ def write_from_view(root):
 def write_request_entry(root):
     path = root / STORE
     source = path.read_text().replace(
-        "requestStates[job.id] = next",
-        "self.requestStates[job.id] = .done",
+        "requestStates[jobID] = next",
+        "self.requestStates[jobID] = .done",
     )
     path.write_text(source)
 

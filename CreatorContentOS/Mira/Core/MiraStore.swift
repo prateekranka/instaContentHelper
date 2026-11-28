@@ -5,6 +5,11 @@ protocol MiraGenerationService: Sendable {
     func start(_ job: MiraJob) async throws -> MiraJobResponse
     func status(_ job: MiraJob) async throws -> MiraJobResponse
     func cancel(_ job: MiraJob) async throws -> MiraJobResponse
+    func pictureStatus(_ jobID: UUID) async throws -> MiraJobResponse?
+}
+
+extension MiraGenerationService {
+    func pictureStatus(_ jobID: UUID) async throws -> MiraJobResponse? { nil }
 }
 
 @MainActor @Observable
@@ -17,6 +22,7 @@ final class MiraStore {
     private var wordsStates: [UUID: MiraWordsState] = [:]
     private var requestStates: [UUID: MiraAIRequest] = [:]
     private var generationTasks: [UUID: Task<Void, Never>] = [:]
+    private var pictureTasks: [UUID: Task<Void, Never>] = [:]
     private var editingDrafts: [UUID: UUID] = [:]
     private struct WaitingStart {
         var projectID: UUID
@@ -65,8 +71,13 @@ final class MiraStore {
 
     @discardableResult
     private func transitionRequest(_ job: MiraJob, _ event: MiraAIRequestEvent) -> MiraAIRequest? {
-        guard let next = requestState(job).handle(event) else { return nil }
-        requestStates[job.id] = next
+        transitionRequest(job.id, from: requestState(job), event)
+    }
+
+    @discardableResult
+    private func transitionRequest(_ jobID: UUID, from state: MiraAIRequest, _ event: MiraAIRequestEvent) -> MiraAIRequest? {
+        guard let next = state.handle(event) else { return nil }
+        requestStates[jobID] = next
         return next
     }
 
@@ -470,8 +481,77 @@ final class MiraStore {
     }
 
     func reconnectCards(_ id: UUID, service: any MiraGenerationService) {
-        for card in project(id)?.todayCards ?? [] where card.job.state == .working {
-            run(id, job: card.job, cardID: card.id, service: service)
+        guard let project = project(id) else { return }
+        for card in project.todayCards ?? [] {
+            if card.job.state == .working {
+                run(id, job: card.job, cardID: card.id, service: service)
+            }
+            if let board = card.output?.storyboard {
+                watchPictures(in: project, boardID: board.id, service: service)
+            }
+        }
+    }
+
+    func watchPictures(in project: MiraProject, boardID: UUID, service: any MiraGenerationService) {
+        guard let jobID = project.shotPictureSources?[boardID]?.jobID,
+            pictureRequest(jobID).pictures.isEmpty || picturesNeedStatus(jobID)
+        else { return }
+        pollPictures(jobID, service: service)
+    }
+
+    func picture(in project: MiraProject, boardID: UUID, shotID: UUID) -> MiraShotPictureState? {
+        guard let source = project.shotPictureSources?[boardID], let originalID = source.shotIDs[shotID] else {
+            return nil
+        }
+        return pictureRequest(source.jobID).pictures[originalID]
+    }
+
+    func refreshPicture(
+        in project: MiraProject, boardID: UUID, shotID: UUID, url: URL, service: any MiraGenerationService
+    ) {
+        guard let source = project.shotPictureSources?[boardID], let originalID = source.shotIDs[shotID],
+            transitionRequest(source.jobID, from: pictureRequest(source.jobID), .pictureLoadFailed(originalID, url, at: Date())) != nil
+        else { return }
+        if picturesNeedStatus(source.jobID) { pollPictures(source.jobID, service: service) }
+    }
+
+    private func pictureRequest(_ jobID: UUID) -> MiraAIRequest {
+        requestStates[jobID] ?? .done(pictures: [:])
+    }
+
+    private func picturesNeedStatus(_ jobID: UUID) -> Bool {
+        pictureRequest(jobID).pictures.values.contains {
+            switch $0 {
+            case .pending, .refreshing: true
+            case .ready, .failed: false
+            }
+        }
+    }
+
+    private func pollPictures(_ jobID: UUID, service: any MiraGenerationService) {
+        guard pictureTasks[jobID] == nil else { return }
+        pictureTasks[jobID] = Task {
+            defer { pictureTasks[jobID] = nil }
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(300))
+            var misses = 0
+            repeat {
+                do {
+                    guard let response = try await service.pictureStatus(jobID) else { return }
+                    if response.job.id == jobID, response.job.state == .succeeded, let pictures = response.pictures,
+                        transitionRequest(jobID, from: pictureRequest(jobID), .picturesReceived(pictures)) != nil
+                    {
+                        misses = 0
+                        if !picturesNeedStatus(jobID) { return }
+                    } else {
+                        misses += 1
+                    }
+                } catch {
+                    misses += 1
+                }
+                guard misses < 3 else { return }
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            } while clock.now < deadline
         }
     }
 
@@ -578,6 +658,10 @@ final class MiraStore {
             guard let project = project(id), currentJob(id, cardID: cardID, matching: job.id) != nil else { return }
             if let cardID {
                 receiveCard(id, cardID: cardID, pending: job, result: result)
+                if let project = self.project(id),
+                    let board = project.todayCards?.first(where: { $0.id == cardID && $0.job.id == job.id })?.job.output?.storyboard {
+                    watchPictures(in: project, boardID: board.id, service: service)
+                }
             } else {
                 if result.state == .working {
                     result.error = "Still working. Reconnect this saved request later; it will keep the same job ID."
@@ -698,7 +782,13 @@ final class MiraStore {
         transitionRequest(pending, .received(result))
         update(id) {
             $0.todayCards?[index].job = result
-            if result.state == .succeeded { $0.todayCards?[index].previousOutput = nil }
+            if result.state == .succeeded, let board = result.output?.storyboard {
+                let shotIDs = Dictionary(uniqueKeysWithValues: board.shots.map { ($0.id, $0.id) })
+                var sources = $0.shotPictureSources ?? [:]
+                sources[board.id] = MiraShotPictureSource(jobID: result.id, shotIDs: shotIDs)
+                $0.shotPictureSources = sources
+                $0.todayCards?[index].previousOutput = nil
+            }
         }
     }
 

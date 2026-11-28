@@ -7,6 +7,8 @@ const install = process.env.MIRA_E2E_INSTALL === '1';
 export const fixtureSessionArguments = process.env.MIRA_E2E_FIXTURE_SESSION
   ? ['-MCO_QA_SESSION', process.env.MIRA_E2E_FIXTURE_SESSION] : [];
 export const launchArguments = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_APPEARANCE', 'light'];
+export const d2FixtureArguments = process.env.MIRA_E2E_D2_ENDPOINT
+  ? ['-MCO_QA_D2_ENDPOINT', process.env.MIRA_E2E_D2_ENDPOINT] : [];
 
 export default {
   tests: 'tests/mira-journey.e2e.ts',
@@ -22,7 +24,7 @@ export default {
     app: {
       bundleId,
       ...(install ? { appPath: process.env.MIRA_E2E_APP } : {}),
-      launchArguments: [...launchArguments, '-MCO_FORCE_FIXTURE_UI', '1', ...fixtureSessionArguments],
+      launchArguments: [...launchArguments, '-MCO_FORCE_FIXTURE_UI', '1', ...fixtureSessionArguments, ...d2FixtureArguments],
     },
   }],
   workers: 1,

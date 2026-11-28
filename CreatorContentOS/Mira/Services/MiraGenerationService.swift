@@ -39,6 +39,7 @@ final class MiraDependencies {
         requiresConsent: Bool = true
     ) throws -> any MiraGenerationService {
         if project?.isDemo == true {
+            if let fixture = Self.todayFixture(for: project?.request ?? "") { return fixture }
             return MiraFixtureGenerationService(slowShotUpdate: DebugLaunchConfiguration.fixtureSession != nil)
         }
         guard case .live(let session) = appState.runtime.mode else {
@@ -48,6 +49,22 @@ final class MiraDependencies {
         }
         if requiresConsent { try services.requireAIConsent() }
         return makeLiveGeneration(session)
+    }
+
+    static func todayFixture(for request: String) -> MiraSupabaseGenerationService? {
+        #if DEBUG
+        guard DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil,
+            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures", "Demo D2 transport"].contains(request),
+            let endpoint = DebugLaunchConfiguration.value(for: "MCO_QA_D2_ENDPOINT"),
+            let url = URL(string: endpoint), url.scheme == "https", url.host != nil
+        else { return nil }
+        let id = UUID()
+        return MiraSupabaseGenerationService(session: PairedDeviceSession(
+            projectURL: url, publishableKey: "fixture", workspaceID: id, creatorID: id, memberID: id,
+            deviceInstallationID: id, deviceToken: "fixture", memberRole: "fixture", pairedAt: Date()))
+        #else
+        return nil
+        #endif
     }
 }
 
@@ -61,13 +78,20 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
         var inputRevision: Int?
         var input: MiraGenerationInput?
         var consentVersion: Int?
+        var pictures: Bool?
     }
     private struct Response: Decodable { var job: MiraJobResponse }
     private struct Failure: Decodable { var error: String? }
-    func start(_ job: MiraJob) async throws -> MiraJobResponse { try await send("start", job: job) }
-    func status(_ job: MiraJob) async throws -> MiraJobResponse { try await send("status", job: job) }
-    func cancel(_ job: MiraJob) async throws -> MiraJobResponse { try await send("cancel", job: job) }
-    private func send(_ action: String, job: MiraJob) async throws -> MiraJobResponse {
+    func start(_ job: MiraJob) async throws -> MiraJobResponse { try await send("start", id: job.id, start: job) }
+    func status(_ job: MiraJob) async throws -> MiraJobResponse { try await send("status", id: job.id) }
+    func cancel(_ job: MiraJob) async throws -> MiraJobResponse { try await send("cancel", id: job.id) }
+    func pictureStatus(_ jobID: UUID) async throws -> MiraJobResponse? {
+        try await send("status", id: jobID, pictures: true)
+    }
+
+    private func send(
+        _ action: String, id: UUID, start: MiraJob? = nil, pictures: Bool? = nil
+    ) async throws -> MiraJobResponse {
         let url = session.projectURL.appendingPathComponent("functions/v1/mira-generation")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -78,10 +102,15 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(
             Request(
-                action: action, id: job.id, creatorID: session.creatorID,
-                inputRevision: action == "start" ? job.inputRevision : nil,
-                input: action == "start" ? job.input : nil, consentVersion: action == "start" ? 1 : nil))
-        let (data, response) = try await urlSession.data(for: request)
+                action: action, id: id, creatorID: session.creatorID, inputRevision: start?.inputRevision,
+                input: start?.input, consentVersion: start == nil ? nil : 1, pictures: pictures))
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await urlSession.data(for: request)
+        } catch let error as URLError where error.code == .networkConnectionLost && action != "cancel" {
+            try Task.checkCancellation()
+            (data, response) = try await urlSession.data(for: request)
+        }
         guard let http = response as? HTTPURLResponse else { throw MiraError.offline }
         guard (200...299).contains(http.statusCode) else {
             let code = (try? JSONDecoder().decode(Failure.self, from: data))?.error

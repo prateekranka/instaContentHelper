@@ -189,6 +189,11 @@ struct MiraStoryboard: Codable, Equatable, Identifiable, Sendable {
     var shots: [MiraShot]
     var mappings: [MiraRequirementMapping]
 }
+
+struct MiraShotPictureSource: Codable, Equatable, Sendable {
+    let jobID: UUID
+    var shotIDs: [UUID: UUID]
+}
 enum MiraOperation: String, Codable, Sendable {
     case ideas, todayIdea, script, storyboard, reviseScript, reviseShot, reviseStoryboard, requirements
 }
@@ -291,6 +296,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var job: MiraJob?
     var undo: [MiraUndo] = []
     var todayCards: [MiraTodayCard]?
+    var shotPictureSources: [UUID: MiraShotPictureSource]?
     var hasWorkingCards: Bool { todayCards?.contains { $0.job.state == .working } == true }
     var isDemo = false
     var lastScreen: MiraProjectScreen?
@@ -451,14 +457,14 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         approvedScriptID = nil
         board.sourceScriptID = script.id
         constraints = card.job.input.constraints
-        installStoryboard(board)
+        installStoryboard(board, pictureSource: shotPictureSources?[board.id])
         shotIndex = 0
         startedFilming = false
         touch()
         return true
     }
 
-    private mutating func installStoryboard(_ value: MiraStoryboard) {
+    private mutating func installStoryboard(_ value: MiraStoryboard, pictureSource: MiraShotPictureSource? = nil) {
         var board = value
         let old = storyboard
         var preserved: [UUID] = []
@@ -486,6 +492,12 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             board.mappings[index].shotIDs = board.mappings[index].shotIDs.map { replacements[$0] ?? $0 }
         }
         board.id = UUID()
+        if var pictureSource {
+            pictureSource.shotIDs = Dictionary(
+                pictureSource.shotIDs.map { (replacements[$0.key] ?? $0.key, $0.value) },
+                uniquingKeysWith: { first, _ in first })
+            shotPictureSources?[board.id] = pictureSource
+        }
         storyboards.append(board)
         activeStoryboardID = board.id
         filmed = preserved
