@@ -1,6 +1,6 @@
 import type { E2EConfig } from 'e2e';
 import { resolve } from 'node:path';
-import fixture, { launchArguments } from './e2e.mira.config';
+import fixture, { passiveLaunchArguments } from './e2e.mira.config';
 
 export default {
   ...fixture,
@@ -8,7 +8,7 @@ export default {
   targets: fixture.targets.map(target => ({
     ...target,
     name: 'mira-consent-ios',
-    app: { bundleId: target.app.bundleId, launchArguments },
+    app: { bundleId: target.app.bundleId, launchArguments: passiveLaunchArguments },
   })),
   video: 'off',
   output: process.env.MIRA_E2E_OUTPUT ?? resolve('work/evidence/t1b-phone/consent-ui'),

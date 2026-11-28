@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { e3Brief, e3Deliverables } from './fixtures/mira-deal-brief';
 import { closeKeyboard, scrollToControl, tapVisibleControl } from './mobile-support';
 import { answerBrandInterview, openLegacyIdeas, openPickedShotList } from './mira-e2-support';
-import { launchArguments } from '../e2e.mira.config';
+import { launchArguments as e5LaunchArguments, passiveLaunchArguments as launchArguments } from '../e2e.mira.config';
 
 const evidence = resolve(
   process.env.MIRA_E2E_LIVE_LEDGER_DIR ?? process.env.MIRA_E2E_OUTPUT ?? 'work/evidence/mira-live-journey',
@@ -54,7 +54,7 @@ async function launch(app: App, screen: Screen, device: Device) {
     await tabs.count();
   } catch (error) {
     if (!(error instanceof Error && /is not running/.test(error.message))) throw error;
-    await device.openApp('com.prateekranka.creatorcontenthelper', { relaunch: true });
+    await device.openApp('com.prateekranka.creatorcontenthelper', { relaunch: true, launchArguments });
     await expect.poll(() => tabs.count(), { timeout: 15_000, interval: 1_000 }).toBe(1);
   }
   await expect(screen.getByTestId('sign-in.welcome')).not.toBeVisible();
@@ -844,4 +844,74 @@ test('E3 live pick uses the active reviewed deal after E2 integration', async ({
   await expect(code).toBeAttached({ timeout: 45_000 });
   await fit(screen, code);
   await app.screenshot('e3-live-pick-deal-code');
+});
+
+const e5LedgerPath = resolve(evidence, 'e5-live-requests.jsonl');
+
+function recordE5(action: string) {
+  mkdirSync(evidence, { recursive: true });
+  appendFileSync(e5LedgerPath, `${JSON.stringify({ scenario: 5, action, at: new Date().toISOString() })}\n`, { mode: 0o600 });
+}
+
+function reserveE5(action: 'dailyNote open' | 'dailyNote reentry' | 'possible pickIdea') {
+  const prior = recorded(e5LedgerPath);
+  const noteOpens = prior.filter(entry => entry.action.startsWith('dailyNote '));
+  if (action.startsWith('dailyNote ')) {
+    expect(noteOpens.length).toBeLessThan(2);
+    expect(noteOpens.every(entry => entry.at?.slice(0, 10) === new Date().toISOString().slice(0, 10))).toBe(true);
+  } else {
+    expect(prior.filter(entry => entry.action === action).length).toBeLessThan(2);
+  }
+  recordE5(action);
+}
+
+test('E5 live Home reads Instagram, reuses the daily note and follows its one action', async ({ app, screen, device }) => {
+  test.skip(process.env.MIRA_E2E_E5_LIVE !== '1', 'Enable only for the E5 phone journey after the Keep checks.');
+  reserveE5('dailyNote open');
+  await device.openApp('com.prateekranka.creatorcontenthelper', { relaunch: true, launchArguments: e5LaunchArguments });
+  const tabs = screen.getByRole('tablist', 'Tab Bar', { exact: true });
+  await expect(tabs).toBeVisible({ timeout: 45_000 });
+  await root(screen, 'Home');
+  const insights = text(screen, "How you're doing");
+  await fit(screen, insights);
+  await expect(screen.getByText(/^Followers(?:,|$)/).first()).toBeAttached({ timeout: 45_000 });
+  await expect(screen.getByText(/^[\d,]+$/).first()).toBeAttached();
+  await expect(text(screen, 'Sample data')).not.toBeAttached();
+  await app.screenshot('e5-live-how-youre-doing');
+
+  const note = screen.getByTestId('mira.home.dailyNote.text');
+  const action = screen.getByTestId('mira.home.dailyNote.action');
+  await expect(note).toBeAttached({ timeout: 120_000 });
+  await fit(screen, note, 'up');
+  const sentence = await note.textContent();
+  expect(sentence?.trim()).toBeTruthy();
+  expect(await action.count()).toBeLessThanOrEqual(1);
+  await app.screenshot('e5-live-mira-noticed');
+
+  reserveE5('dailyNote reentry');
+  await root(screen, 'My Brand');
+  await root(screen, 'Home');
+  await expect(note).toHaveText(sentence!);
+  await fit(screen, note, 'up');
+  await app.screenshot('e5-live-mira-noticed-reused');
+  recordE5('same note observed after Home reentry');
+  if (!await action.count()) {
+    recordE5('note has no current action; zero picks');
+    return;
+  }
+
+  reserveE5('possible pickIdea');
+  await scrollToControl(screen, action, 'up');
+  await action.tap();
+  const make = screen.getByTestId('mira.pick.make');
+  const deal = button(screen, 'Close');
+  await expect.poll(async () => {
+    if (await make.count()) return 'pick';
+    if (await deal.isVisible()) return 'deal';
+    if (await back(screen).isVisible()) return 'reel';
+    return 'waiting';
+  }, { timeout, interval: 2_000 }).not.toBe('waiting');
+  const result = await make.count() ? 'pickIdea result observed' : await deal.isVisible() ? 'deal opened; zero picks' : 'Reel opened; zero picks';
+  recordE5(result);
+  await app.screenshot('e5-live-mira-noticed-action');
 });
