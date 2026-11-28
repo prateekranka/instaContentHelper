@@ -1221,9 +1221,10 @@ test('M17 a rejected update keeps Retry as the next step and retry reaches filmi
   await tap(screen, screen.getByTestId('mira.words.simpler'));
   await tap(screen, screen.getByTestId('mira.words.use'));
   await tap(screen, wordsApprove(screen));
-  const alert = screen.getByRole('alert', 'Mira', { exact: true });
-  await expect(alert).toBeVisible({ timeout: 45_000 });
-  await alert.getByRole('button', 'OK', { exact: true }).tap();
+  const message = screen.getByText('Mira needs to update the shots.', { exact: true });
+  await expect(message).toBeVisible({ timeout: 45_000 });
+  await screen.getByRole('button', 'OK', { exact: true }).tap();
+  await expect(message).not.toBeVisible();
   const retry = screen.getByTestId('mira.words.shots.retry');
   await scrollToControl(screen, retry);
   await expect(retry).toBeVisible();
