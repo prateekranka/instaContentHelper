@@ -11,6 +11,7 @@ function output(input, card) {
   const language = input.profile.language;
   const { location, filmingMinutes } = input.constraints;
   const title = ['A quiet breakfast', 'A table by the window', 'A short walk'][card - 1];
+  const pick = input.operation === 'pickIdea';
   const recorded = input.request === 'Demo D2 pictures' && card === 1;
   const script = recorded ? { ...recordedToday.script, id: randomUUID(), language } : {
     id: randomUUID(), hook: 'Here’s how I start the day.',
@@ -30,6 +31,7 @@ function output(input, card) {
       fit: 'You can film alone.', filmingMinutes: Math.min(10, filmingMinutes), setup: 'Use the table.' }],
     script, storyboard: { id: randomUUID(), sourceScriptID: script.id, requirementsRevision: 0, shots, mappings: [] },
     conflicts: [],
+    ...(pick ? { reason: 'You can film this in one place with things you already have.' } : {}),
   };
 }
 
@@ -77,8 +79,12 @@ async function handle(request, response) {
   }
   if (!path.endsWith('/functions/v1/mira-generation')) return json(response, {}, 404);
   if (body.action === 'start') {
-    if (body.pictures !== undefined || body.input.operation !== 'todayIdea') return json(response, {}, 400);
-    const card = body.input.angle.startsWith('A short') ? 1 : body.input.angle.startsWith('A food') ? 2 : 3;
+    const pick = body.input.operation === 'pickIdea' && body.input.request === 'Demo E2 pick';
+    if (body.pictures !== undefined || (!pick && body.input.operation !== 'todayIdea')) return json(response, {}, 400);
+    const card = pick
+      ? ['A quiet breakfast', 'A table by the window', 'A short walk'].findIndex(title => !body.input.avoid.includes(title)) + 1
+      : body.input.angle.startsWith('A short') ? 1 : body.input.angle.startsWith('A food') ? 2 : 3;
+    if (!card) return json(response, {}, 400);
     const id = body.id.toLowerCase();
     if (!jobs.has(id)) {
       jobs.set(id, {
@@ -104,7 +110,11 @@ async function handle(request, response) {
   if (body.action === 'status' && body.pictures === true) {
     entry.optedIn += 1;
     if (!entry.finished) entry.prematureOptIns += 1;
-    if (entry.previews === 'pending' || entry.previews === 'ready') {
+    if (entry.finished && entry.job.input.operation === 'pickIdea') {
+      job.pictures = entry.output.storyboard.shots.map(shot => ({
+        shotID: shot.id, status: 'ready', url: `${origin}/image/${id}/fresh`,
+      }));
+    } else if (entry.previews === 'pending' || entry.previews === 'ready') {
       const [first, second] = entry.output.storyboard.shots;
       const variant = entry.expiredGets ? 'fresh' : 'expired';
       if (entry.previews === 'ready' && variant === 'fresh') entry.refreshes += 1;

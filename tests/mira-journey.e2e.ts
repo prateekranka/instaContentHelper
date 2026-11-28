@@ -1,5 +1,6 @@
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect, type App, type Locator, type Screen } from 'e2e';
+import { answerBrandInterview, openLegacyIdeas, openPickedShotList } from './mira-e2-support';
 import { d2FixtureArguments, fixtureSessionArguments } from '../e2e.mira.config';
 import { appIsRunning, closeKeyboard, mobileKeyboard, scrollToControl, tapVisibleControl, waitForMobileApp } from './mobile-support';
 
@@ -10,9 +11,9 @@ test.beforeEach(() => {
   sampleSession = fixtureSessionArguments.length ? `${fixtureSessionArguments[1]}-${Date.now()}` : '';
 });
 
-function fixtureLaunch() {
+function fixtureLaunch(extra: string[] = []) {
   return [...english, '-MCO_FORCE_FIXTURE_UI', '1', ...d2FixtureArguments,
-    ...(sampleSession ? ['-MCO_QA_SESSION', sampleSession] : [])];
+    ...(sampleSession ? ['-MCO_QA_SESSION', sampleSession] : []), ...extra];
 }
 
 if (fixtureSessionArguments.length !== 2 || !fixtureSessionArguments[1]?.trim()) {
@@ -23,9 +24,9 @@ async function tap(screen: Screen, locator: Locator) {
   await tapVisibleControl(screen, locator);
 }
 
-async function launchMira(app: App, screen: Screen, device: Device, install = false) {
+async function launchMira(app: App, screen: Screen, device: Device, install = false, extra: string[] = []) {
   if (install && process.env.MIRA_E2E_INSTALL === '1') await device.installApp();
-  if (sampleSession) await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch() });
+  if (sampleSession) await device.openApp(bundleId, { relaunch: true, launchArguments: fixtureLaunch(extra) });
   else await app.open();
   await waitForMobileApp(screen);
   await dismissSystemVerification(screen);
@@ -391,6 +392,7 @@ test('Profile shows Allow and Decline immediately after each choice', async ({ a
 test('Today cards swipe into the matching filming plan and retry one failed card', async ({ app, screen, device }) => {
   await launchMira(app, screen, device, true);
   await openToday(screen);
+  await openLegacyIdeas(screen);
   const make = screen.getByTestId('mira.today.make');
   const title = (label: string) => screen.getByText(label, { exact: true, visible: true });
   const page = (number: number) => screen.getByTestId(`mira.today.page.${number}`);
@@ -448,6 +450,7 @@ test('Today cards swipe into the matching filming plan and retry one failed card
 test('Your words gate leads to approved filming and the Done screen', async ({ app, screen, device }) => {
   await launchMira(app, screen, device, true);
   await openToday(screen);
+  await openLegacyIdeas(screen);
   const make = screen.getByTestId('mira.today.make');
   const title = (label: string) => screen.getByText(label, { exact: true, visible: true });
   const approve = screen.getByTestId('mira.words.approve');
@@ -581,7 +584,7 @@ test('Today has one question, chips, Continue rules and start options in Profile
   expect(makeBox.y).toBeGreaterThanOrEqual(pageBox.y);
   expect(makeBox.y + makeBox.height).toBeLessThanOrEqual(Math.min(pageBox.y + pageBox.height, tabBox.y));
   await app.screenshot('today-keyboard-closed');
-  await make.tap();
+  await startTodayCard(screen, 'Demo slow cards', 1);
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
   await expect(screen.getByText('About 1 minute', { exact: true })).toBeVisible();
   await expect(screen.getByText('Mira is making idea 1 of 3', { exact: true })).toBeVisible();
@@ -603,17 +606,13 @@ test('Today has one question, chips, Continue rules and start options in Profile
 
 async function startTodayCard(screen: Screen, request: string, card: number) {
   await openToday(screen);
-  const make = screen.getByTestId('mira.today.make');
-  if (await make.count()) {
-    if (request) {
-      const field = screen.getByTestId('mira.today.request');
-      await fillText(field, request);
-      await closeKeyboard(screen, field);
-    }
-    await tap(screen, make);
-  } else {
-    await sendAsk(screen, request || 'Something I can film at home');
+  await openLegacyIdeas(screen);
+  const field = screen.getByTestId('mira.today.request');
+  if (request) {
+    await fillText(field, request);
+    await closeKeyboard(screen, field);
   }
+  await tap(screen, screen.getByTestId('mira.today.make'));
   await expect(screen.getByTestId('mira.today.page.3')).toBeVisible();
   await screen.getByTestId(`mira.today.page.${card}`).tap();
 }
@@ -1220,4 +1219,108 @@ test('M19 missing Instagram permission offers Connect again in the sample librar
   await app.screenshot('m19-instagram-reconnect');
   await tap(screen, reconnect);
   await expect(screen.getByText('Instagram connection is unavailable in the sample library.', { exact: true })).toBeVisible();
+});
+
+test('E2 interview accepts typing with speech denied, and the edited brand doc survives relaunch', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await openTab(screen, 'My Brand');
+  await screen.getByTestId('mira.brand.start').tap();
+  await answerBrandInterview(app, screen, next => tap(screen, next), true);
+  const pillar = screen.getByTestId('mira.brand.pillars.1');
+  await expect(pillar).toBeVisible();
+  expect(await pillar.inputValue()).toBe('Training after 60');
+  await fillText(pillar, 'HYROX after 60');
+  await closeKeyboard(screen, pillar);
+  await app.screenshot('e2-brand-doc-review');
+  await tap(screen, screen.getByTestId('mira.brand.confirm'));
+  await expect(screen.getByTestId('mira.brand.saved')).toBeAttached();
+  await app.screenshot('e2-brand-doc-confirmed');
+  await launchMira(app, screen, device);
+  await expect(screen.getByText('HYROX after 60', { exact: true })).toBeVisible();
+  await expect(screen.getByText('Share more training Reels', { exact: true })).toBeAttached();
+  await expect(screen.getByTestId('mira.brand.confirm')).not.toBeAttached();
+});
+
+for (const [instagram, override] of [
+  ['notconnected', 'ask'], ['ready', 'ask'], ['ready', 'not-now'], ['ready', 'allow'],
+]) {
+  test(`E2 Instagram results permission: ${instagram} / ${override}`, async ({ app, screen, device }) => {
+    const overrides = ['-MCO_INSIGHTS_SCENARIO', instagram, '-MCO_QA_INSTAGRAM_RESULTS', override];
+    await launchMira(app, screen, device, false, overrides);
+    const prompt = screen.getByTestId('mira.instagramResults.question');
+    if (instagram === 'ready' && override === 'ask') {
+      await openToday(screen);
+      await expect(prompt).not.toBeAttached();
+      await tap(screen, screen.getByTestId('mira.today.make'));
+      await expect(prompt).toBeVisible();
+      await app.screenshot('e2-instagram-permission-from-pick');
+      await launchMira(app, screen, device, false, overrides);
+    }
+    await openTab(screen, 'My Brand');
+    await expect(prompt).not.toBeAttached();
+    await screen.getByTestId('mira.brand.start').tap();
+    if (instagram === 'ready' && override === 'ask') {
+      await expect(prompt).toHaveText('Use your Instagram results to pick ideas');
+      await expect(screen.getByTestId('mira.instagramResults.allow')).toBeVisible();
+      await expect(screen.getByTestId('mira.instagramResults.notNow')).toBeVisible();
+      await app.screenshot('e2-instagram-permission');
+      return;
+    }
+    await expect(screen.getByTestId('mira.brand.answer')).toBeVisible();
+    await expect(prompt).not.toBeAttached();
+    if (instagram === 'notconnected') return;
+    await answerBrandInterview(app, screen, next => tap(screen, next));
+    const item = screen.getByTestId('mira.brand.dos.1');
+    await scrollToControl(screen, item);
+    expect(await item.inputValue()).toBe(override === 'allow' ? 'Build on your Instagram results' : 'Show simple steps');
+    await tap(screen, screen.getByTestId('mira.brand.confirm'));
+    await openTab(screen, 'Home');
+    await tap(screen, screen.getByTestId('mira.today.make'));
+    await expect(screen.getByTestId('mira.pick.reason')).toHaveText(override === 'allow'
+      ? 'Your early-morning training Reels reach the most people.'
+      : 'This fits the themes you confirmed in My Brand.');
+    await expect(prompt).not.toBeAttached();
+    await app.screenshot(`e2-instagram-${override}-pick`);
+  });
+}
+
+test('E2 Home shows another idea and asks for pictures only for the Reel she makes', async ({ app, screen, device }) => {
+  const scenario = 'Demo E2 pick';
+  await d2Fixture(scenario, { begin: true });
+  await launchMira(app, screen, device);
+  await openToday(screen);
+  const input = screen.getByTestId('mira.today.request');
+  await fillText(input, scenario);
+  await closeKeyboard(screen, input);
+  await tap(screen, screen.getByTestId('mira.today.make'));
+  await expect(screen.getByTestId('mira.pick.wait')).toBeVisible();
+  await expect.poll(async () => (await d2Fixture(scenario)).length).toBe(1);
+  await d2Fixture(scenario, { card: 1, finish: true });
+
+  const title = screen.getByTestId('mira.pick.title');
+  const reason = screen.getByTestId('mira.pick.reason');
+  await expect(title).toHaveText('A quiet breakfast');
+  await expect(reason).toHaveText('You can film this in one place with things you already have.');
+  await app.screenshot('e2-pick-with-reason');
+
+  await tap(screen, screen.getByTestId('mira.pick.another'));
+  await expect.poll(async () => (await d2Fixture(scenario)).length).toBe(2);
+  await d2Fixture(scenario, { card: 2, finish: true });
+  await expect(title).toHaveText('A table by the window');
+  await expect(reason).toBeVisible();
+  expect((await d2Fixture(scenario)).map(item => item.optedIn)).toEqual([0, 0]);
+  await app.screenshot('e2-another-idea');
+
+  await tap(screen, screen.getByTestId('mira.pick.make'));
+  await openPickedShotList(app, screen);
+  const picture = d2Picture(screen, 'AI picture', 1);
+  await scrollToControl(screen, screen.getByTestId('mira.shot.picture.1'));
+  await expect(picture).toBeVisible({ timeout: 45_000 });
+  const stats = await d2Fixture(scenario);
+  expect(stats.find(item => item.card === 1)?.optedIn).toBe(0);
+  expect(stats.find(item => item.card === 2)?.optedIn).toBeGreaterThan(0);
+  expect(stats.map(item => item.starts)).toEqual([1, 1]);
+  await app.screenshot('e2-picked-shot-list-pictures');
+  await launchMira(app, screen, device);
+  await expect(screen.getByTestId('mira.shots.film')).toBeAttached();
 });
