@@ -12,6 +12,9 @@ const evidence = resolve(
 );
 const ledgerPath = resolve(evidence, 'live-requests.jsonl');
 const timeout = 240_000;
+const pictureLimit = 9;
+const maxPicturesPerCard = 5;
+const pictureLimitReason = 'not run (picture limit not provable)';
 const recorded = (path = ledgerPath) => {
   try {
     return readFileSync(path, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as Entry);
@@ -23,7 +26,7 @@ const recorded = (path = ledgerPath) => {
 
 type Entry = {
   scenario: number; action: string; calls?: number; title?: string; at?: string;
-  card?: number; pictures?: number; shots?: number; milliseconds?: number;
+  card?: number; pictures?: number; pictureSlots?: number; shots?: number; milliseconds?: number;
 };
 
 function record(entry: Entry) {
@@ -31,9 +34,19 @@ function record(entry: Entry) {
   appendFileSync(ledgerPath, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`, { mode: 0o600 });
 }
 
+function fitsPictureBudget(cards: number) {
+  const reserved = recorded().reduce((total, entry) => total + (entry.pictureSlots ?? 0), 0);
+  return reserved + cards * maxPicturesPerCard <= pictureLimit;
+}
+
+function reservePictures(scenario: number, action: string, cards: number) {
+  if (!fitsPictureBudget(cards)) throw new Error(pictureLimitReason);
+  record({ scenario, action, pictureSlots: cards * maxPicturesPerCard });
+}
+
 async function request(scenario: number, action: string, calls: number, tap: () => Promise<void>) {
   const prior = recorded();
-  const limit = Number(process.env.MIRA_E2E_LIVE_REQUEST_LIMIT ?? '12');
+  const limit = Math.min(6, Number(process.env.MIRA_E2E_LIVE_REQUEST_LIMIT ?? '6'));
   expect(prior.reduce((total, entry) => total + (entry.calls ?? 0), 0) + calls).toBeLessThanOrEqual(limit);
   expect(prior.filter(entry => entry.scenario === scenario && entry.action === action && entry.calls)).toHaveLength(0);
   record({ scenario, action, calls });
@@ -165,6 +178,9 @@ test('1 Today keyboard only keeps the request and the Make button reachable', as
 });
 
 test('E1 live Home makes ideas and opens Words and the one-page shot list', { timeout: 720_000 }, async ({ app, screen, device }) => {
+  const cards = 3;
+  test.skip(!fitsPictureBudget(cards), pictureLimitReason);
+  reservePictures(1, 'Reserve pictures for the Today batch before launch', cards);
   await launch(app, screen, device);
   const prior = recorded().find(entry => entry.scenario === 1 && entry.calls);
   let started = prior?.at ? Date.parse(prior.at) : Date.now();
@@ -263,7 +279,7 @@ test('E1 live Home makes ideas and opens Words and the one-page shot list', { ti
   await screen.getByTestId(`mira.today.page.${chosenIndex + 1}`).tap();
   await tapVisibleControl(screen, screen.getByTestId(`mira.today.makeCard.${chosenIndex + 1}`));
   record({ scenario: 1, action: 'selected Today project', title: chosen, calls: 0 });
-  expect(pictureCounts.reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(15);
+  expect(pictureCounts.reduce((total, count) => total + count, 0)).toBeLessThanOrEqual(pictureLimit);
   await captureE1Plan(app, screen);
 });
 
@@ -680,7 +696,7 @@ test('Astra live smoke opens filming from approved Today words within three requ
   await app.screenshot('live-approved-shots-filming');
 });
 
-const e2Limits = { brandDoc: 2, pickIdea: 4, pictures: 10, otherText: 4 };
+const e2Limits = { brandDoc: 2, pickIdea: 4, otherText: 4 };
 type E2Operation = keyof typeof e2Limits;
 type E2Reservation = { operation: E2Operation; action: string; count: number };
 
@@ -697,10 +713,11 @@ async function reserveE2(operation: E2Operation, action: string, count: number, 
   expect(reserved + count).toBeLessThanOrEqual(e2Limits[operation]);
   mkdirSync(evidence, { recursive: true });
   appendFileSync(path, `${JSON.stringify({ at: new Date().toISOString(), operation, action, count })}\n`, { mode: 0o600 });
-  await run();
+  await request(2, action, count, run);
 }
 
 test('E2 live interview, brand doc, two picks and the chosen shot pictures', async ({ app, screen, device }) => {
+  test.skip(!fitsPictureBudget(1), pictureLimitReason);
   await device.openApp('com.prateekranka.creatorcontenthelper', {
     relaunch: true, launchArguments: [...launchArguments, '-MCO_QA_INSTAGRAM_RESULTS', 'not-now'],
   });
@@ -737,8 +754,8 @@ test('E2 live interview, brand doc, two picks and the chosen shot pictures', asy
   await expect(reason).toHaveText(/\S/);
   await app.screenshot('e2-live-another-idea');
 
-  await reserveE2('pictures', 'Make the second pick and allow up to five pictures', 5, () =>
-    tapVisibleControl(screen, screen.getByTestId('mira.pick.make')));
+  reservePictures(2, 'Make the second pick', 1);
+  await tapVisibleControl(screen, screen.getByTestId('mira.pick.make'));
   await openPickedShotList(app, screen);
   await scrollToControl(screen, screen.getByTestId('mira.shot.picture.1'));
   const firstPicture = screen.getByRole('image', 'AI picture for shot 1', { exact: true, visible: true });
@@ -823,6 +840,7 @@ test('E3 live brief reads, confirms and opens the deal from Home', async ({ app,
 test('E3 live pick uses the active reviewed deal after E2 integration', async ({ app, screen, device }) => {
   test.skip(process.env.MIRA_E2E_E3_LIVE !== '1' || process.env.MIRA_E2E_E3_PICK_READY !== '1',
     'Enable only after E2 sends the active deal checklist in pickIdea.');
+  test.skip(!fitsPictureBudget(1), pictureLimitReason);
   await device.openApp('com.prateekranka.creatorcontenthelper', {
     relaunch: true, launchArguments: [...launchArguments, '-MCO_QA_INSTAGRAM_RESULTS', 'not-now'],
   });
@@ -832,12 +850,12 @@ test('E3 live pick uses the active reviewed deal after E2 integration', async ({
   const bar = screen.getByTestId('mira.ask.bar');
   await bar.fill('Make an idea I can film at home for my latest deal.');
   await reserveE2('pickIdea', 'Ask Home for a pick with the active deal', 1, () =>
-    e3Request('pickIdea', () => tapVisibleControl(screen, button(screen, 'Send to Mira'))));
+    tapVisibleControl(screen, button(screen, 'Send to Mira')));
   await expect(text(screen, 'My pick for you')).toBeVisible({ timeout });
   await expect(e3DealLink(screen)).toBeAttached();
   await app.screenshot('e3-live-pick');
-  await reserveE2('pictures', 'Make the active deal pick and allow up to five pictures', 5, () =>
-    tapVisibleControl(screen, screen.getByTestId('mira.pick.make')));
+  reservePictures(32, 'Make the active deal pick', 1);
+  await tapVisibleControl(screen, screen.getByTestId('mira.pick.make'));
   await openPickedShotList(app, screen);
   await expect(screen.getByText('Brand requirements included in the plan', { exact: true })).toBeAttached();
   const code = screen.getByText(/SIP20/).first();

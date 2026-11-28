@@ -137,3 +137,15 @@ The public tracker confirmed MIRA-040 at `2026-11-28T03:17:35.009Z` and
 MIRA-041 at `2026-11-28T03:17:35.424Z`. Both cards remain Working with the
 phone blocker, verified results and GitHub links to their respective source
 commits. The readback is in `tracker-verified.jsonl`. [Mira tracker](https://mira-build-progress-production.up.railway.app)
+
+### Fix2 phone scope
+
+Use the bundled E4 clips for matching, joining and on-screen brief fixes. The
+Instagram and WhatsApp handoff cases and the Notes share case are outside this
+run because their full flows leave Mira. The phone run does not save to Photos.
+The E4 live review and note need the real, eligible Reels named in the E4 phone
+plan. The E4 live pick needs an open deal and the reviewed Instagram data choice.
+The E5 live action can reopen a Reel with a saved Today batch. If the picture
+budget for that path is unknown, record **not run (picture limit not provable)**
+before opening the live case. The new Instagram Insights function stays
+undeployed.
