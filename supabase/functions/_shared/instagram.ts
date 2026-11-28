@@ -27,6 +27,21 @@ export type AccountSnapshot = {
   followersCount: number | null;
   reach7d: number | null;
   saves7d: number | null;
+  topPosts?: PostInsight[];
+};
+
+type PostInsight = {
+  caption: string;
+  likes?: number;
+  comments?: number;
+  saves?: number;
+};
+
+type InsightsSnapshotDTO = {
+  followers?: number;
+  reach7d?: number;
+  saves7d?: number;
+  topPosts?: PostInsight[];
 };
 
 export type InsightMetricDTO = {
@@ -54,6 +69,7 @@ export type InsightsReportDTO = {
   nudge: string | null;
   fetched_at: string | null;
   data_quality: string | null;
+  snapshots?: InsightsSnapshotDTO[];
 };
 
 // MARK: - Pure helpers (unit-tested)
@@ -169,13 +185,19 @@ export function buildReadyReport(
     nudge: deriveNudge(current, previous),
     fetched_at: options.fetchedAt,
     data_quality: options.dataQuality,
+    snapshots: (previous ? [previous, current] : [current]).map((snapshot) => ({
+      followers: snapshot.followersCount ?? undefined,
+      reach7d: snapshot.reach7d ?? undefined,
+      saves7d: snapshot.saves7d ?? undefined,
+      topPosts: snapshot.topPosts,
+    })),
   };
 }
 
 export function hasAnyMetric(snapshot: AccountSnapshot): boolean {
   return snapshot.followersCount !== null ||
     snapshot.reach7d !== null ||
-    snapshot.saves7d !== null;
+    snapshot.saves7d !== null || Boolean(snapshot.topPosts?.length);
 }
 
 /** Picks the first Facebook Page that has a linked Instagram professional account. */
@@ -298,8 +320,8 @@ export async function fetchAccountSnapshot(
 ): Promise<AccountSnapshot> {
   const followersCount = await fetchFollowers(igUserID, accessToken);
   const reach7d = await fetchReach7d(igUserID, accessToken);
-  const saves7d = await fetchSaves7d(igUserID, accessToken).catch(() => null);
-  return { followersCount, reach7d, saves7d };
+  const media = await fetchRecentMedia(igUserID, accessToken).catch(() => null);
+  return { followersCount, reach7d, saves7d: media?.saves7d ?? null, topPosts: media?.topPosts };
 }
 
 async function fetchFollowers(igUserID: string, accessToken: string): Promise<number | null> {
@@ -335,28 +357,49 @@ async function fetchReach7d(igUserID: string, accessToken: string): Promise<numb
 }
 
 /** Account-level "saves" does not exist; sum per-media `saved` over the last 7 days. */
-async function fetchSaves7d(igUserID: string, accessToken: string): Promise<number | null> {
+async function fetchRecentMedia(igUserID: string, accessToken: string) {
   const since = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
   const url = new URL(`${GRAPH}/${igUserID}/media`);
-  url.searchParams.set("fields", "timestamp,insights.metric(saved)");
+  url.searchParams.set("fields", "timestamp,caption,like_count,comments_count,insights.metric(saved)");
   url.searchParams.set("since", String(since));
   url.searchParams.set("access_token", accessToken);
-  const res = await fetch(url);
+  let res = await fetch(url);
+  if (res.status === 400) {
+    url.searchParams.set("fields", "timestamp,insights.metric(saved)");
+    res = await fetch(url);
+  }
   if (!res.ok) return null;
   const json = await res.json() as {
-    data?: Array<{ insights?: { data?: Array<{ values?: Array<{ value?: number }> }> } }>;
+    data?: Array<{
+      caption?: string;
+      like_count?: number;
+      comments_count?: number;
+      insights?: { data?: Array<{ values?: Array<{ value?: number }> }> };
+    }>;
   };
   if (!json.data) return null;
-  let total = 0;
-  let sawAny = false;
+  let saves7d: number | null = null;
+  const topPosts: PostInsight[] = [];
   for (const media of json.data) {
-    const values = media.insights?.data?.[0]?.values;
-    if (values) {
-      sawAny = true;
-      total += values.reduce((sum, v) => sum + (v.value ?? 0), 0);
+    const values = (media.insights?.data?.[0]?.values ?? []).flatMap(({ value }) =>
+      validCount(value) ? [value] : []
+    );
+    const saves = values.length ? values.reduce((sum, value) => sum + value, 0) : undefined;
+    if (saves !== undefined) saves7d = (saves7d ?? 0) + saves;
+    const caption = media.caption?.trim();
+    const likes = validCount(media.like_count) ? media.like_count : undefined;
+    const comments = validCount(media.comments_count) ? media.comments_count : undefined;
+    if (caption && (saves !== undefined || likes !== undefined || comments !== undefined)) {
+      topPosts.push({ caption, likes, comments, saves });
     }
   }
-  return sawAny ? total : null;
+  topPosts.sort((a, b) => (b.saves ?? -1) - (a.saves ?? -1) ||
+    (b.likes ?? -1) - (a.likes ?? -1) || (b.comments ?? -1) - (a.comments ?? -1));
+  return { saves7d, topPosts: topPosts.slice(0, 5) };
+}
+
+function validCount(value: number | undefined): value is number {
+  return value !== undefined && Number.isSafeInteger(value) && value >= 0;
 }
 
 async function throwIfPermission(res: Response): Promise<void> {
