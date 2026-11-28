@@ -119,6 +119,7 @@ final class MiraStore {
             location = location.handle(.remember(project.id, screen, makeCurrent: true))
         }
         save()
+        if case .words(let id) = location.current { advanceWordsIfVisible(id) }
     }
 
     func open(_ id: UUID, tab: MiraTab) {
