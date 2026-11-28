@@ -1,0 +1,17 @@
+# Mira Phase E2 failure modes
+
+Record these checks before implementation. Native scenarios use TesterArmy on Bobby’s iPhone after the XCTest passcode block clears.
+
+| Area | Failure mode | Evidence to collect |
+| --- | --- | --- |
+| Interview | Blank answers advance, the keyboard covers Next, or a denied microphone prevents typing. | Open My Brand, tap the microphone with speech denied, check the Settings help, type all six answers and advance one question at a time. Go back once and verify the answer remains. |
+| Interview request | A duplicate tap sends a second document request. A failed or late reply loses answers or replaces newer work. | Keep the request pending, check one in-flight action, stop or report a transport failure, then check that answers remain. A reconnect uses the same job ID. |
+| Brand document | An incomplete response becomes a document. An edit saves without confirmation, or an approved edit disappears after relaunch. | Inspect fixture sections and item edits. Verify that only “This is me” commits the draft. Relaunch the same sample library and read the edited value. Inspect the value constraints and the ordered save path. |
+| Saved work | A new operation or an incompatible key in a saved project prevents an older build from opening the library. | Inspect old and new Codable paths, version and navigation types. Reopen earlier sample projects and the new accepted Reel after relaunch. |
+| Instagram permission | The question appears on launch or while disconnected. The AI permission record changes or Instagram data reaches an AI request without approval. | Open My Brand before starting. Use disconnected, undecided, allowed and Not now DEBUG paths in isolated fixture sessions. Inspect the prompt and compare the generated fixture results. Check that a normal launch still reads the saved AI decision. |
+| Instagram connection | A stale account or an unavailable report contributes numbers. The app fabricates a best-post pattern from account totals. | Inspect authorization and payload construction. Use valid, missing and denied data in fixture scenarios. Keep the live pass at Not now. |
+| Home pick | Home requests three ideas, shows no reason, or repeats the last title. A failed refresh loses the last valid pick. | Read the first idea and reason, request another, and compare the titles. Inspect duplicate rejection and recovery with the previous pick available. |
+| Pick context | A draft brand document or unconfirmed deal is sent. A deal revision changes between request and use. | Inspect the strict operation payloads, the confirmed-record read and the deal revision guard. Check a matching approved checklist when present. |
+| Pick to Words | Making the pick saves twice, skips Words approval, or associates pictures with a different idea. | Inspect the accepted Reel and verify Words before filming. Check that the displayed list and its pictures belong to the chosen pick. Inspect that only the chosen job receives picture opt-in. |
+| Earlier flows | Moving the three-card entry breaks D2 wait, pictures, approval, undo, resume or empty-project rules. | Run earlier sample cases with the three-card entry through Profile. Keep B4 and B5 on sample data. |
+| Account continuity | Installing clears Instagram or AI permission. | Capture Profile before an in-place install, after install and after the tests. Stop if either saved setting changes. |
