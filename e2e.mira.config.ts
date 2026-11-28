@@ -17,7 +17,7 @@ export default {
     engine: mobile({
       platform: 'ios',
       device: process.env.MIRA_E2E_DEVICE,
-      session: 'mira-journey-verification',
+      session: process.env.MIRA_E2E_DRIVER_SESSION ?? 'mira-journey-verification',
       snapshot: 'full',
       videoTouches: false,
     }),
