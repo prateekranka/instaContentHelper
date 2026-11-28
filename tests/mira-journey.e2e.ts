@@ -54,13 +54,18 @@ async function menuControl(screen: Screen, name: string) {
 }
 
 async function fillText(field: Locator, text: string) {
-  try {
-    await field.fill(text);
-  } catch (error) {
-    if (!(error instanceof Error && /could not confirm the typed text/.test(error.message))) throw error;
-    await field.fill(text);
+  const readValue = async () => (await field.inputValue()) || (await field.textContent()) || '';
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await field.fill(text);
+      break;
+    } catch (error) {
+      if (!(error instanceof Error && /could not confirm the typed text/.test(error.message))) throw error;
+      if (text.length > 0 && await readValue() === text) return;
+      if (attempt === 1) throw error;
+    }
   }
-  if (text.length > 0) expect(await field.inputValue()).toBe(text);
+  if (text.length > 0) await expect.poll(readValue).toBe(text);
 }
 
 async function dismissSystemVerification(screen: Screen) {
