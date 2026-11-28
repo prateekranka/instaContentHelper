@@ -153,3 +153,15 @@ Live AI counts for PR #48 were **0 text requests and 0 pictures**.
 Final phone claims were zero. The fix3b D2 fixture stopped and Tailscale routes matched the baseline.
 
 Local evidence folder `/Users/prateekranka/.codex-runs/mira-worker-3-20261128/evidence/fix3b/20261128T081057Z.9HGv7X`.
+
+## PR #48 simulator result
+
+**RESULT BLOCKED** on 28 November 2026 from 14:33 to 15:36 IST. Across 47 sample scenarios, 22 passed, 23 ended on test or runner failures, and two were phone only. The Debug build of `c2993a4` passed on sim-guard iPhone 1, iPhone 18 Pro with iOS 27.2. TesterArmy 0.15.2 used Light mode, the `worker-4` fixture session, and a local HTTPS D2 fixture.
+
+The E2 interview passed with speech denied, all six answers typed, and the edited brand doc present after relaunch. The disconnected and ready / Ask permission cases passed. Not now and Allow each saved the expected guidance before XCTest interrupted the next check. The Home pick test could not locate the request field by its identifier. Deals displayed the parsed brand, fee, deadline, six deliverables, and disclosure. Its tests stopped before reaching controls below the captured viewport.
+
+The shared E1 archive test passed after two test repair rounds. XCTest continued to interrupt the resume flow and several regression cases. The other sample passes include damaged-library recovery, edited-brief review, server-backoff stop, denied-speech typing, stale-shot approval, account ownership, and rejected-update retry. The later live E1 scrolling change at `e24a20a` landed after sample collection. [Verified archive test fix](https://github.com/prateekranka/instaContentHelper/commit/f40465e9429bd1ca6fac178dac0568fcd57b3353)
+
+Phone only covers the five saved-account consent checks, the legacy paired-account consent case, signed Notes sharing, Photos with device clips, the physical keyboard, and live generation. The simulator made **0 live text requests and 0 live pictures**. The simulator driver and D2 fixture stopped.
+
+The scenario table and start times are in `work/sim-result-pr48.md`. TesterArmy reports, failure details, screenshots, videos, and the redacted build log are in `work/evidence/sim-48/`.
