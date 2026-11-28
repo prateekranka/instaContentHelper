@@ -35,7 +35,7 @@ enum MiraFixtures {
                 framing = "Side view"
             }
             let script = MiraScript(
-                hook: hook, spoken: "I make time for one small thing and then get on with my day.",
+                hook: hook, spoken: "\(hook) I make time for one small thing and then get on with my day.",
                 caption: "One small thing from my day.", durationSeconds: min(input.constraints.reelSeconds, 30),
                 language: input.profile.language.rawValue)
             var storyboardInput = input
@@ -146,6 +146,9 @@ enum MiraFixtures {
                 return MiraOutput(conflicts: ["Choose and approve a script first."])
             }
             let seconds = script.durationSeconds
+            let remaining = script.spoken.hasPrefix(script.hook)
+                ? String(script.spoken.dropFirst(script.hook.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                : script.spoken
             var shots =
                 (input.operation == .storyboard ? nil : input.storyboard?.shots) ?? [
                     MiraShot(
@@ -164,7 +167,7 @@ enum MiraFixtures {
                         distance: "One arm’s length", framing: "Your hands and the object",
                         action:
                             "Film one simple action with your hands. Record the voiceover separately in a quiet place.",
-                        words: script.spoken, voiceover: true, onScreenText: "My everyday routine",
+                        words: remaining, voiceover: true, onScreenText: "My everyday routine",
                         simplerAlternative: "Keep the camera still and point to the object while seated."),
                     MiraShot(
                         purpose: "Close the thought", editedSeconds: 5, recordingSeconds: 10,
@@ -197,7 +200,7 @@ enum MiraFixtures {
             if input.operation == .reviseStoryboard {
                 for index in shots.indices {
                     if shots[index].voiceover {
-                        shots[index].words = script.spoken
+                        shots[index].words = remaining
                     } else if index == 0 {
                         shots[index].words = script.hook
                     }
@@ -255,14 +258,26 @@ struct MiraFixtureGenerationService: MiraGenerationService {
     static let retryPhaseRequest = "Demo server retry"
     static let busyRequest = "Demo busy server"
     static let unknownStopRequest = "Demo stop unknown"
+    static let permissionRequest = "Demo permission withdrawn while waiting"
     private static let refusals = MiraFixtureRefusals()
     var failTodayCard = false
     var slowTodayCards = false
     var slowShotUpdate = false
+    var rejectFirstShotUpdate = false
+    var creatorID: UUID? {
+        guard DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil else { return nil }
+        return DebugLaunchConfiguration.value(for: "MCO_QA_FIXTURE_CREATOR").flatMap { UUID(uuidString: $0) }
+    }
     func start(_ job: MiraJob) async throws -> MiraJobResponse {
         try Task.checkCancellation()
         var result = job
         let request = job.input.request
+        if job.input.operation == .todayIdea, request == Self.permissionRequest,
+            DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil {
+            if job.input.angle?.hasPrefix("A personal") != true { return MiraJobResponse(job: job) }
+            if Self.refusals.refuse(job.id, times: 1) { throw MiraError.busy }
+            throw AIConsentRequired()
+        }
         if request == Self.retryPhaseRequest, job.input.operation == .todayIdea {
             return MiraJobResponse(job: job, phase: "waiting_to_retry")
         }
@@ -280,6 +295,14 @@ struct MiraFixtureGenerationService: MiraGenerationService {
             return MiraJobResponse(job: result)
         }
         result.output = MiraFixtures.output(for: job.input)
+        if job.input.operation == .reviseStoryboard, DebugLaunchFlags.forceFixtureUI,
+            DebugLaunchConfiguration.fixtureSession != nil {
+            if rejectFirstShotUpdate, let scriptID = job.input.script?.id, Self.refusals.refuse(scriptID, times: 1) {
+                result.output = MiraOutput(conflicts: ["The brief changed while this shot update was running."])
+            } else if request == "Replace the first shot words with sugar." {
+                result.output?.storyboard?.shots[0].words = "Add the sugar."
+            }
+        }
         result.state = .succeeded
         try MiraValidation.validate(result.output!, for: job.input.operation, input: job.input)
         return MiraJobResponse(job: result)
@@ -287,9 +310,9 @@ struct MiraFixtureGenerationService: MiraGenerationService {
     func status(_ job: MiraJob) async throws -> MiraJobResponse {
         if slowShotUpdate, job.input.operation == .reviseStoryboard {
             try await Task.sleep(for: .seconds(18))
-            return try await MiraFixtureGenerationService().start(job)
+            return try await MiraFixtureGenerationService(rejectFirstShotUpdate: rejectFirstShotUpdate).start(job)
         }
-        if job.input.request == Self.busyRequest, job.input.operation == .todayIdea {
+        if [Self.busyRequest, Self.permissionRequest].contains(job.input.request), job.input.operation == .todayIdea {
             try await Task.sleep(for: .seconds(job.input.angle?.hasPrefix("A short") == true ? 12 : 24))
             var result = job
             result.output = MiraFixtures.output(for: job.input)

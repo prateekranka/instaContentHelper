@@ -25,10 +25,7 @@ struct AppRuntime {
             mode: .fixtures,
             services: AppServices(
                 isLiveSupabaseRuntime: false,
-                aiConsentStore: UserDefaultsAIConsentStore(
-                    workspaceID: context.workspaceID,
-                    creatorID: context.creatorID,
-                    defaults: DebugLaunchConfiguration.fixtureDefaults)))
+                aiConsentStore: fixtureConsentStore(context: context)))
     }
 
     static func live(session: PairedDeviceSession) -> AppRuntime {
@@ -36,14 +33,17 @@ struct AppRuntime {
             mode: .live(session),
             services: AppServices(
                 isLiveSupabaseRuntime: true,
-                aiConsentStore: liveConsentStore(session: session)))
+                aiConsentStore: UserDefaultsAIConsentStore(workspaceID: session.workspaceID, creatorID: session.creatorID)))
     }
 
-    private static func liveConsentStore(session: PairedDeviceSession) -> any AIConsentStoring {
+    private static func fixtureConsentStore(context: WorkspaceContext) -> any AIConsentStoring {
         #if DEBUG
-        if let override = LaunchAIConsentStore() { return override }
+        if DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil,
+            let override = LaunchAIConsentStore() { return override }
         #endif
-        return UserDefaultsAIConsentStore(workspaceID: session.workspaceID, creatorID: session.creatorID)
+        return UserDefaultsAIConsentStore(
+            workspaceID: context.workspaceID, creatorID: context.creatorID,
+            defaults: DebugLaunchConfiguration.fixtureDefaults)
     }
 
     static func makeAuthenticationShellRuntime(

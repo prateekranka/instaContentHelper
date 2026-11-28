@@ -6,17 +6,14 @@ final class MiraDependencies {
     let store: MiraStore
     let profileRepository: any MiraCreatorProfileRepository
     let makeSpeechInput: @MainActor () -> any MiraSpeechInputService
-    private let makeLiveGeneration: @MainActor (PairedDeviceSession) -> any MiraGenerationService
 
     init(
         repository: any MiraProjectRepository & MiraCreatorProfileRepository,
-        makeSpeechInput: @escaping @MainActor () -> any MiraSpeechInputService,
-        makeLiveGeneration: @escaping @MainActor (PairedDeviceSession) -> any MiraGenerationService
+        makeSpeechInput: @escaping @MainActor () -> any MiraSpeechInputService
     ) {
         store = MiraStore(repository: repository)
         profileRepository = repository
         self.makeSpeechInput = makeSpeechInput
-        self.makeLiveGeneration = makeLiveGeneration
     }
 
     static func live() -> MiraDependencies {
@@ -29,26 +26,32 @@ final class MiraDependencies {
         let repository = MiraFileRepository(
             directory: support.appendingPathComponent(library, isDirectory: true),
             seedDamagedFixture: fixtureSession != nil && DebugLaunchConfiguration.isEnabled("MCO_QA_DAMAGED_LIBRARY"))
-        return MiraDependencies(
-            repository: repository, makeSpeechInput: { MiraSpeechInput() },
-            makeLiveGeneration: { MiraSupabaseGenerationService(session: $0) })
+        return MiraDependencies(repository: repository, makeSpeechInput: { MiraSpeechInput() })
     }
 
     func generationService(
-        for project: MiraProject?, appState: AppState, services: AppServices,
+        for project: MiraProject?, appState: AppState,
         requiresConsent: Bool = true
     ) throws -> any MiraGenerationService {
         if project?.isDemo == true {
             if let fixture = Self.todayFixture(for: project?.request ?? "") { return fixture }
-            return MiraFixtureGenerationService(slowShotUpdate: DebugLaunchConfiguration.fixtureSession != nil)
+            return MiraFixtureGenerationService(
+                slowShotUpdate: DebugLaunchConfiguration.fixtureSession != nil,
+                rejectFirstShotUpdate: project?.request == "Demo rejected shot update")
         }
-        guard case .live(let session) = appState.runtime.mode else {
+        guard !DebugLaunchFlags.forceFixtureUI, case .live(let session) = appState.runtime.mode else {
             throw MiraError.invalid(
                 "Connect your account from Profile to use live generation. You can still write manually and open saved work."
             )
         }
-        if requiresConsent { try services.requireAIConsent() }
-        return makeLiveGeneration(session)
+        if requiresConsent { try appState.runtime.services.requireAIConsent() }
+        return MiraSupabaseGenerationService(session: session, authorize: { [weak appState] start in
+            guard let runtime = appState?.runtime, case .live(let current) = runtime.mode,
+                current.creatorID == session.creatorID, current.workspaceID == session.workspaceID,
+                current.memberID == session.memberID, current.deviceToken == session.deviceToken
+            else { throw MiraError.anotherAccount }
+            if start { try runtime.services.requireAIConsent() }
+        })
     }
 
     static func todayFixture(for request: String) -> MiraSupabaseGenerationService? {
@@ -71,6 +74,8 @@ final class MiraDependencies {
 struct MiraSupabaseGenerationService: MiraGenerationService {
     let session: PairedDeviceSession
     var urlSession: URLSession = .shared
+    var authorize: (@MainActor @Sendable (Bool) throws -> Void)?
+    var creatorID: UUID? { authorize == nil ? nil : session.creatorID }
     private struct Request: Encodable {
         var action: String
         var id: UUID
@@ -82,9 +87,22 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
     }
     private struct Response: Decodable { var job: MiraJobResponse }
     private struct Failure: Decodable { var error: String? }
-    func start(_ job: MiraJob) async throws -> MiraJobResponse { try await send("start", id: job.id, start: job) }
-    func status(_ job: MiraJob) async throws -> MiraJobResponse { try await send("status", id: job.id) }
-    func cancel(_ job: MiraJob) async throws -> MiraJobResponse { try await send("cancel", id: job.id) }
+    func start(_ job: MiraJob) async throws -> MiraJobResponse {
+        try checkOwner(job)
+        if creatorID != nil, job.creatorID == nil { throw MiraError.unknownAccount }
+        return try await send("start", id: job.id, start: job)
+    }
+    func status(_ job: MiraJob) async throws -> MiraJobResponse {
+        try checkOwner(job)
+        return try await send("status", id: job.id)
+    }
+    func cancel(_ job: MiraJob) async throws -> MiraJobResponse {
+        try checkOwner(job)
+        return try await send("cancel", id: job.id)
+    }
+    private func checkOwner(_ job: MiraJob) throws {
+        if let owner = job.creatorID, owner != creatorID { throw MiraError.anotherAccount }
+    }
     func pictureStatus(_ jobID: UUID) async throws -> MiraJobResponse? {
         try await send("status", id: jobID, pictures: true)
     }
@@ -106,8 +124,11 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
                 input: start?.input, consentVersion: start == nil ? nil : 1, pictures: pictures))
         let (data, response): (Data, URLResponse)
         do {
+            try await authorize?(start != nil)
+            try Task.checkCancellation()
             (data, response) = try await urlSession.data(for: request)
         } catch let error as URLError where error.code == .networkConnectionLost && action != "cancel" {
+            try await authorize?(start != nil)
             try Task.checkCancellation()
             (data, response) = try await urlSession.data(for: request)
         }

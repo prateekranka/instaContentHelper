@@ -3,6 +3,7 @@ import SwiftUI
 struct MiraProjectView: View {
     var store: MiraStore
     let projectID: UUID
+    let tab: MiraTab
     var onSheet: (MiraSheet) -> Void
     var onGenerate: MiraGenerateAction
     var onReconnect: (UUID) -> Void
@@ -10,7 +11,7 @@ struct MiraProjectView: View {
     var body: some View {
         Group {
             if let project = store.project(projectID) {
-                let showingShots = project.selectedIdeaID != nil && store.editorScreen(project) == .shots
+                let showingShots = project.selectedIdeaID != nil && store.editorScreen(project, tab: tab) == .shots
                     && project.storyboard != nil
                 MiraPage {
                     if project.isDemo {
@@ -54,8 +55,8 @@ struct MiraProjectView: View {
                             Picker(
                                 "Project section",
                                 selection: Binding(
-                                    get: { store.editorScreen(project) },
-                                    set: { store.visit(projectID, screen: $0) }
+                                    get: { store.editorScreen(project, tab: tab) },
+                                    set: { store.visit(projectID, screen: $0, tab: tab) }
                                 )
                             ) {
                                 Text("Script").tag(MiraProjectScreen.script)
@@ -66,11 +67,14 @@ struct MiraProjectView: View {
                             MiraStoryboardView(
                                 store: store, projectID: projectID,
                                 onUpdate: {
-                                    store.approveScript(projectID)
-                                    onGenerate(
-                                        projectID, .storyboard,
-                                        "Update to match my current script and confirmed requirements", nil,
-                                        nil)
+                                    if project.isApproved {
+                                        onGenerate(
+                                            projectID, .storyboard,
+                                            "Update to match my current script and confirmed requirements", nil,
+                                            nil)
+                                    } else {
+                                        store.navigate(.showWords(projectID))
+                                    }
                                 })
                         } else {
                             MiraScriptView(

@@ -37,7 +37,7 @@ enum MiraLocation: Equatable {
 
 struct MiraLocationHistory {
     var paths: [MiraTab: [MiraLocation]] = [:]
-    var screens: [UUID: MiraProjectScreen] = [:]
+    var screens: [MiraTab: [UUID: MiraProjectScreen]] = [:]
     var lastProject: UUID?
 }
 
@@ -47,7 +47,7 @@ enum MiraLocationEvent {
     case open(MiraTab, [MiraRoute])
     case push(MiraLocation)
     case showWords(UUID)
-    case remember(UUID, MiraProjectScreen?, makeCurrent: Bool)
+    case remember(UUID, MiraProjectScreen?, makeCurrent: Bool, tab: MiraTab? = nil)
     case remove(UUID)
 }
 
@@ -56,18 +56,26 @@ enum MiraLocationState {
 
     init(document: MiraDocument) {
         let saved = document.restoredNavigation()
-        var history = MiraLocationHistory(
-            paths: [.today: saved.today.map(MiraLocation.init), .projects: saved.projects.map(MiraLocation.init)],
-            screens: Dictionary(document.projects.compactMap { project in
-                project.lastScreen.map { (project.id, $0) }
-            }, uniquingKeysWith: { first, _ in first }),
-            lastProject: document.position.projectID)
-        if let id = history.lastProject, history.screens[id] == nil {
-            history.screens[id] = MiraProjectScreen(rawValue: document.position.screen)
+        let paths: [MiraTab: [MiraLocation]] = [
+            .today: saved.today.map(MiraLocation.init), .projects: saved.projects.map(MiraLocation.init),
+        ]
+        let projects = Dictionary(document.projects.compactMap { project in
+            project.lastScreen.map { (project.id, $0) }
+        }, uniquingKeysWith: { first, _ in first })
+        var history = MiraLocationHistory(paths: paths, screens: [.projects: projects],
+                                          lastProject: document.position.projectID)
+        if let id = history.lastProject, let screen = MiraProjectScreen(rawValue: document.position.screen) {
+            history.screens[saved.tab, default: [:]][id] = screen
+        }
+        for route in paths[.today, default: []] {
+            if let project = document.projects.first(where: { $0.id == route.projectID }) {
+                let previous = history.screens[.today]?[project.id]
+                history.screens[.today, default: [:]][project.id] = route.screen(in: project, remembering: previous)
+            }
         }
         self = saved.tab == .today ? .today(history) : .projects(history)
         if let location = current, let project = document.projects.first(where: { $0.id == location.projectID }) {
-            self = handle(.remember(project.id, location.screen(in: project, remembering: history.screens[project.id]),
+            self = handle(.remember(project.id, location.screen(in: project, remembering: rememberedScreen(project.id)),
                                     makeCurrent: true))
         }
     }
@@ -87,7 +95,9 @@ enum MiraLocationState {
 
     var current: MiraLocation? { history.paths[tab]?.last }
     var lastProject: UUID? { history.lastProject }
-    func rememberedScreen(_ id: UUID) -> MiraProjectScreen? { history.screens[id] }
+    func rememberedScreen(_ id: UUID, in tab: MiraTab? = nil) -> MiraProjectScreen? {
+        history.screens[tab ?? self.tab]?[id]
+    }
     func path(_ tab: MiraTab) -> [MiraRoute] { history.paths[tab, default: []].map(\.route) }
 
     var nextAction: MiraNextAction? {
@@ -118,13 +128,16 @@ enum MiraLocationState {
                 history.paths[tab]?.removeLast()
             }
             if history.paths[tab]?.last != .words(id) { history.paths[tab, default: []].append(.words(id)) }
-        case .remember(let id, let screen, let makeCurrent):
-            history.screens[id] = screen
-            if makeCurrent { history.lastProject = id }
+        case .remember(let id, let screen, let makeCurrent, let owner):
+            let owner = owner ?? tab
+            history.screens[owner, default: [:]][id] = screen
+            if makeCurrent && owner == tab { history.lastProject = id }
         case .remove(let id):
-            history.screens[id] = nil
             if history.lastProject == id { history.lastProject = nil }
-            for tab in [MiraTab.today, .projects] { history.paths[tab]?.removeAll { $0.projectID == id } }
+            for tab in [MiraTab.today, .projects] {
+                history.screens[tab]?[id] = nil
+                history.paths[tab]?.removeAll { $0.projectID == id }
+            }
         }
         return selected == .today ? .today(history) : .projects(history)
     }

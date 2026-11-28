@@ -227,6 +227,7 @@ struct MiraJob: Codable, Equatable, Identifiable, Sendable {
     var state: MiraGenerationState = .working
     var output: MiraOutput?
     var error: String?
+    var creatorID: UUID?
 }
 struct MiraTodayCard: Codable, Equatable, Identifiable, Sendable {
     var id = UUID()
@@ -263,6 +264,12 @@ struct MiraNavigation: Codable, Equatable, Sendable {
     var activePath: [MiraRoute] { tab == .today ? today : projects }
 }
 struct MiraUndo: Codable, Equatable, Sendable {
+    struct CardSelection: Codable, Equatable, Sendable {
+        var title: String
+        var ideaID: UUID?
+        var constraints: MiraConstraints
+    }
+
     var scriptID: UUID?
     var storyboardID: UUID?
     var brief: MiraBrief
@@ -271,6 +278,7 @@ struct MiraUndo: Codable, Equatable, Sendable {
     var shotIndex: Int?
     var startedFilming: Bool?
     var approvedScriptID: UUID?
+    var cardSelection: CardSelection?
 }
 struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var id = UUID()
@@ -306,7 +314,12 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var briefState: MiraBriefState { MiraBriefState(saved: brief) }
     var effectiveBriefRevision: Int { briefState.confirmedRecord?.revision ?? 0 }
     var isApproved: Bool { script != nil && approvedScriptID == activeScriptID }
-    var canFilm: Bool { storyboard != nil && !storyboardIsStale && isApproved }
+    var canFilm: Bool { isApproved && storyboard != nil && !shotsNeedUpdate }
+    var shotsNeedUpdate: Bool {
+        guard let storyboard else { return false }
+        guard let script else { return true }
+        return storyboardIsStale || !MiraValidation.matchesDialogue(storyboard, script: script)
+    }
     func editorScreen(remembering lastScreen: MiraProjectScreen?) -> MiraProjectScreen {
         guard idea != nil else { return .ideas }
         if storyboard != nil && (lastScreen == nil || lastScreen == .shots || lastScreen == .shooting) {
@@ -381,24 +394,32 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         approvedScriptID = nil
         touch()
     }
-    mutating func checkpoint() {
+    mutating func checkpoint(cardSelection: MiraUndo.CardSelection? = nil) {
         undo.append(
             MiraUndo(
                 scriptID: activeScriptID, storyboardID: activeStoryboardID, brief: brief, filmed: filmed,
                 review: needsReview, shotIndex: shotIndex, startedFilming: startedFilming,
-                approvedScriptID: approvedScriptID))
+                approvedScriptID: approvedScriptID, cardSelection: cardSelection))
         if undo.count > 30 { undo.removeFirst() }
     }
     mutating func undoLastChange() {
         guard let old = undo.popLast() else { return }
+        let sameStoryboard = activeStoryboardID == old.storyboardID
         activeScriptID = old.scriptID
         activeStoryboardID = old.storyboardID
         brief = old.brief
-        filmed = old.filmed
-        needsReview = old.review
         approvedScriptID = old.approvedScriptID
-        shotIndex = min(old.shotIndex ?? shotIndex, max(0, (storyboard?.shots.count ?? 0) - 1))
-        startedFilming = old.startedFilming ?? startedFilming
+        if !sameStoryboard {
+            filmed = old.filmed
+            needsReview = old.review
+            shotIndex = min(old.shotIndex ?? shotIndex, max(0, (storyboard?.shots.count ?? 0) - 1))
+            startedFilming = old.startedFilming ?? startedFilming
+        }
+        if let selection = old.cardSelection {
+            title = selection.title
+            selectedIdeaID = selection.ideaID
+            constraints = selection.constraints
+        }
         touch()
     }
     mutating func apply(_ output: MiraOutput, operation: MiraOperation) throws {
@@ -446,7 +467,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
             var idea = card.output?.ideas?.first, var script = card.output?.script,
             var board = card.output?.storyboard, board.requirementsRevision == effectiveBriefRevision
         else { return false }
-        checkpoint()
+        checkpoint(cardSelection: .init(title: title, ideaID: selectedIdeaID, constraints: constraints))
         if ideas.contains(where: { $0.id == idea.id }) { idea.id = UUID() }
         ideas.append(idea)
         selectedIdeaID = idea.id
@@ -508,7 +529,7 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
 enum MiraError: Error, LocalizedError, Equatable {
     case invalid(String)
     case storage(String)
-    case offline, newerVersion, busy, notFound
+    case offline, newerVersion, busy, notFound, anotherAccount, unknownAccount
     var errorDescription: String? {
         switch self {
         case .busy:
@@ -517,6 +538,8 @@ enum MiraError: Error, LocalizedError, Equatable {
         case .invalid(let text), .storage(let text): text
         case .offline: "New generation needs a connection. Your saved work is still available."
         case .newerVersion: "This library was saved by a newer Mira version. It has not been changed."
+        case .anotherAccount: "This belongs to another account"
+        case .unknownAccount: "This saved request has no account. Your words are still saved."
         }
     }
 }

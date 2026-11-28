@@ -125,14 +125,14 @@ struct MiraRootView: View {
 
     private var todayStack: some View {
         NavigationStack(path: tabPath(.today)) {
-            today.navigationDestination(for: MiraRoute.self, destination: destination)
+            today.navigationDestination(for: MiraRoute.self) { destination($0, tab: .today) }
         }
     }
 
     private var projectsStack: some View {
         NavigationStack(path: tabPath(.projects)) {
             MiraProjectsView(store: store, onOpen: { open($0, tab: .projects) }, onDelete: delete)
-                .navigationDestination(for: MiraRoute.self, destination: destination)
+                .navigationDestination(for: MiraRoute.self) { destination($0, tab: .projects) }
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
         }
     }
@@ -193,11 +193,11 @@ struct MiraRootView: View {
     private func open(_ id: UUID, tab: MiraTab) {
         store.open(id, tab: tab)
     }
-    @ViewBuilder private func destination(_ route: MiraRoute) -> some View {
+    @ViewBuilder private func destination(_ route: MiraRoute, tab: MiraTab) -> some View {
         switch route {
         case .project(let id):
             MiraProjectView(
-                store: store, projectID: id, onSheet: { sheet = $0 }, onGenerate: generate,
+                store: store, projectID: id, tab: tab, onSheet: { sheet = $0 }, onGenerate: generate,
                 onReconnect: reconnect, onCancel: cancel)
                 .task(id: store.project(id)?.storyboard?.id) { watchPictures(id) }
         case .todayCards(let id):
@@ -221,7 +221,7 @@ struct MiraRootView: View {
                 .task { reconnectCards(id, reportError: false) }
         case .shooting(let id):
             MiraShootingView(
-                store: store, projectID: id, onAsk: { shot in sheet = .ask(id, .reviseShot, shot) },
+                store: store, projectID: id, tab: tab, onAsk: { shot in sheet = .ask(id, .reviseShot, shot) },
                 onDone: { push(.done(id)) }, onWords: { showWords(id) })
                 .task(id: store.project(id)?.storyboard?.id) { watchPictures(id) }
         case .words(let id):
@@ -248,7 +248,7 @@ struct MiraRootView: View {
     }
     private func service(_ id: UUID?, requiresConsent: Bool = true) throws -> any MiraGenerationService {
         try dependencies.generationService(
-            for: id.flatMap(store.project), appState: appState, services: services,
+            for: id.flatMap(store.project), appState: appState,
             requiresConsent: requiresConsent)
     }
     private func generate(
@@ -796,6 +796,7 @@ struct MiraTodayCardsView: View {
             if previous != nil { Text("Mira is making a new version. About 1 minute.").font(.title3) }
         case .failed(_, let stopped):
             Text(stopped ? "This idea was stopped." : "This idea did not load.").font(.title3)
+            if let reason = card.job.error { Text(reason).font(.callout) }
             Button(state.nextAction.title) { onRetry(card.id) }.buttonStyle(MiraPrimaryStyle())
         case .needsUpdate:
             Button(state.nextAction.title) { onRetry(card.id) }.buttonStyle(MiraPrimaryStyle())
