@@ -60,7 +60,7 @@ struct MiraDailyNoteReply: Decodable, Sendable {
     let output: Output?
 
     var note: MiraDailyNote? {
-        guard input.operation == "dailyNote", inputRevision == 0, state == .succeeded,
+        guard input.operation == "dailyNote", inputRevision >= 0, state == .succeeded,
             let note = output?.dailyNote, MiraBrandDocument.validLine(note.noticed) else { return nil }
         switch note.action.type {
         case .none:

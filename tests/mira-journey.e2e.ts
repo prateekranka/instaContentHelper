@@ -1498,7 +1498,7 @@ const e5Note = (screen: Screen) => screen.getByTestId('mira.home.dailyNote.text'
 const e5Action = (screen: Screen) => screen.getByTestId('mira.home.dailyNote.action');
 const e5PostAction = (screen: Screen, index: number) => screen.getByTestId(`mira.home.whatWorked.action.${index}`);
 
-async function e5Fixture(update: Record<string, string | boolean> = {}) {
+async function e5Fixture(update: Record<string, string | boolean | number> = {}) {
   const address = process.env.MIRA_D2_FIXTURE_CONTROL;
   test.skip(!address || !process.env.MIRA_E2E_D2_ENDPOINT, 'Set both D2 fixture endpoints for E5.');
   const response = await fetch(`${address}/control`, {
@@ -1625,15 +1625,18 @@ test('E5 action none has no button and same-day Home reentry sends no request', 
   await app.screenshot('e5-mira-noticed-reused');
 });
 
-test('E5 cached Instagram note is hidden after permission changes', async ({ app, screen, device }) => {
-  await e5Fixture({ begin: true, action: 'makeIdea' });
+test('E5 accepts the cached revision and hides the Instagram note after permission changes', async ({ app, screen, device }) => {
+  await e5Fixture({ begin: true, action: 'makeIdea', seedRevision: 4 });
   await openE5(app, screen, device);
   await expect(e5Note(screen)).toHaveText('You have 1,212 followers.');
   await openE5(app, screen, device, 'not-now');
   await expect.poll(async () => (await e5Fixture()).statuses.length).toBe(2);
   await expect(e5Note(screen)).not.toBeAttached();
   await expect(e5Action(screen)).toHaveCount(0);
-  expect((await e5Fixture()).calls).toBe(1);
+  const cached = await e5Fixture();
+  expect(cached.calls).toBe(1);
+  expect(cached.starts).not.toContain(cached.job.id);
+  expect(cached.statuses).toEqual([cached.job.id, cached.job.id]);
 });
 
 test('E5 a failed note leaves Home available and sends no second start on reentry', async ({ app, screen, device }) => {

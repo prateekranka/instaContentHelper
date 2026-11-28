@@ -68,7 +68,8 @@ function dailyNote(body, response) {
       if (['continueReel', 'openDeal'].includes(type) && !target) return json(response, {}, 400);
       const buttonText = { makeIdea: 'Make an idea', continueReel: 'Continue this Reel', openDeal: 'Open this deal', none: '' }[type];
       const noticed = body.input.snapshots.length ? 'You have 1,212 followers.' : 'Here is what matters today.';
-      e5.job = { id: body.id, inputRevision: body.inputRevision, input: body.input,
+      e5.job = { id: e5.seedRevision === undefined ? body.id : randomUUID().toUpperCase(),
+        inputRevision: e5.seedRevision ?? body.inputRevision, input: body.input,
         output: { dailyNote: { noticed, action: { type, ...(buttonText && target && type !== 'makeIdea' ? { id: target.id } : {}) }, buttonText } } };
       e5.calls += 1;
     }
@@ -101,7 +102,7 @@ async function handle(request, response) {
   const body = JSON.parse(raw);
   if (path === '/control') {
     if (body.scenario === 'E5') {
-      if (body.begin) e5 = { action: body.action, insights: body.insights, fail: body.fail,
+      if (body.begin) e5 = { action: body.action, insights: body.insights, fail: body.fail, seedRevision: body.seedRevision,
         calls: 0, starts: [], statuses: [], picks: [] };
       return json(response, e5 ?? {}, e5 ? 200 : 404);
     }

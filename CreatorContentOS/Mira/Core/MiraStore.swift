@@ -1191,10 +1191,16 @@ extension MiraStore {
                 var reply = try await service.dailyNote(id: requestID, input: input)
                 let admittedID = reply.id
                 let admittedInput = reply.input
+                let admittedRevision = reply.inputRevision
+                guard admittedID != requestID || (admittedRevision == 0 && admittedInput == input) else {
+                    sendDailyNote(.failed(requestID))
+                    return
+                }
                 for _ in 0..<30 {
                     try Task.checkCancellation()
                     guard scope.day == MiraDailyNoteScope.utcDay, reply.id == admittedID, reply.input == admittedInput,
-                        reply.inputRevision == 0, reply.input.operation == "dailyNote" else { break }
+                        reply.inputRevision == admittedRevision, admittedRevision >= 0,
+                        reply.input.operation == "dailyNote" else { break }
                     if reply.state != .working {
                         if let note = reply.note {
                             sendDailyNote(.received(requestID, note, usesInstagram: !reply.input.snapshots.isEmpty))
