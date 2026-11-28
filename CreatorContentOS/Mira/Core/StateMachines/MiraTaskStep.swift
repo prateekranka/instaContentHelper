@@ -1,24 +1,40 @@
 enum MiraTaskStepEvent {
-    case opened(MiraLocation, editorSection: MiraProjectScreen, approved: Bool)
+    case opened(MiraLocation, editorSection: MiraProjectScreen, progress: MiraReelProgress, approved: Bool)
 }
 
 enum MiraTaskStep {
-    case idea, words, shotList, shoot, upload
+    case idea
+    case words(MiraNextAction)
+    case shotList(MiraNextAction)
+    case shoot(MiraNextAction)
+    case upload
 
     func handle(_ event: MiraTaskStepEvent) -> Self {
         switch event {
-        case .opened(let location, let section, let approved):
+        case .opened(let location, let section, let progress, let approved):
             switch location {
-            case .todayCards: .idea
-            case .words: .words
+            case .todayCards:
+                return .idea
+            case .words:
+                return .words(approved ? .reviewPlan : .approveWords)
             case .editor:
                 switch section {
-                case .ideas: .idea
-                case .shots: .shotList
-                default: .words
+                case .ideas:
+                    return .idea
+                case .shots:
+                    switch progress {
+                    case .ready: return .shotList(.readShotList)
+                    case .filming, .complete: return .shotList(.continueFilming)
+                    default: return .shotList(progress.nextAction)
+                    }
+                default:
+                    return .words(progress.nextAction)
                 }
-            case .filming: approved ? .shoot : .words
-            case .done: approved ? .upload : .words
+            case .filming:
+                guard approved else { return .words(.approveWords) }
+                return .shoot(progress == .complete ? .finishFilming : .markFilmed)
+            case .done:
+                return approved ? .upload : .words(.approveWords)
             }
         }
     }
@@ -42,6 +58,14 @@ enum MiraTaskStep {
         case .shotList: "Here's what you'll film."
         case .shoot: "Let's film your shots."
         case .upload: "Your filming is done."
+        }
+    }
+
+    var nextAction: MiraNextAction {
+        switch self {
+        case .idea: .chooseIdea
+        case .words(let action), .shotList(let action), .shoot(let action): action
+        case .upload: .prepareClips
         }
     }
 }

@@ -159,7 +159,8 @@ final class MiraStore {
     }
 
     func taskStep(_ location: MiraLocation, in project: MiraProject) -> MiraTaskStep {
-        MiraTaskStep.idea.handle(.opened(location, editorSection: editorScreen(project), approved: project.isApproved))
+        MiraTaskStep.idea.handle(
+            .opened(location, editorSection: editorScreen(project), progress: project.stage, approved: project.isApproved))
     }
 
     func editorScreen(_ project: MiraProject) -> MiraProjectScreen {

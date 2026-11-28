@@ -5,7 +5,7 @@ enum MiraNextAction {
     case useMicrophone, openSettings, stopRecording, connectInstagram, refreshInsights
     case reviewAIConsent, tryOpeningLibrary, updateApp, continueWork
     case enterBrief, extractRequirements, confirmRequirements, editBrief
-    case makeToday, readShotList, prepareClips
+    case makeToday, readShotList, markFilmed, finishFilming, prepareClips
 
     var title: String {
         switch self {
@@ -41,6 +41,8 @@ enum MiraNextAction {
         case .editBrief: "Edit brand requirements"
         case .makeToday: "Make today's Reel"
         case .readShotList: "Got it, I'll go shoot"
+        case .markFilmed: "Mark filmed"
+        case .finishFilming: "Finish"
         case .prepareClips: "Open Instagram"
         }
     }

@@ -10,6 +10,7 @@ struct MiraStoryboardView: View {
     var onUpdate: () -> Void
     var body: some View {
         if let project = store.project(projectID), let board = project.storyboard {
+            let step = store.taskStep(.editor(projectID), in: project)
             VStack(alignment: .leading, spacing: 20) {
                 MiraSectionTitle(text: "Your filming plan")
                 Text(
@@ -93,7 +94,7 @@ struct MiraStoryboardView: View {
                 }
                 if project.canFilm {
                     NavigationLink(value: MiraRoute.shooting(projectID)) {
-                        Text(project.startedFilming ? MiraNextAction.continueFilming.title : MiraNextAction.readShotList.title)
+                        Text(step.nextAction.title)
                     }.buttonStyle(MiraPrimaryStyle())
                         .accessibilityIdentifier("mira.shots.film")
                 }
@@ -177,7 +178,8 @@ struct MiraShootingView: View {
             {
                 let index = min(max(0, project.shotIndex), board.shots.count - 1)
                 let shot = board.shots[index]
-                MiraTaskHeading(step: store.taskStep(.filming(projectID), in: project))
+                let step = store.taskStep(.filming(projectID), in: project)
+                MiraTaskHeading(step: step)
                 Text("Shot \(index+1) of \(board.shots.count)").font(.title2)
                 Text("\(board.shots.filter{project.filmed.contains($0.id)}.count) filmed by you").font(
                     .callout)
@@ -196,13 +198,18 @@ struct MiraShootingView: View {
                 if project.needsReview.contains(shot.id) {
                     Text("This shot changed. Check these instructions before filming again.").font(.headline)
                 }
-                Button(
+                let mark = Button(
                     project.filmed.contains(shot.id)
                         ? "Mark not filmed"
-                        : (project.needsReview.contains(shot.id) ? "Reviewed and filmed" : "Mark filmed")
+                        : (project.needsReview.contains(shot.id) ? "Reviewed and filmed" : MiraNextAction.markFilmed.title)
                 ) {
                     store.toggleFilmed(projectID, shotID: shot.id)
-                }.buttonStyle(MiraPrimaryStyle()).disabled(project.storyboardIsStale)
+                }.disabled(project.storyboardIsStale)
+                if project.stage == .complete {
+                    mark.buttonStyle(.bordered)
+                } else {
+                    mark.buttonStyle(MiraPrimaryStyle())
+                }
                 HStack {
                     Button("Previous") { move(max(0, index - 1)) }.disabled(index == 0)
                     Spacer()
@@ -215,7 +222,7 @@ struct MiraShootingView: View {
                         .footnote
                     ).foregroundStyle(.secondary)
                 if project.stage == .complete {
-                    Button("Finish", action: onDone).buttonStyle(MiraPrimaryStyle())
+                    Button(step.nextAction.title, action: onDone).buttonStyle(MiraPrimaryStyle())
                         .accessibilityIdentifier("mira.filming.finish")
                 }
             } else {
