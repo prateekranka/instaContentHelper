@@ -1100,6 +1100,7 @@ test('M03 undo restores the previous card title, selected idea and filming const
   await tap(screen, await sectionControl(screen, 'Script'));
   await tap(screen, screen.getByRole('button', 'Undo last content change', { exact: true }));
   const title = screen.getByRole('textbox', 'Project name', { exact: true });
+  await scrollToControl(screen, title, 'up');
   expect(await title.inputValue()).toBe('A quick movement break');
   await expect(screen.getByText('Show the movement from start to finish.', { exact: true }).first()).toBeAttached();
   await tap(screen, await sectionControl(screen, 'Shots'));
