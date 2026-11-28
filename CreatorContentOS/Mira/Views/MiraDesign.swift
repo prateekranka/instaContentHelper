@@ -166,6 +166,7 @@ enum MiraSheet: Identifiable {
     case todayScript(UUID, UUID)
     case adjustIdea(UUID, UUID)
     case dealDraft(String)
+    case deal(UUID)
     case brief(UUID)
     case manualIdea(UUID)
     var id: String {
@@ -179,6 +180,7 @@ enum MiraSheet: Identifiable {
         case .todayScript(let id, let card): "today-script-\(id)-\(card)"
         case .adjustIdea(let id, let idea): "adjust-\(id)-\(idea)"
         case .dealDraft: "deal-draft"
+        case .deal(let id): "deal-\(id)"
         case .brief(let id): "brief-\(id)"
         case .manualIdea(let id): "idea-\(id)"
         }

@@ -32,6 +32,7 @@ final class MiraStore {
     private var pickTask: Task<Void, Never>?
     private let repository: any MiraProjectRepository
     private var saveTask: Task<Void, Never>?
+    private var dealBriefTask: Task<Void, Never>?
     private var wordsStates: [UUID: MiraWordsState] = [:]
     private var requestStates: [UUID: MiraAIRequest] = [:]
     private var generationTasks: [UUID: Task<Void, Never>] = [:]
@@ -144,7 +145,7 @@ final class MiraStore {
     }
 
     var homeFeed: MiraHomeFeed {
-        MiraHomeFeed.empty.handle(.workChanged(document.projects, resume: location.lastProject))
+        MiraHomeFeed.empty.handle(.workChanged(document.projects, resume: location.lastProject, deals: deals))
     }
 
     func continueReel(_ id: UUID) {
@@ -1030,15 +1031,10 @@ extension MiraStore {
             return
         }
 
-        let deal = activePickDeal(demo: demo)
-        let context = MiraPickContext(dealID: deal?.id, brief: deal?.briefState.confirmedRecord, isDemo: demo,
+        let checklist = activeDealChecklist
+        let context = MiraPickContext(dealID: checklist == nil ? nil : activeDeal?.id, isDemo: demo,
                                       skippedTitles: Array(skipped.prefix(30)))
-        let checklist = context.brief.flatMap { MiraDealChecklist($0) }
-        if context.brief != nil && checklist == nil {
-            reportError("Review the brand requirements. Use one short line for each item before asking for a pick.")
-            return
-        }
-        var constraints = deal?.constraints ?? document.defaultConstraints ?? MiraConstraints()
+        var constraints = document.defaultConstraints ?? MiraConstraints()
         constraints.populate(from: prompt)
         let recent = document.projects.filter { $0.isDemo == demo }.flatMap { project in
             project.ideas.map(\.title) + (project.todayCards ?? []).compactMap { $0.output?.ideas?.first?.title }
@@ -1068,30 +1064,18 @@ extension MiraStore {
         }
     }
 
-    private func activePickDeal(demo: Bool) -> MiraProject? {
-        document.projects.filter {
-            !$0.archived && $0.isDemo == demo && $0.stage != .complete
-                && $0.briefState.confirmedRecord != nil
-        }.max { $0.updatedAt < $1.updatedAt }
-    }
-
     func makePick() {
         guard case .ready(let context, let job) = pickState, let board = job.output?.storyboard else { return }
         var reel = MiraProject()
-        if let id = context.dealID {
-            guard let existing = project(id), !existing.archived, existing.stage != .complete,
-                  existing.briefState.confirmedRecord == context.brief
-            else {
+        if let checklist = job.input.dealChecklist {
+            guard let deal = activeDeal, deal.id == context.dealID, checklist == activeDealChecklist else {
                 sendPick(.reset)
-                reportError("The brand requirements changed. Ask Mira for a new idea.")
+                reportError("The active deal changed. Ask Mira for a new idea.")
                 return
             }
-            if existing.ideas.isEmpty && existing.scripts.isEmpty && existing.storyboards.isEmpty
-                && existing.job == nil && existing.todayCards == nil {
-                reel = existing
-            } else if let brief = context.brief {
-                reel.brief = brief
-            }
+            reel.brief = checklist.validationBrief
+            reel.brief.original = deal.source
+            reel.brief.unresolved = deal.terms.unresolved
         }
         reel.request = job.input.request
         reel.isDemo = context.isDemo
@@ -1150,5 +1134,113 @@ extension MiraStore {
         var failed = job
         failed.state = .failed
         return (failed, terminal.message)
+    }
+}
+
+protocol MiraDealBriefService: Sendable {
+    var creatorID: UUID? { get }
+    func readDealBrief(_ job: MiraDealBriefJob, start: Bool) async throws -> MiraDealBriefReply
+}
+
+extension MiraStore {
+    var deals: [MiraDeal] { document.deals ?? [] }
+
+    private var activeDeal: MiraDeal? {
+        deals.first { $0.tracker.paidAt == nil }
+    }
+
+    var activeDealChecklist: MiraDealChecklist? { activeDeal?.checklist }
+
+    var dealBriefState: MiraDealBriefState {
+        MiraDealBriefState(record: document.dealBriefDraft, running: dealBriefTask != nil)
+    }
+
+    var proposedDeal: MiraDealCardState? {
+        guard case .reviewing(let draft) = dealBriefState, let terms = draft.terms else { return nil }
+        return .reviewing(draft, terms)
+    }
+
+    @discardableResult
+    func beginDealBrief(id: UUID = UUID(), text: String = "") -> Bool {
+        guard transitionDealBrief(.begin(id, text)) else { return false }
+        save(immediate: false)
+        return true
+    }
+
+    func editDealBrief(_ text: String) {
+        if transitionDealBrief(.edit(text)) { save(immediate: false) }
+    }
+
+    @discardableResult
+    private func transitionDealBrief(_ event: MiraDealBriefEvent) -> Bool {
+        guard case .loaded = library, let next = dealBriefState.handle(event) else { return false }
+        document.dealBriefDraft = next.record
+        return true
+    }
+
+    func readDealBrief(using service: any MiraDealBriefService) {
+        guard dealBriefTask == nil, let draft = dealBriefState.record else { return }
+        let job: MiraDealBriefJob
+        let resume: Bool
+        if let pending = draft.job {
+            guard service.creatorID == pending.creatorID else {
+                reportError(MiraError.anotherAccount.localizedDescription)
+                return
+            }
+            job = pending
+            resume = true
+        } else {
+            job = MiraDealBriefJob(id: UUID(),
+                input: MiraDealBriefInput(text: draft.text, profile: document.profile), creatorID: service.creatorID)
+            resume = false
+        }
+        guard transitionDealBrief(resume ? .resume : .read(job)) else { return }
+        dealBriefTask = Task {
+            defer { dealBriefTask = nil }
+            guard await flush() else {
+                transitionDealBrief(.interrupted("Could not save this brief. Reconnect to try again."))
+                return
+            }
+            do {
+                var reply: MiraDealBriefReply
+                if resume {
+                    do { reply = try await service.readDealBrief(job, start: false) }
+                    catch MiraError.notFound { reply = try await service.readDealBrief(job, start: true) }
+                } else {
+                    reply = try await service.readDealBrief(job, start: true)
+                }
+                for _ in 0..<45 {
+                    guard reply.matches(job) else { throw MiraError.invalid("Could not match this brief to the request.") }
+                    if reply.state != .working { break }
+                    try await Task.sleep(for: .seconds(3))
+                    reply = try await service.readDealBrief(job, start: false)
+                }
+                if !transitionDealBrief(.received(reply)) {
+                    transitionDealBrief(.interrupted("Mira could not finish checking this request. Reconnect to check again."))
+                }
+            } catch {
+                transitionDealBrief(.interrupted(error.localizedDescription))
+            }
+            save()
+        }
+    }
+
+    func confirmDeal() -> UUID? {
+        guard let proposedDeal,
+            case .saved(let deal) = proposedDeal.handle(.confirm(at: Date())),
+            !deals.contains(where: { $0.id == deal.id }),
+            transitionDealBrief(.confirmed)
+        else { return nil }
+        document.deals = [deal] + deals
+        save()
+        return deal.id
+    }
+
+    func trackDeal(_ id: UUID, _ event: MiraDealTrackerEvent) {
+        guard case .loaded = library, let index = deals.firstIndex(where: { $0.id == id }),
+            case .saved(let deal) = MiraDealCardState.saved(deals[index]).handle(.track(event))
+        else { return }
+        document.deals?[index] = deal
+        save()
     }
 }

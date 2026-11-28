@@ -17,47 +17,6 @@ struct MiraBrandJobInput: Codable, Equatable, Sendable {
     let instagramSummary: MiraInstagramSummary?
 }
 
-struct MiraDealChecklist: Codable, Equatable, Sendable {
-    struct Item: Codable, Equatable, Sendable {
-        let id: UUID
-        let kind: String
-        let text: String
-        let excerpt: String
-        let requiredText: String?
-    }
-
-    let revision: Int
-    let items: [Item]
-
-    init?(_ brief: MiraBrief) {
-        guard brief.confirmed, (1...40).contains(brief.requirements.count),
-            Set(brief.requirements.map(\.id)).count == brief.requirements.count,
-            brief.requirements.allSatisfy({
-                MiraBrandDocument.validLine(MiraBrandDocument.trimmed($0.value))
-                    && !MiraBrandDocument.trimmed($0.excerpt).isEmpty && $0.excerpt.utf16.count <= 1000
-            })
-        else { return nil }
-        revision = brief.revision
-        items = brief.requirements.map { requirement in
-            let kind: String
-            switch requirement.kind.lowercased() {
-            case "caption": kind = "caption"
-            case "onscreentext", "on-screen text", "on-screen": kind = "onScreenText"
-            case "script", "spoken": kind = "script"
-            case "shot", "visual": kind = "shot"
-            default: kind = "other"
-            }
-            return Item(id: requirement.id, kind: kind, text: MiraBrandDocument.trimmed(requirement.value),
-                        excerpt: requirement.excerpt, requiredText: nil)
-        }
-    }
-
-    var validationBrief: MiraBrief {
-        MiraBrief(requirements: items.map { .init(id: $0.id, kind: $0.kind, value: $0.text, excerpt: $0.excerpt) },
-                  confirmed: true, revision: revision)
-    }
-}
-
 extension MiraGenerationInput {
     static func interview(
         profile: MiraProfile, answers: MiraInterviewAnswers, instagram: MiraInstagramSummary?

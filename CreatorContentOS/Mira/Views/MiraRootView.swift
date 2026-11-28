@@ -15,6 +15,9 @@ struct MiraRootView: View {
     @State private var legacyRequest = ""
     @State private var stepByStepProject: UUID?
     @State private var e2EntryTask: Task<Void, Never>?
+    @State private var dealNeedsAIConsent = false
+    @State private var sharedBriefWaiting = false
+    @State private var checkingSharedBriefs = false
     var body: some View {
         libraryContent
         .tint(MiraTheme.accent)
@@ -93,6 +96,9 @@ struct MiraRootView: View {
                         open(id, tab: .myBrand)
                         sheet = nil
                     }
+                case .deal(let id):
+                    MiraDealDetailView(store: store, id: id)
+                        .toolbar { Button("Close") { sheet = nil } }
                 case .brief(let id): MiraBriefView(store: store, projectID: id, onGenerate: generate)
                 case .manualIdea(let id): MiraManualIdeaView(store: store, projectID: id)
                 }
@@ -118,13 +124,18 @@ struct MiraRootView: View {
                 .accessibilityAddTraits(.updatesFrequently)
             }
         }
-        .task { await store.load() }
+        .task { await loadLibrary() }
         .onChange(of: liveSession?.deviceToken) { _, _ in
             e2EntryTask?.cancel()
             if case .instagramResults = sheet { sheet = nil }
             store.resetE2Session()
         }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { Task { await store.flush() } } }
+        .onChange(of: scenePhase) { _, phase in
+            Task {
+                if phase == .active { await checkSharedBriefs(openDeals: true) }
+                else { await store.flush() }
+            }
+        }
     }
     @ViewBuilder private var libraryContent: some View {
         switch store.library {
@@ -142,7 +153,7 @@ struct MiraRootView: View {
                 if failure == .newerVersion {
                     Text(store.library.nextAction.title)
                 } else {
-                    Button(store.library.nextAction.title) { Task { await store.load() } }
+                    Button(store.library.nextAction.title) { Task { await loadLibrary() } }
                 }
             }
         }
@@ -156,10 +167,12 @@ struct MiraRootView: View {
                 home.navigationDestination(for: MiraRoute.self) { destination($0, tab: .home) }
             }.tabItem { Label("Home", systemImage: "house") }.tag(MiraMainTab.home)
             NavigationStack {
-                MiraPage {
-                    MiraSectionTitle(text: "Share a brand brief to Mira")
-                    Text("No deals yet. Paste a brief below to save it with a Reel.")
-                }
+                MiraDealsView(
+                    store: store, sharedBriefWaiting: sharedBriefWaiting,
+                    needsConsent: services.isLiveSupabaseRuntime && services.aiConsent != .allowed
+                        && (dealNeedsAIConsent || store.dealBriefState.record?.job != nil),
+                    onRead: readDealBrief, onReviewConsent: { services.setAIConsentSheetPresented(true) },
+                    onConfirm: confirmDeal, onOpen: { sheet = .deal($0) })
                 .navigationTitle("Deals").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .topBarTrailing) { profileButton } }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -214,6 +227,10 @@ struct MiraRootView: View {
             onMake: { beginE2(.pick(todayRequest)) },
             onReviewAIConsent: { services.setAIConsentSheetPresented(true) },
             onContinue: { store.continueReel($0) },
+            onOpenDeal: { id in
+                store.navigate(.selectTab(.deals))
+                sheet = .deal(id)
+            },
             onMakePick: { store.makePick() },
             onAnother: { beginE2(.pick("")) },
             checkingInstagram: e2EntryTask != nil
@@ -223,6 +240,68 @@ struct MiraRootView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             askBar("Ask Mira for a Reel idea", send: { startFromAsk($0) })
         }
+    }
+
+    private func loadLibrary() async {
+        await store.load()
+        await checkSharedBriefs(openDeals: true)
+    }
+
+    private func checkSharedBriefs(openDeals: Bool) async {
+        guard case .loaded = store.library, !checkingSharedBriefs else { return }
+        let fixtureText = DebugLaunchConfiguration.value(for: "MCO_QA_SHARE_BRIEF")
+        if DebugLaunchFlags.forceFixtureUI && fixtureText == nil { return }
+        checkingSharedBriefs = true
+        defer { checkingSharedBriefs = false }
+        do {
+            var items = try MiraSharedBriefInbox.pending(matching: DebugLaunchFlags.forceFixtureUI ? fixtureText : nil)
+            let imported = Set(store.deals.map(\.id) + [store.dealBriefState.record?.id].compactMap { $0 })
+            let duplicates = items.filter { imported.contains($0.id) }
+            if !duplicates.isEmpty, await store.flush() {
+                for item in duplicates { try MiraSharedBriefInbox.markImported(item.id) }
+            }
+            items.removeAll { imported.contains($0.id) }
+            guard let next = items.first else {
+                sharedBriefWaiting = false
+                return
+            }
+            if openDeals { store.navigate(.selectTab(.deals)) }
+            guard store.beginDealBrief(id: next.id, text: next.text) else {
+                sharedBriefWaiting = true
+                return
+            }
+            sharedBriefWaiting = items.count > 1
+            if await store.flush() { try MiraSharedBriefInbox.markImported(next.id) }
+        } catch {
+            if store.location.tab == .deals {
+                store.reportError("Could not open shared briefs. You can still paste a brief in Deals.")
+            }
+        }
+    }
+
+    private func readDealBrief() {
+        dealNeedsAIConsent = false
+        do {
+            if DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil {
+                store.readDealBrief(using: MiraDealFixtureService())
+                return
+            }
+            let reconnecting = store.dealBriefState.record?.job != nil
+            guard let generation = try service(nil, requiresConsent: !reconnecting) as? any MiraDealBriefService else {
+                throw MiraError.invalid("Mira could not open the brief reader. Your text is still here.")
+            }
+            store.readDealBrief(using: generation)
+        } catch is AIConsentRequired {
+            dealNeedsAIConsent = true
+        } catch {
+            store.reportError(error.localizedDescription)
+        }
+    }
+
+    private func confirmDeal() {
+        guard let id = store.confirmDeal() else { return }
+        sheet = .deal(id)
+        Task { await checkSharedBriefs(openDeals: false) }
     }
 
     private var liveSession: PairedDeviceSession? {
@@ -726,6 +805,7 @@ struct MiraTodayHome: View {
     let onMake: () -> Void
     let onReviewAIConsent: () -> Void
     let onContinue: (UUID) -> Void
+    var onOpenDeal: (UUID) -> Void = { _ in }
     var onMakePick: () -> Void = {}
     var onAnother: () -> Void = {}
     var checkingInstagram = false
@@ -782,7 +862,11 @@ struct MiraTodayHome: View {
                     ideaRequest
                 }.accessibilityIdentifier("mira.home.idea")
             }
-        case .continuing(let reels):
+        case .deals(let deals):
+            Text(deals.count == 1 ? "You have one open deal." : "You have \(deals.count) open deals.")
+                .font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+            dealCards(deals)
+        case .continuing(let reels, let deals):
             Text(reels.count == 1 ? "You have one Reel in progress." : "You have \(reels.count) Reels in progress.")
                 .font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
             ForEach(reels) { reel in
@@ -797,9 +881,16 @@ struct MiraTodayHome: View {
                         .accessibilityIdentifier("mira.today.continue")
                 }
             }
+            dealCards(deals)
         }
         consentRecovery
         MiraInsightsView(compact: true)
+    }
+
+    private func dealCards(_ deals: [MiraDeal]) -> some View {
+        ForEach(deals) { deal in
+            MiraDealSummary(deal: deal) { onOpenDeal(deal.id) }
+        }
     }
 
     @ViewBuilder private var ideaRequest: some View {

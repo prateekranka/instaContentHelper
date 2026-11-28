@@ -2,7 +2,6 @@ import Foundation
 
 struct MiraPickContext: Equatable {
     let dealID: UUID?
-    let brief: MiraBrief?
     let isDemo: Bool
     let skippedTitles: [String]
 }
