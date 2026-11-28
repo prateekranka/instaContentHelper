@@ -140,8 +140,27 @@ struct MiraSectionTitle: View {
         Text(text).font(.title2.weight(.semibold)).accessibilityAddTraits(.isHeader)
     }
 }
+enum MiraE2Action {
+    case interview
+    case brandDoc
+    case pick(String)
+
+    var asksInstagramPermission: Bool {
+        if case .brandDoc = self { return false }
+        return true
+    }
+}
+
+struct MiraInstagramResultsPrompt {
+    let action: MiraE2Action
+    let creatorID: UUID
+    let report: InstagramInsightsReport?
+}
+
 enum MiraSheet: Identifiable {
     case profile
+    case compareIdeas(UUID)
+    case instagramResults(MiraInstagramResultsPrompt)
     case ask(UUID, MiraOperation, UUID?, note: String = "")
     case askToday(UUID, UUID, note: String = "")
     case todayScript(UUID, UUID)
@@ -152,6 +171,8 @@ enum MiraSheet: Identifiable {
     var id: String {
         switch self {
         case .profile: "profile"
+        case .compareIdeas(let id): "compare-ideas-\(id)"
+        case .instagramResults: "instagram-results"
         case .ask(let id, let operation, let target, _):
             "ask-\(id)-\(operation)-\(String(describing:target))"
         case .askToday(let id, let card, _): "ask-today-\(id)-\(card)"
