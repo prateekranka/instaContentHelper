@@ -68,7 +68,7 @@ stateDiagram-v2
     sending --> needsReconnect: save or link fails, or send limit
     sending --> active: accepted
     state active <<choice>>
-    active --> working
+    active --> working: optional generation step
     active --> waitingToRetry: server backoff
     working --> active: matching progress
     waitingToRetry --> active: matching progress
@@ -83,6 +83,7 @@ stateDiagram-v2
     working --> saved: job received
     waitingToRetry --> saved: job received
     stopping --> saved: job received
+    done --> done: picture status or matching image load failure
 ```
 
 A saved job maps idle to `idle`, working to `needsReconnect`, failed to `failed`, cancelled to `stopped`, and succeeded to `done`. The store starts a fresh request with a new job. `Store read` in the table refers to the full saved-job mapping.
@@ -91,14 +92,46 @@ A saved job maps idle to `idle`, working to `needsReconnect`, failed to `failed`
 | --- | --- | --- | --- |
 | `idle` | — | — | — |
 | `waitingToStart` | Send again. Stop. | `sending`. `stopping`. | Stop |
-| `sending` | Save fails or link fails. Server accepts. Server is busy. Stop. | `needsReconnect`. `working` or `waitingToRetry`. `waitingToStart`, or `needsReconnect` at the send limit. `stopping`. | Stop |
-| `working` | Matching progress. Receive job. Link fails. Stop. | `working` or `waitingToRetry`. Store read. `needsReconnect`. `stopping`. | Stop |
-| `waitingToRetry` | Matching progress. Receive job. Link fails. Stop. | `working` or `waitingToRetry`. Store read. `needsReconnect`. `stopping`. | Stop |
+| `sending` | Save fails or link fails. Server accepts. Server is busy. Stop. | `needsReconnect`. `working` with the job ID and optional step, or `waitingToRetry` during backoff. `waitingToStart`, or `needsReconnect` at the send limit. `stopping`. | Stop |
+| `working` | Progress for the same job. Receive job. Link fails. Stop. | Replace the optional step in `working` or enter `waitingToRetry`. Store read. `needsReconnect`. `stopping`. | Stop |
+| `waitingToRetry` | Progress for the same job. Receive job. Link fails. Stop. | `working` with the latest optional step, or `waitingToRetry` while backoff continues. Store read. `needsReconnect`. `stopping`. | Stop |
 | `stopping` | Receive job. Link fails. | Store read. `needsReconnect`. | Wait |
 | `needsReconnect` | Send again. Stop. | `sending`. `stopping`. | Reconnect |
 | `failed` | — | — | Try again with a new job |
 | `stopped` | — | — | Try again with a new job |
-| `done` | — | — | — |
+| `done` | Receive picture status. A picture fails to load from its current URL. | `done` with updated picture states by shot ID. A saved or newly completed job starts with an empty picture map. | — |
+
+### Shot picture states
+
+A successful text job can update its pictures independently. Each received picture list replaces the map. A shot missing from the list has no picture state and uses its drawn frame.
+
+```mermaid
+stateDiagram-v2
+    [*] --> pictureStatus
+    state pictureStatus <<choice>>
+    pictureStatus --> pending: pending reply
+    pictureStatus --> ready: ready reply with valid URL
+    pictureStatus --> failed: failed reply or invalid ready URL
+    pending --> pictureStatus: next reply
+    ready --> ready: ready reply keeps current URL
+    ready --> refreshing: current URL fails
+    ready --> failed: refreshed URL fails within 60 seconds of the refresh request
+    refreshing --> ready: different valid URL
+    refreshing --> failed: same or invalid URL
+    failed --> failed: ready reply
+    ready --> pending: pending reply
+    refreshing --> pending: pending reply
+    failed --> pending: pending reply
+    ready --> failed: failed reply or invalid ready URL
+    refreshing --> failed: failed reply
+```
+
+| Picture state | Allowed events | Next state | Preview |
+| --- | --- | --- | --- |
+| `pending` | Receive picture status | `pending`, `ready` with a valid URL, or `failed` | Drawn frame while the store checks status |
+| `ready` | Receive picture status. Loading the current URL fails. | Keep the current URL on a valid ready reply. Use `pending` or `failed` when the reply requires it. On a load failure, enter `refreshing` unless the refresh was requested less than 60 seconds ago, in which case enter `failed`. | AI picture |
+| `refreshing` | Receive picture status | `pending`, `ready` with a different valid URL, or `failed` | Drawn frame while the store requests fresh status |
+| `failed` | Receive picture status | `pending` on a pending reply. Otherwise keep `failed`. | Drawn frame |
 
 ## `MiraTodayCardState`
 
@@ -109,28 +142,50 @@ stateDiagram-v2
     state "Read card and request" as workChanged
     [*] --> workChanged
     workChanged --> waiting: waiting to send
-    workChanged --> making: sending, working or stopping
+    workChanged --> making: working with optional step
+    workChanged --> making: sending or stopping without step
     workChanged --> waitingToRetry: server backoff
     workChanged --> reconnect: link needed
     workChanged --> failed: failed, idle or stopped
-    workChanged --> ready: valid result for this brief
+    workChanged --> ready: valid result for this brief with any pictures
     workChanged --> needsUpdate: result missing parts or out of date
     ready --> ready: make or retry
     failed --> failed: retry
     needsUpdate --> needsUpdate: retry
 ```
 
-`workChanged` works from any state. A ready result has one idea, a script, and a shot list for the current brief. Make and Retry let the store act. The next projection reflects its changes.
+`workChanged` works from any state. A ready result has one idea, a script, and a shot list for the current brief. Picture status does not affect readiness. Make and Retry let the store act. The next projection reflects its changes.
 
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |
 | `waiting` | Card or request changes | Read card and request | Stop |
-| `making` | Card or request changes | Read card and request | Wait |
+| `making` | Card or request changes | Read card and request. Keep prior output when available. Use the step from a working request. | Wait |
 | `waitingToRetry` | Card or request changes | Read card and request | Stop |
 | `reconnect` | Card or request changes | Read card and request | Reconnect |
 | `failed` | Card or request changes. Retry. | Read card and request. `failed`. | Try again |
-| `ready` | Card or request changes. Make or retry. | Read card and request. `ready`. | Make this one |
+| `ready` | Card, request or picture state changes. Make or retry. | Read the current result and picture map. `ready`. | Make this one |
 | `needsUpdate` | Card or request changes. Retry. | Read card and request. `needsUpdate`. | Update this idea |
+
+### Today wait steps
+
+The diagram shows how each server snapshot sets the wait screen for a card that is making its first result. A poll can skip steps. The card becomes ready after text success and validation.
+
+```mermaid
+stateDiagram-v2
+    state "Read working request" as progress
+    [*] --> progress
+    progress --> simpleWait: step absent or unknown
+    progress --> writingWords: ideaReady
+    progress --> planningShots: scriptReady
+    progress --> stepsDone: storyboardReady
+```
+
+| Generation step | Server value | Wait screen |
+| --- | --- | --- |
+| No step | Absent or unknown | Simple wait screen |
+| `ideaReady` | `idea_ready` | Finding an idea is complete. Writing your words is in progress. |
+| `scriptReady` | `script_ready` | The idea and words are complete. Planning shots is in progress. |
+| `storyboardReady` | `storyboard_ready` | All three steps are complete. Wait for text success. |
 
 ## `MiraWordsState`
 
