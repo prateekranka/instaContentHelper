@@ -11,7 +11,6 @@ struct MiraStoryboardView: View {
     var onUpdate: () -> Void
     var body: some View {
         if let project = store.project(projectID), let board = project.storyboard {
-            let step = store.taskStep(.editor(projectID), in: project, tab: tab)
             VStack(alignment: .leading, spacing: 20) {
                 MiraSectionTitle(text: "Your filming plan")
                 Text(
@@ -24,12 +23,9 @@ struct MiraStoryboardView: View {
                 MiraShotRow(title: "Audio", icon: "mic", value: audio(board.shots))
                 if project.shotsNeedUpdate {
                     Text("Mira needs to update the shots").font(.headline)
-                    Button("Update shot list", action: onUpdate).buttonStyle(MiraPrimaryStyle())
-                        .disabled(project.isApproved && store.requestState(project.job).pending)
-                } else if !project.isApproved {
-                    NavigationLink(value: MiraRoute.words(projectID)) {
-                        Text("Approve your words").frame(maxWidth: .infinity, minHeight: 52)
-                    }.buttonStyle(MiraPrimaryStyle()).accessibilityIdentifier("mira.shots.approve")
+                }
+                if !project.canFilm {
+                    MiraInlineAction { mainAction(project) }
                 }
                 ForEach(Array(board.shots.enumerated()), id: \.element.id) { index, shot in
                     VStack(alignment: .leading, spacing: 16) {
@@ -92,15 +88,29 @@ struct MiraStoryboardView: View {
                     Text("Brand requirements confirmed").font(.headline)
                 }
                 if project.canFilm {
-                    NavigationLink(value: MiraRoute.shooting(projectID)) {
-                        Text(step.nextAction.title)
-                    }.buttonStyle(MiraPrimaryStyle())
-                        .accessibilityIdentifier("mira.shots.film")
+                    MiraInlineAction { mainAction(project) }
                     NavigationLink(value: MiraRoute.done(projectID)) {
                         Text(MiraNextAction.prepareClips.title)
                     }.buttonStyle(.bordered)
                 }
             }
+        }
+    }
+
+    @ViewBuilder func mainAction(_ project: MiraProject) -> some View {
+        if project.shotsNeedUpdate {
+            Button("Update shot list", action: onUpdate).buttonStyle(MiraPrimaryStyle())
+                .disabled(project.isApproved && store.requestState(project.job).pending)
+        } else if !project.isApproved {
+            NavigationLink(value: MiraRoute.words(projectID)) {
+                Text("Approve your words").frame(maxWidth: .infinity, minHeight: 52)
+            }.buttonStyle(MiraPrimaryStyle()).accessibilityIdentifier("mira.shots.approve")
+        } else if project.canFilm {
+            let step = store.taskStep(.editor(projectID), in: project, tab: tab)
+            NavigationLink(value: MiraRoute.shooting(projectID)) {
+                Text(step.nextAction.title)
+            }.buttonStyle(MiraPrimaryStyle())
+                .accessibilityIdentifier("mira.shots.film")
         }
     }
 

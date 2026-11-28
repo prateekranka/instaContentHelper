@@ -56,13 +56,18 @@ async function menuControl(screen: Screen, name: string) {
 }
 
 async function fillText(field: Locator, text: string) {
-  try {
-    await field.fill(text);
-  } catch (error) {
-    if (!(error instanceof Error && /could not confirm the typed text/.test(error.message))) throw error;
-    if (await field.inputValue() !== text) await field.fill(text);
+  const readValue = async () => (await field.inputValue()) || (await field.textContent()) || '';
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await field.fill(text);
+      break;
+    } catch (error) {
+      if (!(error instanceof Error && /could not confirm the typed text/.test(error.message))) throw error;
+      if (text.length > 0 && await readValue() === text) return;
+      if (attempt === 1) throw error;
+    }
   }
-  if (text.length > 0) expect(await field.inputValue()).toBe(text);
+  if (text.length > 0) await expect.poll(readValue).toBe(text);
 }
 
 async function dismissSystemVerification(screen: Screen) {
@@ -678,7 +683,7 @@ test('S1 B1 the Projects shot list asks her to approve the words before filming'
   await scrollToControl(screen, shotsSection, 'up');
   await tap(screen, shotsSection);
   const approveLink = screen.getByTestId('mira.shots.approve');
-  await scrollToControl(screen, approveLink);
+  await scrollToControl(screen, approveLink, 'either');
   await expect(approveLink).toBeVisible();
   await expect(screen.getByRole('button', 'Start filming', { exact: true })).not.toBeVisible();
   await app.screenshot(`s1-b1-shots-approve-${look}`);
@@ -1070,9 +1075,25 @@ test('M03 undo restores the previous card title, selected idea and filming const
   const card = screen.getByRole('scroll-view', { visible: true }).filter({ has: second }).last();
   await tap(screen, card.getByRole('button', 'Change something', { exact: true }));
   const note = screen.getByRole('textbox', 'What would help?', { exact: true });
-  await fillText(note, '4 minutes in the kitchen');
+  const request = '4 minutes in the kitchen';
+  await fillText(note, request);
+  const keyboard = mobileKeyboard(screen);
+  await expect(keyboard).toBeVisible();
   await closeKeyboard(screen, note);
-  await tap(screen, screen.getByRole('button', 'Propose change', { exact: true }));
+  await expect(note).not.toBeFocused();
+  await expect(note).toHaveValue(request);
+  await note.tap();
+  await expect(keyboard).toBeVisible();
+  await screen.getByText('Change this idea', { exact: true }).tap();
+  await expect(keyboard).not.toBeVisible();
+  await note.tap();
+  await expect(keyboard).toBeVisible();
+  const propose = screen.getByRole('button', 'Propose change', { exact: true });
+  await expect(propose).toBeVisible();
+  const [buttonBox, keyboardBox] = await Promise.all([propose.boundingBox(), keyboard.boundingBox()]);
+  expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(keyboardBox.y);
+  await app.screenshot('ask-mira-button-above-keyboard');
+  await propose.tap();
   await expect(screen.getByText('About 4 min to film', { exact: true })).toBeVisible();
   await tap(screen, second);
   await openProjectFromList(screen, 'My simple breakfast');
@@ -1081,6 +1102,7 @@ test('M03 undo restores the previous card title, selected idea and filming const
   await tap(screen, await sectionControl(screen, 'Script'));
   await tap(screen, screen.getByRole('button', 'Undo last content change', { exact: true }));
   const title = screen.getByRole('textbox', 'Project name', { exact: true });
+  await scrollToControl(screen, title, 'up');
   expect(await title.inputValue()).toBe('A quick movement break');
   await expect(screen.getByText('Show the movement from start to finish.', { exact: true }).first()).toBeAttached();
   await tap(screen, await sectionControl(screen, 'Shots'));
@@ -1152,12 +1174,15 @@ test('M13 permission withdrawal stops a waiting card with its request still save
   await launchMira(app, screen, device);
   const request = 'Demo permission withdrawn while waiting';
   await startTodayCard(screen, request, 3);
-  await expect(screen.getByTestId('mira.today.waiting.3')).toBeVisible();
-  const page = screen.getByTestId('mira.today.page.3');
-  await expect(page).toHaveAccessibleName('Idea 3 of 3, did not load', { timeout: 45_000 });
-  await page.tap();
+  const waiting = screen.getByTestId('mira.today.waiting.3');
+  await expect(waiting).toBeVisible();
+  const third = screen.getByTestId('mira.today.page.3');
+  await expect(third).toHaveAccessibleName('Idea 3 of 3, did not load', { timeout: 45_000 });
+  await third.tap();
+  await expect(third).toBeSelected();
   await expect(screen.getByText('This idea was stopped.', { exact: true })).toBeVisible({ timeout: 45_000 });
   await expect(screen.getByText('AI permission is off. Your words are saved.', { exact: true })).toBeVisible();
+  await expect(waiting).not.toBeAttached();
   await app.screenshot('m13-permission-withdrawal-stopped');
   await expect(screen.getByTestId('mira.today.makeCard.3')).not.toBeAttached();
 });
@@ -1247,15 +1272,18 @@ test('E2 interview accepts typing with speech denied, and the edited brand doc s
   await expect(pillar).toBeVisible();
   expect(await pillar.inputValue()).toBe('Training after 60');
   await fillText(pillar, 'HYROX after 60');
-  await closeKeyboard(screen, pillar);
+  await expect(pillar).toBeFocused();
   await app.screenshot('e2-brand-doc-review');
-  await tap(screen, screen.getByTestId('mira.brand.confirm'));
-  await expect(screen.getByTestId('mira.brand.saved')).toBeAttached();
+  const confirm = screen.getByTestId('mira.brand.confirm');
+  await confirm.tap();
+  const saved = screen.getByRole('scroll-view', 'Your brand doc', { exact: true }).getByTestId('mira.brand.saved');
+  const savedPillar = saved.filter({ hasText: /^HYROX after 60$/ });
+  await expect(savedPillar).toBeAttached();
   await app.screenshot('e2-brand-doc-confirmed');
   await launchMira(app, screen, device);
-  await expect(screen.getByText('HYROX after 60', { exact: true })).toBeVisible();
-  await expect(screen.getByText('Share more training Reels', { exact: true })).toBeAttached();
-  await expect(screen.getByTestId('mira.brand.confirm')).not.toBeAttached();
+  await expect(savedPillar).toBeVisible();
+  await expect(saved.filter({ hasText: /^Share more training Reels$/ })).toBeAttached();
+  await expect(confirm).not.toBeAttached();
 });
 
 for (const [instagram, override] of [
@@ -1265,10 +1293,11 @@ for (const [instagram, override] of [
     const overrides = ['-MCO_INSIGHTS_SCENARIO', instagram, '-MCO_QA_INSTAGRAM_RESULTS', override];
     await launchMira(app, screen, device, false, overrides);
     const prompt = screen.getByTestId('mira.instagramResults.question');
+    const make = screen.getByTestId('mira.home.idea').filter({ hasText: /^Make today's Reel$/ });
     if (instagram === 'ready' && override === 'ask') {
       await openToday(screen);
       await expect(prompt).not.toBeAttached();
-      await tap(screen, screen.getByTestId('mira.today.make'));
+      await tap(screen, make);
       await expect(prompt).toBeVisible();
       await app.screenshot('e2-instagram-permission-from-pick');
       await launchMira(app, screen, device, false, overrides);
@@ -1292,7 +1321,7 @@ for (const [instagram, override] of [
     expect(await item.inputValue()).toBe(override === 'allow' ? 'Build on your Instagram results' : 'Show simple steps');
     await tap(screen, screen.getByTestId('mira.brand.confirm'));
     await openTab(screen, 'Home');
-    await tap(screen, screen.getByTestId('mira.today.make'));
+    await tap(screen, make);
     await expect(screen.getByTestId('mira.pick.reason')).toHaveText(override === 'allow'
       ? 'Your early-morning training Reels reach the most people.'
       : 'This fits the themes you confirmed in My Brand.');

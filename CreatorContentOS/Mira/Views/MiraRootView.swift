@@ -179,6 +179,7 @@ struct MiraRootView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     askBar("Paste a brand brief", send: { sheet = .dealDraft($0) })
                 }
+                .modifier(MiraInputScope())
             }.tabItem { Label("Deals", systemImage: "briefcase") }.tag(MiraMainTab.deals)
             NavigationStack(path: tabPath(.myBrand)) {
                 MiraMyBrandView(
@@ -190,6 +191,7 @@ struct MiraRootView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     askBar("Ask Mira for a Reel idea", send: { startFromAsk($0) })
                 }
+                .modifier(MiraInputScope())
             }.tabItem { Label("My Brand", systemImage: "person.crop.rectangle") }.tag(MiraMainTab.myBrand)
         }
         .environment(\.miraTabBarClearance, 64)
@@ -244,6 +246,7 @@ struct MiraRootView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             askBar("Ask Mira for a Reel idea", send: { startFromAsk($0) })
         }
+        .modifier(MiraInputScope())
     }
 
     private struct HomeLoad: Equatable {
@@ -618,6 +621,7 @@ struct MiraRootView: View {
                         editorAskBar(project, tab: tab)
                     }
                 }
+                .modifier(MiraInputScope())
         case .todayCards(let id):
             MiraTodayCardsView(
                 store: store, projectID: id,
@@ -650,6 +654,7 @@ struct MiraRootView: View {
                             .id(shot.id)
                     }
                 }
+                .modifier(MiraInputScope())
         case .words(let id):
             MiraWordsView(
                 store: store, projectID: id,
@@ -664,6 +669,7 @@ struct MiraRootView: View {
                         store.sendWords(id, .note(text), service: { try service(id, requiresConsent: $0) })
                     }
                 }
+                .modifier(MiraInputScope())
         case .done(let id):
             MiraDeliveryView(store: store, projectID: id, media: dependencies.reelMedia, onWords: { showWords(id) },
                 onCheck: { performDeliveryRequest(id, isNote: false) },
@@ -671,6 +677,7 @@ struct MiraRootView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     askBar("Ask Mira to change the plan") { sheet = .ask(id, .reviseStoryboard, nil, note: $0) }
                 }
+                .modifier(MiraInputScope())
         }
     }
     private func editorAskBar(_ project: MiraProject, tab: MiraMainTab) -> some View {
@@ -786,14 +793,8 @@ struct MiraMyBrandView: View {
     @State private var renaming: UUID?
     @State private var newName = ""
     var body: some View {
-        MiraPage {
-            MiraBrandView(store: store, onStart: onStartBrand, onGenerate: onGenerateBrand)
-            if case .idle = store.brandInterview {
-                switch store.brandDocumentState {
-                case .reviewing: EmptyView()
-                case .empty, .confirmed: librarySections
-                }
-            }
+        MiraBrandView(store: store, onStart: onStartBrand, onGenerate: onGenerateBrand) {
+            librarySections
         }.navigationTitle("My Brand").navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: Binding(
                 get: { renaming != nil }, set: { if !$0 { renaming = nil } }
@@ -801,6 +802,7 @@ struct MiraMyBrandView: View {
                 NavigationStack {
                     MiraPage {
                         MiraTextInput(title: "Project name", text: $newName)
+                    }.miraBottomAction {
                         Button("Save name") {
                             let title = newName.trimmingCharacters(in: .whitespacesAndNewlines)
                             if let id = renaming, !title.isEmpty { store.rename(id, to: title) }
@@ -808,6 +810,7 @@ struct MiraMyBrandView: View {
                         }.buttonStyle(MiraPrimaryStyle())
                             .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
+                    .modifier(MiraInputScope())
                     .navigationTitle("Rename project").navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
@@ -979,8 +982,15 @@ struct MiraTodayHome: View {
             if legacyEntry {
                 MiraSectionTitle(text: "What can you film today?")
                 ideaRequest
+                MiraInlineAction { makeButton }
             } else {
                 homeContent
+            }
+        }.miraBottomAction(whileEditing: true) {
+            if legacyEntry {
+                makeButton
+            } else if case .empty = store.homeFeed, store.pickState == .idle {
+                makeButton
             }
         }
         .onAppear { if speech == nil { speech = dependencies.makeSpeechInput() } }
@@ -1014,6 +1024,7 @@ struct MiraTodayHome: View {
                 MiraFeedCard {
                     MiraSectionTitle(text: "Nothing planned today. Want an idea?")
                     ideaRequest
+                    MiraInlineAction { makeButton }
                 }.accessibilityIdentifier("mira.home.idea")
             }
         case .deals(let deals):
@@ -1067,6 +1078,9 @@ struct MiraTodayHome: View {
                 ForEach(Self.times, id: \.id) { chip($0, group: Self.times) }
             }
         }
+    }
+
+    private var makeButton: some View {
         Button(MiraNextAction.makeToday.title) {
             speech?.stop()
             onMake()
@@ -1229,6 +1243,7 @@ struct MiraTodayCardsView: View {
                     onSend: { onChange(card.id, $0) })
                 .id(card.id)
             }
+            .modifier(MiraInputScope())
             .sensoryFeedback(.success, trigger: firstIdeaHaptic)
             .onChange(of: cards.contains { store.cardState($0, in: project).ideaReady }) { _, ready in
                 if ready { firstIdeaHaptic = true }

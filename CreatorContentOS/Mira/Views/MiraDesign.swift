@@ -43,43 +43,97 @@ extension View {
     func miraFieldBox() -> some View { modifier(MiraFieldBox()) }
 }
 private struct MiraInputFrames: PreferenceKey {
-    static let defaultValue: [UUID: CGRect] = [:]
+    static let defaultValue: [UUID: [UUID: CGRect]] = [:]
 
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    static func reduce(value: inout [UUID: [UUID: CGRect]], nextValue: () -> [UUID: [UUID: CGRect]]) {
+        value.merge(nextValue()) { current, new in
+            current.merging(new, uniquingKeysWith: { _, frame in frame })
+        }
     }
 }
 extension EnvironmentValues {
     @Entry var miraTabBarClearance: CGFloat = 0
     @Entry var miraInputFocus: FocusState<UUID?>.Binding? = nil
+    @Entry fileprivate var miraIsEditing = false
+    @Entry fileprivate var miraInputSpace: UUID? = nil
 }
-private enum MiraInputSpace {
-    static let name = "mira.page.inputs"
+
+struct MiraInputScope: ViewModifier {
+    var inherit = false
+    @Environment(\.miraInputFocus) private var parentFocus
+    @FocusState private var focusedInput: UUID?
+    @State private var space = UUID()
+    @State private var inputFrames: [UUID: CGRect] = [:]
+
+    func body(content: Content) -> some View {
+        if inherit && parentFocus != nil {
+            content
+        } else {
+            content
+                .environment(\.miraInputFocus, $focusedInput)
+                .environment(\.miraIsEditing, focusedInput != nil)
+                .environment(\.miraInputSpace, space)
+                .contentShape(Rectangle())
+                .coordinateSpace(.named(space))
+                .onPreferenceChange(MiraInputFrames.self) { inputFrames = $0[space] ?? [:] }
+                .simultaneousGesture(
+                    SpatialTapGesture(coordinateSpace: .named(space)).onEnded { tap in
+                        if !inputFrames.values.contains(where: { $0.contains(tap.location) }) {
+                            focusedInput = nil
+                        }
+                    },
+                    isEnabled: focusedInput != nil)
+        }
+    }
 }
+
 struct MiraPage<Content: View>: View {
     @ViewBuilder var content: Content
     @Environment(\.miraTabBarClearance) private var tabBarClearance
-    @FocusState private var focusedInput: UUID?
-    @State private var inputFrames: [UUID: CGRect] = [:]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) { content }.frame(maxWidth: 680, alignment: .leading)
                 .padding(24).frame(maxWidth: .infinity)
-                .environment(\.miraInputFocus, $focusedInput)
         }
         .contentMargins(.bottom, tabBarClearance, for: .scrollContent)
         .background(MiraTheme.paper).foregroundStyle(MiraTheme.ink)
-        .contentShape(Rectangle())
-        .coordinateSpace(.named(MiraInputSpace.name))
-        .onPreferenceChange(MiraInputFrames.self) { inputFrames = $0 }
-        .simultaneousGesture(
-            SpatialTapGesture(coordinateSpace: .named(MiraInputSpace.name)).onEnded { tap in
-                if !inputFrames.values.contains(where: { $0.contains(tap.location) }) {
-                    focusedInput = nil
-                }
-            },
-            isEnabled: focusedInput != nil)
+        .modifier(MiraInputScope(inherit: true))
+    }
+}
+
+extension View {
+    func miraBottomAction<Action: View>(
+        whileEditing: Bool = false, @ViewBuilder action: () -> Action
+    ) -> some View {
+        modifier(MiraBottomAction(whileEditing: whileEditing, action: action()))
+            .modifier(MiraInputScope(inherit: true))
+    }
+}
+
+private struct MiraBottomAction<Action: View>: ViewModifier {
+    let whileEditing: Bool
+    let action: Action
+    @Environment(\.miraIsEditing) private var editing
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            if !whileEditing || editing {
+                action
+                    .padding(.horizontal, 24).padding(.vertical, 8)
+                    .frame(maxWidth: 680).frame(maxWidth: .infinity)
+                    .background(MiraTheme.paper)
+            }
+        }
+    }
+}
+
+struct MiraInlineAction<Action: View>: View {
+    @ViewBuilder var action: Action
+    @Environment(\.miraIsEditing) private var editing
+
+    var body: some View {
+        if !editing { action }
     }
 }
 struct MiraTextInput: View {
@@ -88,6 +142,7 @@ struct MiraTextInput: View {
     var axis: Axis = .horizontal
     var boxed = true
     @Environment(\.miraInputFocus) private var pageFocus
+    @Environment(\.miraInputSpace) private var space
     @FocusState private var localFocus: UUID?
     @State private var id = UUID()
 
@@ -98,10 +153,12 @@ struct MiraTextInput: View {
             if boxed { field.miraFieldBox() } else { field }
         }
         .background {
-            GeometryReader { geometry in
-                Color.clear.preference(
-                    key: MiraInputFrames.self, value: [id: geometry.frame(in: .named(MiraInputSpace.name))])
-            }.allowsHitTesting(false)
+            if let space {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: MiraInputFrames.self, value: [space: [id: geometry.frame(in: .named(space))]])
+                }.allowsHitTesting(false)
+            }
         }
     }
 

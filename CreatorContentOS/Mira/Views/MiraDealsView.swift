@@ -52,6 +52,11 @@ struct MiraDealsView: View {
             ForEach(store.deals) { deal in
                 MiraDealSummary(deal: deal) { onOpen(deal.id) }
             }
+        }.miraBottomAction(whileEditing: true) {
+            switch store.dealBriefState {
+            case .editing(let draft), .failed(let draft): readButton(draft)
+            default: EmptyView()
+            }
         }
     }
 
@@ -69,10 +74,14 @@ struct MiraDealsView: View {
                 Text("Shorten the brief to 12,000 characters or fewer.")
             }
             if let issue = draft.issue { Text(issue) }
-            Button(store.dealBriefState.nextAction.title, action: onRead)
-                .buttonStyle(MiraPrimaryStyle())
-                .disabled(!MiraDealBriefInput.canRead(draft.text))
+            MiraInlineAction { readButton(draft) }
         }
+    }
+
+    private func readButton(_ draft: MiraDealBriefDraft) -> some View {
+        Button(store.dealBriefState.nextAction.title, action: onRead)
+            .buttonStyle(MiraPrimaryStyle())
+            .disabled(!MiraDealBriefInput.canRead(draft.text))
     }
 }
 

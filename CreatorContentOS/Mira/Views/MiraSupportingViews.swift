@@ -158,6 +158,7 @@ struct MiraAskView: View {
                 )
                 .font(.callout)
             }
+        }.miraBottomAction {
             Button(operation == .ideas ? "Get ideas" : "Propose change") {
                 let lower = request.lowercased()
                 if ["publish to", "upload video", "send payment"].contains(where: {
@@ -299,14 +300,12 @@ struct MiraProfileView: View {
                 Divider()
                 problemReportsRow
             }
-        }.navigationTitle("Profile").toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Done") {
-                    store.save()
-                    dismiss()
-                }
-            }
-        }
+        }.miraBottomAction {
+            Button("Done") {
+                store.save()
+                dismiss()
+            }.buttonStyle(MiraPrimaryStyle())
+        }.navigationTitle("Profile")
     }
 
     private var problemReportsRow: some View {
@@ -380,6 +379,7 @@ struct MiraManualIdeaView: View {
             MiraField(title: "Idea title", text: $title)
             MiraField(title: "Opening line", text: $hook)
             MiraField(title: "What viewers see", text: $visual)
+        }.miraBottomAction {
             Button("Use my idea") {
                 store.update(projectID, screen: .script) { p in
                     let idea = MiraIdea(
@@ -414,12 +414,11 @@ struct MiraBriefView: View {
                     text: Binding(
                         get: { store.project(projectID)?.brief.original ?? "" },
                         set: { store.editBrief(projectID, .textChanged($0)) }))
-                Button(MiraNextAction.extractRequirements.title) {
-                    onGenerate(
-                        projectID, .requirements, "Extract only supplied facts and flag missing fields", nil,
-                        nil)
-                    dismiss()
-                }.disabled(project.brief.original.isEmpty || store.requestState(project.job).pending)
+                if state.canConfirm {
+                    extractButton(project)
+                } else {
+                    MiraInlineAction { extractButton(project) }
+                }
                 Text(
                     "Apply Mira’s list in the project. Then come back here to confirm it."
                 ).font(.callout)
@@ -449,20 +448,43 @@ struct MiraBriefView: View {
                     MiraSectionTitle(text: "Unresolved details")
                     ForEach(project.brief.unresolved, id: \.self) { Text($0) }
                 }
-                Button(confirmTitle(state)) {
-                    if store.editBrief(projectID, .confirm, immediate: true) { dismiss() }
-                }.buttonStyle(MiraPrimaryStyle()).disabled(!state.canConfirm)
+                if state.canConfirm {
+                    MiraInlineAction { confirmButton(state) }
+                } else {
+                    confirmButton(state)
+                }
                 Text(
                     "Missing details stay visible even after confirmation. Conflicts will need a choice before a plan can be applied."
                 ).font(.footnote)
                 Button("Stop using this brief") {
                     if store.editBrief(projectID, .stopUsing) { dismiss() }
                 }
+            }.miraBottomAction(whileEditing: true) {
+                if state.canConfirm {
+                    confirmButton(state)
+                } else {
+                    extractButton(project).buttonStyle(MiraPrimaryStyle())
+                }
             }.navigationTitle("Brand requirements").toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
             }
         }
     }
+    private func extractButton(_ project: MiraProject) -> some View {
+        Button(MiraNextAction.extractRequirements.title) {
+            onGenerate(
+                projectID, .requirements, "Extract only supplied facts and flag missing fields", nil,
+                nil)
+            dismiss()
+        }.disabled(project.brief.original.isEmpty || store.requestState(project.job).pending)
+    }
+
+    private func confirmButton(_ state: MiraBriefState) -> some View {
+        Button(confirmTitle(state)) {
+            if store.editBrief(projectID, .confirm, immediate: true) { dismiss() }
+        }.buttonStyle(MiraPrimaryStyle()).disabled(!state.canConfirm)
+    }
+
     private func confirmTitle(_ state: MiraBriefState) -> String {
         switch state {
         case .confirmed: "Requirements confirmed"
@@ -518,7 +540,7 @@ struct MiraAskBar: View {
     @State private var speech: (any MiraSpeechInputService)?
     @State private var text = ""
     @State private var spokenBase = ""
-    @FocusState private var focused: Bool
+    @Environment(\.miraInputFocus) private var focus
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -526,18 +548,14 @@ struct MiraAskBar: View {
                 Text(message).font(.footnote).accessibilityAddTraits(.updatesFrequently)
             }
             HStack(spacing: 8) {
-                TextField(placeholder, text: $text)
-                    .focused($focused)
-                    .submitLabel(.go)
-                    .onSubmit { send() }
-                    .miraFieldBox()
+                MiraTextInput(title: placeholder, text: $text)
                     .accessibilityIdentifier("mira.ask.bar")
                 if let speech {
                     MiraVoiceButton(
                         speech: speech, locale: language == .english ? "en-IN" : "hi-IN",
                         compact: true, diameter: 44
                     ) {
-                        focused = false
+                        focus?.wrappedValue = nil
                         spokenBase = text
                     }.buttonStyle(.plain)
                 }
@@ -578,7 +596,7 @@ struct MiraAskBar: View {
     private func send() {
         let request = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard enabled, !request.isEmpty, speech?.state.isRecording != true else { return }
-        focused = false
+        focus?.wrappedValue = nil
         text = ""
         onSend(request)
     }
@@ -592,6 +610,7 @@ struct MiraDealDraftView: View {
     var body: some View {
         MiraPage {
             MiraField(title: "Original brand requirements", text: $text)
+        }.miraBottomAction {
             let request = text.trimmingCharacters(in: .whitespacesAndNewlines)
             Button("Save as a Reel brief") { onSave(request) }
                 .buttonStyle(MiraPrimaryStyle()).disabled(request.isEmpty)

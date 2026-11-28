@@ -42,15 +42,22 @@ export async function answerBrandInterview(
     if (checkDeniedSpeech && index === 1) {
       await tapVisibleControl(screen, screen.getByTestId('mira.brand.back'));
       await expect(question).toHaveText(questionLabels[0]);
-      expect(await answer.inputValue()).toBe(interviewAnswers[0]);
+      await expect(answer).toHaveValue(interviewAnswers[0]);
       await tapVisibleControl(screen, next);
       await expect(question).toHaveText(questionLabels[index]);
     }
     await expect(next).toBeDisabled();
     await expect.poll(async () => (await answer.inputValue()) ?? '').toMatch(/^(?:Your answer)?$/);
-    await answer.fill(value);
+    try {
+      await answer.fill(value);
+    } catch (error) {
+      if (!(error instanceof Error) || !/text entry verification failed|could not confirm the typed text/i.test(error.message)) {
+        throw error;
+      }
+      if (await answer.inputValue() !== value) await answer.fill(value);
+    }
     await closeKeyboard(screen, answer);
-    expect(await answer.inputValue()).toBe(value);
+    await expect(answer).toHaveValue(value);
     if (index === 0) await app.screenshot('e2-interview');
     if (index === interviewAnswers.length - 1) await submit(next);
     else await tapVisibleControl(screen, next);
