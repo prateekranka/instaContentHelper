@@ -72,3 +72,36 @@ The XCTest passcode blocks install, Keep, runtime E2E, native sharing, screensho
 The merged E2 live ledger caps the two phases at 2 `brandDoc`, 4 `pickIdea`, 10 pictures and 4 other text calls. Within that limit the E3 live ledger caps its cases at 3 `dealBrief` and 2 `pickIdea` submissions. Each Make reserves up to five pictures. The live checklist case requires a confirmed active deal and the E3 opt-in flags.
 
 The public tracker confirmed updates for MIRA-037 at `2026-11-28T02:12:50.690Z`, MIRA-038 at `2026-11-28T02:12:51.114Z` and MIRA-039 at `2026-11-28T02:12:51.536Z`. The three cards are Working with the phone blocker and verified remote source links. [Mira tracker](https://mira-build-progress-production.up.railway.app)
+
+## Fix2 iPhone result for PR #48
+
+**RESULT FAIL**
+
+Mira showed the Instagram results permission prompt in the E2 Not now fixture. The test supplied `-MCO_QA_INSTAGRAM_RESULTS not-now`. The app calls `DebugLaunchConfiguration.value` for that key, but the Debug allowlist omits it. The lookup returns nil and the app asks for a choice. This is an app fault in the Debug fixture path. The phone sequence stopped before PR #49. [App launch configuration](../../CreatorContentOS/App/DebugLaunchConfiguration.swift#L10) · [Mira permission lookup](../../CreatorContentOS/Mira/Views/MiraRootView.swift#L318)
+
+The signed Debug build from `094b954` installed in place. The app source is identical at the later test-only commit `4635d95`. Xcode 27.2 (27B52), TesterArmy e2e 0.15.2, agent-device 0.21.20 and Node 22.23.2 used the USB iPhone 16 Pro. Both Keep checks confirmed AI permission Allowed and a connected Instagram account.
+
+The E2 interview reached the confirmed document after two test repair rounds. The first attempt failed while entering the next answer. The second attempt reached the document editor but the keyboard concealed the confirm button. The third attempt confirmed the edited document. XCTest returned 14 nodes with its saved identifier, so the test stopped before the relaunch check. The separate ready/ask case found the visible Make button under the Home card identifier.
+
+| Scenario | Result | Start IST | Duration | Evidence path |
+| --- | --- | --- | --- | --- |
+| Keep before install | PASS | 12:45:20 | 104.68 s | `pr48-keep-before/report.json` |
+| Install in place | PASS | 12:47:06 | 2 s | `pr48-install.command.log` |
+| Keep after install | PASS | 12:47:20 | 113.19 s | `pr48-keep-after-install/report.json` |
+| E2 interview, first attempt | FAIL — text-entry verification | 12:49:28 | 101.79 s | `pr48-sample-e2e3-1-attempt-1/report.json` |
+| E2 interview, second attempt | FAIL — keyboard obscured the confirm control | 12:52:05 | 287.35 s | `pr48-sample-e2e3-1-attempt-2/report.json` |
+| E2 interview, third attempt | FAIL — saved document identifier matched 14 nodes | 12:58:11 | 273.39 s | `pr48-sample-e2e3-1-attempt-3/report.json` |
+| E2 Instagram permission, disconnected / ask | PASS | 13:03:25 | 11.51 s | `pr48-sample-e2e3-owed-1/report.json` |
+| E2 Instagram permission, ready / ask | FAIL — Make button identifier differed | 13:03:37 | 46.71 s | `pr48-sample-e2e3-owed-1/report.json` |
+| E2 Instagram permission, ready / Not now | FAIL — the app ignored the Debug override and showed the prompt | 13:05:04 | 30.56 s | `pr48-sample-e2-not-now/report.json`, `pr48-instagram-override-source.txt` |
+| Remaining sample, read-only consent, live and Keep after tests | Not run after the app fault | — | — | — |
+
+Live AI counts were **0 text requests and 0 pictures**. The D2 fixture stopped. The final phone claim count was zero and the Tailscale routes matched the initial list.
+
+### Fix2 checks still open
+
+- The E2 brand document after relaunch, the remaining E2 and E3 samples, the shared sample suite, read-only consent, live generation, and Keep after tests.
+- Production Instagram permission behavior. The confirmed fault concerns the Debug launch override.
+- Phone behavior for PR #49.
+
+Local evidence folder `/Users/prateekranka/.codex-runs/mira-fix-phone-20261128/evidence/fix2/20261128T050857Z.05oz1v`.
