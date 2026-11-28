@@ -68,5 +68,9 @@
 	<string>Mira uses the microphone when you tap it. You can check the words before you send them.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Your phone turns your voice into words. You can read and change the words before you send them.</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
 </dict>
 </plist>
