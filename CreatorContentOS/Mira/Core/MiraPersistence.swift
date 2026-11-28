@@ -9,6 +9,8 @@ struct MiraDocument: Codable, Equatable, Sendable {
     var defaultConstraints: MiraConstraints?
     var demoMode = false
     var sequence = 0
+    var brandDoc: MiraBrandDocument?
+    var instagramResultsPermission: MiraInstagramResultsPermission?
     func restoredNavigation() -> MiraNavigation {
         func restored(_ path: [MiraRoute]) -> [MiraRoute] {
             var result: [MiraRoute] = []

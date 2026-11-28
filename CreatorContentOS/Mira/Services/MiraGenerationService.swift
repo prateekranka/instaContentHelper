@@ -57,7 +57,7 @@ final class MiraDependencies {
     static func todayFixture(for request: String) -> MiraSupabaseGenerationService? {
         #if DEBUG
         guard DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil,
-            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures", "Demo D2 transport"].contains(request),
+            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures", "Demo D2 transport", "Demo E2 pick"].contains(request),
             let endpoint = DebugLaunchConfiguration.value(for: "MCO_QA_D2_ENDPOINT"),
             let url = URL(string: endpoint), url.scheme == "https", url.host != nil
         else { return nil }
@@ -150,6 +150,8 @@ struct MiraSupabaseGenerationService: MiraGenerationService {
             case 404:
                 throw MiraError.invalid(
                     "The Mira generation endpoint or job is unavailable. Your saved work is safe.")
+            case 429 where code == "operation_daily_cap_reached":
+                throw MiraError.invalid("Mira reached today’s limit for this request. Try again tomorrow.")
             case 409 where code == "rate_limited", 429:
                 throw MiraError.busy
             case 409:

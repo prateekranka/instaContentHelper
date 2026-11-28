@@ -27,10 +27,12 @@ enum MiraValidation {
         if !output.conflicts.isEmpty, output.ideas == nil, output.script == nil, output.storyboard == nil,
             output.brief == nil
         {
-            if operation != .todayIdea { return }
+            if operation != .todayIdea && operation != .pickIdea && operation != .brandDoc { return }
         }
         switch operation {
-        case .todayIdea:
+        case .brandDoc:
+            try require(output.brandDoc?.isValid == true, "The brand doc was incomplete.")
+        case .todayIdea, .pickIdea:
             guard let idea = output.ideas?.first, output.ideas?.count == 1,
                 let script = output.script, let board = output.storyboard, let input
             else { throw MiraError.invalid("The Reel card was incomplete.") }
@@ -46,6 +48,16 @@ enum MiraValidation {
             try require(script.language == input.profile.language.rawValue, "The script language is incorrect.")
             try validate(MiraOutput(script: script), for: .script, input: input)
             var boardInput = input
+            if operation == .pickIdea {
+                let titles = input.recentIdeas + (input.avoid ?? [])
+                try require(!titles.contains {
+                    MiraBrandDocument.trimmed($0).lowercased() == MiraBrandDocument.trimmed(idea.title).lowercased()
+                }, "Mira repeated an idea. Try again for a different one.")
+                try require(output.reason.map(MiraBrandDocument.validLine) == true && idea.hook == script.hook,
+                            "The reason or first line was missing.")
+                try require(matchesDialogue(board, script: script), "The shot list does not match the words.")
+                boardInput.brief = input.dealChecklist?.validationBrief
+            }
             boardInput.script = script
             try validate(MiraOutput(storyboard: board), for: .storyboard, input: boardInput)
         case .ideas:

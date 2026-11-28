@@ -12,6 +12,7 @@
 		0AED86BDE7B6CE889E8A8298 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB9CFA44B8E7990294C9CE67 /* SignInView.swift */; };
 		125FB6AE0B92AB6797E2833A /* MiraSupportingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B205417383E0F5C551658045 /* MiraSupportingViews.swift */; };
 		13528AA57FB91E514E27AA5E /* InstagramInsights.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0B3AC449900FDAE5F7CA14 /* InstagramInsights.swift */; };
+		13C0D699606A416FFA3715BD /* MiraBrandDocumentState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 911F6744E93000C0F455C241 /* MiraBrandDocumentState.swift */; };
 		19F5DD375DB072EDD8B0CC75 /* PrivacyPolicyLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FC7B20936E6FBC72BF0B5C8 /* PrivacyPolicyLinks.swift */; };
 		1B295CE482DAC51020BC9D24 /* MiraLibraryState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6949CD9052CA0033F0F63734 /* MiraLibraryState.swift */; };
 		1B9825EB665C2368825C5FC1 /* DebugLaunchConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBB256238D1CEBE7FAF50927 /* DebugLaunchConfiguration.swift */; };
@@ -30,6 +31,7 @@
 		5560214EF1D18DEA01420211 /* MiraStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DCF863F47EA114FB9C80FE9 /* MiraStore.swift */; };
 		5E2447A4001429D09BDD46BB /* SupabaseClientFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99D8093F95A3FBAF1E2138BF /* SupabaseClientFactory.swift */; };
 		63A830B08C6D64ACE37F1A35 /* SupabaseDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9168AA818D4223159226D66 /* SupabaseDTOs.swift */; };
+		64BADE99388C0D9A4B163223 /* MiraE2Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = C554C83C277A171FFE2494CC /* MiraE2Models.swift */; };
 		655D9C97706A5D5B8EB5095E /* MiraProjectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D17CFE14527BF2FBE32130DE /* MiraProjectView.swift */; };
 		65BF7D68C627C2821FB13937 /* MiraScriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A714ECE1CDAC3C1A0A3B51D /* MiraScriptView.swift */; };
 		6D39AC384DA1FC39E7839C18 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2D402309616D1FCDEB1EB137 /* Assets.xcassets */; };
@@ -39,6 +41,7 @@
 		7FC16C2C850613F3F8BAB57B /* MiraAIConsentState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 312EFB89F67B8659A07225A5 /* MiraAIConsentState.swift */; };
 		82EC537042CAB49ED2F6D049 /* MiraWordsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26161484C3697946A14A0E1A /* MiraWordsState.swift */; };
 		8943E903993AC4E641E947F6 /* MiraProblemReports.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E47605B63B1A9F149599DFE /* MiraProblemReports.swift */; };
+		8B33B31BAD0B49DD9F595A56 /* MiraPickState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FCA6067D0C6F3E164C5B056 /* MiraPickState.swift */; };
 		8BF89D4D344E8D4C13425428 /* InstalledContentHelperUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62957637B4EA3A5F7E34D4CC /* InstalledContentHelperUITests.swift */; };
 		8CAE253F5BC9501160FE7E1E /* MiraPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9AE936B7095541BEAE36CBB /* MiraPersistence.swift */; };
 		8CB71D69643467001372BC22 /* MiraBriefState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AFDB7C0E09E93A1A64890B8 /* MiraBriefState.swift */; };
@@ -55,6 +58,7 @@
 		E12A34069A65B1C0FC8323CC /* MiraModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0888BA31D3AE960F14EA280 /* MiraModels.swift */; };
 		E5932BC1C6E80E59F1040B2E /* MiraAIRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = D931E536E28A64E599AE6FD0 /* MiraAIRequest.swift */; };
 		E77ADB8E67277DF6BFACB1B4 /* MiraHomeFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 051534E7B71C806BCA51E194 /* MiraHomeFeed.swift */; };
+		F606302C37DEE7C14C7A9A3D /* MiraBrandInterview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75C7FEEAA28974A42A1B08EB /* MiraBrandInterview.swift */; };
 		F65C052B0772259257850A58 /* MiraInsightsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E953634DD9ED25B3F3F8E22C /* MiraInsightsState.swift */; };
 		FFF4612FD87F82E7D899CBD6 /* MiraSpeechInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = E29B9891DB234F20D667E9D1 /* MiraSpeechInput.swift */; };
 /* End PBXBuildFile section */
@@ -65,6 +69,7 @@
 		1075444BEDE6E2FA7B31576A /* AppRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRuntime.swift; sourceTree = "<group>"; };
 		11ADF2B693A8CFF7257A50E4 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		1FC7B20936E6FBC72BF0B5C8 /* PrivacyPolicyLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyPolicyLinks.swift; sourceTree = "<group>"; };
+		1FCA6067D0C6F3E164C5B056 /* MiraPickState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraPickState.swift; sourceTree = "<group>"; };
 		23C65216ADE205A16D427CB1 /* MiraStoryboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraStoryboardView.swift; sourceTree = "<group>"; };
 		26161484C3697946A14A0E1A /* MiraWordsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraWordsState.swift; sourceTree = "<group>"; };
 		268328EAE289331F1B8FA548 /* AIConsentCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIConsentCopy.swift; sourceTree = "<group>"; };
@@ -82,11 +87,13 @@
 		6DCF863F47EA114FB9C80FE9 /* MiraStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraStore.swift; sourceTree = "<group>"; };
 		6E47605B63B1A9F149599DFE /* MiraProblemReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraProblemReports.swift; sourceTree = "<group>"; };
 		6E872AEB2D518B45A037033D /* CreatorContentOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CreatorContentOS.entitlements; sourceTree = "<group>"; };
+		75C7FEEAA28974A42A1B08EB /* MiraBrandInterview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraBrandInterview.swift; sourceTree = "<group>"; };
 		7B3F90602B1A67549E268E83 /* InstagramOAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramOAuth.swift; sourceTree = "<group>"; };
 		87FFA552E0792F8074AA8999 /* CreatorContentOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CreatorContentOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		883ED8345D4549EDD33A666A /* InstagramInsightsDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramInsightsDTOs.swift; sourceTree = "<group>"; };
 		8BC9F09F60577E7FBC7DEEBE /* LocalRuntime.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = LocalRuntime.xcconfig; sourceTree = "<group>"; };
 		901CA42E68495333D010A290 /* AppRepositories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRepositories.swift; sourceTree = "<group>"; };
+		911F6744E93000C0F455C241 /* MiraBrandDocumentState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraBrandDocumentState.swift; sourceTree = "<group>"; };
 		99D8093F95A3FBAF1E2138BF /* SupabaseClientFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientFactory.swift; sourceTree = "<group>"; };
 		9AFDB7C0E09E93A1A64890B8 /* MiraBriefState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraBriefState.swift; sourceTree = "<group>"; };
 		A111C91F49A6C8DB19C4BB28 /* MiraDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraDesign.swift; sourceTree = "<group>"; };
@@ -100,6 +107,7 @@
 		B9AE936B7095541BEAE36CBB /* MiraPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraPersistence.swift; sourceTree = "<group>"; };
 		BD6A40EA2C43775067124357 /* MiraFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraFixtures.swift; sourceTree = "<group>"; };
 		C1B20A8B6F7A9D3D4D85888F /* InstalledContentHelperUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = InstalledContentHelperUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C554C83C277A171FFE2494CC /* MiraE2Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraE2Models.swift; sourceTree = "<group>"; };
 		C890F77F3C3184AB506E9C68 /* MiraInsightsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraInsightsService.swift; sourceTree = "<group>"; };
 		CA0B3AC449900FDAE5F7CA14 /* InstagramInsights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstagramInsights.swift; sourceTree = "<group>"; };
 		D17CFE14527BF2FBE32130DE /* MiraProjectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiraProjectView.swift; sourceTree = "<group>"; };
@@ -190,6 +198,7 @@
 		865AF41614AB8B1F8B71C2BB /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				C554C83C277A171FFE2494CC /* MiraE2Models.swift */,
 				BD6A40EA2C43775067124357 /* MiraFixtures.swift */,
 				E0888BA31D3AE960F14EA280 /* MiraModels.swift */,
 				B9AE936B7095541BEAE36CBB /* MiraPersistence.swift */,
@@ -205,11 +214,14 @@
 			children = (
 				312EFB89F67B8659A07225A5 /* MiraAIConsentState.swift */,
 				D931E536E28A64E599AE6FD0 /* MiraAIRequest.swift */,
+				911F6744E93000C0F455C241 /* MiraBrandDocumentState.swift */,
+				75C7FEEAA28974A42A1B08EB /* MiraBrandInterview.swift */,
 				9AFDB7C0E09E93A1A64890B8 /* MiraBriefState.swift */,
 				051534E7B71C806BCA51E194 /* MiraHomeFeed.swift */,
 				E953634DD9ED25B3F3F8E22C /* MiraInsightsState.swift */,
 				6949CD9052CA0033F0F63734 /* MiraLibraryState.swift */,
 				607568C843989E153DAA9E5D /* MiraLocation.swift */,
+				1FCA6067D0C6F3E164C5B056 /* MiraPickState.swift */,
 				B82DB2372BB2AA764EC8C087 /* MiraReelProgress.swift */,
 				26A85E82A600EB77F5D37E57 /* MiraTaskStep.swift */,
 				EDA41C2C56FD5BC2EECA7112 /* MiraTodayCardState.swift */,
@@ -457,8 +469,11 @@
 				DBE175F5FA7D8FBFC5644220 /* InstagramOAuth.swift in Sources */,
 				7FC16C2C850613F3F8BAB57B /* MiraAIConsentState.swift in Sources */,
 				E5932BC1C6E80E59F1040B2E /* MiraAIRequest.swift in Sources */,
+				13C0D699606A416FFA3715BD /* MiraBrandDocumentState.swift in Sources */,
+				F606302C37DEE7C14C7A9A3D /* MiraBrandInterview.swift in Sources */,
 				8CB71D69643467001372BC22 /* MiraBriefState.swift in Sources */,
 				1FC42A31D6ED8F10ED2E24A9 /* MiraDesign.swift in Sources */,
+				64BADE99388C0D9A4B163223 /* MiraE2Models.swift in Sources */,
 				AA13F97A9A7FDB8163B2BDAF /* MiraFixtures.swift in Sources */,
 				D81B0CA7DC6FB17219C029E6 /* MiraGenerationService.swift in Sources */,
 				E77ADB8E67277DF6BFACB1B4 /* MiraHomeFeed.swift in Sources */,
@@ -469,6 +484,7 @@
 				7231A4B9324926029925D75C /* MiraLocation.swift in Sources */,
 				E12A34069A65B1C0FC8323CC /* MiraModels.swift in Sources */,
 				8CAE253F5BC9501160FE7E1E /* MiraPersistence.swift in Sources */,
+				8B33B31BAD0B49DD9F595A56 /* MiraPickState.swift in Sources */,
 				8943E903993AC4E641E947F6 /* MiraProblemReports.swift in Sources */,
 				655D9C97706A5D5B8EB5095E /* MiraProjectView.swift in Sources */,
 				4E414ECD19FE93EFDCB6B26C /* MiraReelProgress.swift in Sources */,

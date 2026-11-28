@@ -196,6 +196,7 @@ struct MiraShotPictureSource: Codable, Equatable, Sendable {
 }
 enum MiraOperation: String, Codable, Sendable {
     case ideas, todayIdea, script, storyboard, reviseScript, reviseShot, reviseStoryboard, requirements
+    case brandDoc, pickIdea
 }
 enum MiraGenerationState: String, Codable, Sendable {
     case idle, working, failed, cancelled, succeeded
@@ -212,6 +213,11 @@ struct MiraGenerationInput: Codable, Equatable, Sendable {
     var brief: MiraBrief?
     var targetShotID: UUID?
     var angle: String?
+    var brandDoc: MiraBrandDocument?
+    var bestPostPatterns: [String]?
+    var dealChecklist: MiraDealChecklist?
+    var avoid: [String]?
+    var brandInput: MiraBrandJobInput?
 }
 struct MiraOutput: Codable, Equatable, Sendable {
     var ideas: [MiraIdea]?
@@ -219,6 +225,36 @@ struct MiraOutput: Codable, Equatable, Sendable {
     var storyboard: MiraStoryboard?
     var brief: MiraBrief?
     var conflicts: [String] = []
+    var brandDoc: MiraBrandDocument?
+    var reason: String?
+    init(
+        ideas: [MiraIdea]? = nil, script: MiraScript? = nil, storyboard: MiraStoryboard? = nil,
+        brief: MiraBrief? = nil, conflicts: [String] = [], brandDoc: MiraBrandDocument? = nil, reason: String? = nil
+    ) {
+        self.ideas = ideas
+        self.script = script
+        self.storyboard = storyboard
+        self.brief = brief
+        self.conflicts = conflicts
+        self.brandDoc = brandDoc
+        self.reason = reason
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ideas, script, storyboard, brief, conflicts, brandDoc, reason
+    }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            ideas: try values.decodeIfPresent([MiraIdea].self, forKey: .ideas),
+            script: try values.decodeIfPresent(MiraScript.self, forKey: .script),
+            storyboard: try values.decodeIfPresent(MiraStoryboard.self, forKey: .storyboard),
+            brief: try values.decodeIfPresent(MiraBrief.self, forKey: .brief),
+            conflicts: try values.decodeIfPresent([String].self, forKey: .conflicts) ?? [],
+            brandDoc: try values.decodeIfPresent(MiraBrandDocument.self, forKey: .brandDoc),
+            reason: try values.decodeIfPresent(String.self, forKey: .reason))
+    }
 }
 struct MiraJob: Codable, Equatable, Identifiable, Sendable {
     var id = UUID()
@@ -463,9 +499,13 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         touch()
     }
     mutating func makeTodayCard(_ cardID: UUID) -> Bool {
-        guard let card = todayCards?.first(where: { $0.id == cardID }), card.ready,
-            var idea = card.output?.ideas?.first, var script = card.output?.script,
-            var board = card.output?.storyboard, board.requirementsRevision == effectiveBriefRevision
+        guard let card = todayCards?.first(where: { $0.id == cardID }), card.ready else { return false }
+        return installIdea(from: card.job, pictureSource: card.output?.storyboard.flatMap { shotPictureSources?[$0.id] })
+    }
+
+    mutating func installIdea(from job: MiraJob, pictureSource: MiraShotPictureSource?) -> Bool {
+        guard var idea = job.output?.ideas?.first, var script = job.output?.script,
+            var board = job.output?.storyboard, board.requirementsRevision == effectiveBriefRevision
         else { return false }
         checkpoint(cardSelection: .init(title: title, ideaID: selectedIdeaID, constraints: constraints))
         if ideas.contains(where: { $0.id == idea.id }) { idea.id = UUID() }
@@ -477,8 +517,9 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
         activeScriptID = script.id
         approvedScriptID = nil
         board.sourceScriptID = script.id
-        constraints = card.job.input.constraints
-        installStoryboard(board, pictureSource: shotPictureSources?[board.id])
+        constraints = job.input.constraints
+        if pictureSource != nil && shotPictureSources == nil { shotPictureSources = [:] }
+        installStoryboard(board, pictureSource: pictureSource)
         shotIndex = 0
         startedFilming = false
         touch()
