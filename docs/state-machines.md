@@ -3,7 +3,7 @@
 ## How to change a state machine
 
 1. Edit the Swift machine or the server transition code linked below.
-2. Update the diagram and table here. Update the related [TLA+ model](../specs/tla/).
+2. Update the diagram and table here. Update the related [TLA+ model](../specs/tla/) if the change affects a modeled rule.
 3. Run these checks from the repository root.
 
    ```sh
@@ -15,10 +15,11 @@
 
 The last column gives the primary next step for each state. Conditions can change the step the creator sees. A dash means the machine supplies no step. An event with no matching rule leaves the state alone.
 
-The store keeps the current location, library, words, request, interview, brand document, and pick states.
-The speech service and insights view each keep their own state. Send an event
+The store keeps the current location, library, words, request, interview, brand document, pick, Home insights and daily note states.
+The speech service and Profile insights view each keep their own state. Send an event
 through the existing transition path to change one of these fields. Reel
 progress, Today cards, consent, and brief state are read from other records.
+The store owns the active Reel renders and applies delivery events to each project’s optional delivery record.
 
 ## `MiraReelProgress`
 
@@ -312,7 +313,7 @@ stateDiagram-v2
     workChanged --> continuing: unfinished Reels, with or without deals
 ```
 
-The store projects the feed from the library and the last opened Reel. It excludes archived and filmed Reels and empty projects.
+The store projects the feed from the library and the last opened Reel. It excludes archived and empty projects. A filmed Reel stays in Home until the creator confirms posting and, for a linked deal, confirms the brand note.
 The most recently opened unfinished Reel appears first. The other Reels use their last update time.
 Home includes confirmed, unpaid deals. Deals with dates appear in deadline order. Deals without dates follow them. The Deals tab keeps all confirmed deals. A pick in progress or ready appears on Home with these cards.
 
@@ -335,9 +336,10 @@ stateDiagram-v2
     route --> shotList
     route --> shoot
     route --> upload
+    route --> deliver
 ```
 
-The location and current editor section choose the visible step. The approval gate still controls filming. Step 5 shows the existing Done screen and names upload and post as later work.
+The location and current editor section choose the visible step. The approval gate still controls filming. Step 5 opens clip matching. Step 6 opens after Mira saves an export for the current clip plan.
 
 | State | Allowed events | Next state | Next step |
 | --- | --- | --- | --- |
@@ -345,7 +347,8 @@ The location and current editor section choose the visible step. The approval ga
 | `words` | Read open location | Step for that location | Use the words state or script editor |
 | `shotList` | Read open location | Step for that location | Review the list and go shoot when permitted |
 | `shoot` | Read open location | Step for that location | Mark the current shot filmed |
-| `upload` | Read open location | Step for that location | Open Instagram from Done |
+| `upload` | Read the existing Done route with an approved plan and no current export | `upload` | Add your clips |
+| `deliver` | Read the same route with an approved plan and a current export | `deliver` | Watch your Reel |
 
 ## `MiraBrandInterview`
 
@@ -433,6 +436,58 @@ picture source.
 | `working` | Progress, receive or fail the current job. Reset. | `working`, `ready` or `failed`. `idle`. | Wait |
 | `ready` | Start another. Make. Reset. | `working` with the previous result. `idle` after making the Reel. `idle`. | Make this one |
 | `failed` | Start again. Reset. | `working`. `idle`. | Try again |
+
+## `MiraHomeInsightsState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraHomeInsightsState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> unopened
+    unopened --> loading: read the current account
+    ready --> loading: next account or UTC day
+    unavailable --> loading: read again
+    loading --> ready: matching reply with data
+    loading --> unavailable: matching reply without data or read fails
+    loading --> unopened: reset on session change
+    ready --> unopened: reset on session change
+    unavailable --> unopened: reset on session change
+```
+
+Home reads the current account's report. It displays followers, reach and saves with the available comparison. Missing values and missing comparisons show “Not enough data yet.” The latest snapshot supplies up to five What worked cards. If only posts are available, the endpoint adds them to the legacy `no_data` response. Each card offers **Make one like this** and sends the selected caption as a pattern through the existing pick flow after the Instagram results choice allows it. Show another idea retains that pattern while permission remains allowed. The store keeps the report in memory. It accepts a reply only for the current read.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `unopened` | Load. Reset. | `loading`. `unopened`. | — |
+| `loading` | Load again. Receive the current read. Reset. | `loading`. `ready` or `unavailable`. `unopened`. | Wait |
+| `unavailable` | Load on Home reentry. Reset. | `loading`. `unopened`. | — |
+| `ready` | Load for a new scope. Reset. | `loading`. `unopened`. | Make one like this, when a post has a caption and a reported count |
+
+## `MiraDailyNoteState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraDailyNoteState.swift)
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> loading: start for current account and UTC day
+    loading --> ready: matching reply with a valid note
+    loading --> unavailable: matching failure or unusable reply
+    ready --> loading: new account or UTC day
+    unavailable --> loading: new account or UTC day
+    loading --> idle: reset on session change
+    ready --> idle: reset on session change
+    unavailable --> idle: reset on session change
+```
+
+The store starts a note only with current AI permission. Instagram snapshots require the separate E2 choice. Without that choice the start sends only open work and language, with an empty snapshot array. A Home reentry uses the in-memory result for the same account and UTC day. A cold launch asks the server for that day and polls the returned job ID. The store checks the admitted input, revision and job identity on status replies. The current permission controls whether a cached note that used snapshots can appear. The current list of unfinished Reels and unpaid deals controls whether a target button can appear and open its item.
+
+| State | Allowed events | Next state | Next step |
+| --- | --- | --- | --- |
+| `idle` | Start. Reset. | `loading`. `idle`. | — |
+| `loading` | Receive a valid note or failure for the current attempt. Start a different scope. Reset. | `ready` or `unavailable`. `loading`. `idle`. | Wait |
+| `ready` | Start a different scope. Reset. | `loading`. `idle`. | Use the one supplied action if it still applies. Make an idea, continue the Reel or open the deal. |
+| `unavailable` | Start a different scope. Reset. | `loading`. `idle`. | — |
 
 ## `MiraVoiceInputState`
 
@@ -641,6 +696,126 @@ The saved dates determine the current action. Each event records its own date an
 | `toConfirm` | Confirmed | `toPay` | Mark as confirmed |
 | `toPay` | Paid | `paid` | Mark as paid |
 | `paid` | — | — | — |
+
+## `MiraClipMatchState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraClipMatchState.swift)
+
+```mermaid
+stateDiagram-v2
+    empty --> matching: import some clips
+    empty --> matched: fill all shots on import
+    matching --> matching: import or assign
+    matching --> matched: fill the final shot
+    matched --> matched: import or swap
+```
+
+The store keeps clip copies in the project library. It keeps a separate match list for each shot-list revision. The match uses clip duration, recording time when available, and pick order. Assigning a clip that another shot uses exchanges the two matches. A short match stays visible until the creator picks a longer clip.
+
+| State | Events | Next state | Next action |
+| --- | --- | --- | --- |
+| `empty` | Import | `matching` or `matched` | Add your clips |
+| `matching` | Import, assign or swap | `matching` or `matched` | Add your clips |
+| `matched` | Import, assign or swap | `matched` | Join your Reel |
+
+## `MiraReelJoinState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraReelJoinState.swift)
+
+```mermaid
+stateDiagram-v2
+    needsClips --> ready: complete usable clip plan
+    ready --> rendering: build
+    rendering --> failed: failed
+    rendering --> finished: rendered
+    failed --> rendering: build again
+    finished --> ready: matches changed
+```
+
+The store accepts the export only if its render ID and recipe match. The export remains current only while its recipe matches the approved shot list, clip assignments and overlay text.
+
+| State | Events | Next state | Next action |
+| --- | --- | --- | --- |
+| `needsClips` | Read a usable clip plan | `ready` | Add your clips |
+| `ready` | Build | `rendering` | Join your Reel |
+| `rendering` | Receive a matching export or failure | `finished` or `failed` | Wait |
+| `failed` | Build again | `rendering` | Try again |
+| `finished` | Read a changed plan | `ready` or `needsClips` | Watch your Reel |
+
+## `MiraDeliveryBriefState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraDeliveryBriefState.swift)
+
+```mermaid
+stateDiagram-v2
+    unchecked --> checking: start
+    checking --> reviewed: receive valid checks
+    checking --> interrupted: lose contact
+    checking --> rejected: receive terminal failure
+    interrupted --> checking: reconnect to same request
+    rejected --> checking: start again
+    reviewed --> reviewed: approve a fix
+    reviewed --> unchecked: check input changed
+```
+
+The reviewed checklist and text from the current export form the request. Mira checks coverage of all IDs and checks evidence for the required text. Footage and audio require separate review. A caption fix appends text. An approved on-screen fix saves a replacement export before its check changes to Met.
+
+| State | Events | Next state | Next action |
+| --- | --- | --- | --- |
+| `unchecked` | Start | `checking` | Check the brief |
+| `checking` | Receive, interrupt or reject | `reviewed`, `interrupted` or `rejected` | Wait |
+| `interrupted` | Start with the same saved job | `checking` | Reconnect |
+| `rejected` | Start a new job | `checking` | Try again |
+| `reviewed` | Apply an approved fix or request a new check | `reviewed` or `checking` | Share to Instagram |
+
+## `MiraReelPostState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraReelPostState.swift)
+
+```mermaid
+stateDiagram-v2
+    ready --> shared: present share sheet
+    shared --> shared: present again
+    shared --> posted: creator confirms
+    posted --> live: verified Instagram Reel link
+```
+
+The share sheet receives only the local export. The app copies the caption for the creator. The post confirmation must refer to the shared export. Instagram Insights snapshots contain captions and counts. They provide no post identity or link to the shared export. The live transition still requires a verified Reel link. The creator confirmation records Posted and updates the linked deal.
+
+| State | Events | Next state | Next action |
+| --- | --- | --- | --- |
+| `ready` | Present the share sheet | `shared` | Share to Instagram |
+| `shared` | Present again or confirm posting | `shared` or `posted` | Yes, I posted it |
+| `posted` | Receive a verified link if it becomes available | `live` | Write the WhatsApp note or watch your Reel |
+| `live` | — | — | Write the WhatsApp note or watch your Reel |
+
+## `MiraTellBrandState`
+
+[Swift source](../CreatorContentOS/Mira/Core/StateMachines/MiraTellBrandState.swift)
+
+```mermaid
+stateDiagram-v2
+    needsNote --> writing: start
+    writing --> draft: receive note
+    writing --> interrupted: lose contact
+    writing --> rejected: receive terminal failure
+    interrupted --> writing: reconnect to same request
+    rejected --> writing: start again
+    draft --> opened: open WhatsApp or its link
+    opened --> sent: creator confirms
+```
+
+Mira gives WhatsApp the text and a brand number the creator enters. The message remains a draft until the creator confirms sending it. Only that confirmation advances the linked deal to Brand told in the Reel flow.
+
+| State | Events | Next state | Next action |
+| --- | --- | --- | --- |
+| `needsNote` | Start | `writing` | Write the WhatsApp note |
+| `writing` | Receive, interrupt or reject | `draft`, `interrupted` or `rejected` | Wait |
+| `interrupted` | Start with the same saved job | `writing` | Reconnect |
+| `rejected` | Start a new job | `writing` | Try again |
+| `draft` | Open WhatsApp or its link | `opened` | Send to the brand |
+| `opened` | Open again or confirm sending | `opened` or `sent` | Yes, I sent it |
+| `sent` | — | — | Open deal |
 
 ## Server text job
 

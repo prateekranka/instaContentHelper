@@ -4,6 +4,7 @@ struct MiraPickContext: Equatable {
     let dealID: UUID?
     let isDemo: Bool
     let skippedTitles: [String]
+    var postPattern: String? = nil
 }
 
 enum MiraPickEvent {
@@ -25,6 +26,13 @@ enum MiraPickState: Equatable {
         switch self {
         case .idle: nil
         case .working(_, let job, _, _), .ready(_, let job), .failed(_, let job, _, _): job.input.request
+        }
+    }
+
+    var postPattern: String? {
+        switch self {
+        case .idle: nil
+        case .working(let context, _, _, _), .ready(let context, _), .failed(let context, _, _, _): context.postPattern
         }
     }
 

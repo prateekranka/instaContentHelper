@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { e3Brief, e3Deliverables } from './fixtures/mira-deal-brief';
 import { closeKeyboard, mobileKeyboard, scrollToControl, tapVisibleControl } from './mobile-support';
 import { answerBrandInterview, openLegacyIdeas, openPickedShotList } from './mira-e2-support';
-import { launchArguments } from '../e2e.mira.config';
+import { launchArguments as e5LaunchArguments, passiveLaunchArguments as launchArguments } from '../e2e.mira.config';
 
 const evidence = resolve(
   process.env.MIRA_E2E_LIVE_LEDGER_DIR ?? process.env.MIRA_E2E_OUTPUT ?? 'work/evidence/mira-live-journey',
@@ -67,7 +67,7 @@ async function launch(app: App, screen: Screen, device: Device) {
     await tabs.count();
   } catch (error) {
     if (!(error instanceof Error && /is not running/.test(error.message))) throw error;
-    await device.openApp('com.prateekranka.creatorcontenthelper', { relaunch: true });
+    await device.openApp('com.prateekranka.creatorcontenthelper', { relaunch: true, launchArguments });
     await expect.poll(() => tabs.count(), { timeout: 15_000, interval: 1_000 }).toBe(1);
   }
   await expect(screen.getByTestId('sign-in.welcome')).not.toBeVisible();
@@ -868,4 +868,132 @@ test('E3 live pick uses the active reviewed deal after E2 integration', async ({
   await expect(code).toBeAttached({ timeout: 45_000 });
   await fit(screen, code);
   await app.screenshot('e3-live-pick-deal-code');
+});
+
+const e4TestID = (screen: Screen, control: string) => screen.getByTestId(`mira.delivery.${control}`);
+const e4OperationCaps = { briefCheck: 2, brandNote: 2, pickIdea: 2 } as const;
+
+async function e4Request(operation: keyof typeof e4OperationCaps, scenario: number, tap: () => Promise<void>) {
+  const prior = recorded();
+  expect(prior.filter(entry => entry.action === operation && entry.calls)
+    .reduce((sum, entry) => sum + (entry.calls ?? 0), 0)).toBeLessThan(e4OperationCaps[operation]);
+  await request(scenario, operation, 1, tap);
+}
+
+test('E4 live checks the reviewed brief against an existing joined Reel', async ({ app, screen, device }) => {
+  const title = process.env.MIRA_E2E_E4_REVIEW_REEL;
+  test.skip(process.env.MIRA_E2E_E4_LIVE !== '1' || !title,
+    'Set the title of a real linked Reel with an export and no brief check yet.');
+  await launch(app, screen, device);
+  await openProject(screen, title!);
+  const check = e4TestID(screen, 'brief');
+  await expect(check).toHaveText('Check the brief');
+  await e4Request('briefCheck', 41, () => tapVisibleControl(screen, check));
+  const statuses = screen.getByTestId(/^mira\.delivery\.check\./);
+  await expect(statuses.first()).toBeAttached({ timeout });
+  expect((await statuses.allTextContents()).every(status => ['Met', 'Missing', 'Can fix'].includes(status))).toBe(true);
+  await fit(screen, statuses.first());
+  await app.screenshot('e4-live-brief-checked');
+});
+
+test('E4 live drafts a WhatsApp note for an already posted deal Reel', async ({ app, screen, device }) => {
+  const title = process.env.MIRA_E2E_E4_POSTED_REEL;
+  test.skip(process.env.MIRA_E2E_E4_LIVE !== '1' || !title,
+    'Set the title of a real Reel that Bobby already posted and confirmed in Mira.');
+  await launch(app, screen, device);
+  await openProject(screen, title!);
+  const note = e4TestID(screen, 'note');
+  await expect(note).toHaveText('Write the WhatsApp note');
+  await e4Request('brandNote', 42, () => tapVisibleControl(screen, note));
+  const draft = e4TestID(screen, 'whatsapp.note');
+  await expect(draft).toBeAttached({ timeout });
+  expect((await draft.textContent())?.trim().length).toBeGreaterThan(0);
+  await fit(screen, draft);
+  await app.screenshot('e4-live-whatsapp-draft');
+  await expect(e4TestID(screen, 'sent')).toHaveCount(0);
+});
+
+test('E4 live picks an idea for an open deal within the request cap', async ({ app, screen, device }) => {
+  test.skip(process.env.MIRA_E2E_E4_LIVE !== '1' || process.env.MIRA_E2E_E4_PICK_READY !== '1',
+    'Enable after the Keep checks, with a confirmed open deal and the Instagram data choice already reviewed.');
+  await launch(app, screen, device);
+  await root(screen, 'Home');
+  await expect(screen.getByRole('button', /^Open deal for /).first()).toBeAttached();
+  const bar = screen.getByTestId('mira.ask.bar');
+  await bar.fill('Suggest a Reel I can film at home for my latest deal.');
+  await e4Request('pickIdea', 43, () => tapVisibleControl(screen, button(screen, 'Send to Mira')));
+  await expect(text(screen, 'My pick for you')).toBeVisible({ timeout });
+  const reason = screen.getByTestId('mira.pick.reason');
+  await expect(reason).toBeAttached();
+  await app.screenshot('e4-live-deal-pick');
+});
+
+const e5LedgerPath = resolve(evidence, 'e5-live-requests.jsonl');
+
+function recordE5(action: string) {
+  mkdirSync(evidence, { recursive: true });
+  appendFileSync(e5LedgerPath, `${JSON.stringify({ scenario: 5, action, at: new Date().toISOString() })}\n`, { mode: 0o600 });
+}
+
+function reserveE5(action: 'dailyNote open' | 'dailyNote reentry' | 'possible pickIdea') {
+  const prior = recorded(e5LedgerPath);
+  const noteOpens = prior.filter(entry => entry.action.startsWith('dailyNote '));
+  if (action.startsWith('dailyNote ')) {
+    expect(noteOpens.length).toBeLessThan(2);
+    expect(noteOpens.every(entry => entry.at?.slice(0, 10) === new Date().toISOString().slice(0, 10))).toBe(true);
+  } else {
+    expect(prior.filter(entry => entry.action === action).length).toBeLessThan(2);
+  }
+  recordE5(action);
+}
+
+test('E5 live Home reads Instagram, reuses the daily note and follows its one action', async ({ app, screen, device }) => {
+  test.skip(process.env.MIRA_E2E_E5_LIVE !== '1', 'Enable only for the E5 phone journey after the Keep checks.');
+  reserveE5('dailyNote open');
+  await device.openApp('com.prateekranka.creatorcontenthelper', { relaunch: true, launchArguments: e5LaunchArguments });
+  const tabs = screen.getByRole('tablist', 'Tab Bar', { exact: true });
+  await expect(tabs).toBeVisible({ timeout: 45_000 });
+  await root(screen, 'Home');
+  const insights = text(screen, "How you're doing");
+  await fit(screen, insights);
+  await expect(screen.getByText(/^Followers(?:,|$)/).first()).toBeAttached({ timeout: 45_000 });
+  await expect(screen.getByText(/^[\d,]+$/).first()).toBeAttached();
+  await expect(text(screen, 'Sample data')).not.toBeAttached();
+  await app.screenshot('e5-live-how-youre-doing');
+
+  const note = screen.getByTestId('mira.home.dailyNote.text');
+  const action = screen.getByTestId('mira.home.dailyNote.action');
+  await expect(note).toBeAttached({ timeout: 120_000 });
+  await fit(screen, note, 'up');
+  const sentence = await note.textContent();
+  expect(sentence?.trim()).toBeTruthy();
+  expect(await action.count()).toBeLessThanOrEqual(1);
+  await app.screenshot('e5-live-mira-noticed');
+
+  reserveE5('dailyNote reentry');
+  await root(screen, 'My Brand');
+  await root(screen, 'Home');
+  await expect(note).toHaveText(sentence!);
+  await fit(screen, note, 'up');
+  await app.screenshot('e5-live-mira-noticed-reused');
+  recordE5('same note observed after Home reentry');
+  if (!await action.count()) {
+    recordE5('note has no current action; zero picks');
+    return;
+  }
+
+  reserveE5('possible pickIdea');
+  await scrollToControl(screen, action, 'up');
+  await action.tap();
+  const make = screen.getByTestId('mira.pick.make');
+  const deal = button(screen, 'Close');
+  await expect.poll(async () => {
+    if (await make.count()) return 'pick';
+    if (await deal.isVisible()) return 'deal';
+    if (await back(screen).isVisible()) return 'reel';
+    return 'waiting';
+  }, { timeout, interval: 2_000 }).not.toBe('waiting');
+  const result = await make.count() ? 'pickIdea result observed' : await deal.isVisible() ? 'deal opened; zero picks' : 'Reel opened; zero picks';
+  recordE5(result);
+  await app.screenshot('e5-live-mira-noticed-action');
 });

@@ -28,10 +28,16 @@ final class MiraStore {
     private(set) var brandInterview = MiraBrandInterview.idle
     private(set) var brandDocumentState = MiraBrandDocumentState.empty
     private(set) var pickState = MiraPickState.idle
+    private(set) var dailyNoteState = MiraDailyNoteState.idle
+    private(set) var homeInsightsState = MiraHomeInsightsState.unopened
     private var brandTask: Task<Void, Never>?
     private var pickTask: Task<Void, Never>?
+    private var dailyNoteTask: Task<Void, Never>?
     private let repository: any MiraProjectRepository
     private var saveTask: Task<Void, Never>?
+    private var clipImports: Set<UUID> = []
+    private var reelJoins: [UUID: MiraReelJoinState] = [:]
+    private var deliveryRequests: Set<UUID> = []
     private var dealBriefTask: Task<Void, Never>?
     private var wordsStates: [UUID: MiraWordsState] = [:]
     private var requestStates: [UUID: MiraAIRequest] = [:]
@@ -138,6 +144,10 @@ final class MiraStore {
     func open(_ id: UUID, tab: MiraMainTab) {
         guard let project = project(id) else { return }
         let previous = location.rememberedScreen(id, in: tab)
+        if project.canFilm && (project.delivery != nil || (previous == .shooting && project.stage == .complete)) {
+            navigate(.open(tab, [.project(id), .done(id)]))
+            return
+        }
         let path = tab == .home
             ? project.todayResumePath(remembering: previous)
             : project.resumePath(remembering: previous)
@@ -151,6 +161,10 @@ final class MiraStore {
     func continueReel(_ id: UUID) {
         guard let project = project(id), homeFeed.contains(id) else { return }
         let editor: [MiraRoute] = [.project(id)]
+        if project.canFilm && project.deliveryNextAction(deal: deliveryDeal(for: project)) != nil {
+            navigate(.open(.home, editor + [.done(id)]))
+            return
+        }
         let hasCards = project.todayCards?.isEmpty == false
         let path: [MiraRoute]
         var screen: MiraProjectScreen?
@@ -170,14 +184,15 @@ final class MiraStore {
         case .filming:
             path = editor + [.shooting(id)]
         case .complete:
-            return
+            path = editor + [.done(id)]
         }
         navigate(.open(.home, path, remembering: screen))
     }
 
     func taskStep(_ location: MiraLocation, in project: MiraProject, tab: MiraMainTab? = nil) -> MiraTaskStep {
         MiraTaskStep.idea.handle(
-            .opened(location, editorSection: editorScreen(project, tab: tab), progress: project.stage, approved: project.isApproved))
+            .opened(location, editorSection: editorScreen(project, tab: tab), progress: project.stage,
+                approved: project.isApproved, hasExport: project.currentReelExport != nil))
     }
 
     func editorScreen(_ project: MiraProject, tab: MiraMainTab? = nil) -> MiraProjectScreen {
@@ -1004,7 +1019,8 @@ extension MiraStore {
     }
 
     func startPick(
-        request: String, demo: Bool, patterns: [String]?, service: any MiraGenerationService
+        request: String, demo: Bool, patterns: [String]?, postPattern: String? = nil,
+        service: any MiraGenerationService
     ) {
         let previous: MiraJob?
         let skipped: [String]
@@ -1033,7 +1049,7 @@ extension MiraStore {
 
         let checklist = activeDealChecklist
         let context = MiraPickContext(dealID: checklist == nil ? nil : activeDeal?.id, isDemo: demo,
-                                      skippedTitles: Array(skipped.prefix(30)))
+                                      skippedTitles: Array(skipped.prefix(30)), postPattern: postPattern)
         var constraints = document.defaultConstraints ?? MiraConstraints()
         constraints.populate(from: prompt)
         let recent = document.projects.filter { $0.isDemo == demo }.flatMap { project in
@@ -1073,6 +1089,7 @@ extension MiraStore {
                 reportError("The active deal changed. Ask Mira for a new idea.")
                 return
             }
+            reel.dealID = deal.id
             reel.brief = checklist.validationBrief
             reel.brief.original = deal.source
             reel.brief.unresolved = deal.terms.unresolved
@@ -1134,6 +1151,84 @@ extension MiraStore {
         var failed = job
         failed.state = .failed
         return (failed, terminal.message)
+    }
+}
+
+extension MiraStore {
+    var dailyNoteWork: MiraDailyNoteWork {
+        let reels: [MiraContinueReel]
+        let deals: [MiraDeal]
+        switch homeFeed {
+        case .empty: (reels, deals) = ([], [])
+        case .deals(let open): (reels, deals) = ([], open)
+        case .continuing(let unfinished, let open): (reels, deals) = (unfinished, open)
+        }
+        return MiraDailyNoteWork(
+            reels: reels.map { .init(id: $0.id, title: $0.title, fallback: "Untitled Reel") },
+            deals: deals.map { .init(id: $0.id, title: $0.terms.brand, fallback: "Untitled deal") })
+    }
+
+    func sendHomeInsights(_ event: MiraHomeInsightsEvent) {
+        guard let next = homeInsightsState.handle(event) else { return }
+        homeInsightsState = next
+    }
+
+    @discardableResult
+    private func sendDailyNote(_ event: MiraDailyNoteEvent) -> Bool {
+        guard let next = dailyNoteState.handle(event) else { return false }
+        dailyNoteState = next
+        return true
+    }
+
+    func resetHomeInsights() {
+        dailyNoteTask?.cancel()
+        sendDailyNote(.reset)
+        sendHomeInsights(.reset)
+    }
+
+    func startDailyNote(scope: MiraDailyNoteScope, snapshots: [MiraInsightSnapshot],
+                        service: any MiraDailyNoteService, canSend: @escaping @MainActor () -> Bool) {
+        let requestID = UUID()
+        guard sendDailyNote(.start(scope, requestID)) else { return }
+        dailyNoteTask?.cancel()
+        let work = dailyNoteWork
+        let input = MiraDailyNoteInput(language: document.profile.language, writingSystem: document.profile.writingSystem,
+                                       snapshots: snapshots, openReels: Array(work.reels.prefix(20)),
+                                       openDeals: Array(work.deals.prefix(20)))
+        dailyNoteTask = Task {
+            do {
+                guard canSend(), scope.day == MiraDailyNoteScope.utcDay else {
+                    sendDailyNote(.failed(requestID))
+                    return
+                }
+                var reply = try await service.dailyNote(id: requestID, input: input)
+                let admittedID = reply.id
+                let admittedInput = reply.input
+                let admittedRevision = reply.inputRevision
+                guard admittedID != requestID || (admittedRevision == 0 && admittedInput == input) else {
+                    sendDailyNote(.failed(requestID))
+                    return
+                }
+                for _ in 0..<30 {
+                    try Task.checkCancellation()
+                    guard scope.day == MiraDailyNoteScope.utcDay, reply.id == admittedID, reply.input == admittedInput,
+                        reply.inputRevision == admittedRevision, admittedRevision >= 0,
+                        reply.input.operation == "dailyNote" else { break }
+                    if reply.state != .working {
+                        if let note = reply.note {
+                            sendDailyNote(.received(requestID, note, usesInstagram: !reply.input.snapshots.isEmpty))
+                            return
+                        }
+                        break
+                    }
+                    try await Task.sleep(for: .seconds(3))
+                    reply = try await service.dailyNote(id: admittedID, input: nil)
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+            }
+            sendDailyNote(.failed(requestID))
+        }
     }
 }
 
@@ -1242,5 +1337,333 @@ extension MiraStore {
         else { return }
         document.deals?[index] = deal
         save()
+    }
+}
+
+protocol MiraDeliveryService: Sendable {
+    var creatorID: UUID? { get }
+    func briefCheck(_ job: MiraDeliveryJob<MiraBriefCheckInput>, start: Bool) async throws
+        -> MiraDeliveryReply<MiraBriefCheckInput, MiraBriefCheckOutput>
+    func brandNote(_ job: MiraDeliveryJob<MiraBrandNoteInput>, start: Bool) async throws
+        -> MiraDeliveryReply<MiraBrandNoteInput, MiraBrandNoteOutput>
+}
+
+extension MiraStore {
+    func deliveryDeal(for project: MiraProject) -> MiraDeal? {
+        project.deliveryDeal(in: deals)
+    }
+
+    func linkDeliveryDeal(_ deal: UUID, to id: UUID) {
+        guard !deliveryRequests.contains(id), let project = project(id),
+            project.delivery?.sharedAt == nil, project.delivery?.post == nil,
+            deals.contains(where: { $0.id == deal && $0.tracker.postedAt == nil }) else { return }
+        update(id) { $0.dealID = deal }
+    }
+
+    func isUpdatingDelivery(_ id: UUID) -> Bool { deliveryRequests.contains(id) }
+
+    func isImportingClips(_ id: UUID) -> Bool { clipImports.contains(id) }
+
+    func importClips(
+        _ id: UUID, _ boardID: UUID, using loadClips: @escaping @MainActor () async throws -> [MiraClip]
+    ) {
+        guard let project = project(id), project.canFilm, project.storyboard?.id == boardID,
+            project.delivery?.post == nil, !deliveryRequests.contains(id),
+            !isRenderingReel(id), clipImports.insert(id).inserted else { return }
+        Task {
+            defer { clipImports.remove(id) }
+            do {
+                let clips = try await loadClips()
+                guard !clips.isEmpty, let project = self.project(id), project.delivery?.post == nil,
+                    project.canFilm, let board = project.storyboard, board.id == boardID,
+                    let next = MiraClipMatchState(record: project.deliveryRecord, board: board)
+                        .handle(.importClips(board, clips)) else { return }
+                storeDelivery(next.record, for: id)
+            } catch {
+                reportError(error.localizedDescription)
+            }
+        }
+    }
+
+    func assignClip(_ clip: UUID, to shot: UUID, in id: UUID) {
+        guard !isRenderingReel(id), !isImportingClips(id), !deliveryRequests.contains(id),
+            let project = project(id), project.delivery?.post == nil,
+            project.canFilm, let board = project.storyboard,
+            let next = MiraClipMatchState(record: project.deliveryRecord, board: board)
+                .handle(.assign(shot: shot, clip: clip, board: board)) else { return }
+        storeDelivery(next.record, for: id)
+    }
+
+    func reelJoinState(for project: MiraProject) -> MiraReelJoinState {
+        if case .rendering = reelJoins[project.id] { return reelJoins[project.id] ?? .needsClips }
+        if let export = project.currentReelExport { return .finished(export) }
+        guard let recipe = project.deliveryRecipe() else { return .needsClips }
+        if case .failed(let prior, _) = reelJoins[project.id], prior == recipe {
+            return reelJoins[project.id] ?? .ready(recipe)
+        }
+        return .ready(recipe)
+    }
+
+    private func isRenderingReel(_ id: UUID) -> Bool {
+        if case .rendering = reelJoins[id] { return true }
+        return false
+    }
+
+    func joinReel(
+        _ id: UUID, using render: @escaping @MainActor (MiraRenderRecipe) async throws -> MiraReelExport
+    ) {
+        guard !isImportingClips(id), !deliveryRequests.contains(id),
+            let project = project(id), project.delivery?.post == nil, let board = project.storyboard,
+            let recipe = project.deliveryRecipe() else { return }
+        let token = UUID()
+        guard let next = reelJoinState(for: project).handle(.build(token, recipe)) else { return }
+        reelJoins[id] = next
+        Task {
+            do {
+                let output = try await render(recipe)
+                guard let next = reelJoins[id]?.handle(.rendered(token, output)) else { return }
+                reelJoins[id] = next
+                guard let current = self.project(id), current.storyboard?.id == board.id,
+                    current.deliveryRecipe() == recipe else { return }
+                var record = current.deliveryRecord
+                record.plans[board.id]?.export = output
+                storeDelivery(record, for: id)
+            } catch {
+                if let next = reelJoins[id]?.handle(.failed(token, error.localizedDescription)) { reelJoins[id] = next }
+            }
+        }
+    }
+
+    private func storeDelivery(_ record: MiraDelivery, for id: UUID) {
+        update(id) {
+            $0.delivery = record
+            $0.updatedAt = Date()
+        }
+    }
+
+    func deliveryBriefState(for project: MiraProject, deal: MiraDeal) -> MiraDeliveryBriefState {
+        let review = project.delivery?.briefReview
+        let input = briefCheckInput(for: project, deal: deal)
+        let current = review?.dealID == deal.id && review?.job.input == input ? review : nil
+        return MiraDeliveryBriefState(review: current, running: deliveryRequests.contains(project.id))
+    }
+
+    private func briefCheckInput(
+        for project: MiraProject, deal: MiraDeal, caption: String? = nil, recipe: MiraRenderRecipe? = nil
+    ) -> MiraBriefCheckInput? {
+        guard let board = project.storyboard, !deal.terms.checklist.isEmpty,
+            let recipe = recipe ?? project.currentReelExport?.recipe else { return nil }
+        return MiraBriefCheckInput(profile: document.profile, checklist: deal.terms.checklist,
+            caption: caption ?? project.deliveryCaption, recipe: recipe,
+            script: project.script?.spoken ?? "", shots: board.shots)
+    }
+
+    func checkDeliveryBrief(_ id: UUID, using service: any MiraDeliveryService) {
+        guard !deliveryRequests.contains(id), !isRenderingReel(id), !isImportingClips(id),
+            let project = project(id), project.delivery?.post == nil,
+            let deal = deliveryDeal(for: project), let input = briefCheckInput(for: project, deal: deal)
+        else { return }
+        let state = deliveryBriefState(for: project, deal: deal)
+        let job: MiraDeliveryJob<MiraBriefCheckInput>
+        let resume: Bool
+        if case .interrupted(let review) = state {
+            guard review.job.creatorID == service.creatorID else { reportError(MiraError.anotherAccount.localizedDescription); return }
+            job = review.job
+            resume = true
+        } else {
+            job = MiraDeliveryJob(creatorID: service.creatorID, input: input)
+            resume = false
+        }
+        guard let review = state.handle(.start(deal.id, job)) else { return }
+        var record = project.deliveryRecord
+        record.briefReview = review.record
+        deliveryRequests.insert(id)
+        storeDelivery(record, for: id)
+        Task {
+            defer { deliveryRequests.remove(id) }
+            let event: MiraDeliveryBriefEvent
+            do {
+                let output = try await finishDeliveryJob(job, resume: resume) { try await service.briefCheck(job, start: $0) }
+                event = .received(job.id, output.checks)
+            } catch let failure as E2TerminalError {
+                event = .rejected(job.id, failure.message)
+            } catch {
+                event = .interrupted(job.id, error.localizedDescription)
+            }
+            guard let current = self.project(id), let currentDeal = deliveryDeal(for: current), currentDeal.id == deal.id else { return }
+            let state = deliveryBriefState(for: current, deal: currentDeal)
+            guard let next = state.handle(event) ?? state.handle(.rejected(job.id, "Mira could not match all checklist items.")) else { return }
+            var result = current.deliveryRecord
+            result.briefReview = next.record
+            storeDelivery(result, for: id)
+        }
+    }
+
+    func applyDeliveryFix(
+        _ item: UUID, to id: UUID, using render: @escaping @MainActor (MiraRenderRecipe) async throws -> MiraReelExport
+    ) {
+        guard !deliveryRequests.contains(id), !isRenderingReel(id), !isImportingClips(id),
+            let project = project(id), project.delivery?.post == nil, let board = project.storyboard,
+            let deal = deliveryDeal(for: project), let original = project.currentReelExport,
+            case .reviewed(let review) = deliveryBriefState(for: project, deal: deal),
+            let fix = review.checks?.first(where: { $0.id == item && $0.status == .canFix })?.fix,
+            let text = fix.text else { return }
+        let isCaption = fix.field == .caption
+        let caption = isCaption ? appendDeliveryText(text, to: project.deliveryCaption) : project.deliveryCaption
+        let overlay = isCaption ? original.recipe.extraText : appendDeliveryText(text, to: original.recipe.extraText)
+        guard overlay.utf16.count <= 480, caption.utf16.count <= 2200,
+            let recipe = project.deliveryRecipe(extraText: overlay),
+            let input = briefCheckInput(for: project, deal: deal, caption: caption, recipe: recipe),
+            let next = MiraDeliveryBriefState.reviewed(review).handle(.apply(item, input)) else {
+            reportError("This fix is too long to add to your Reel. Your current Reel is unchanged.")
+            return
+        }
+        if isCaption {
+            var record = project.deliveryRecord
+            record.caption = caption
+            record.briefReview = next.record
+            storeDelivery(record, for: id)
+            return
+        }
+        deliveryRequests.insert(id)
+        Task {
+            defer { deliveryRequests.remove(id) }
+            do {
+                let output = try await render(recipe)
+                guard let current = self.project(id), current.storyboard?.id == board.id,
+                    current.currentReelExport == original, deliveryDeal(for: current)?.id == deal.id,
+                    current.delivery?.briefReview == review else { return }
+                var record = current.deliveryRecord
+                record.plans[board.id]?.extraText = overlay
+                record.plans[board.id]?.export = output
+                record.briefReview = next.record
+                storeDelivery(record, for: id)
+            } catch {
+                reportError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func appendDeliveryText(_ text: String, to current: String) -> String {
+        if current.isEmpty { return text }
+        return current.contains(text) ? current : current + "\n" + text
+    }
+
+    func recordReelShare(_ id: UUID, exportID: UUID) {
+        guard let project = project(id), project.currentReelExport?.id == exportID,
+            !deliveryRequests.contains(id), !isImportingClips(id),
+            case .shared(let date) = MiraReelPostState(record: project.deliveryRecord).handle(.shared(Date()))
+        else { return }
+        var record = project.deliveryRecord
+        record.sharedAt = date
+        record.sharedExportID = exportID
+        storeDelivery(record, for: id)
+    }
+
+    func confirmReelPost(_ id: UUID) {
+        guard let project = project(id), let output = project.currentReelExport,
+            project.delivery?.sharedExportID == output.id,
+            !deliveryRequests.contains(id), !isImportingClips(id) else { return }
+        let deal = deliveryDeal(for: project)
+        let now = Date()
+        guard case .posted(let post) = MiraReelPostState(record: project.deliveryRecord)
+            .handle(.confirm(now, dealID: deal?.id, exportID: output.id)) else { return }
+        var record = project.deliveryRecord
+        record.post = post
+        if let deal, deal.tracker.postedAt == nil { trackDeal(deal.id, .posted(now)) }
+        storeDelivery(record, for: id)
+    }
+
+    func tellBrandState(for project: MiraProject) -> MiraTellBrandState {
+        MiraTellBrandState(note: project.delivery?.brandNote, running: deliveryRequests.contains(project.id))
+    }
+
+    func writeDeliveryNote(_ id: UUID, using service: any MiraDeliveryService) {
+        guard !deliveryRequests.contains(id), let project = project(id), let post = project.delivery?.post,
+            let deal = deliveryDeal(for: project), post.dealID == deal.id, deal.tracker.postedAt != nil,
+            deal.tracker.brandToldAt == nil else { return }
+        let review: MiraDeliveryReview?
+        if case .reviewed(let current) = deliveryBriefState(for: project, deal: deal) { review = current }
+        else { review = nil }
+        let input = MiraBrandNoteInput(profile: document.profile, deal: deal, post: post, review: review)
+        let state = tellBrandState(for: project)
+        let job: MiraDeliveryJob<MiraBrandNoteInput>
+        let resume: Bool
+        if case .interrupted(let note) = state {
+            guard note.job.creatorID == service.creatorID else { reportError(MiraError.anotherAccount.localizedDescription); return }
+            job = note.job
+            resume = true
+        } else {
+            job = MiraDeliveryJob(creatorID: service.creatorID, input: input)
+            resume = false
+        }
+        guard let note = state.handle(.start(deal.id, job)) else { return }
+        var record = project.deliveryRecord
+        record.brandNote = note.record
+        deliveryRequests.insert(id)
+        storeDelivery(record, for: id)
+        Task {
+            defer { deliveryRequests.remove(id) }
+            let event: MiraTellBrandEvent
+            do {
+                let output = try await finishDeliveryJob(job, resume: resume) { try await service.brandNote(job, start: $0) }
+                event = .received(job.id, output.message)
+            } catch let failure as E2TerminalError {
+                event = .rejected(job.id, failure.message)
+            } catch {
+                event = .interrupted(job.id, error.localizedDescription)
+            }
+            guard let current = self.project(id), current.delivery?.post == post else { return }
+            let state = tellBrandState(for: current)
+            guard let next = state.handle(event) ?? state.handle(.rejected(job.id, "Mira returned an incomplete note.")) else { return }
+            var result = current.deliveryRecord
+            result.brandNote = next.record
+            storeDelivery(result, for: id)
+        }
+    }
+
+    func markDeliveryNoteOpened(_ id: UUID, jobID: UUID) {
+        guard let project = project(id), project.delivery?.brandNote?.job.id == jobID,
+            let note = tellBrandState(for: project).handle(.opened(Date())) else { return }
+        var record = project.deliveryRecord
+        record.brandNote = note.record
+        storeDelivery(record, for: id)
+    }
+
+    func confirmDeliveryNote(_ id: UUID) {
+        let now = Date()
+        guard let project = project(id), let deal = deliveryDeal(for: project),
+            project.delivery?.post?.dealID == deal.id, deal.tracker.postedAt != nil,
+            let note = tellBrandState(for: project).handle(.confirm(now)), note.record?.dealID == deal.id else { return }
+        if deal.tracker.brandToldAt == nil { trackDeal(deal.id, .brandTold(now)) }
+        var record = project.deliveryRecord
+        record.brandNote = note.record
+        storeDelivery(record, for: id)
+    }
+
+    private func finishDeliveryJob<Input, Output>(
+        _ job: MiraDeliveryJob<Input>, resume: Bool,
+        send: (Bool) async throws -> MiraDeliveryReply<Input, Output>
+    ) async throws -> Output {
+        guard await flush() else { throw MiraError.invalid("Could not save this request. Reconnect to try again.") }
+        var reply: MiraDeliveryReply<Input, Output>
+        if resume {
+            do { reply = try await send(false) }
+            catch MiraError.notFound { reply = try await send(true) }
+        } else {
+            reply = try await send(true)
+        }
+        for _ in 0..<45 {
+            guard reply.matches(job) else { throw E2TerminalError("Mira could not match this reply to your Reel.") }
+            if reply.state != .working {
+                guard reply.state == .succeeded, let output = reply.output else {
+                    throw E2TerminalError("Mira could not finish this request. Try again.")
+                }
+                return output
+            }
+            try await Task.sleep(for: .seconds(3))
+            reply = try await send(false)
+        }
+        throw MiraError.invalid("Mira is still working. Reconnect to check this request.")
     }
 }

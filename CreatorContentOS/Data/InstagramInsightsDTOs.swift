@@ -70,6 +70,7 @@ struct InstagramInsightsResponse: Decodable, Hashable, Sendable {
     var fetchedAt: String?
     var dataQuality: String?
     var error: String?
+    var snapshots: [MiraInsightSnapshot]?
 
     enum CodingKeys: String, CodingKey {
         case connected
@@ -83,6 +84,7 @@ struct InstagramInsightsResponse: Decodable, Hashable, Sendable {
         case fetchedAt = "fetched_at"
         case dataQuality = "data_quality"
         case error
+        case snapshots
     }
 }
 
@@ -98,18 +100,17 @@ extension InstagramInsightsResponse {
             return .connectedPersonal
         case "permission_needed":
             return .permissionNeeded
-        case "no_data":
-            return .noData
-        case "ready":
+        case "no_data", "ready":
             let headline = (metrics ?? []).map(\.model)
-            guard !headline.isEmpty else { return .noData }
+            guard !headline.isEmpty || snapshots?.contains(where: \.hasResults) == true else { return .noData }
             return .ready(InstagramInsightsReport(
                 username: username,
                 source: InstagramInsightsSource(rawValue: source ?? "api") ?? .api,
                 headline: headline,
                 detail: (detail ?? []).map(\.model),
                 nudge: nudge,
-                fetchedAt: Self.parseDate(fetchedAt)
+                fetchedAt: Self.parseDate(fetchedAt),
+                snapshots: snapshots
             ))
         default:
             return .notConnected

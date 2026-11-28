@@ -129,7 +129,9 @@ async function produceInsights(
   }
 
   if (!hasAnyMetric(snapshot)) {
-    return jsonResponse(state("no_data", conn.account_type, conn.username));
+    const report = state("no_data", conn.account_type, conn.username);
+    if (snapshot.topPosts?.length) report.snapshots = [{ topPosts: snapshot.topPosts }];
+    return jsonResponse(report);
   }
 
   // Baseline for week-over-week deltas: the newest snapshot that is at least

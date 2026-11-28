@@ -42,3 +42,11 @@ The speech transcript field uses the same form and the existing Use these words 
 | Legacy idea request sheet | Make |
 
 The interview retains Back and Cancel. The editor retains validation and its saved document identifiers. The Paste control and the brief length limit stay in the scroll area.
+
+## PR #49 additions
+
+| Screen | Main action for text entry |
+| --- | --- |
+| Your Reel, brand WhatsApp number | Send to the brand |
+
+The number field uses a keyboard with Done and keeps the existing number validation. E5 adds no text boxes. The phone check can measure the Send button and verify that it is enabled without sending or opening WhatsApp.

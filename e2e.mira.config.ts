@@ -7,6 +7,7 @@ const install = process.env.MIRA_E2E_INSTALL === '1';
 export const fixtureSessionArguments = process.env.MIRA_E2E_FIXTURE_SESSION
   ? ['-MCO_QA_SESSION', process.env.MIRA_E2E_FIXTURE_SESSION] : [];
 export const launchArguments = ['-AppleLanguages', '(en)', '-AppleLocale', 'en_US', '-MCO_APPEARANCE', 'light'];
+export const passiveLaunchArguments = [...launchArguments, '-MCO_QA_DISABLE_DAILY_NOTE', '1'];
 export const d2FixtureArguments = process.env.MIRA_E2E_D2_ENDPOINT
   ? ['-MCO_QA_D2_ENDPOINT', process.env.MIRA_E2E_D2_ENDPOINT] : [];
 

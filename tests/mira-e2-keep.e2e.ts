@@ -3,7 +3,9 @@ import { expect } from 'e2e';
 import { scrollToControl, tapVisibleControl } from './mobile-support';
 
 test('Normal launch preserves AI permission and the connected Instagram account', async ({ app, screen, device }) => {
-  await device.openApp('com.prateekranka.creatorcontenthelper', { relaunch: true, launchArguments: [] });
+  await device.openApp('com.prateekranka.creatorcontenthelper', {
+    relaunch: true, launchArguments: ['-MCO_QA_DISABLE_DAILY_NOTE', '1'],
+  });
   await expect(screen.getByRole('tablist', 'Tab Bar', { exact: true })).toBeAttached({ timeout: 45_000 });
   const alert = screen.getByRole('alert', /Apple.Account Verification/);
   if (await alert.count() > 0) {

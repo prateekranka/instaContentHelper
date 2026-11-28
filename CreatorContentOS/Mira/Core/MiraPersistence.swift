@@ -61,10 +61,12 @@ actor MiraFileRepository: MiraProjectRepository, MiraCreatorProfileRepository {
     let directory: URL
     private var latestSequence = -1
     private let seedDamagedFixture: Bool
+    private let seedDeliveryFixture: Bool
 
-    init(directory: URL, seedDamagedFixture: Bool = false) {
+    init(directory: URL, seedDamagedFixture: Bool = false, seedDeliveryFixture: Bool = false) {
         self.directory = directory
         self.seedDamagedFixture = seedDamagedFixture
+        self.seedDeliveryFixture = seedDeliveryFixture
     }
     private var file: URL { directory.appendingPathComponent("mira-v2.json") }
     private var backup: URL { directory.appendingPathComponent("mira-backup.json") }
@@ -72,6 +74,10 @@ actor MiraFileRepository: MiraProjectRepository, MiraCreatorProfileRepository {
         let manager = FileManager.default
         try manager.createDirectory(at: directory, withIntermediateDirectories: true)
 #if DEBUG
+        if seedDeliveryFixture, !manager.fileExists(atPath: file.path), !manager.fileExists(atPath: backup.path) {
+            let document = MiraDeliveryFixture.sampleDocument()
+            try JSONEncoder().encode(document).write(to: file, options: .withoutOverwriting)
+        }
         if seedDamagedFixture, !manager.fileExists(atPath: file.path), !manager.fileExists(atPath: backup.path) {
             var document = MiraDocument()
             var project = MiraProject()

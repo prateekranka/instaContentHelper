@@ -4,9 +4,11 @@ struct MiraContinueReel: Identifiable, Equatable {
     let id: UUID
     let title: String
     let progress: MiraReelProgress
+    let deliveryAction: MiraNextAction?
 
     var completedSteps: Int {
-        switch progress {
+        if let deliveryAction { return [.prepareClips, .joinReel].contains(deliveryAction) ? 4 : 5 }
+        return switch progress {
         case .choosing: 0
         case .writing, .approving: 1
         case .planning, .ready: 2
@@ -16,7 +18,7 @@ struct MiraContinueReel: Identifiable, Equatable {
     }
 
     var nextAction: MiraNextAction {
-        progress.nextAction
+        deliveryAction ?? progress.nextAction
     }
 }
 
@@ -40,11 +42,15 @@ enum MiraHomeFeed {
             }
             let openReels = projects.sorted { $0.updatedAt > $1.updatedAt }.compactMap { project -> MiraContinueReel? in
                 let progress = project.stage
-                guard !project.archived, progress != .complete,
+                guard !project.archived,
                     !project.ideas.isEmpty || !project.scripts.isEmpty || project.hasWorkingCards
                         || project.todayCards?.contains(where: { $0.output != nil }) == true
                 else { return nil }
-                return MiraContinueReel(id: project.id, title: project.idea?.title ?? project.title, progress: progress)
+                let deal = project.deliveryDeal(in: deals)
+                let action = project.canFilm ? project.deliveryNextAction(deal: deal) : nil
+                if project.delivery?.post != nil && action == nil { return nil }
+                return MiraContinueReel(id: project.id, title: project.idea?.title ?? project.title,
+                    progress: progress, deliveryAction: action)
             }
             guard !openReels.isEmpty else { return openDeals.isEmpty ? .empty : .deals(openDeals) }
             if let reel = openReels.first(where: { $0.id == resume }) {

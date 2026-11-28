@@ -4,14 +4,17 @@ import Observation
 @MainActor @Observable
 final class MiraDependencies {
     let store: MiraStore
+    let reelMedia: MiraReelMedia
     let profileRepository: any MiraCreatorProfileRepository
     let makeSpeechInput: @MainActor () -> any MiraSpeechInputService
 
     init(
         repository: any MiraProjectRepository & MiraCreatorProfileRepository,
+        reelMedia: MiraReelMedia,
         makeSpeechInput: @escaping @MainActor () -> any MiraSpeechInputService
     ) {
         store = MiraStore(repository: repository)
+        self.reelMedia = reelMedia
         profileRepository = repository
         self.makeSpeechInput = makeSpeechInput
     }
@@ -23,10 +26,14 @@ final class MiraDependencies {
                 .appendingPathComponent("Library/Application Support", isDirectory: true)
         let fixtureSession = DebugLaunchFlags.forceFixtureUI ? DebugLaunchConfiguration.fixtureSession : nil
         let library = fixtureSession.map { "Mira-Fixtures-\($0)" } ?? "Mira"
+        let directory = support.appendingPathComponent(library, isDirectory: true)
         let repository = MiraFileRepository(
-            directory: support.appendingPathComponent(library, isDirectory: true),
-            seedDamagedFixture: fixtureSession != nil && DebugLaunchConfiguration.isEnabled("MCO_QA_DAMAGED_LIBRARY"))
-        return MiraDependencies(repository: repository, makeSpeechInput: { MiraSpeechInput() })
+            directory: directory,
+            seedDamagedFixture: fixtureSession != nil && DebugLaunchConfiguration.isEnabled("MCO_QA_DAMAGED_LIBRARY"),
+            seedDeliveryFixture: fixtureSession != nil && DebugLaunchConfiguration.isEnabled("MCO_QA_E4"))
+        return MiraDependencies(repository: repository,
+            reelMedia: MiraReelMedia(directory: directory.appendingPathComponent("Media", isDirectory: true)),
+            makeSpeechInput: { MiraSpeechInput() })
     }
 
     func generationService(
@@ -70,7 +77,7 @@ final class MiraDependencies {
     static func todayFixture(for request: String) -> MiraSupabaseGenerationService? {
         #if DEBUG
         guard DebugLaunchFlags.forceFixtureUI, DebugLaunchConfiguration.fixtureSession != nil,
-            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures", "Demo D2 transport", "Demo E2 pick"].contains(request),
+            ["Demo D2 steps", "Demo D2 legacy", "Demo D2 pictures", "Demo D2 transport", "Demo E2 pick", "Demo E5 note"].contains(request),
             let endpoint = DebugLaunchConfiguration.value(for: "MCO_QA_D2_ENDPOINT"),
             let url = URL(string: endpoint), url.scheme == "https", url.host != nil
         else { return nil }
@@ -84,7 +91,7 @@ final class MiraDependencies {
     }
 }
 
-struct MiraSupabaseGenerationService: MiraGenerationService, MiraDealBriefService {
+struct MiraSupabaseGenerationService: MiraGenerationService, MiraDealBriefService, MiraDeliveryService, MiraDailyNoteService {
     let session: PairedDeviceSession
     var urlSession: URLSession = .shared
     var authorize: (@MainActor @Sendable (Bool) throws -> Void)?
@@ -134,6 +141,31 @@ struct MiraSupabaseGenerationService: MiraGenerationService, MiraDealBriefServic
             action: start ? "start" : "status", id: job.id, creatorID: session.creatorID,
             inputRevision: start ? MiraDealBriefJob.revision : nil, input: start ? job.input : nil,
             consentVersion: start ? 1 : nil))
+    }
+
+    func briefCheck(_ job: MiraDeliveryJob<MiraBriefCheckInput>, start: Bool) async throws
+        -> MiraDeliveryReply<MiraBriefCheckInput, MiraBriefCheckOutput> {
+        try await sendDelivery(job, start: start)
+    }
+
+    func brandNote(_ job: MiraDeliveryJob<MiraBrandNoteInput>, start: Bool) async throws
+        -> MiraDeliveryReply<MiraBrandNoteInput, MiraBrandNoteOutput> {
+        try await sendDelivery(job, start: start)
+    }
+
+    private func sendDelivery<Input, Output>(_ job: MiraDeliveryJob<Input>, start: Bool) async throws
+        -> MiraDeliveryReply<Input, Output> {
+        guard job.creatorID == creatorID else { throw MiraError.anotherAccount }
+        return try await send(Request(
+            action: start ? "start" : "status", id: job.id, creatorID: session.creatorID,
+            inputRevision: start ? job.revision : nil, input: start ? job.input : nil,
+            consentVersion: start ? 1 : nil))
+    }
+
+    func dailyNote(id: UUID, input: MiraDailyNoteInput?) async throws -> MiraDailyNoteReply {
+        try await send(Request(action: input == nil ? "status" : "start", id: id, creatorID: session.creatorID,
+                               inputRevision: input == nil ? nil : 0, input: input,
+                               consentVersion: input == nil ? nil : 1))
     }
 
     private func send<Input: Encodable, Reply: Decodable>(_ body: Request<Input>) async throws -> Reply {
@@ -195,3 +227,12 @@ struct MiraSupabaseGenerationService: MiraGenerationService, MiraDealBriefServic
         return try JSONDecoder().decode(Response<Reply>.self, from: data).job
     }
 }
+
+#if DEBUG
+extension MiraDeliveryFixture {
+    static var isEnabled: Bool {
+        DebugLaunchFlags.forceFixtureUI && DebugLaunchConfiguration.fixtureSession != nil
+            && DebugLaunchConfiguration.isEnabled("MCO_QA_E4")
+    }
+}
+#endif

@@ -147,7 +147,8 @@ test('E1 Home shows the idea card with no work, including after saving an empty 
   await expect(homeRequest(screen)).toBeVisible();
   await expect(homeMic(screen)).toBeVisible();
   await expect(homeIdeaButton(screen, 'Home')).toBeVisible();
-  await expect(screen.getByText("How you're doing", { exact: true })).not.toBeVisible();
+  await expect(screen.getByText("How you're doing", { exact: true })).toBeAttached();
+  await expect(screen.getByText('Not enough data yet', { exact: true })).toBeAttached();
   await app.screenshot('e1-home-empty');
   await screen.getByRole('button', 'Profile', { exact: true }).tap();
   await tap(screen, screen.getByTestId('mira.profile.stepByStep'));
@@ -533,10 +534,10 @@ test('Your words gate leads to approved filming and the Done screen', async ({ a
   await scrollToControl(screen, copy);
   await tap(screen, copy);
   await expect(screen.getByRole('button', 'Copied', { exact: true })).toBeVisible();
-  const instagram = screen.getByTestId('mira.done.instagram');
-  await scrollToControl(screen, instagram);
-  await expect(instagram).toBeVisible();
-  await bottomAboveTabs(app, screen, title('Mira does not post. You post in Instagram.'), 'done-screen');
+  await bottomAboveTabs(app, screen, copy, 'done-screen');
+  const addClips = screen.getByTestId('mira.delivery.add');
+  await scrollToControl(screen, addClips, 'up');
+  await expect(addClips).toBeVisible();
 });
 
 const look = process.env.MIRA_E2E_LOOK ?? 'light';
@@ -1537,4 +1538,328 @@ test('E3 Notes Send Copy hands text to Deals and waits for Read this brief', asy
   await expect(e3Button(screen, 'Read this brief')).toBeVisible();
   await expect(e3Button(screen, 'Looks right')).toHaveCount(0);
   await app.screenshot('e3-shared-brief-in-deals');
+});
+
+const e4Fixture = ['-MCO_QA_E4', '1'];
+const e4Control = (screen: Screen, id: string) => screen.getByTestId(`mira.delivery.${id}`);
+const joinedReel = { tags: ['joined-reel'] };
+
+async function openSampleDelivery(app: App, screen: Screen, device: Device) {
+  await launchMira(app, screen, device, false, e4Fixture);
+  await tap(screen, screen.getByTestId('mira.today.continue'));
+  await expect(e4Control(screen, 'add')).toBeVisible();
+  await tap(screen, e4Control(screen, 'fixtures'));
+  await expect(e4Control(screen, 'clip.1')).toBeVisible({ timeout: 45_000 });
+}
+
+async function joinSampleDelivery(app: App, screen: Screen, screenshot: string) {
+  const join = e4Control(screen, 'join');
+  await scrollToControl(screen, join);
+  await expect(join).toBeEnabled({ timeout: 45_000 });
+  await join.tap();
+  await expect(e4Control(screen, 'player')).toBeVisible({ timeout: 120_000 });
+  await app.screenshot(screenshot);
+  await e3Button(screen, 'Close').tap();
+  await expect(e4Control(screen, 'savePhotos')).toBeAttached();
+}
+
+async function checkSampleDelivery(screen: Screen) {
+  await tap(screen, e4Control(screen, 'brief'));
+  const check = screen.getByTestId(/^mira\.delivery\.check\.onScreenText\./);
+  await expect(check).toHaveText('Can fix', { timeout: 45_000 });
+  return check;
+}
+
+async function sampleTracker(screen: Screen, field: string, value: string) {
+  await openToday(screen);
+  await openTab(screen, 'Deals');
+  await tap(screen, e3Button(screen, 'Open deal for Peak Sip'));
+  const row = screen.getByLabel(field, { exact: true });
+  await expect(row).toHaveValue(value);
+}
+
+async function expectDeliveryClip(screen: Screen, slot: number, name: string) {
+  const clip = e4Control(screen, `clip.${slot}`);
+  await scrollToControl(screen, clip);
+  await expect(clip).toHaveText(name);
+}
+
+async function matchAndSwapSampleClips(app: App, screen: Screen, device: Device) {
+  await openSampleDelivery(app, screen, device);
+  await expectDeliveryClip(screen, 1, 'E4FixtureShort');
+  await expectDeliveryClip(screen, 2, 'E4FixtureMedium');
+  await expectDeliveryClip(screen, 3, 'E4FixtureLong');
+  const swap = e4Control(screen, 'swap.2');
+  await scrollToControl(screen, swap, 'up');
+  await app.screenshot('e4-clip-matching');
+  await swap.tap();
+  await e3Button(screen, 'E4FixtureLong · swap').tap();
+  await expectDeliveryClip(screen, 2, 'E4FixtureLong');
+  await expectDeliveryClip(screen, 3, 'E4FixtureMedium');
+  await app.screenshot('e4-swapped-clips');
+  await launchMira(app, screen, device, false, e4Fixture);
+  await expectDeliveryClip(screen, 2, 'E4FixtureLong');
+  await expectDeliveryClip(screen, 3, 'E4FixtureMedium');
+}
+
+test('E4 sample clips match by length and keep swaps after relaunch', async ({ app, screen, device }) => {
+  await matchAndSwapSampleClips(app, screen, device);
+  await app.screenshot('e4-persisted-clip-order');
+});
+
+test('E4 sample clips match by length, can swap, persist, and join in the new order', joinedReel, async ({ app, screen, device }) => {
+  await matchAndSwapSampleClips(app, screen, device);
+  await joinSampleDelivery(app, screen, 'e4-joined-reel');
+});
+
+test('E4 brief check only marks the missing discount code met after an approved render', joinedReel, async ({ app, screen, device }) => {
+  await openSampleDelivery(app, screen, device);
+  await joinSampleDelivery(app, screen, 'e4-reel-before-fix');
+  const code = await checkSampleDelivery(screen);
+  await expect(screen.getByTestId(/^mira\.delivery\.check\.caption\./)).toHaveText('Met');
+  await expect(screen.getByTestId(/^mira\.delivery\.check\.shot\./)).toHaveText('Missing');
+  await expect(e4Control(screen, 'adjustment')).toHaveCount(0);
+  const apply = e3Button(screen, 'Apply fix for Show the discount code');
+  await scrollToControl(screen, apply);
+  await app.screenshot('e4-brief-can-fix');
+  await tap(screen, apply);
+  await expect(code).toHaveText('Met', { timeout: 120_000 });
+  await expect(e4Control(screen, 'adjustment')).toHaveText('I added SIP20.');
+  await app.screenshot('e4-brief-fixed');
+  await tap(screen, e3Button(screen, 'Watch your Reel'));
+  await expect(e4Control(screen, 'player')).toBeVisible();
+  await app.screenshot('e4-reel-with-discount');
+});
+
+test('E4 Instagram share sheet can close with the tracker still pending', joinedReel, async ({ app, screen, device }) => {
+  await openSampleDelivery(app, screen, device);
+  await joinSampleDelivery(app, screen, 'e4-instagram-reel');
+  await checkSampleDelivery(screen);
+  await tap(screen, e4Control(screen, 'instagram'));
+  const instagram = screen.getByText('Instagram', { exact: true }).first();
+  await expect(instagram).toBeVisible({ timeout: 30_000 });
+  await app.screenshot('e4-instagram-share-sheet');
+  await launchMira(app, screen, device, false, e4Fixture);
+  await expect(e4Control(screen, 'posted')).toBeAttached();
+  await sampleTracker(screen, 'Posted', 'Pending');
+});
+
+test('E4 WhatsApp keeps Send above the keyboard and leaves the brand tracker pending', joinedReel, async ({ app, screen, device }) => {
+  await openSampleDelivery(app, screen, device);
+  await joinSampleDelivery(app, screen, 'e4-whatsapp-reel');
+  await checkSampleDelivery(screen);
+  await tap(screen, e4Control(screen, 'instagram'));
+  await expect(e4Control(screen, 'posted')).not.toBeVisible();
+  await launchMira(app, screen, device, false, e4Fixture);
+  await tap(screen, e4Control(screen, 'posted'));
+  await expect(e3Text(screen, 'Mira recorded that you posted the Reel.')).toBeVisible();
+  await tap(screen, e4Control(screen, 'note'));
+  const message = e4Control(screen, 'whatsapp.note');
+  await expect(message).toContainText('Hi Peak Sip');
+  const phone = e4Control(screen, 'whatsapp.phone');
+  await tap(screen, phone);
+  await phone.fill('+1 202 555 0143');
+  const send = e4Control(screen, 'whatsapp');
+  const keyboard = await mobileKeyboard(screen);
+  await expect(keyboard).toBeVisible();
+  await expect(send).toBeVisible();
+  await expect(send).toBeEnabled();
+  const [sendBox, keyboardBox] = await Promise.all([send.boundingBox(), keyboard.boundingBox()]);
+  if (keyboardBox.y > 0) {
+    expect(sendBox.y + sendBox.height).toBeLessThanOrEqual(keyboardBox.y);
+  }
+  await app.screenshot('e4-whatsapp-send-above-keyboard');
+  await closeKeyboard(screen, phone);
+  await expect(phone).toHaveValue('+1 202 555 0143');
+  await expect(e4Control(screen, 'sent')).not.toBeAttached();
+  await launchMira(app, screen, device, false, e4Fixture);
+  await sampleTracker(screen, 'Brand told', 'Pending');
+});
+
+const e5Note = (screen: Screen) => screen.getByTestId('mira.home.dailyNote.text');
+const e5Action = (screen: Screen) => screen.getByTestId('mira.home.dailyNote.action');
+const e5PostAction = (screen: Screen, index: number) => screen.getByTestId(`mira.home.whatWorked.action.${index}`);
+
+async function e5Fixture(update: Record<string, string | boolean | number> = {}) {
+  const address = process.env.MIRA_D2_FIXTURE_CONTROL;
+  test.skip(!address || !process.env.MIRA_E2E_D2_ENDPOINT, 'Set both D2 fixture endpoints for E5.');
+  const response = await fetch(`${address}/control`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scenario: 'E5', ...update }),
+  });
+  expect(response.ok).toBe(true);
+  return await response.json() as {
+    calls: number; starts: string[]; statuses: string[];
+    job: { id: string; input: { snapshots: unknown[]; openReels: { title: string }[]; openDeals: { title: string }[] } };
+    picks: { bestPostPatterns?: string[] }[];
+  };
+}
+
+async function openE5(app: App, screen: Screen, device: Device, permission = 'allow') {
+  await launchMira(app, screen, device, false, ['-MCO_QA_E5_NOTE', '1', '-MCO_QA_INSTAGRAM_RESULTS', permission]);
+  await openToday(screen);
+}
+
+test('E5 How you are doing shows observed counts, weekly changes and missing comparisons', async ({ app, screen, device }) => {
+  await e5Fixture({ begin: true, action: 'none' });
+  await openE5(app, screen, device);
+  await scrollToControl(screen, e3Text(screen, "How you're doing"));
+  for (const value of ['Followers', 'Reach', 'Saves', '1,212', '690', '15', '+12 this week', '−10 this week', 'Not enough data yet']) {
+    await expect(e3Text(screen, value).first()).toBeAttached();
+  }
+  await app.screenshot('e5-how-youre-doing');
+  await expect(e5Note(screen)).toHaveText('You have 1,212 followers.');
+  const { job } = await e5Fixture();
+  expect(job.input.snapshots).toMatchObject([{ followers: 1200 }, { followers: 1212, saves7d: 15 }]);
+});
+
+test('E5 missing data and legacy reports keep actual counts without inventing a baseline', async ({ app, screen, device }) => {
+  await e5Fixture({ begin: true, action: 'none', insights: 'missing' });
+  await openE5(app, screen, device);
+  await expect(e3Text(screen, 'Not enough data yet')).toBeAttached();
+  await expect(e3Text(screen, 'What worked')).not.toBeAttached();
+  await expect(e5Note(screen)).toHaveText('Here is what matters today.');
+  expect((await e5Fixture()).job.input.snapshots).toEqual([]);
+  await e5Fixture({ begin: true, action: 'none', insights: 'legacy' });
+  await openE5(app, screen, device);
+  await expect(e3Text(screen, '+12 this week')).toBeAttached();
+  await expect(e3Text(screen, 'What worked')).not.toBeAttached();
+  await expect(e5Note(screen)).toBeAttached();
+  expect((await e5Fixture()).job.input.snapshots).toEqual([{ followers: 1212 }]);
+});
+
+test('E5 Mira noticed offers one Make idea action and starts a Home pick', async ({ app, screen, device }) => {
+  await e5Fixture({ begin: true, action: 'makeIdea' });
+  await openE5(app, screen, device);
+  await expect(e5Action(screen)).toHaveCount(1);
+  await expect(e5Action(screen)).toHaveAccessibleName('Make an idea');
+  await app.screenshot('e5-mira-noticed-make-idea');
+  await tap(screen, e5Action(screen));
+  await expect(screen.getByTestId('mira.pick.make')).toBeAttached();
+  expect((await e5Fixture()).picks).toEqual([expect.objectContaining({ operation: 'pickIdea' })]);
+  await app.screenshot('e5-mira-noticed-pick');
+});
+
+test('E5 Mira noticed continues the exact unfinished Reel without Instagram permission', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await chooseTodayCard(screen, 1, 'A quick movement break');
+  await openToday(screen);
+  await e5Fixture({ begin: true, action: 'continueReel' });
+  await openE5(app, screen, device, 'not-now');
+  await expect(e5Note(screen)).toHaveText('Here is what matters today.');
+  const { job } = await e5Fixture();
+  expect(job.input.snapshots).toEqual([]);
+  expect(job.input.openReels.map(reel => reel.title)).toEqual(['A quick movement break']);
+  await expect(e5Action(screen)).toHaveCount(1);
+  await expect(e5Action(screen)).toHaveAccessibleName('Continue this Reel');
+  await tap(screen, e5Action(screen));
+  await expect(screen.getByTestId('mira.words.approve')).toBeAttached();
+  await app.screenshot('e5-mira-noticed-continue-reel');
+});
+
+test('E5 Mira noticed opens the exact deal and drops its action when paid', async ({ app, screen, device }) => {
+  await launchMira(app, screen, device);
+  await openTab(screen, 'Deals');
+  await tap(screen, e3Button(screen, 'Paste a brief'));
+  const brief = screen.getByRole('textbox', 'Brand brief', { exact: true });
+  await fillText(brief, e3Brief);
+  await closeKeyboard(screen, brief);
+  await tap(screen, e3Button(screen, 'Read this brief'));
+  await tap(screen, e3Button(screen, 'Looks right'));
+  await e3Button(screen, 'Close').tap();
+  await openToday(screen);
+  await e5Fixture({ begin: true, action: 'openDeal' });
+  await openE5(app, screen, device, 'not-now');
+  await expect(e5Action(screen)).toHaveCount(1);
+  await expect(e5Action(screen)).toHaveAccessibleName('Open this deal');
+  expect((await e5Fixture()).job.input.openDeals.map(deal => deal.title)).toEqual(['Peak Sip']);
+  await tap(screen, e5Action(screen));
+  await expect(e3Text(screen, 'Peak Sip')).toBeVisible();
+  await app.screenshot('e5-mira-noticed-open-deal');
+  for (const title of ['Mark as posted', 'Mark brand told', 'Mark as confirmed', 'Mark as paid']) {
+    await tap(screen, e3Button(screen, title));
+  }
+  await e3Button(screen, 'Close').tap();
+  await openToday(screen);
+  await expect(e5Note(screen)).toBeAttached();
+  await expect(e5Action(screen)).toHaveCount(0);
+  expect((await e5Fixture()).calls).toBe(1);
+});
+
+test('E5 action none has no button and same-day Home reentry sends no request', async ({ app, screen, device }) => {
+  await e5Fixture({ begin: true, action: 'none' });
+  await openE5(app, screen, device);
+  await expect(e5Note(screen)).toHaveText('You have 1,212 followers.');
+  await expect(e5Action(screen)).toHaveCount(0);
+  const initial = await e5Fixture();
+  expect(initial.calls).toBe(1);
+  expect(initial.starts).toEqual([initial.job.id]);
+  await openTab(screen, 'Deals');
+  await openToday(screen);
+  await expect(e5Note(screen)).toHaveText('You have 1,212 followers.');
+  expect(await e5Fixture()).toEqual(initial);
+  await openE5(app, screen, device);
+  await expect(e5Note(screen)).toHaveText('You have 1,212 followers.');
+  const reopened = await e5Fixture();
+  expect(reopened.calls).toBe(1);
+  expect(reopened.starts).toHaveLength(2);
+  expect(reopened.starts[1]).not.toBe(initial.job.id);
+  expect(reopened.statuses).toEqual([initial.job.id, initial.job.id]);
+  await app.screenshot('e5-mira-noticed-reused');
+});
+
+test('E5 accepts the cached revision and hides the Instagram note after permission changes', async ({ app, screen, device }) => {
+  await e5Fixture({ begin: true, action: 'makeIdea', seedRevision: 4 });
+  await openE5(app, screen, device);
+  await expect(e5Note(screen)).toHaveText('You have 1,212 followers.');
+  await openE5(app, screen, device, 'not-now');
+  await expect.poll(async () => (await e5Fixture()).statuses.length).toBe(2);
+  await expect(e5Note(screen)).not.toBeAttached();
+  await expect(e5Action(screen)).toHaveCount(0);
+  const cached = await e5Fixture();
+  expect(cached.calls).toBe(1);
+  expect(cached.starts).not.toContain(cached.job.id);
+  expect(cached.statuses).toEqual([cached.job.id, cached.job.id]);
+});
+
+test('E5 a failed note leaves Home available and sends no second start on reentry', async ({ app, screen, device }) => {
+  await e5Fixture({ begin: true, action: 'none', fail: true });
+  await openE5(app, screen, device);
+  const unavailable = screen.getByTestId('mira.home.dailyNote.unavailable');
+  await expect(unavailable).toBeAttached();
+  await openTab(screen, 'My Brand');
+  await openToday(screen);
+  await expect(unavailable).toBeAttached();
+  await expect(screen.getByTestId('mira.today.make')).toBeAttached();
+  expect((await e5Fixture()).starts).toHaveLength(1);
+});
+
+test('E5 What worked sends the chosen post pattern and keeps it for another Home pick', async ({ app, screen, device }) => {
+  await e5Fixture({ begin: true, action: 'none' });
+  await openE5(app, screen, device);
+  await expect(e5Note(screen)).toBeAttached();
+  await scrollToControl(screen, e3Text(screen, 'What worked'));
+  for (const value of ['A mango bowl in one minute', 'My walk before breakfast', '11', '38', '4', '0']) {
+    await expect(e3Text(screen, value).first()).toBeAttached();
+  }
+  await expect(e5PostAction(screen, 0)).toHaveAccessibleName('Make one like this');
+  await expect(e5PostAction(screen, 1)).toHaveAccessibleName('Make one like this');
+  await app.screenshot('e5-what-worked');
+  await tap(screen, e5PostAction(screen, 1));
+  await scrollToControl(screen, screen.getByTestId('mira.pick.another'), 'up');
+  await expect(e3Text(screen, 'A quiet breakfast')).toBeVisible();
+  await app.screenshot('e5-what-worked-pick');
+  await tap(screen, screen.getByTestId('mira.pick.another'));
+  await expect(e3Text(screen, 'A table by the window')).toBeVisible();
+  const { picks } = await e5Fixture();
+  expect(picks.map(pick => pick.bestPostPatterns)).toEqual([['My walk before breakfast'], ['My walk before breakfast']]);
+});
+
+test('E5 What worked asks before sharing a post and declining leaves Home without a pick', async ({ app, screen, device }) => {
+  await e5Fixture({ begin: true, action: 'none' });
+  await openE5(app, screen, device, 'not-now');
+  await tap(screen, e5PostAction(screen, 0));
+  await expect(screen.getByTestId('mira.instagramResults.question')).toBeVisible();
+  await screen.getByTestId('mira.instagramResults.notNow').tap();
+  await expect(screen.getByTestId('mira.pick.make')).not.toBeAttached();
+  expect((await e5Fixture()).picks).toEqual([]);
 });
