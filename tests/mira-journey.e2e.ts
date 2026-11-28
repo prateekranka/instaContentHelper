@@ -60,7 +60,7 @@ async function fillText(field: Locator, text: string) {
     await field.fill(text);
   } catch (error) {
     if (!(error instanceof Error && /could not confirm the typed text/.test(error.message))) throw error;
-    await field.fill(text);
+    if (await field.inputValue() !== text) await field.fill(text);
   }
   if (text.length > 0) expect(await field.inputValue()).toBe(text);
 }
@@ -677,7 +677,7 @@ test('S1 B1 the Projects shot list asks her to approve the words before filming'
   await scrollToControl(screen, shotsSection, 'up');
   await tap(screen, shotsSection);
   const approveLink = screen.getByTestId('mira.shots.approve');
-  await scrollToControl(screen, approveLink, 'up');
+  await scrollToControl(screen, approveLink);
   await expect(approveLink).toBeVisible();
   await expect(screen.getByRole('button', 'Start filming', { exact: true })).not.toBeVisible();
   await app.screenshot(`s1-b1-shots-approve-${look}`);
@@ -1152,6 +1152,9 @@ test('M13 permission withdrawal stops a waiting card with its request still save
   const request = 'Demo permission withdrawn while waiting';
   await startTodayCard(screen, request, 3);
   await expect(screen.getByTestId('mira.today.waiting.3')).toBeVisible();
+  const page = screen.getByTestId('mira.today.page.3');
+  await expect(page).toHaveAccessibleName('Idea 3 of 3, did not load', { timeout: 45_000 });
+  await page.tap();
   await expect(screen.getByText('This idea was stopped.', { exact: true })).toBeVisible({ timeout: 45_000 });
   await expect(screen.getByText('AI permission is off. Your words are saved.', { exact: true })).toBeVisible();
   await app.screenshot('m13-permission-withdrawal-stopped');
@@ -1205,9 +1208,9 @@ test('M17 a rejected update keeps Retry as the next step and retry reaches filmi
   await tap(screen, screen.getByTestId('mira.words.simpler'));
   await tap(screen, screen.getByTestId('mira.words.use'));
   await tap(screen, wordsApprove(screen));
-  const alert = screen.getByRole('alert', 'Mira', { exact: true });
-  await expect(alert).toBeVisible({ timeout: 45_000 });
-  await alert.getByRole('button', 'OK', { exact: true }).tap();
+  await expect(screen.getByText('Mira needs to update the shots.', { exact: true, visible: true }))
+    .toBeVisible({ timeout: 45_000 });
+  await screen.getByRole('button', 'OK', { exact: true, visible: true }).tap();
   const retry = screen.getByTestId('mira.words.shots.retry');
   await scrollToControl(screen, retry);
   await expect(retry).toBeVisible();

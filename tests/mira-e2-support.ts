@@ -44,7 +44,10 @@ export async function answerBrandInterview(
       await expect(question).toHaveText(questionLabels[0]);
       expect(await answer.inputValue()).toBe(interviewAnswers[0]);
       await tapVisibleControl(screen, next);
+      await expect(question).toHaveText(questionLabels[index]);
     }
+    await expect(next).toBeDisabled();
+    await expect.poll(async () => (await answer.inputValue()) ?? '').toMatch(/^(?:Your answer)?$/);
     await answer.fill(value);
     await closeKeyboard(screen, answer);
     expect(await answer.inputValue()).toBe(value);
