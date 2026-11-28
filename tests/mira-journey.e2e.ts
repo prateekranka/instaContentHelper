@@ -81,7 +81,13 @@ async function backOut(screen: Screen) {
   for (let step = 0; step < 4; step += 1) {
     const back = screen.getByTestId('BackButton');
     if (await back.count() === 0) break;
-    await back.tap();
+    try {
+      await back.tap();
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'LOCATOR_NOT_FOUND')
+        || await back.count() > 0) throw error;
+      break;
+    }
   }
 }
 
@@ -193,10 +199,9 @@ test('E1 tabs share the Ask Mira bar and My Brand keeps archived Reels reachable
   await expect(archived).toBeChecked();
   await expect(screen.getByText('Untitled Reel', { exact: true })).toBeVisible();
   await tap(screen, screen.getByText('Untitled Reel', { exact: true }));
-  const reel = screen.getByRole('other', 'My Brand', { exact: true }).filter({
-    has: screen.getByTestId('Your Reel'),
-  });
-  await expect(reel.getByPlaceholder('Ask Mira about this Reel', { exact: true, visible: true })).toBeVisible();
+  await expect(screen.getByTestId('Your Reel')).toBeVisible();
+  await expect(screen.getByTestId('BackButton')).toHaveAccessibleName('My Brand');
+  await expect(screen.getByPlaceholder('Ask Mira about this Reel', { exact: true, visible: true })).toBeVisible();
   await app.screenshot('e1-archived-reel-ask');
 });
 
