@@ -96,6 +96,9 @@ struct MiraStoryboardView: View {
                         Text(step.nextAction.title)
                     }.buttonStyle(MiraPrimaryStyle())
                         .accessibilityIdentifier("mira.shots.film")
+                    NavigationLink(value: MiraRoute.done(projectID)) {
+                        Text(MiraNextAction.prepareClips.title)
+                    }.buttonStyle(.bordered)
                 }
             }
         }
@@ -246,76 +249,11 @@ struct MiraApproveFirst: View {
     }
 }
 
-private struct MiraUpdateShots: View {
+struct MiraUpdateShots: View {
     var onWords: () -> Void
     var body: some View {
         Text("Mira needs to update the shots").font(.title2.bold())
         Button("Update shot list", action: onWords).buttonStyle(MiraPrimaryStyle())
-    }
-}
-
-struct MiraDoneView: View {
-    var store: MiraStore
-    var projectID: UUID
-    var onWords: () -> Void
-    @Environment(\.openURL) private var openURL
-    @State private var copied = false
-    var body: some View {
-        MiraPage {
-            if let project = store.project(projectID), !project.isApproved {
-                MiraApproveFirst(onWords: onWords)
-            } else if let project = store.project(projectID), !project.canFilm {
-                MiraUpdateShots(onWords: onWords)
-            } else if let project = store.project(projectID), let board = project.storyboard,
-                !board.shots.isEmpty
-            {
-                let count = board.shots.filter { project.filmed.contains($0.id) }.count
-                let caption = project.script?.caption.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                MiraTaskHeading(step: store.taskStep(.done(projectID), in: project))
-                Text("Upload and post in Mira are later steps.").foregroundStyle(.secondary)
-                Text(count == 1 ? "1 clip filmed" : "\(count) clips filmed")
-                    .font(.largeTitle.bold()).monospacedDigit()
-                MiraSectionTitle(text: "Your caption")
-                if caption.isEmpty {
-                    Text("No caption yet").font(.title3)
-                } else {
-                    Text(caption).font(.title3).textSelection(.enabled)
-                    Button(copied ? "Copied" : "Copy caption") {
-                        UIPasteboard.general.string = caption
-                        copied = true
-                    }.buttonStyle(.bordered).accessibilityIdentifier("mira.done.copy")
-                        .sensoryFeedback(.success, trigger: copied)
-                }
-                MiraSectionTitle(text: "Clip order")
-                ForEach(Array(board.shots.enumerated()), id: \.element.id) { index, shot in
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text("\(index + 1)").font(.title3.bold()).monospacedDigit()
-                        Text(line(shot, index)).font(.title3)
-                        Spacer(minLength: 8)
-                        if project.filmed.contains(shot.id) {
-                            Image(systemName: "checkmark.circle.fill").font(.title3)
-                                .accessibilityLabel("Filmed")
-                        }
-                    }
-                }
-                Button(MiraNextAction.prepareClips.title) {
-                    openURL(URL(string: "instagram://app")!) { accepted in
-                        if !accepted {
-                            openURL(URL(string: "https://apps.apple.com/app/instagram/id389801252")!)
-                        }
-                    }
-                }.buttonStyle(MiraPrimaryStyle()).accessibilityIdentifier("mira.done.instagram")
-                Text("Mira does not post. You post in Instagram.").font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Make a shot list before filming.")
-            }
-        }.navigationTitle("Done").navigationBarTitleDisplayMode(.inline)
-    }
-    private func line(_ shot: MiraShot, _ index: Int) -> String {
-        if !shot.words.isEmpty { return shot.words }
-        if !shot.onScreenText.isEmpty { return shot.onScreenText }
-        return "Shot \(index + 1)"
     }
 }
 

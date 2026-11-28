@@ -340,6 +340,8 @@ struct MiraProject: Codable, Equatable, Identifiable, Sendable {
     var job: MiraJob?
     var undo: [MiraUndo] = []
     var todayCards: [MiraTodayCard]?
+    var dealID: UUID?
+    var delivery: MiraDelivery?
     var shotPictureSources: [UUID: MiraShotPictureSource]?
     var hasWorkingCards: Bool { todayCards?.contains { $0.job.state == .working } == true }
     var isDemo = false

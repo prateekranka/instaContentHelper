@@ -46,6 +46,9 @@ targets:
         CURRENT_PROJECT_VERSION: "2026081102"
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+      configs:
+        Release:
+          EXCLUDED_SOURCE_FILE_NAMES: "E4Fixture*.mp4"
     entitlements:
       path: CreatorContentOS/CreatorContentOS.entitlements
       properties:

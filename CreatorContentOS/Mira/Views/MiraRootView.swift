@@ -279,6 +279,45 @@ struct MiraRootView: View {
         }
     }
 
+    private func performDeliveryRequest(_ id: UUID, isNote: Bool) {
+        do {
+            let generation: any MiraDeliveryService
+            #if DEBUG
+            if store.project(id)?.isDemo == true, MiraDeliveryFixture.isEnabled {
+                generation = MiraDeliveryFixture()
+            } else {
+                generation = try deliveryService(id)
+            }
+            #else
+            generation = try deliveryService(id)
+            #endif
+            if isNote { store.writeDeliveryNote(id, using: generation) }
+            else { store.checkDeliveryBrief(id, using: generation) }
+        } catch is AIConsentRequired {
+            services.setAIConsentSheetPresented(true)
+        } catch {
+            store.reportError(error.localizedDescription)
+        }
+    }
+
+    private func deliveryService(_ id: UUID) throws -> any MiraDeliveryService {
+        let project = store.project(id)
+        let reconnecting: Bool
+        if let project, project.delivery?.post != nil {
+            if case .interrupted = store.tellBrandState(for: project) { reconnecting = true }
+            else { reconnecting = false }
+        } else if let project, let deal = store.deliveryDeal(for: project),
+            case .interrupted = store.deliveryBriefState(for: project, deal: deal) {
+            reconnecting = true
+        } else {
+            reconnecting = false
+        }
+        guard let generation = try service(id, requiresConsent: !reconnecting) as? any MiraDeliveryService else {
+            throw MiraError.invalid("Connect your account from Profile to check the brief or write a note.")
+        }
+        return generation
+    }
+
     private func readDealBrief() {
         dealNeedsAIConsent = false
         do {
@@ -516,7 +555,9 @@ struct MiraRootView: View {
                     }
                 }
         case .done(let id):
-            MiraDoneView(store: store, projectID: id, onWords: { showWords(id) })
+            MiraDeliveryView(store: store, projectID: id, media: dependencies.reelMedia, onWords: { showWords(id) },
+                onCheck: { performDeliveryRequest(id, isNote: false) },
+                onWriteNote: { performDeliveryRequest(id, isNote: true) })
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     askBar("Ask Mira to change the plan") { sheet = .ask(id, .reviseStoryboard, nil, note: $0) }
                 }

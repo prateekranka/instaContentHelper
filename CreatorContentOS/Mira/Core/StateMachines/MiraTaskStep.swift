@@ -1,5 +1,5 @@
 enum MiraTaskStepEvent {
-    case opened(MiraLocation, editorSection: MiraProjectScreen, progress: MiraReelProgress, approved: Bool)
+    case opened(MiraLocation, editorSection: MiraProjectScreen, progress: MiraReelProgress, approved: Bool, hasExport: Bool)
 }
 
 enum MiraTaskStep {
@@ -8,10 +8,11 @@ enum MiraTaskStep {
     case shotList(MiraNextAction)
     case shoot(MiraNextAction)
     case upload
+    case deliver
 
     func handle(_ event: MiraTaskStepEvent) -> Self {
         switch event {
-        case .opened(let location, let section, let progress, let approved):
+        case .opened(let location, let section, let progress, let approved, let hasExport):
             switch location {
             case .todayCards:
                 return .idea
@@ -34,7 +35,8 @@ enum MiraTaskStep {
                 guard approved else { return .words(.approveWords) }
                 return .shoot(progress == .complete ? .finishFilming : .markFilmed)
             case .done:
-                return approved ? .upload : .words(.approveWords)
+                guard approved else { return .words(.approveWords) }
+                return hasExport ? .deliver : .upload
             }
         }
     }
@@ -46,6 +48,7 @@ enum MiraTaskStep {
         case .shotList: 3
         case .shoot: 4
         case .upload: 5
+        case .deliver: 6
         }
     }
 
@@ -57,7 +60,8 @@ enum MiraTaskStep {
         case .words: "Let's get the words right."
         case .shotList: "Here's what you'll film."
         case .shoot: "Let's film your shots."
-        case .upload: "Your filming is done."
+        case .upload: "Add your clips."
+        case .deliver: "Your Reel is ready"
         }
     }
 
@@ -66,6 +70,7 @@ enum MiraTaskStep {
         case .idea: .chooseIdea
         case .words(let action), .shotList(let action), .shoot(let action): action
         case .upload: .prepareClips
+        case .deliver: .previewReel
         }
     }
 }

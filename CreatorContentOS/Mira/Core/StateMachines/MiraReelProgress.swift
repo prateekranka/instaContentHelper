@@ -9,6 +9,7 @@ enum MiraNextAction {
 
     case startBrandInterview, nextQuestion, makeBrandDoc, confirmBrandDoc, editBrandDoc
     case pasteDealBrief, readDealBrief, confirmDeal, openDeal
+    case joinReel, previewReel, checkReelBrief, shareReel, confirmReelPost, writeBrandNote, openWhatsApp, confirmBrandNote
     case markDealPosted, markBrandTold, markDealConfirmed, markDealPaid
 
     var title: String {
@@ -48,7 +49,15 @@ enum MiraNextAction {
         case .readShotList: "Got it, I'll go shoot"
         case .markFilmed: "Mark filmed"
         case .finishFilming: "Finish"
-        case .prepareClips: "Open Instagram"
+        case .prepareClips: "Add your clips"
+        case .joinReel: "Join your Reel"
+        case .previewReel: "Watch your Reel"
+        case .checkReelBrief: "Check the brief"
+        case .shareReel: "Share to Instagram"
+        case .confirmReelPost: "Yes, I posted it"
+        case .writeBrandNote: "Write the WhatsApp note"
+        case .openWhatsApp: "Open WhatsApp"
+        case .confirmBrandNote: "Yes, I sent it"
         case .startBrandInterview: "Start the interview"
         case .nextQuestion: "Next"
         case .makeBrandDoc: "Make my brand doc"
